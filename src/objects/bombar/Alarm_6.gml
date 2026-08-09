@@ -1,0 +1,7 @@
+/// gml_Object_bombar_Alarm_6
+action_set_relative(1);
+action_create_object(smoko_aer, 0, 0);
+action_set_relative(0);
+action_set_alarm(8, 6);
+action_set_relative(1);
+action_set_relative(0);

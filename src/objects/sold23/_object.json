@@ -1,0 +1,63 @@
+{
+ "index": 277,
+ "name": "sold23",
+ "sprite": "soldico",
+ "mask_sprite": null,
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": -9000,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    2200
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_0.gml",
+   "type": "Alarm",
+   "subtype": 0,
+   "code_ids": [
+    2201
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Step.gml",
+   "type": "Step",
+   "subtype": 0,
+   "code_ids": [
+    2202
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_MouseEnter.gml",
+   "type": "Mouse",
+   "subtype": 10,
+   "code_ids": [
+    2203
+   ],
+   "action_count": 1
+  }
+ ]
+}

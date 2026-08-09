@@ -1,0 +1,39 @@
+// gml_Object_hyposet_start_Step_0  locals=1 args=0 len=232
+// locals: arguments
+00000000: call window_get_height(argc=0)
+00000008: push.imm.e -1
+0000000C: push.imm.e 0
+00000010: pop.v.v obj0.view_hview[array]
+00000018: call window_get_width(argc=0)
+00000020: push.imm.e -1
+00000024: push.imm.e 0
+00000028: pop.v.v obj0.view_wport[array]
+00000030: call window_get_height(argc=0)
+00000038: push.imm.e -1
+0000003C: push.imm.e 0
+00000040: pop.v.v obj0.view_hport[array]
+00000048: call window_get_width(argc=0)
+00000050: push.imm.e -1
+00000054: push.imm.e 0
+00000058: pop.v.v obj0.view_wview[array]
+00000060: push.builtin.v os_type
+00000068: push.imm.e 4
+0000006C: cmp.i.v ==
+00000070: bf 0x20BFB34
+00000074: push.global.v global.figy
+0000007C: push.global.v global.figx
+00000084: call window_set_size(argc=2)
+0000008C: popz
+00000090: push.builtin.v os_type
+00000098: push.imm.e 0
+0000009C: cmp.i.v ==
+000000A0: bf 0x20BFB8C
+000000A4: call window_get_width(argc=0)
+000000AC: pop.v.v ha1
+000000B4: call window_get_height(argc=0)
+000000BC: pop.v.v ha2
+000000C4: push.v ha2
+000000CC: push.v ha1
+000000D4: push.builtin.v application_surface
+000000DC: call surface_resize(argc=3)
+000000E4: popz

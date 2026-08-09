@@ -1,0 +1,334 @@
+[
+ {
+  "name": "action_set_relative",
+  "occurrences": 9656
+ },
+ {
+  "name": "action_if_variable",
+  "occurrences": 5989
+ },
+ {
+  "name": "action_sprite_set",
+  "occurrences": 5647
+ },
+ {
+  "name": "action_set_alarm",
+  "occurrences": 3838
+ },
+ {
+  "name": "action_if_dice",
+  "occurrences": 2338
+ },
+ {
+  "name": "action_kill_object",
+  "occurrences": 2153
+ },
+ {
+  "name": "action_create_object",
+  "occurrences": 1555
+ },
+ {
+  "name": "action_sprite_color",
+  "occurrences": 743
+ },
+ {
+  "name": "action_set_motion",
+  "occurrences": 445
+ },
+ {
+  "name": "action_if_number",
+  "occurrences": 361
+ },
+ {
+  "name": "instance_create",
+  "occurrences": 288
+ },
+ {
+  "name": "action_sprite_transform",
+  "occurrences": 248
+ },
+ {
+  "name": "action_move_to",
+  "occurrences": 242
+ },
+ {
+  "name": "action_effect",
+  "occurrences": 71
+ },
+ {
+  "name": "draw_text_ext_colour",
+  "occurrences": 35
+ },
+ {
+  "name": "instance_nearest",
+  "occurrences": 34
+ },
+ {
+  "name": "action_draw_text",
+  "occurrences": 33
+ },
+ {
+  "name": "window_get_height",
+  "occurrences": 30
+ },
+ {
+  "name": "action_set_cursor",
+  "occurrences": 29
+ },
+ {
+  "name": "window_get_width",
+  "occurrences": 27
+ },
+ {
+  "name": "random_range",
+  "occurrences": 23
+ },
+ {
+  "name": "action_draw_variable",
+  "occurrences": 23
+ },
+ {
+  "name": "irandom_range",
+  "occurrences": 22
+ },
+ {
+  "name": "action_move",
+  "occurrences": 15
+ },
+ {
+  "name": "action_another_room",
+  "occurrences": 12
+ },
+ {
+  "name": "action_color",
+  "occurrences": 11
+ },
+ {
+  "name": "point_direction",
+  "occurrences": 11
+ },
+ {
+  "name": "action_save_game",
+  "occurrences": 10
+ },
+ {
+  "name": "action_load_game",
+  "occurrences": 10
+ },
+ {
+  "name": "instance_destroy",
+  "occurrences": 10
+ },
+ {
+  "name": "instance_number",
+  "occurrences": 9
+ },
+ {
+  "name": "distance_to_object",
+  "occurrences": 9
+ },
+ {
+  "name": "action_font",
+  "occurrences": 8
+ },
+ {
+  "name": "action_if_mouse",
+  "occurrences": 8
+ },
+ {
+  "name": "action_set_gravity",
+  "occurrences": 7
+ },
+ {
+  "name": "display_set_gui_maximise",
+  "occurrences": 6
+ },
+ {
+  "name": "draw_set_alpha",
+  "occurrences": 6
+ },
+ {
+  "name": "action_draw_sprite",
+  "occurrences": 6
+ },
+ {
+  "name": "window_set_size",
+  "occurrences": 6
+ },
+ {
+  "name": "surface_resize",
+  "occurrences": 5
+ },
+ {
+  "name": "draw_rectangle_colour",
+  "occurrences": 4
+ },
+ {
+  "name": "draw_roundrect_colour_ext",
+  "occurrences": 3
+ },
+ {
+  "name": "os_is_paused",
+  "occurrences": 3
+ },
+ {
+  "name": "round",
+  "occurrences": 2
+ },
+ {
+  "name": "display_get_dpi_x",
+  "occurrences": 2
+ },
+ {
+  "name": "draw_set_font",
+  "occurrences": 2
+ },
+ {
+  "name": "draw_rectangle",
+  "occurrences": 2
+ },
+ {
+  "name": "display_get_width",
+  "occurrences": 2
+ },
+ {
+  "name": "display_get_height",
+  "occurrences": 2
+ },
+ {
+  "name": "action_move_point",
+  "occurrences": 2
+ },
+ {
+  "name": "randomize",
+  "occurrences": 2
+ },
+ {
+  "name": "game_end",
+  "occurrences": 2
+ },
+ {
+  "name": "instance_activate_all",
+  "occurrences": 2
+ },
+ {
+  "name": "part_system_destroy",
+  "occurrences": 2
+ },
+ {
+  "name": "action_bounce",
+  "occurrences": 2
+ },
+ {
+  "name": "display_set_gui_size",
+  "occurrences": 1
+ },
+ {
+  "name": "draw_sprite_ext",
+  "occurrences": 1
+ },
+ {
+  "name": "action_current_room",
+  "occurrences": 1
+ },
+ {
+  "name": "part_system_create",
+  "occurrences": 1
+ },
+ {
+  "name": "part_system_depth",
+  "occurrences": 1
+ },
+ {
+  "name": "part_type_create",
+  "occurrences": 1
+ },
+ {
+  "name": "part_type_shape",
+  "occurrences": 1
+ },
+ {
+  "name": "part_type_size",
+  "occurrences": 1
+ },
+ {
+  "name": "part_type_color2",
+  "occurrences": 1
+ },
+ {
+  "name": "part_type_alpha2",
+  "occurrences": 1
+ },
+ {
+  "name": "part_type_gravity",
+  "occurrences": 1
+ },
+ {
+  "name": "part_type_speed",
+  "occurrences": 1
+ },
+ {
+  "name": "part_type_direction",
+  "occurrences": 1
+ },
+ {
+  "name": "part_type_orientation",
+  "occurrences": 1
+ },
+ {
+  "name": "part_type_life",
+  "occurrences": 1
+ },
+ {
+  "name": "part_emitter_create",
+  "occurrences": 1
+ },
+ {
+  "name": "part_emitter_region",
+  "occurrences": 1
+ },
+ {
+  "name": "part_emitter_stream",
+  "occurrences": 1
+ },
+ {
+  "name": "part_system_update",
+  "occurrences": 1
+ },
+ {
+  "name": "action_end_game",
+  "occurrences": 1
+ },
+ {
+  "name": "surface_get_width",
+  "occurrences": 1
+ },
+ {
+  "name": "surface_get_height",
+  "occurrences": 1
+ },
+ {
+  "name": "sprite_create_from_surface",
+  "occurrences": 1
+ },
+ {
+  "name": "instance_deactivate_all",
+  "occurrences": 1
+ },
+ {
+  "name": "draw_sprite",
+  "occurrences": 1
+ },
+ {
+  "name": "draw_set_halign",
+  "occurrences": 1
+ },
+ {
+  "name": "draw_set_valign",
+  "occurrences": 1
+ },
+ {
+  "name": "draw_text",
+  "occurrences": 1
+ }
+]

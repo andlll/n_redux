@@ -1,0 +1,144 @@
+{
+ "index": 143,
+ "name": "yellow_pro",
+ "sprite": "gatmissse",
+ "mask_sprite": null,
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": -9999,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    901
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_1.gml",
+   "type": "Alarm",
+   "subtype": 1,
+   "code_ids": [
+    902
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Step.gml",
+   "type": "Step",
+   "subtype": 0,
+   "code_ids": [
+    903
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_recogn.gml",
+   "type": "Collision",
+   "subtype": 101,
+   "code_ids": [
+    904
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_monspi.gml",
+   "type": "Collision",
+   "subtype": 96,
+   "code_ids": [
+    905
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_monbo.gml",
+   "type": "Collision",
+   "subtype": 95,
+   "code_ids": [
+    906
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_mongo.gml",
+   "type": "Collision",
+   "subtype": 94,
+   "code_ids": [
+    907
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_monvo_giga.gml",
+   "type": "Collision",
+   "subtype": 93,
+   "code_ids": [
+    908
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_monviolo.gml",
+   "type": "Collision",
+   "subtype": 92,
+   "code_ids": [
+    909
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_monvo.gml",
+   "type": "Collision",
+   "subtype": 91,
+   "code_ids": [
+    910
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_dirig.gml",
+   "type": "Collision",
+   "subtype": 85,
+   "code_ids": [
+    911
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_bombar.gml",
+   "type": "Collision",
+   "subtype": 78,
+   "code_ids": [
+    912
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_air.gml",
+   "type": "Collision",
+   "subtype": 77,
+   "code_ids": [
+    913
+   ],
+   "action_count": 1
+  }
+ ]
+}

@@ -1,0 +1,108 @@
+{
+ "index": 236,
+ "name": "ruindeath",
+ "sprite": null,
+ "mask_sprite": "collider",
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": 0,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    1508
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_0.gml",
+   "type": "Alarm",
+   "subtype": 0,
+   "code_ids": [
+    1509
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_ruin4d.gml",
+   "type": "Collision",
+   "subtype": 453,
+   "code_ids": [
+    1510
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_ruin4s.gml",
+   "type": "Collision",
+   "subtype": 452,
+   "code_ids": [
+    1511
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_ruin3.gml",
+   "type": "Collision",
+   "subtype": 451,
+   "code_ids": [
+    1512
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_ruin2.gml",
+   "type": "Collision",
+   "subtype": 450,
+   "code_ids": [
+    1513
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_ruinmonument.gml",
+   "type": "Collision",
+   "subtype": 449,
+   "code_ids": [
+    1514
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_ruinsol.gml",
+   "type": "Collision",
+   "subtype": 448,
+   "code_ids": [
+    1515
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_ruin1.gml",
+   "type": "Collision",
+   "subtype": 447,
+   "code_ids": [
+    1516
+   ],
+   "action_count": 1
+  }
+ ]
+}

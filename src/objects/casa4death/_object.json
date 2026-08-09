@@ -1,0 +1,279 @@
+{
+ "index": 257,
+ "name": "casa4death",
+ "sprite": null,
+ "mask_sprite": "collider",
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": -11000,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    1989
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Destroy.gml",
+   "type": "Destroy",
+   "subtype": 0,
+   "code_ids": [
+    1990
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_0.gml",
+   "type": "Alarm",
+   "subtype": 0,
+   "code_ids": [
+    1991
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d454.gml",
+   "type": "Collision",
+   "subtype": 406,
+   "code_ids": [
+    1992
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d453.gml",
+   "type": "Collision",
+   "subtype": 405,
+   "code_ids": [
+    1993
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d452.gml",
+   "type": "Collision",
+   "subtype": 404,
+   "code_ids": [
+    1994
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d451.gml",
+   "type": "Collision",
+   "subtype": 403,
+   "code_ids": [
+    1995
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d444.gml",
+   "type": "Collision",
+   "subtype": 402,
+   "code_ids": [
+    1996
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d443.gml",
+   "type": "Collision",
+   "subtype": 401,
+   "code_ids": [
+    1997
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d442.gml",
+   "type": "Collision",
+   "subtype": 400,
+   "code_ids": [
+    1998
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d441.gml",
+   "type": "Collision",
+   "subtype": 399,
+   "code_ids": [
+    1999
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d434.gml",
+   "type": "Collision",
+   "subtype": 398,
+   "code_ids": [
+    2000
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d433.gml",
+   "type": "Collision",
+   "subtype": 397,
+   "code_ids": [
+    2001
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d432.gml",
+   "type": "Collision",
+   "subtype": 396,
+   "code_ids": [
+    2002
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d431.gml",
+   "type": "Collision",
+   "subtype": 395,
+   "code_ids": [
+    2003
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d424.gml",
+   "type": "Collision",
+   "subtype": 394,
+   "code_ids": [
+    2004
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d423.gml",
+   "type": "Collision",
+   "subtype": 393,
+   "code_ids": [
+    2005
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d422.gml",
+   "type": "Collision",
+   "subtype": 392,
+   "code_ids": [
+    2006
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d421.gml",
+   "type": "Collision",
+   "subtype": 391,
+   "code_ids": [
+    2007
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d414.gml",
+   "type": "Collision",
+   "subtype": 390,
+   "code_ids": [
+    2008
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d413.gml",
+   "type": "Collision",
+   "subtype": 389,
+   "code_ids": [
+    2009
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d412.gml",
+   "type": "Collision",
+   "subtype": 388,
+   "code_ids": [
+    2010
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d411.gml",
+   "type": "Collision",
+   "subtype": 387,
+   "code_ids": [
+    2011
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_upsign45d.gml",
+   "type": "Collision",
+   "subtype": 227,
+   "code_ids": [
+    2012
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_upsign45s.gml",
+   "type": "Collision",
+   "subtype": 225,
+   "code_ids": [
+    2013
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa4d.gml",
+   "type": "Collision",
+   "subtype": 198,
+   "code_ids": [
+    2014
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa4s.gml",
+   "type": "Collision",
+   "subtype": 197,
+   "code_ids": [
+    2015
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_LeftPressed.gml",
+   "type": "Mouse",
+   "subtype": 4,
+   "code_ids": [
+    2016
+   ],
+   "action_count": 1
+  }
+ ]
+}

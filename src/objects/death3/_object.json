@@ -1,0 +1,252 @@
+{
+ "index": 254,
+ "name": "death3",
+ "sprite": null,
+ "mask_sprite": "collider",
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": -11000,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    1913
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Destroy.gml",
+   "type": "Destroy",
+   "subtype": 0,
+   "code_ids": [
+    1914
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_0.gml",
+   "type": "Alarm",
+   "subtype": 0,
+   "code_ids": [
+    1915
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d354.gml",
+   "type": "Collision",
+   "subtype": 382,
+   "code_ids": [
+    1916
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d353.gml",
+   "type": "Collision",
+   "subtype": 381,
+   "code_ids": [
+    1917
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d352.gml",
+   "type": "Collision",
+   "subtype": 380,
+   "code_ids": [
+    1918
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d351.gml",
+   "type": "Collision",
+   "subtype": 379,
+   "code_ids": [
+    1919
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d344.gml",
+   "type": "Collision",
+   "subtype": 378,
+   "code_ids": [
+    1920
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d343.gml",
+   "type": "Collision",
+   "subtype": 377,
+   "code_ids": [
+    1921
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d342.gml",
+   "type": "Collision",
+   "subtype": 376,
+   "code_ids": [
+    1922
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d341.gml",
+   "type": "Collision",
+   "subtype": 375,
+   "code_ids": [
+    1923
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d334.gml",
+   "type": "Collision",
+   "subtype": 374,
+   "code_ids": [
+    1924
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d333.gml",
+   "type": "Collision",
+   "subtype": 373,
+   "code_ids": [
+    1925
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d332.gml",
+   "type": "Collision",
+   "subtype": 372,
+   "code_ids": [
+    1926
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d331.gml",
+   "type": "Collision",
+   "subtype": 371,
+   "code_ids": [
+    1927
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d324.gml",
+   "type": "Collision",
+   "subtype": 370,
+   "code_ids": [
+    1928
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d323.gml",
+   "type": "Collision",
+   "subtype": 369,
+   "code_ids": [
+    1929
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d322.gml",
+   "type": "Collision",
+   "subtype": 368,
+   "code_ids": [
+    1930
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d321.gml",
+   "type": "Collision",
+   "subtype": 367,
+   "code_ids": [
+    1931
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d314.gml",
+   "type": "Collision",
+   "subtype": 366,
+   "code_ids": [
+    1932
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d313.gml",
+   "type": "Collision",
+   "subtype": 365,
+   "code_ids": [
+    1933
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d312.gml",
+   "type": "Collision",
+   "subtype": 364,
+   "code_ids": [
+    1934
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d311.gml",
+   "type": "Collision",
+   "subtype": 363,
+   "code_ids": [
+    1935
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa3.gml",
+   "type": "Collision",
+   "subtype": 193,
+   "code_ids": [
+    1936
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_LeftPressed.gml",
+   "type": "Mouse",
+   "subtype": 4,
+   "code_ids": [
+    1937
+   ],
+   "action_count": 1
+  }
+ ]
+}

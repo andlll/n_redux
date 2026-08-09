@@ -1,0 +1,567 @@
+{
+ "index": 529,
+ "name": "grutop",
+ "sprite": "grutop1",
+ "mask_sprite": "dot",
+ "parent": "notte_target",
+ "visible": 1,
+ "solid": 0,
+ "depth": 0,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    3451
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_7.gml",
+   "type": "Alarm",
+   "subtype": 7,
+   "code_ids": [
+    3452
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_6.gml",
+   "type": "Alarm",
+   "subtype": 6,
+   "code_ids": [
+    3453
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_5.gml",
+   "type": "Alarm",
+   "subtype": 5,
+   "code_ids": [
+    3454
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_4.gml",
+   "type": "Alarm",
+   "subtype": 4,
+   "code_ids": [
+    3455
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_3.gml",
+   "type": "Alarm",
+   "subtype": 3,
+   "code_ids": [
+    3456
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_2.gml",
+   "type": "Alarm",
+   "subtype": 2,
+   "code_ids": [
+    3457
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_1.gml",
+   "type": "Alarm",
+   "subtype": 1,
+   "code_ids": [
+    3458
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_0.gml",
+   "type": "Alarm",
+   "subtype": 0,
+   "code_ids": [
+    3459
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impa4rd_demo.gml",
+   "type": "Collision",
+   "subtype": 593,
+   "code_ids": [
+    3460
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impa4r_demo.gml",
+   "type": "Collision",
+   "subtype": 591,
+   "code_ids": [
+    3461
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impalasdem_r.gml",
+   "type": "Collision",
+   "subtype": 588,
+   "code_ids": [
+    3462
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impaind3r.gml",
+   "type": "Collision",
+   "subtype": 587,
+   "code_ids": [
+    3463
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impaindu2r.gml",
+   "type": "Collision",
+   "subtype": 584,
+   "code_ids": [
+    3464
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impacasa3r.gml",
+   "type": "Collision",
+   "subtype": 583,
+   "code_ids": [
+    3465
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impamissilir.gml",
+   "type": "Collision",
+   "subtype": 581,
+   "code_ids": [
+    3466
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impacasa2r.gml",
+   "type": "Collision",
+   "subtype": 579,
+   "code_ids": [
+    3467
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impaindu1r.gml",
+   "type": "Collision",
+   "subtype": 574,
+   "code_ids": [
+    3468
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_imparcor_demo.gml",
+   "type": "Collision",
+   "subtype": 573,
+   "code_ids": [
+    3469
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impacasa1r.gml",
+   "type": "Collision",
+   "subtype": 570,
+   "code_ids": [
+    3470
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impa5rd_demo.gml",
+   "type": "Collision",
+   "subtype": 563,
+   "code_ids": [
+    3471
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impa5r_demo.gml",
+   "type": "Collision",
+   "subtype": 561,
+   "code_ids": [
+    3472
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impa4rd.gml",
+   "type": "Collision",
+   "subtype": 548,
+   "code_ids": [
+    3473
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impa5rd.gml",
+   "type": "Collision",
+   "subtype": 547,
+   "code_ids": [
+    3474
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impa5r.gml",
+   "type": "Collision",
+   "subtype": 540,
+   "code_ids": [
+    3475
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impa4r.gml",
+   "type": "Collision",
+   "subtype": 537,
+   "code_ids": [
+    3476
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impaBANKf.gml",
+   "type": "Collision",
+   "subtype": 523,
+   "code_ids": [
+    3477
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impaind1to2r.gml",
+   "type": "Collision",
+   "subtype": 521,
+   "code_ids": [
+    3478
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impalaser_r.gml",
+   "type": "Collision",
+   "subtype": 520,
+   "code_ids": [
+    3479
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impaind2to3r.gml",
+   "type": "Collision",
+   "subtype": 519,
+   "code_ids": [
+    3480
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impaMONUf.gml",
+   "type": "Collision",
+   "subtype": 518,
+   "code_ids": [
+    3481
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impaMONUr.gml",
+   "type": "Collision",
+   "subtype": 517,
+   "code_ids": [
+    3482
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impaBANKr.gml",
+   "type": "Collision",
+   "subtype": 516,
+   "code_ids": [
+    3483
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impa2to3r.gml",
+   "type": "Collision",
+   "subtype": 515,
+   "code_ids": [
+    3484
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impamissr.gml",
+   "type": "Collision",
+   "subtype": 508,
+   "code_ids": [
+    3485
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impa1to2r.gml",
+   "type": "Collision",
+   "subtype": 506,
+   "code_ids": [
+    3486
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impaind0to1r.gml",
+   "type": "Collision",
+   "subtype": 499,
+   "code_ids": [
+    3487
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_imparcr.gml",
+   "type": "Collision",
+   "subtype": 498,
+   "code_ids": [
+    3488
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impa0to1r.gml",
+   "type": "Collision",
+   "subtype": 495,
+   "code_ids": [
+    3489
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impavent_dem.gml",
+   "type": "Collision",
+   "subtype": 494,
+   "code_ids": [
+    3490
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_impavent.gml",
+   "type": "Collision",
+   "subtype": 493,
+   "code_ids": [
+    3491
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_eoli.gml",
+   "type": "Collision",
+   "subtype": 210,
+   "code_ids": [
+    3492
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_lasergun.gml",
+   "type": "Collision",
+   "subtype": 209,
+   "code_ids": [
+    3493
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_gatlinggun.gml",
+   "type": "Collision",
+   "subtype": 208,
+   "code_ids": [
+    3494
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_rocket_launcher.gml",
+   "type": "Collision",
+   "subtype": 207,
+   "code_ids": [
+    3495
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_industria3.gml",
+   "type": "Collision",
+   "subtype": 206,
+   "code_ids": [
+    3496
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_industria2.gml",
+   "type": "Collision",
+   "subtype": 205,
+   "code_ids": [
+    3497
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_sooool.gml",
+   "type": "Collision",
+   "subtype": 203,
+   "code_ids": [
+    3498
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_club1.gml",
+   "type": "Collision",
+   "subtype": 202,
+   "code_ids": [
+    3499
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_industria1.gml",
+   "type": "Collision",
+   "subtype": 201,
+   "code_ids": [
+    3500
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa5ss.gml",
+   "type": "Collision",
+   "subtype": 200,
+   "code_ids": [
+    3501
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa5dd.gml",
+   "type": "Collision",
+   "subtype": 199,
+   "code_ids": [
+    3502
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa4d.gml",
+   "type": "Collision",
+   "subtype": 198,
+   "code_ids": [
+    3503
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa4s.gml",
+   "type": "Collision",
+   "subtype": 197,
+   "code_ids": [
+    3504
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_media1d.gml",
+   "type": "Collision",
+   "subtype": 196,
+   "code_ids": [
+    3505
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_media1s.gml",
+   "type": "Collision",
+   "subtype": 195,
+   "code_ids": [
+    3506
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa3.gml",
+   "type": "Collision",
+   "subtype": 193,
+   "code_ids": [
+    3507
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa2.gml",
+   "type": "Collision",
+   "subtype": 192,
+   "code_ids": [
+    3508
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_villa1.gml",
+   "type": "Collision",
+   "subtype": 188,
+   "code_ids": [
+    3509
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa1.gml",
+   "type": "Collision",
+   "subtype": 187,
+   "code_ids": [
+    3510
+   ],
+   "action_count": 1
+  }
+ ]
+}

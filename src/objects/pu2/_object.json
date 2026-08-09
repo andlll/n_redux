@@ -1,0 +1,72 @@
+{
+ "index": 622,
+ "name": "pu2",
+ "sprite": "p2",
+ "mask_sprite": null,
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": -9999,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    4224
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Step.gml",
+   "type": "Step",
+   "subtype": 0,
+   "code_ids": [
+    4225
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_MouseLeave.gml",
+   "type": "Mouse",
+   "subtype": 11,
+   "code_ids": [
+    4226
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_MouseEnter.gml",
+   "type": "Mouse",
+   "subtype": 10,
+   "code_ids": [
+    4227
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_LeftPressed.gml",
+   "type": "Mouse",
+   "subtype": 4,
+   "code_ids": [
+    4228
+   ],
+   "action_count": 1
+  }
+ ]
+}

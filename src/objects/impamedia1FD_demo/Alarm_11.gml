@@ -1,0 +1,3 @@
+/// gml_Object_impamedia1FD_demo_Alarm_11
+action_sprite_set(im1f, 0, 1);
+action_set_alarm(61, 10);

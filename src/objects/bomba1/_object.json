@@ -1,0 +1,252 @@
+{
+ "index": 97,
+ "name": "bomba1",
+ "sprite": "bomb",
+ "mask_sprite": "phold",
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": 0,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    645
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_1.gml",
+   "type": "Alarm",
+   "subtype": 1,
+   "code_ids": [
+    646
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_0.gml",
+   "type": "Alarm",
+   "subtype": 0,
+   "code_ids": [
+    647
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_eoli.gml",
+   "type": "Collision",
+   "subtype": 210,
+   "code_ids": [
+    648
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_lasergun.gml",
+   "type": "Collision",
+   "subtype": 209,
+   "code_ids": [
+    649
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_gatlinggun.gml",
+   "type": "Collision",
+   "subtype": 208,
+   "code_ids": [
+    650
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_rocket_launcher.gml",
+   "type": "Collision",
+   "subtype": 207,
+   "code_ids": [
+    651
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_industria3.gml",
+   "type": "Collision",
+   "subtype": 206,
+   "code_ids": [
+    652
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_industria2.gml",
+   "type": "Collision",
+   "subtype": 205,
+   "code_ids": [
+    653
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_sooool.gml",
+   "type": "Collision",
+   "subtype": 203,
+   "code_ids": [
+    654
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_club1.gml",
+   "type": "Collision",
+   "subtype": 202,
+   "code_ids": [
+    655
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_industria1.gml",
+   "type": "Collision",
+   "subtype": 201,
+   "code_ids": [
+    656
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa5ss.gml",
+   "type": "Collision",
+   "subtype": 200,
+   "code_ids": [
+    657
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa5dd.gml",
+   "type": "Collision",
+   "subtype": 199,
+   "code_ids": [
+    658
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa4d.gml",
+   "type": "Collision",
+   "subtype": 198,
+   "code_ids": [
+    659
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa4s.gml",
+   "type": "Collision",
+   "subtype": 197,
+   "code_ids": [
+    660
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_media1d.gml",
+   "type": "Collision",
+   "subtype": 196,
+   "code_ids": [
+    661
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_media1s.gml",
+   "type": "Collision",
+   "subtype": 195,
+   "code_ids": [
+    662
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_banca1.gml",
+   "type": "Collision",
+   "subtype": 194,
+   "code_ids": [
+    663
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa3.gml",
+   "type": "Collision",
+   "subtype": 193,
+   "code_ids": [
+    664
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa2.gml",
+   "type": "Collision",
+   "subtype": 192,
+   "code_ids": [
+    665
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_monum.gml",
+   "type": "Collision",
+   "subtype": 190,
+   "code_ids": [
+    666
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_villa1.gml",
+   "type": "Collision",
+   "subtype": 188,
+   "code_ids": [
+    667
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa1.gml",
+   "type": "Collision",
+   "subtype": 187,
+   "code_ids": [
+    668
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_chies.gml",
+   "type": "Collision",
+   "subtype": 154,
+   "code_ids": [
+    669
+   ],
+   "action_count": 1
+  }
+ ]
+}

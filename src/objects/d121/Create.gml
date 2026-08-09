@@ -1,0 +1,5 @@
+/// gml_Object_d121_Create_0
+depth = -y - 1;
+bout = 0;
+trans = 0;
+action_sprite_set(empty, 0, 1);

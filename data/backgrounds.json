@@ -1,0 +1,22 @@
+[
+ {
+  "index": 0,
+  "name": "background0",
+  "transparent": 0,
+  "smooth": 0,
+  "preload": 0,
+  "texture": {
+   "x": 4,
+   "y": 1316,
+   "w": 1280,
+   "h": 720,
+   "render_x": 0,
+   "render_y": 0,
+   "bbox_x": 2560,
+   "bbox_y": 1440,
+   "bbox_w": 2560,
+   "bbox_h": 1440,
+   "tex": 1
+  }
+ }
+]

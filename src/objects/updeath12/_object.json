@@ -1,0 +1,261 @@
+{
+ "index": 237,
+ "name": "updeath12",
+ "sprite": null,
+ "mask_sprite": "dotto",
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": -11000,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    1517
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Destroy.gml",
+   "type": "Destroy",
+   "subtype": 0,
+   "code_ids": [
+    1518
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_0.gml",
+   "type": "Alarm",
+   "subtype": 0,
+   "code_ids": [
+    1519
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d154.gml",
+   "type": "Collision",
+   "subtype": 317,
+   "code_ids": [
+    1520
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d153.gml",
+   "type": "Collision",
+   "subtype": 316,
+   "code_ids": [
+    1521
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d152.gml",
+   "type": "Collision",
+   "subtype": 315,
+   "code_ids": [
+    1522
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d151.gml",
+   "type": "Collision",
+   "subtype": 314,
+   "code_ids": [
+    1523
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d144.gml",
+   "type": "Collision",
+   "subtype": 313,
+   "code_ids": [
+    1524
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d143.gml",
+   "type": "Collision",
+   "subtype": 312,
+   "code_ids": [
+    1525
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d142.gml",
+   "type": "Collision",
+   "subtype": 311,
+   "code_ids": [
+    1526
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d141.gml",
+   "type": "Collision",
+   "subtype": 310,
+   "code_ids": [
+    1527
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d134.gml",
+   "type": "Collision",
+   "subtype": 309,
+   "code_ids": [
+    1528
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d133.gml",
+   "type": "Collision",
+   "subtype": 308,
+   "code_ids": [
+    1529
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d132.gml",
+   "type": "Collision",
+   "subtype": 307,
+   "code_ids": [
+    1530
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d131.gml",
+   "type": "Collision",
+   "subtype": 306,
+   "code_ids": [
+    1531
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d124.gml",
+   "type": "Collision",
+   "subtype": 305,
+   "code_ids": [
+    1532
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d123.gml",
+   "type": "Collision",
+   "subtype": 304,
+   "code_ids": [
+    1533
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d122.gml",
+   "type": "Collision",
+   "subtype": 303,
+   "code_ids": [
+    1534
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d121.gml",
+   "type": "Collision",
+   "subtype": 302,
+   "code_ids": [
+    1535
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d114.gml",
+   "type": "Collision",
+   "subtype": 301,
+   "code_ids": [
+    1536
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d113.gml",
+   "type": "Collision",
+   "subtype": 300,
+   "code_ids": [
+    1537
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d112.gml",
+   "type": "Collision",
+   "subtype": 299,
+   "code_ids": [
+    1538
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_d111.gml",
+   "type": "Collision",
+   "subtype": 295,
+   "code_ids": [
+    1539
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_upsign12.gml",
+   "type": "Collision",
+   "subtype": 221,
+   "code_ids": [
+    1540
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_casa1.gml",
+   "type": "Collision",
+   "subtype": 187,
+   "code_ids": [
+    1541
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_LeftPressed.gml",
+   "type": "Mouse",
+   "subtype": 4,
+   "code_ids": [
+    1542
+   ],
+   "action_count": 1
+  }
+ ]
+}

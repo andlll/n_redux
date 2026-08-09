@@ -1,0 +1,36 @@
+{
+ "index": 128,
+ "name": "demobachia",
+ "sprite": "demoback",
+ "mask_sprite": null,
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": -9910,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Mouse_LeftReleased.gml",
+   "type": "Mouse",
+   "subtype": 7,
+   "code_ids": [
+    859
+   ],
+   "action_count": 1
+  }
+ ]
+}

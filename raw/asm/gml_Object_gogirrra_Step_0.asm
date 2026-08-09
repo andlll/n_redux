@@ -1,0 +1,32 @@
+// gml_Object_gogirrra_Step_0  locals=1 args=0 len=180
+// locals: arguments
+00000000: call window_get_width(argc=0)
+00000008: pop.v.v proto1
+00000010: call window_get_height(argc=0)
+00000018: pop.v.v proto2
+00000020: push.builtin.v os_type
+00000028: push.imm.e 4
+0000002C: cmp.i.v ==
+00000030: bf 0x20BFE08
+00000034: push.v proto1
+0000003C: push.v proto2
+00000044: cmp.v.v >
+00000048: bf 0x20BFDF8
+0000004C: push.imm.e 0
+00000050: pop.v.i global.upp
+00000058: b 0x20BFE04
+0000005C: push.imm.e 40
+00000060: pop.v.i global.upp
+00000068: b 0x20BFE14
+0000006C: push.imm.e 0
+00000070: pop.v.i global.upp
+00000078: push.imm.e -1
+0000007C: push.imm.e 0
+00000080: push.v obj0.view_xview[array]
+00000088: pop.v.v x
+00000090: push.imm.e -1
+00000094: push.imm.e 0
+00000098: push.v obj0.view_yview[array]
+000000A0: push.global.v global.upp
+000000A8: add.v.v
+000000AC: pop.v.v y

@@ -1,0 +1,189 @@
+{
+ "index": 239,
+ "name": "soldeath",
+ "sprite": null,
+ "mask_sprite": "collider",
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": -11000,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    1561
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Destroy.gml",
+   "type": "Destroy",
+   "subtype": 0,
+   "code_ids": [
+    1562
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_0.gml",
+   "type": "Alarm",
+   "subtype": 0,
+   "code_ids": [
+    1563
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_dvil12.gml",
+   "type": "Collision",
+   "subtype": 438,
+   "code_ids": [
+    1564
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_dvil11.gml",
+   "type": "Collision",
+   "subtype": 437,
+   "code_ids": [
+    1565
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_dvil10.gml",
+   "type": "Collision",
+   "subtype": 436,
+   "code_ids": [
+    1566
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_dvil9.gml",
+   "type": "Collision",
+   "subtype": 435,
+   "code_ids": [
+    1567
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_dvil8.gml",
+   "type": "Collision",
+   "subtype": 434,
+   "code_ids": [
+    1568
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_dvil7.gml",
+   "type": "Collision",
+   "subtype": 433,
+   "code_ids": [
+    1569
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_dvil6.gml",
+   "type": "Collision",
+   "subtype": 432,
+   "code_ids": [
+    1570
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_dvil5.gml",
+   "type": "Collision",
+   "subtype": 431,
+   "code_ids": [
+    1571
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_dvil4.gml",
+   "type": "Collision",
+   "subtype": 430,
+   "code_ids": [
+    1572
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_dvil3.gml",
+   "type": "Collision",
+   "subtype": 429,
+   "code_ids": [
+    1573
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_dvil2.gml",
+   "type": "Collision",
+   "subtype": 428,
+   "code_ids": [
+    1574
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_dvil1.gml",
+   "type": "Collision",
+   "subtype": 427,
+   "code_ids": [
+    1575
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_upsign12.gml",
+   "type": "Collision",
+   "subtype": 221,
+   "code_ids": [
+    1576
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_sooool.gml",
+   "type": "Collision",
+   "subtype": 203,
+   "code_ids": [
+    1577
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_LeftPressed.gml",
+   "type": "Mouse",
+   "subtype": 4,
+   "code_ids": [
+    1578
+   ],
+   "action_count": 1
+  }
+ ]
+}

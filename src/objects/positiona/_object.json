@@ -1,0 +1,72 @@
+{
+ "index": 141,
+ "name": "positiona",
+ "sprite": null,
+ "mask_sprite": null,
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": -999999,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    886
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_GlobalRightReleased.gml",
+   "type": "Mouse",
+   "subtype": 57,
+   "code_ids": [
+    887
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_GlobalLeftReleased.gml",
+   "type": "Mouse",
+   "subtype": 56,
+   "code_ids": [
+    888
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_GlobalRightPressed.gml",
+   "type": "Mouse",
+   "subtype": 54,
+   "code_ids": [
+    889
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_GlobalLeftPressed.gml",
+   "type": "Mouse",
+   "subtype": 53,
+   "code_ids": [
+    890
+   ],
+   "action_count": 1
+  }
+ ]
+}

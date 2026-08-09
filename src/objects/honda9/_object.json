@@ -1,0 +1,153 @@
+{
+ "index": 60,
+ "name": "honda9",
+ "sprite": "p_as",
+ "mask_sprite": null,
+ "parent": "notte_target",
+ "visible": 1,
+ "solid": 0,
+ "depth": 0,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    416
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_11.gml",
+   "type": "Alarm",
+   "subtype": 11,
+   "code_ids": [
+    417
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_10.gml",
+   "type": "Alarm",
+   "subtype": 10,
+   "code_ids": [
+    418
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_9.gml",
+   "type": "Alarm",
+   "subtype": 9,
+   "code_ids": [
+    419
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_8.gml",
+   "type": "Alarm",
+   "subtype": 8,
+   "code_ids": [
+    420
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_7.gml",
+   "type": "Alarm",
+   "subtype": 7,
+   "code_ids": [
+    421
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_6.gml",
+   "type": "Alarm",
+   "subtype": 6,
+   "code_ids": [
+    422
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_5.gml",
+   "type": "Alarm",
+   "subtype": 5,
+   "code_ids": [
+    423
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_4.gml",
+   "type": "Alarm",
+   "subtype": 4,
+   "code_ids": [
+    424
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_3.gml",
+   "type": "Alarm",
+   "subtype": 3,
+   "code_ids": [
+    425
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_2.gml",
+   "type": "Alarm",
+   "subtype": 2,
+   "code_ids": [
+    426
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_1.gml",
+   "type": "Alarm",
+   "subtype": 1,
+   "code_ids": [
+    427
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_0.gml",
+   "type": "Alarm",
+   "subtype": 0,
+   "code_ids": [
+    428
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Step.gml",
+   "type": "Step",
+   "subtype": 0,
+   "code_ids": [
+    429
+   ],
+   "action_count": 1
+  }
+ ]
+}

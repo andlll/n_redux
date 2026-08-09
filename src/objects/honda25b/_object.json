@@ -1,0 +1,108 @@
+{
+ "index": 75,
+ "name": "honda25b",
+ "sprite": "g_bd",
+ "mask_sprite": null,
+ "parent": "notte_target",
+ "visible": 1,
+ "solid": 0,
+ "depth": 0,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    559
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_6.gml",
+   "type": "Alarm",
+   "subtype": 6,
+   "code_ids": [
+    560
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_5.gml",
+   "type": "Alarm",
+   "subtype": 5,
+   "code_ids": [
+    561
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_4.gml",
+   "type": "Alarm",
+   "subtype": 4,
+   "code_ids": [
+    562
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_3.gml",
+   "type": "Alarm",
+   "subtype": 3,
+   "code_ids": [
+    563
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_2.gml",
+   "type": "Alarm",
+   "subtype": 2,
+   "code_ids": [
+    564
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_1.gml",
+   "type": "Alarm",
+   "subtype": 1,
+   "code_ids": [
+    565
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_0.gml",
+   "type": "Alarm",
+   "subtype": 0,
+   "code_ids": [
+    566
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Step.gml",
+   "type": "Step",
+   "subtype": 0,
+   "code_ids": [
+    567
+   ],
+   "action_count": 1
+  }
+ ]
+}

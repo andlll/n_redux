@@ -1,0 +1,4 @@
+/// gml_Object_ruindeath_Collision_449
+with (other.id) {
+    action_kill_object();
+}

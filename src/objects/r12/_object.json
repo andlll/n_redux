@@ -1,0 +1,297 @@
+{
+ "index": 156,
+ "name": "r12",
+ "sprite": "baa11",
+ "mask_sprite": null,
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": 1,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    949
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_11.gml",
+   "type": "Alarm",
+   "subtype": 11,
+   "code_ids": [
+    950
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_10.gml",
+   "type": "Alarm",
+   "subtype": 10,
+   "code_ids": [
+    951
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_9.gml",
+   "type": "Alarm",
+   "subtype": 9,
+   "code_ids": [
+    952
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_8.gml",
+   "type": "Alarm",
+   "subtype": 8,
+   "code_ids": [
+    953
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_7.gml",
+   "type": "Alarm",
+   "subtype": 7,
+   "code_ids": [
+    954
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_6.gml",
+   "type": "Alarm",
+   "subtype": 6,
+   "code_ids": [
+    955
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_5.gml",
+   "type": "Alarm",
+   "subtype": 5,
+   "code_ids": [
+    956
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_4.gml",
+   "type": "Alarm",
+   "subtype": 4,
+   "code_ids": [
+    957
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_3.gml",
+   "type": "Alarm",
+   "subtype": 3,
+   "code_ids": [
+    958
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_2.gml",
+   "type": "Alarm",
+   "subtype": 2,
+   "code_ids": [
+    959
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_1.gml",
+   "type": "Alarm",
+   "subtype": 1,
+   "code_ids": [
+    960
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_0.gml",
+   "type": "Alarm",
+   "subtype": 0,
+   "code_ids": [
+    961
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "BeginStep.gml",
+   "type": "Step",
+   "subtype": 1,
+   "code_ids": [
+    962
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Step.gml",
+   "type": "Step",
+   "subtype": 0,
+   "code_ids": [
+    963
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_GlobalLeftPressed.gml",
+   "type": "Mouse",
+   "subtype": 53,
+   "code_ids": [
+    964
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_Y.gml",
+   "type": "KeyPress",
+   "subtype": 89,
+   "code_ids": [
+    965
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_W.gml",
+   "type": "KeyPress",
+   "subtype": 87,
+   "code_ids": [
+    966
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_U.gml",
+   "type": "KeyPress",
+   "subtype": 85,
+   "code_ids": [
+    967
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_T.gml",
+   "type": "KeyPress",
+   "subtype": 84,
+   "code_ids": [
+    968
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_S.gml",
+   "type": "KeyPress",
+   "subtype": 83,
+   "code_ids": [
+    969
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_R.gml",
+   "type": "KeyPress",
+   "subtype": 82,
+   "code_ids": [
+    970
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_Q.gml",
+   "type": "KeyPress",
+   "subtype": 81,
+   "code_ids": [
+    971
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_P.gml",
+   "type": "KeyPress",
+   "subtype": 80,
+   "code_ids": [
+    972
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_O.gml",
+   "type": "KeyPress",
+   "subtype": 79,
+   "code_ids": [
+    973
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_N.gml",
+   "type": "KeyPress",
+   "subtype": 78,
+   "code_ids": [
+    974
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_M.gml",
+   "type": "KeyPress",
+   "subtype": 77,
+   "code_ids": [
+    975
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_I.gml",
+   "type": "KeyPress",
+   "subtype": 73,
+   "code_ids": [
+    976
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_E.gml",
+   "type": "KeyPress",
+   "subtype": 69,
+   "code_ids": [
+    977
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_A.gml",
+   "type": "KeyPress",
+   "subtype": 65,
+   "code_ids": [
+    978
+   ],
+   "action_count": 1
+  }
+ ]
+}

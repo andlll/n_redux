@@ -1,0 +1,14 @@
+# binari originali e file intermedi di estrazione (fuori dal repo, ma per sicurezza)
+*.exe
+*.apk
+*.cab
+*.dll
+data.win
+_extract/
+
+# sistema
+Thumbs.db
+desktop.ini
+.DS_Store
+__pycache__/
+*.pyc

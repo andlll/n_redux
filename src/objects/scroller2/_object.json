@@ -1,0 +1,117 @@
+{
+ "index": 142,
+ "name": "scroller2",
+ "sprite": null,
+ "mask_sprite": null,
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": 0,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    891
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Step.gml",
+   "type": "Step",
+   "subtype": 0,
+   "code_ids": [
+    892
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_MouseWheelDown.gml",
+   "type": "Mouse",
+   "subtype": 61,
+   "code_ids": [
+    893
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_MouseWheelUp.gml",
+   "type": "Mouse",
+   "subtype": 60,
+   "code_ids": [
+    894
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_GlobalRightPressed.gml",
+   "type": "Mouse",
+   "subtype": 54,
+   "code_ids": [
+    895
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Mouse_GlobalLeftPressed.gml",
+   "type": "Mouse",
+   "subtype": 53,
+   "code_ids": [
+    896
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_alt.gml",
+   "type": "KeyPress",
+   "subtype": 18,
+   "code_ids": [
+    897
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyPress_control.gml",
+   "type": "KeyPress",
+   "subtype": 17,
+   "code_ids": [
+    898
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyRelease_alt.gml",
+   "type": "KeyRelease",
+   "subtype": 18,
+   "code_ids": [
+    899
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "KeyRelease_control.gml",
+   "type": "KeyRelease",
+   "subtype": 17,
+   "code_ids": [
+    900
+   ],
+   "action_count": 1
+  }
+ ]
+}

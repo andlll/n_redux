@@ -1,0 +1,23 @@
+/// gml_Object_red_ball_Collision_92
+// locals: __b__
+action_set_relative(1);
+with (other.id) {
+    life = life + -1;
+}
+with (other.id) {
+    __b__ = action_if_variable(desto, 1, 0);
+}
+if (__b__) {
+    action_create_object(esplo, 0, 0);
+    action_kill_object();
+}
+with (other.id) {
+    __b__ = action_if_variable(life, 0, 3);
+}
+if (__b__) {
+    action_create_object(esplo, 0, 0);
+    with (other.id) {
+        action_kill_object();
+    }
+}
+action_set_relative(0);

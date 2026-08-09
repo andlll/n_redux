@@ -1,0 +1,15 @@
+/// gml_Object_pumediat_Mouse_10
+// locals: __b__
+action_set_relative(1);
+action_create_object(buscrof, 0, 0);
+action_create_object(busmob, 0, 0);
+__b__ = action_if_variable(unlosei, 1, 0);
+if (__b__) {
+    action_create_object(cc35000media, 0, -100);
+    action_create_object(dragermedia, 0, -150);
+}
+__b__ = action_if_variable(unlosei, 0, 0);
+if (__b__) {
+    action_create_object(level3tounlomedia, 0, -100);
+}
+action_set_relative(0);

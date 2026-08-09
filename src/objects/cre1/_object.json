@@ -1,0 +1,54 @@
+{
+ "index": 596,
+ "name": "cre1",
+ "sprite": null,
+ "mask_sprite": "dot",
+ "parent": null,
+ "visible": 1,
+ "solid": 0,
+ "depth": -9000,
+ "persistent": 0,
+ "physics": {
+  "enabled": 0,
+  "sensor": 0,
+  "shape": 0,
+  "density": 0.5,
+  "restitution": 0.10000000149011612,
+  "group": 0,
+  "linear_damping": 0.10000000149011612,
+  "angular_damping": 0.10000000149011612,
+  "friction": 0.20000000298023224,
+  "awake": 1,
+  "kinematic": 0,
+  "vertices": []
+ },
+ "events": [
+  {
+   "file": "Create.gml",
+   "type": "Create",
+   "subtype": 0,
+   "code_ids": [
+    4130
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Alarm_0.gml",
+   "type": "Alarm",
+   "subtype": 0,
+   "code_ids": [
+    4131
+   ],
+   "action_count": 1
+  },
+  {
+   "file": "Collision_placeholder.gml",
+   "type": "Collision",
+   "subtype": 616,
+   "code_ids": [
+    4132
+   ],
+   "action_count": 1
+  }
+ ]
+}
