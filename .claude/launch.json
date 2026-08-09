@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "nimbus",
+      "runtimeExecutable": "py",
+      "runtimeArgs": ["-3", "-m", "http.server", "5173", "--directory", "game"],
+      "port": 5173
+    }
+  ]
+}
