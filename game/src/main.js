@@ -1,4 +1,4 @@
-import { Renderer, makeSolidTexture, solidFrame } from "./gl.js";
+import { Renderer, makeSolidTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 
@@ -38,6 +38,23 @@ function colorFor(name) {
   return (f(0) << 16) | (f(8) << 8) | f(4);
 }
 for (const it of world) it._c = colorFor(it.obj);
+
+// ---------------------------------------------------------------- atlas
+// Le pagine sono reimpacchettate per room da tools/23_atlas.py + 24_blit.ps1:
+// quelle originali di GameMaker sparpagliavano 13 sprite su 12 pagine.
+const atlas = await fetch("./data/match_easy.atlas.json").then((x) => x.json());
+const pageTex = await Promise.all(
+  atlas.pages.map((p) => loadTexture(gl, "./assets/" + p.file))
+);
+for (const it of world) {
+  const frames = atlas.sprites[it.spr];
+  if (!frames || !frames.length) continue;
+  const f = frames[0];
+  it._f = { tex: pageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1,
+            w: f.w, h: f.h, ox: f.ox, oy: f.oy };
+}
+// disegna prima chi condivide la pagina, a parita' di ordinamento: meno batch
+const missingArt = world.filter((it) => !it._f).length;
 
 // ------------------------------------------------- ciclo giorno/notte
 // Nell'originale: 8 alarm che ricoloravano ~24 gruppi di oggetti uno per uno.
@@ -116,12 +133,18 @@ function frame(now) {
   const vw = cam.worldW, vh = cam.worldH;
   const l = cam.x - vw / 2, t = cam.y - vh / 2, rr = l + vw, bb = t + vh;
   for (const it of world) {
-    const w = it.w ?? 48, h = it.h ?? 48;
-    const sx = it.sx ?? 1, sy = it.sy ?? 1;
-    const x0 = it.x - (it.ox ?? 0) * sx, y0 = it.y - (it.oy ?? 0) * sy;
-    if (x0 > rr || y0 > bb || x0 + w * sx < l || y0 + h * sy < t) continue;   // culling
-    const f = solidFrame(white, w * sx, h * sy);
-    r.draw(f, x0, y0, 1, it.tint ?? it._c, it === picked ? 1 : 0.85);
+    const sx = it.sx ?? 1;
+    const f = it._f;
+    if (f) {
+      const x0 = it.x - f.ox * sx, y0 = it.y - f.oy * sx;
+      if (x0 > rr || y0 > bb || x0 + f.w * sx < l || y0 + f.h * sx < t) continue;
+      r.draw(f, it.x, it.y, sx, it.tint ?? 0xffffff, 1);
+    } else {
+      // istanze senza sprite: controller invisibili, li mostro come marcatori
+      const s = 24;
+      if (it.x > rr + s || it.y > bb + s || it.x < l - s || it.y < t - s) continue;
+      r.draw(solidFrame(white, s, s), it.x - s / 2, it.y - s / 2, 1, it._c, 0.35);
+    }
     drawn++;
   }
   r.flush();
@@ -141,6 +164,7 @@ function frame(now) {
   hud.textContent =
     `${scene.name}  ${scene.width}x${scene.height}\n` +
     `istanze ${world.length}  disegnate ${drawn}  drawcall ${r.drawCalls}\n` +
+    `atlas ${atlas.pages.length} pagine  senza sprite ${missingArt}\n` +
     `zoom ${cam.zoom.toFixed(2)}  camera ${cam.x.toFixed(0)},${cam.y.toFixed(0)}\n` +
     `fase ${amb.label}\n` +
     (picked ? `selezionato: ${picked.obj}${picked.spr ? " [" + picked.spr + "]" : ""}` : "trascina, rotella/pinch, tap");

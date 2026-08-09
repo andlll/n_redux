@@ -61,6 +61,12 @@ inquadrata, e tutto il mondo scala con essa senza che i singoli oggetti facciano
 niente. `zoom_plus` / `zoom_minus` lo fanno scorrere gradualmente (0,005 per
 frame), con un limite minimo (`view_wview >= 1280`, `view_hview >= 720`).
 
+**[C]** Quel limite minimo era **voluto**, non un effetto collaterale: serviva su
+mobile a non far sgranare gli sprite e a non appesantire il gioco. Conseguenza:
+su `match` (3900×2090) non si vedeva mai la mappa intera. L'autore è disposto a
+rivederlo — con mipmap e atlas per room il costo di zoomare fuori è molto
+minore di quanto fosse in GameMaker.
+
 **[C]** Gli oggetti della **GUI** invece si **contro-scalano** da soli con
 `action_sprite_transform(global.sca, global.sca, 0, 0)` a ogni Step, per
 mantenere dimensione costante sullo schermo mentre il mondo zooma. È l'unico
@@ -194,10 +200,13 @@ primo giorno.
 - **[?]** Le condizioni di vittoria e sconfitta, ammesso che esistano.
 - **[?]** Cosa fanno `noemi`, `dara`, `hap`, `wewe`, `upp`, `hc`.
 - **[?]** Come funziona il tutorial (188 istanze, `tutpar`/`tutind`/`tutrl`).
-- **[?]** Il ruolo di `placeholder` — 172 istanze in `match`, 48 in `match_easy`,
-  con 6 eventi mouse. **[I]** Sono i lotti edificabili vuoti.
+- **[C]** `placeholder` (172 istanze in `match`, 48 in `match_easy`) sono gli
+  **spazi vuoti dove il giocatore piazza gli edifici**. Confermato dall'autore.
+- **[C]** Le 30 istanze senza sprite di `match_easy` sono controller invisibili
+  (spawner e logica). L'autore lo ritiene probabile ma non lo ricorda con
+  certezza: da riverificare quando toccheremo quegli oggetti.
 - **[?]** `pepazzittecollider` (83 istanze in `match`) — **[I]** collisori
-  invisibili del terreno.
+  invisibili del terreno. Nemmeno l'autore ricorda.
 
 ---
 

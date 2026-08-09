@@ -1,10 +1,13 @@
-# binari originali e file intermedi di estrazione (fuori dal repo, ma per sicurezza)
+﻿# binari originali e file intermedi di estrazione
 *.exe
 *.apk
 *.cab
 *.dll
 data.win
 _extract/
+
+# atlas rigenerabili da tools/23_atlas.py + 24_blit.ps1
+game/assets/
 
 # sistema
 Thumbs.db
