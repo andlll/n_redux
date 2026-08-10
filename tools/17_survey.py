@@ -1,7 +1,8 @@
 """Prima passata: chi controlla cosa, cosa c'e' in ogni room, quali sono le famiglie."""
 import os, re, json, collections
+from _paths import REPO_DIR
 
-REPO = r"C:\Users\andli\OneDrive\Desktop\software\mount fuji\nimbus\NIMBUS-source"
+REPO = REPO_DIR
 objs = json.load(open(os.path.join(REPO, "data", "objects.json"), encoding="utf-8"))
 rooms = json.load(open(os.path.join(REPO, "data", "rooms.json"), encoding="utf-8"))
 byidx = {o["index"]: o for o in objs}

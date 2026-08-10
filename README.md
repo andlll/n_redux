@@ -122,22 +122,43 @@ py -3 -m http.server 5173 --directory game
 
 E si apre `http://127.0.0.1:5173/`.
 
-## Rigenerare altro
+## I tool
 
-I frame PNG singoli di ogni sprite (comodi da sfogliare, non servono alla
-build) si ricavano dalle texture page:
+Due famiglie, e la differenza conta.
+
+**Analisi e build** — girano dal solo repo, senza altro:
+
+| | |
+|---|---|
+| `22_scene.py <room>` | room → formato del motore |
+| `23_atlas.py <room>` | reimpacchetta gli atlas della room |
+| `24_blit.ps1 -Room <room>` | esegue il blit degli atlas |
+| `10_sprites.ps1` | rigenera i 17.224 frame PNG singoli |
+| `16_dupes.py` | quanto codice è davvero unico |
+| `17_survey.py` | room, oggetti con input, gerarchia parent |
+| `19_state.py` | le variabili globali e chi le scrive |
+| `20_digest.py <oggetto>...` | legge gli eventi di uno o più oggetti |
+| `21_r12.py` | il modello di stato del singleton principale |
+
+**Estrazione** (`01`–`15`, `18`) — rifanno la catena da `NIMBUS.exe`. Il loro
+risultato è già versionato, quindi servono solo per rifare tutto da zero.
+Hanno bisogno dei file originali, che nel repo non ci sono:
 
 ```bash
-powershell -File tools/10_sprites.ps1
+set NIMBUS_EXE=D:\percorso\NIMBUS.exe
 ```
 
-Per rifare l'estrazione da capo partendo da `NIMBUS.exe` servono, nell'ordine:
-`01_carve.py`, l'estrazione della CAB con `expand.exe`, poi `05_assets.py`,
-`08_objects_rooms.py`, `09_decompile.py`, `12_repo.py`.
+```bash
+set NIMBUS_EXTRACT=D:\percorso\lavoro
+```
+
+Senza queste, si fermano con un messaggio esplicito invece di un errore
+incomprensibile. Nessun tool ha percorsi locali cablati: `tools/_paths.py`
+risolve tutto rispetto al repo.
 
 ## Peso
 
 ~140 MB, di cui 120 sono le texture page. Sono file **immutabili**: estratti
 una volta e mai più toccati, quindi non fanno crescere la cronologia come
 farebbero dei binari che cambiano. I 190 MB di frame singoli restano fuori
-apposta: sono dati derivati, si rigenerano in un comando.
+apposta: sono dati derivati, li rifà `10_sprites.ps1` in un comando.

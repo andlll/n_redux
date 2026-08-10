@@ -1,7 +1,8 @@
 """Quanto codice e' davvero unico, e quanti oggetti sono varianti dello stesso comportamento."""
 import os, re, json, hashlib, collections
+from _paths import REPO_DIR
 
-REPO = r"C:\Users\andli\OneDrive\Desktop\software\mount fuji\nimbus\NIMBUS-source"
+REPO = REPO_DIR
 gml = os.path.join(REPO, "raw", "gml")
 
 def norm(t):

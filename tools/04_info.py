@@ -1,8 +1,10 @@
+import os
 import sys, json
-sys.path.insert(0, r"C:\Users\andli\OneDrive\Desktop\software\mount fuji\nimbus\_tools")
 from gmlib import DataWin
+from _paths import EXTRACT, TOOLS, need
+need(EXTRACT, "la cartella di lavoro dell'estrazione")
 
-DW = DataWin(r"C:\Users\andli\OneDrive\Desktop\software\mount fuji\nimbus\_extract\cab\data.win")
+DW = DataWin(os.path.join(EXTRACT, "cab", "data.win"))
 print("FORM len", DW.form_len)
 print()
 for n in DW.order:

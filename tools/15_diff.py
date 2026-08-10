@@ -1,8 +1,10 @@
 import sys, os, json, struct
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gmlib import DataWin, Reader
+from _paths import EXTRACT, WORK, need
+need(EXTRACT, "la cartella di lavoro dell'estrazione")
 
-ROOT = r"C:\Users\andli\OneDrive\Desktop\software\mount fuji\nimbus"
+ROOT = WORK
 
 def names(path):
     DW = DataWin(path); DW.load_strings()

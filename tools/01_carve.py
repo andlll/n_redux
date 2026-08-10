@@ -1,8 +1,11 @@
 """Carve the appended GameMaker data.win (FORM archive) out of NIMBUS.exe."""
 import struct, sys, os
+from _paths import EXTRACT, SOURCE_EXE, need
+need(SOURCE_EXE, "NIMBUS.exe")
+need(EXTRACT, "la cartella di lavoro dell'estrazione")
 
-EXE = r"C:\Users\andli\OneDrive\Desktop\software\mount fuji\nimbus\NIMBUS.exe"
-OUT = r"C:\Users\andli\OneDrive\Desktop\software\mount fuji\nimbus\_extract\data.win"
+EXE = SOURCE_EXE
+OUT = os.path.join(EXTRACT, "data.win")
 
 data = open(EXE, "rb").read()
 size = len(data)

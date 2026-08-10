@@ -1,6 +1,8 @@
 import struct
+from _paths import SOURCE_EXE, need
+need(SOURCE_EXE, "NIMBUS.exe")
 
-EXE = r"C:\Users\andli\OneDrive\Desktop\software\mount fuji\nimbus\NIMBUS.exe"
+EXE = SOURCE_EXE
 d = open(EXE, "rb").read()
 
 pe = struct.unpack_from("<I", d, 0x3C)[0]

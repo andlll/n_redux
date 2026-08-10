@@ -1,7 +1,9 @@
 """Assemble the extracted data into a git-ready source tree."""
 import sys, os, json, re, shutil
+from _paths import EXTRACT, WORK, need
+need(EXTRACT, "la cartella di lavoro dell'estrazione")
 
-ROOT = r"C:\Users\andli\OneDrive\Desktop\software\mount fuji\nimbus"
+ROOT = WORK
 OUT = os.path.join(ROOT, "_extract", "out")
 REPO = os.path.join(ROOT, "NIMBUS-source")
 

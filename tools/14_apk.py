@@ -1,7 +1,7 @@
 import sys, os, zipfile, json, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-ROOT = r"C:\Users\andli\OneDrive\Desktop\software\mount fuji\nimbus"
+ROOT = WORK
 APK = os.path.join(ROOT, "NIMBUS Android Edition.apk")
 DST = os.path.join(ROOT, "_extract", "apk")
 os.makedirs(DST, exist_ok=True)
@@ -17,6 +17,8 @@ if not os.path.exists(tgt):
 print("game.droid", os.path.getsize(tgt))
 
 from gmlib import DataWin
+from _paths import EXTRACT, WORK, need
+need(EXTRACT, "la cartella di lavoro dell'estrazione")
 DW = DataWin(tgt)
 DW.load_strings()
 g = DW.gen8()
