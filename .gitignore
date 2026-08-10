@@ -1,4 +1,4 @@
-﻿# binari originali e file intermedi di estrazione
+﻿# binari originali (NIMBUS.exe, APK) e file intermedi di estrazione
 *.exe
 *.apk
 *.cab
@@ -6,8 +6,11 @@
 data.win
 _extract/
 
-# atlas rigenerabili da tools/23_atlas.py + 24_blit.ps1
+# generati dal repo stesso, non versionarli:
+#  - atlas per room  -> tools/23_atlas.py + tools/24_blit.ps1
+#  - frame singoli   -> tools/10_sprites.ps1
 game/assets/
+assets/sprites/
 
 # sistema
 Thumbs.db

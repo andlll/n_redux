@@ -1,10 +1,14 @@
 Add-Type -AssemblyName System.Drawing
 
-$root = "C:\Users\andli\OneDrive\Desktop\software\mount fuji\nimbus\_extract\out"
-$texDir = Join-Path $root "textures"
-$outDir = Join-Path $root "sprites"
+# Rigenera i singoli frame PNG dalle texture page del repo.
+# Non serve alla build (gli atlas si fanno con 23_atlas.py + 24_blit.ps1):
+# e' un export di comodo per sfogliare la grafica.
+$root = Split-Path -Parent $PSScriptRoot
+$texDir = Join-Path $root "assets\textures"
+$outDir = Join-Path $root "assets\sprites"
+if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Force $outDir | Out-Null }
 
-$sprites = Get-Content (Join-Path $outDir "_index.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$sprites = Get-Content (Join-Path $root "data\sprites.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 
 # load all texture pages once
 $pages = @{}

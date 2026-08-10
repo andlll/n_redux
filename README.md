@@ -1,4 +1,4 @@
-# NIMBUS — sorgenti ricostruiti
+﻿# NIMBUS — sorgenti ricostruiti
 
 Estrazione completa del gioco **NIMBUS** a partire da `NIMBUS.exe` (build del
 **30 novembre 2020**, `game_id 333266689`, versione 1.0.0.1760).
@@ -88,31 +88,56 @@ touch nella versione mobile.
 - `_object.json` contiene `parent`: la gerarchia di ereditarietà è usata
   parecchio, conviene ricostruirla prima di toccare gli eventi.
 
-## Dimensioni e GitHub
+## Struttura del repo
 
-Il repo pesa **~331 MB**, quasi tutto in `assets/` (186 MB di frame sprite +
-125 MB di texture page). Nessun file singolo supera i 100 MB, quindi si può
-pushare così com'è, ma è pesante da clonare. Due alternative:
+| Cartella | Versionata | Contenuto |
+|---|---|---|
+| `src/` | sì | Oggetti (un `.gml` per evento), room, script — la reference |
+| `data/` | sì | Metadati: sprite, oggetti, room, font, stringhe |
+| `raw/` | sì | Tutti i blocchi decompilati e il disassemblato |
+| `assets/textures/` | sì | Le 78 texture page originali: **la fonte di tutti i pixel** |
+| `game/` | sì | Il nuovo motore (WebGL2, nessuna dipendenza) |
+| `tools/` | sì | Toolchain di estrazione e pipeline asset |
+| `game/assets/` | no | Atlas per room, generati |
+| `assets/sprites/` | no | I 17.224 frame singoli, generati |
 
-1. **Git LFS** per le immagini:
-   ```bash
-   git lfs install
-   git lfs track "*.png"
-   ```
-2. Tenere solo `assets/textures/` (125 MB) e rigenerare i frame quando
-   servono con `tools/10_sprites.ps1`.
+Il repo è **autosufficiente**: non serve né `NIMBUS.exe` né nessuna cartella
+locale. Tutto ciò che non è versionato si rigenera da ciò che lo è.
 
-`data.win`, l'`.exe` e l'`.apk` **non** sono inclusi: restano in `_extract/`
-fuori dal repo.
-
-## Rigenerare tutto da zero
-
-Serve solo Python 3 e Windows PowerShell — nessuna dipendenza esterna.
+## Far girare il gioco
 
 ```bash
-py -3 tools/01_carve.py
+py -3 tools/23_atlas.py match_easy
 ```
 
-Poi, nell'ordine: estrazione CAB (`expand.exe`), `05_assets.py`,
-`08_objects_rooms.py`, `09_decompile.py`, `10_sprites.ps1`, `12_repo.py`,
-`13_finalize.ps1`.
+Poi il blit degli atlas e un server statico:
+
+```bash
+powershell -File tools/24_blit.ps1 -Room match_easy
+```
+
+```bash
+py -3 -m http.server 5173 --directory game
+```
+
+E si apre `http://127.0.0.1:5173/`.
+
+## Rigenerare altro
+
+I frame PNG singoli di ogni sprite (comodi da sfogliare, non servono alla
+build) si ricavano dalle texture page:
+
+```bash
+powershell -File tools/10_sprites.ps1
+```
+
+Per rifare l'estrazione da capo partendo da `NIMBUS.exe` servono, nell'ordine:
+`01_carve.py`, l'estrazione della CAB con `expand.exe`, poi `05_assets.py`,
+`08_objects_rooms.py`, `09_decompile.py`, `12_repo.py`.
+
+## Peso
+
+~140 MB, di cui 120 sono le texture page. Sono file **immutabili**: estratti
+una volta e mai più toccati, quindi non fanno crescere la cronologia come
+farebbero dei binari che cambiano. I 190 MB di frame singoli restano fuori
+apposta: sono dati derivati, si rigenerano in un comando.

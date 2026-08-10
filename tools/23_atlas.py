@@ -11,9 +11,8 @@ Qui si prende solo cio' che serve e lo si reimpacchetta. Questo script decide
 import os, json, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ARCHIVE = os.environ.get(
-    "NIMBUS_ARCHIVE",
-    r"C:\Users\andli\OneDrive\Desktop\software\mount fuji\nimbus\NIMBUS-source")
+# Le texture page stanno nel repo: niente dipendenze da cartelle locali.
+ARCHIVE = os.environ.get("NIMBUS_ARCHIVE", ROOT)
 
 PAGE = int(os.environ.get("ATLAS_PAGE", "2048"))
 PAD = 2                                  # margine anti-bleeding fra i frame
