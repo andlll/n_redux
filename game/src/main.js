@@ -207,6 +207,13 @@ let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 // cantiere in corso.
 function spawnDecor(building, decorSprites) {
   decorEntities = decorEntities.filter((d) => d.buildingId !== building.id);
+  // `parco` non ha un decoro fisso per livello come gli altri tre: il suo
+  // e' uno scatter casuale di alberi/lampioni (vedi spawnParcoScatter() e
+  // il commento su BUILDING_TYPES.parco in buildings.js) — intercettato
+  // qui, allo stesso punto in cui stepConstructions() segnala "cantiere
+  // finito", invece che dentro buildings.js che non sa niente di alberi o
+  // lampioni.
+  if (building.type === "parco") { spawnParcoScatter(building); return; }
   addDecor(building, decorSprites.map((spr) => ({ spr, dx: 0, dy: 0 })));
 }
 
@@ -221,16 +228,55 @@ function spawnDecor(building, decorSprites) {
  * cddvd/d111/di11b/Create.gml: `depth = -y - 1`): "saltano" davanti a lui
  * nell'ordine di disegno invece di restare alla pari, e — vedi
  * `stepLights()`/il ciclo di disegno piu' sotto — davanti anche alla tinta
- * giorno/notte, che li spegnerebbe altrimenti invece di farli accendere. */
+ * giorno/notte, che li spegnerebbe altrimenti invece di farli accendere.
+ *
+ * `lit: false` (usato per gli alberi/i pali dei lampioni dello scatter di
+ * parco, vedi sotto) disattiva tutto questo: resta un decoro qualunque,
+ * fermo alla y del suo edificio come un albero vero, tinto dal ciclo
+ * giorno/notte come qualunque altro oggetto di mondo. */
 function addDecor(building, spawns) {
-  for (const { spr, dx, dy } of spawns) {
+  for (const { spr, dx, dy, lit = true } of spawns) {
     const y = building.y + dy;
     decorEntities.push({
       obj: "decor", buildingId: building.id,
-      x: building.x + dx, y, depth: -y - 1,
+      x: building.x + dx, y, depth: lit ? -y - 1 : -y,
       spr, _f: frameFor(spr),
-      _selfLit: true, _lightT: 0,   // parte spento, come "empty" in originale (Create.gml)
+      ...(lit ? { _selfLit: true, _lightT: 0 } : {}),   // parte spento, come "empty" in originale (Create.gml)
     });
+  }
+}
+
+// [C] parco/Create.gml: 7 posizioni fisse intorno al parco: ognuna, a dado
+// (1/`dice`), puo' diventare un albero o un lampione — mai entrambi, mai
+// garantito. `dice` e' la probabilita' che lo slot generi QUALCOSA; quale
+// dei due (albero o lampione) e' poi un secondo dado 50/50, sempre uguale
+// per ogni slot nel decompilato.
+const PARCO_SLOTS = [
+  { dice: 4, dx: 0, dy: 0 }, { dice: 2, dx: 40, dy: 10 }, { dice: 3, dx: -40, dy: 10 },
+  { dice: 4, dx: 5, dy: -30 }, { dice: 2, dx: -7, dy: 40 }, { dice: 4, dx: 70, dy: 21 },
+  { dice: 3, dx: -80, dy: 7 },
+];
+/** Il decoro vero di `parco` (STUDIO.md, vedi BUILDING_TYPES.parco in
+ * buildings.js): alberi (stessa tavola a dado di treeVariant("albe") sopra,
+ * niente luce) e lampioni — corpo fermo ("l1", non illuminato, tinto dal
+ * ciclo giorno/notte come il palo che e') + la luce vera e propria ("l1l",
+ * `lit: true` — [C] lampioncino/Create.gml: `action_create_object(lampla,
+ * 0, 0)`, lo stesso oggetto "luce" gia' generico da addDecor()/
+ * stepLights() per i bagliori degli edifici, qui applicato a un lampione
+ * invece che a una finestra). Entrambi condividono `buildingId`: quando il
+ * parco muore (o viene ricostruito), spawnDecor() sopra li ripulisce tutti
+ * insieme come un decoro qualunque. */
+function spawnParcoScatter(building) {
+  for (const slot of PARCO_SLOTS) {
+    if (!dice(slot.dice)) continue;
+    if (dice(2)) {
+      addDecor(building, [{ spr: treeVariant("albe") ?? "a1", dx: slot.dx, dy: slot.dy, lit: false }]);
+    } else {
+      addDecor(building, [
+        { spr: "l1", dx: slot.dx, dy: slot.dy, lit: false },
+        { spr: "l1l", dx: slot.dx, dy: slot.dy, lit: true },
+      ]);
+    }
   }
 }
 

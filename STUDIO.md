@@ -842,3 +842,25 @@ paragrafo 8.
      fermo gia' caricato, stessa durata (200 tick), con soglia di
      elettricita' (`r12.ele > 3`, **[C]** `cddvd/Step.gml`) sotto cui la
      luce non si accende.
+
+- **`parco` (quarto edificio piazzabile) e i lampioni, finora un bottone
+  segnaposto.** Era in `OTHER_BUILDINGS` da subito (`selec==7`, costo 500
+  gia' letto da `placeholder/Mouse_LeftReleased.gml`) ma non in
+  `BUILDING_TYPES`: toccare un placeholder con "Parco" selezionato mostrava
+  "non ancora ricostruito". `lampioncino`/`lampla` (il lampione e la sua
+  luce, STUDIO.md §5.3) non compaiono mai da soli nella room di
+  `match_easy` (0 istanze in `match_easy.scene.json`, contro le 5 di
+  `match`) — l'unico modo in cui esistono davvero e' come figli di
+  `parco/Create.gml`, che ne piazza a dado insieme ad alberi in 7
+  posizioni fisse intorno a se'. Aggiunto in `buildings.js`
+  (`BUILDING_TYPES.parco`, cantiere da 150 tic che riusa gli stessi sprite
+  ir1x/if1x di industria/casa, 8 varianti finali a dado come casa) e
+  `main.js` (`PARCO_SLOTS`/`spawnParcoScatter()`, intercettato dove
+  `spawnDecor()` normalmente leggerebbe un decoro fisso per livello — qui
+  non esiste, ogni slot e' un'entita' diversa a dado). I lampioni
+  scaturiti riusano di peso il sistema "luce" appena descritto sopra
+  (`addDecor()` con `lit: true` per il bagliore, `lit: false` — nuovo, per
+  il palo fermo e per gli alberi dello scatter — per tutto il resto che
+  non deve saltare la tinta giorno/notte). Verificato piazzando un parco e
+  saltando a notte: i lampioni si accendono con la stessa dissolvenza
+  delle finestre.

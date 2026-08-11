@@ -72,6 +72,15 @@ GAMEPLAY_SPRITES = {
         "c211l", "c212l", "c213l", "c214l", "c221l", "c222l", "c223l", "c224l", "c231l", "c232l", "c233l", "c234l", "c241l", "c242l", "c243l", "c244l", "c251l", "c252l", "c253l", "c254l",  # decoro casa2
         "c311", "c312", "c313", "c314", "c321", "c322", "c323", "c324", "c331", "c332", "c333", "c334", "c341", "c342", "c343", "c344", "c351", "c352", "c353", "c354",  # casa3
         "c311l", "c312l", "c313l", "c314l", "c321l", "c322l", "c323l", "c324l", "c331l", "c332l", "c333l", "c334l", "c341l", "c342l", "c343l", "c344l", "c351l", "c352l", "c353l", "c354l",  # decoro casa3
+        # parco: quarto edificio, un solo livello, 8 varianti a dado
+        # (src/objects/parco/Create.gml). Il cantiere riusa gli stessi
+        # sprite ir1x/if1x di industria/casa (gia' elencati sopra). Il suo
+        # "decoro" e' uno scatter di alberi (sprite gia' in "trees" sotto)
+        # e lampioni — corpo "l1" + luce "l1l", lo stesso oggetto
+        # lampioncino/lampla che altrimenti non comparirebbe mai in
+        # match_easy (nessuna istanza sua nella room, STUDIO.md).
+        "par1", "par2", "par3", "par4", "par5", "par6", "par7", "par8",
+        "l1", "l1l",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/
