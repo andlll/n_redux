@@ -352,6 +352,50 @@ export const BUILDING_TYPES = {
       },
     ],
   },
+
+  // Quarto edificio: `parco` (STUDIO.md §9 "GUI vera", `pu7`/`selec==7`,
+  // gia' nel menu ma segnaposto). E' l'unico dei quattro senza potenziamenti
+  // (nessun `upXXX` lo referenzia nel decompilato: resta cosi' com'e' una
+  // volta finito) e l'unico il cui decoro non e' un bagliore fisso per
+  // livello, ma uno scatter casuale di alberi e lampioni intorno a se' — 7
+  // posizioni fisse, ciascuna a dado albero/lampione/niente (STUDIO.md, la
+  // meccanica dietro "implementa anche i lampioni colorati": i lampioni non
+  // stavano MAI fermi nella room, nascevano solo cosi'). Il pattern e'
+  // troppo diverso da `decor`/`variants` (ogni slot e' un'entita' diversa,
+  // non uno sprite fisso per livello) per stare in questa tabella: vive in
+  // `PARCO_SLOTS`/`spawnParcoScatter()` (game/src/main.js), agganciato dove
+  // `spawnDecor()` intercetta `b.type === "parco"` invece di leggere
+  // `decor` qui sotto (lasciato vuoto apposta, mai letto per questo tipo).
+  parco: {
+    label: "Parco",
+    placeCost: { mon: 500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==7
+    construct: {                 // livello 0 -> 1, imparcr (src/objects/imparcr)
+      drain: { mon: 1, every: 20 },              // [C] imparcr/Alarm_10.gml
+      life: 9999,                                 // [I] nessun danno da fulmine ne' vita nel decompilato
+      decor: [],                                   // vedi sopra: il vero decoro passa da spawnParcoScatter()
+      // [C] imparcr/Create.gml + Alarm_0/1/2/3: 150 tic totali (30+30+30+30+30) —
+      // molto piu' breve di industria/casa, un parco e' un cantiere veloce.
+      // Riusa "ir1x"/"ir11"/"ir12" (gli stessi sprite fondamenta di
+      // industria/casa: frontSprFor() in fondo al file deriva la stessa
+      // impalcatura "if1x" in sovraimpressione, nessun codice in piu').
+      steps: [
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
+        { spr: "ir12", dur: 30 },
+        { spr: "ir11", dur: 30 },
+        { spr: "ir12", dur: 30 },
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
+      ],
+      // [C] parco/Create.gml: 3 dice(2) annidati = 8 varianti equiprobabili
+      // (par1..par8), stesso schema di casa ma senza decoro per variante
+      // (`decor: null`, mai letto: spawnParcoScatter() se ne occupa).
+      variants: [
+        { spr: "par1", decor: null }, { spr: "par2", decor: null },
+        { spr: "par3", decor: null }, { spr: "par4", decor: null },
+        { spr: "par5", decor: null }, { spr: "par6", decor: null },
+        { spr: "par7", decor: null }, { spr: "par8", decor: null },
+      ],
+    },
+  },
 };
 
 let nextId = 1;

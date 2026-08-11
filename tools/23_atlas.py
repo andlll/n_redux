@@ -72,6 +72,15 @@ GAMEPLAY_SPRITES = {
         "c211l", "c212l", "c213l", "c214l", "c221l", "c222l", "c223l", "c224l", "c231l", "c232l", "c233l", "c234l", "c241l", "c242l", "c243l", "c244l", "c251l", "c252l", "c253l", "c254l",  # decoro casa2
         "c311", "c312", "c313", "c314", "c321", "c322", "c323", "c324", "c331", "c332", "c333", "c334", "c341", "c342", "c343", "c344", "c351", "c352", "c353", "c354",  # casa3
         "c311l", "c312l", "c313l", "c314l", "c321l", "c322l", "c323l", "c324l", "c331l", "c332l", "c333l", "c334l", "c341l", "c342l", "c343l", "c344l", "c351l", "c352l", "c353l", "c354l",  # decoro casa3
+        # parco: quarto edificio, un solo livello, 8 varianti a dado
+        # (src/objects/parco/Create.gml). Il cantiere riusa gli stessi
+        # sprite ir1x/if1x di industria/casa (gia' elencati sopra). Il suo
+        # "decoro" e' uno scatter di alberi (sprite gia' in "trees" sotto)
+        # e lampioni — corpo "l1" + luce "l1l", lo stesso oggetto
+        # lampioncino/lampla che altrimenti non comparirebbe mai in
+        # match_easy (nessuna istanza sua nella room, STUDIO.md).
+        "par1", "par2", "par3", "par4", "par5", "par6", "par7", "par8",
+        "l1", "l1l",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/
@@ -104,7 +113,76 @@ GAMEPLAY_SPRITES = {
         "handee", "groo", "eyeee", "eyee1", "eyee2", "eyee3", "baccc",
         "zoomplus", "zoomminus",
     ],
+    # Alberi (src/objects/albe|albe2|albe3/Create.gml, STUDIO.md): a Create
+    # l'originale sceglie a dado uno sprite finale diverso per istanza fra
+    # queste varianti. Per "albe" il default della room ("a1") resta uno dei
+    # possibili esiti e arriva gia' incluso (e' lo sprite con cui le 131
+    # istanze compaiono in match_easy.scene.json) — ma "albe2"/"albe3" non
+    # hanno NESSUNA istanza in questa room (nascono solo a runtime da una
+    # meccanica di diffusione non ricostruita, STUDIO.md), quindi il loro
+    # "default" ("a21"/"a31") non finisce mai nell'atlas per quella via:
+    # va elencato qui esplicitamente come gli altri, non dato per scontato.
+    "trees": [
+        "a2", "a3", "a4", "a5",             # albe: varianti alternative ad "a1" (default in room)
+        "a21", "a22", "a23", "a24",         # albe2: le 4 varianti possibili
+        "a31", "a32", "a33", "a34",         # albe3: le 4 varianti possibili
+    ],
+    # Automobili decorative (src/objects/honda_facile_1|2/honda3..9,
+    # STUDIO.md §5.3 "veicoli_target"). honda_facile_1/2 sono le uniche due
+    # presenti in match_easy.scene.json da subito; honda3..9 non ci sono
+    # ancora quando la room carica — arrivano col tempo, un tipo alla volta
+    # ogni 60s, fatte comparire da `carmaker` (creato incondizionatamente
+    # da `r12/Create.gml` in ogni room, non solo `match`: CARMAKER_SCHEDULE
+    # in game/src/cars.js). Ogni honda3..9 ha 4-6 sprite di "posa" (usato
+    # solo il primo frame, vedi cars.js) piu' 4-5 transizioni multi-frame
+    # (svolta/accelerazione, es. "g_bs_as" — 38 frame, ne pacchettiamo
+    # comunque solo il primo: nessun sistema di image_speed nel motore).
+    # honda_facile_1 non cambia mai sprite (la sua catena di alarm che lo
+    # farebbe non e' armata da Create — vedi game/src/cars.js), quindi le
+    # uniche sprite di honda_facile_1/2 in piu' da impacchettare sono
+    # quelle di honda_facile_2.
+    "cars": [
+        "c_ad_as", "c_as", "c_as_ad",       # honda_facile_2: fasi accelerazione/svolta/decelerazione
+        "g_bs", "g_bs_as", "g_as", "g_as_bs",                       # honda3 (e honda8 riusa "g_bs")
+        "p_bd", "p_bd_ad", "p_ad",                                   # honda4
+        "c_bs", "c_bs_as",                                           # honda5 (c_as/c_as_ad gia' sopra)
+        "v_bs", "v_bs_as", "v_as", "v_as_ad", "v_ad", "v_ad_bd", "v_bd", "v_bd_ad",  # honda6
+        "r_bd", "r_bd_bs", "r_bs", "r_bs_as", "r_as", "r_as_ad", "r_ad", "r_ad_bd",  # honda7
+        "g_bs_bd", "g_bd", "g_bd_ad", "g_ad", "g_ad_as",             # honda8
+        "p_as_ad", "p_ad_bd", "p_bd_bs", "p_bs", "p_bs_as",          # honda9 (p_as/p_ad gia' sopra)
+    ],
+    # Luci (STUDIO.md §5.3 "notte_target", cddvd/d1NN/di11b — le "luci" che
+    # non funzionavano): l'originale anima la transizione con uno sprite "x"
+    # dedicato, un frame per tick (es. "crclx", 200 frame per 200 tick —
+    # verificato: e' una semplice dissolvenza in alpha dello stesso disegno,
+    # non un effetto diverso frame per frame — bbox che si restringe verso i
+    # frame finali solo perche' GameMaker ritaglia i margini trasparenti).
+    # Impacchettare 200 frame di uno sprite grande quanto l'intero edificio
+    # (crclx da solo: ~300 MB di VRAM decompressa) per riprodurre una
+    # dissolvenza costerebbe piu' dell'intero atlas attuale per un identico
+    # identico risultato visivo a un'interpolazione di alpha sullo sprite
+    # fermo gia' impacchettato (crcl/crc2l/... — vedi "buildings" sopra):
+    # game/src/main.js anima la transizione cosi', niente sprite "x" da
+    # aggiungere qui.
+    # Semafori (src/objects/object8|object37, STUDIO.md — "se" = semaforo,
+    # mai rinominato dall'autore originale, da cui il nome generico
+    # "object8"/"object37" nel decompilato). Il palo ("se") e' gia'
+    # nell'atlas: e' lo sprite con cui le 48 istanze compaiono in
+    # match_easy.scene.json. Questi sono solo i tre tappi colorati che il
+    # figlio (`object37`) sceglie a dado ad ogni lampeggio.
+    "semaphores": ["se2", "se3", "se4"],
+    # Nuvole e uccelli (src/objects/ni|nifast|birb|birbcluster, creati da
+    # r12/Alarm_0.gml — STUDIO.md, game/src/atmosphere.js): nessuna istanza
+    # nella room, nascono e muoiono dinamicamente, quindi vanno elencati
+    # qui come per le altre famiglie mai piazzate staticamente.
+    "atmosphere": ["n1", "n2", "n3", "brb1", "brb2"],
+    # Pedoni ("omini neri", src/objects/pplo — STUDIO.md, game/src/
+    # pedestrians.js): un abitante per ogni salto di livello di una casa,
+    # mai piazzato nella room. "q8"/"q9" non esistono nella tavola a dado
+    # dell'originale (salta da q7 a q10): non e' un refuso qui, e' fedele.
+    "pedestrians": ["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q10"],
 }
+
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
 
 # ---------------------------------------------------------------- raccolta

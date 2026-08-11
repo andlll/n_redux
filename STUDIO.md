@@ -764,3 +764,198 @@ paragrafo 8.
      uscire dal bordo destro su mobile, specialmente la riga 1 che ora ha
      14 voci) — non ricostruito, fuori dallo scopo di questo giro di
      correzioni.
+
+- **Alberi/auto decorative allineati al comportamento originale, zoom solo
+  mobile, UI pixel-perfect, luci finalmente accese.** Cinque correzioni
+  distinte, segnalate insieme dall'autore:
+  1. **Alberi tutti identici**: `albe`/`albe2`/`albe3` (STUDIO.md §5.3)
+     sceglievano a dado uno sprite finale diverso per istanza nel proprio
+     `Create.gml` — qui restavano sempre allo sprite di default della room
+     (`a1`/`a21`/`a31`), quindi le 131 istanze di `albe` in `match_easy`
+     erano visivamente lo stesso identico albero ripetuto. `main.js` ora
+     applica la stessa tavola di probabilita' (`treeVariant()`) una volta
+     al caricamento della scena. Non portata la meccanica di diffusione
+     (`albe/Collision_r12.gml`, un albero che al contatto con `r12` puo'
+     trasformarsi in `albe2`/`albe3`): gli alberi non sono interattivi in
+     questo motore, e nessuna istanza `albe2`/`albe3` esiste comunque nella
+     room — sarebbe codice morto.
+  2. **Auto decorative ferme**: `honda_facile_1`/`honda_facile_2`
+     (STUDIO.md §5.3 "veicoli_target", le uniche due istanze vere in
+     `match_easy.scene.json`) nell'originale guidano lungo un percorso
+     fisso a spezzate — direzione/velocita'/sprite cambiano a tick precisi
+     scanditi da una catena di `alarm`, poi l'istanza si ricrea da capo al
+     punto di partenza se c'e' ancora olio — ma qui restavano le comparse
+     immobili della room. Portata in `game/src/cars.js` come tabella dati
+     (`CAR_TYPES`, stesso approccio di `buildings.js`): `honda_facile_1` in
+     realta' non svolta mai (**[C]** il suo `Create.gml` arma solo
+     l'alarm di durata vita — gli `Alarm_1..6` che pure esistono nel
+     decompilato non vengono mai armati, codice morto anche nell'originale),
+     `honda_facile_2` ha la catena completa a 7 fasi. Tolte da
+     `staticWorld` e sostituite da istanze simulate; tint fanali una tantum
+     alla nascita se e' notte (**[C]** `action_sprite_color(16366009, 1)` —
+     GameMaker codifica i colori R+G*256+B*65536, non 0xRRGGBB: va
+     riscomposto, non letto come esadecimale diretto).
+  3. **Zoom libero su desktop, sprite sfumati**: la rotella cambiava lo
+     zoom anche su mouse/desktop, e li' "zero zoom, solo interfaccia
+     pixel perfect" era la richiesta esplicita (l'unico input pensato per
+     lo zoom e' il pinch, mai generato da un mouse). `isMobile` in
+     `main.js` (un `matchMedia("(pointer: coarse)")`, il segnale che il
+     browser da' per un device a tocco) disattiva `input.onZoom` del tutto
+     su desktop e i due bottoni zoom+/zoom- nel menu "vista"; la camera si
+     blocca a `pixelPerfectZoom()` — zoom uguale al `devicePixelRatio`, non
+     a 1, altrimenti su schermi hidpi un texel dell'atlas coprirebbe piu'
+     di un pixel fisico e si vedrebbe comunque sfumato. Su mobile lo zoom
+     resta quello di prima (pinch + fit-to-screen automatico).
+  4. **Risorse e bottoni al bordo dello schermo**: la barra risorse era
+     disegnata a `(0, 20)` e la riga bottoni ancorata a `x=0`/
+     `y=clientHeight`, letteralmente il primo/ultimo pixel della finestra —
+     sotto una eventuale status bar o gesture bar, non "dentro
+     l'interfaccia". `main.js` ora inserisce un margine (`UI_MARGIN = 8`)
+     su entrambi, con le coordinate sempre arrotondate all'intero (un
+     offset frazionario ricampionerebbe lo sprite fra due pixel fisici,
+     vanificando lo zoom pixel-perfect del punto precedente).
+  5. **"Le luci non funzionano"**: il decoro luminoso (bagliore finestre di
+     chies/casa/industria, aggiunto da `addDecor()` — STUDIO.md §5.3
+     "notte_target", cddvd/d1NN/di11b) di notte veniva moltiplicato per la
+     stessa tinta ambientale scura di tutto il resto del mondo: una luce
+     che si scurisce quanto il buio intorno e' invisibile, non "accesa".
+     L'originale risolveva lo stesso problema dando al decoro un depth piu'
+     vicino di 1 rispetto al proprio edificio (**[C]** `cddvd/Create.gml`:
+     `depth = -y - 1`, gia' presente in `addDecor()` ma finora ignorato dal
+     resto del disegno) per "saltare" davanti a cio' che scurisce la scena;
+     qui l'equivalente e' che la tinta giorno/notte non e' piu' un uniform
+     di shader globale ma una moltiplicazione in JS per ogni sprite
+     (`mulTint()`), saltata apposta per i decori marcati `_selfLit` — la
+     stessa idea "salta davanti al filtro colorato", implementata dove il
+     nostro renderer puo' davvero applicarla. In piu' l'accensione/
+     spegnimento comparivano di scatto: l'originale anima la transizione
+     con uno sprite dedicato, un frame per tick (es. "crclx", 200 frame —
+     verificato pixel per pixel: e' una dissolvenza in alpha dello stesso
+     disegno, non un effetto diverso frame per frame, la bbox che si
+     restringe verso i frame finali e' solo il ritaglio automatico dei
+     margini trasparenti di GameMaker). Impacchettarli tutti per riprodurla
+     frame per frame sarebbe costato piu' VRAM da solo (un singolo sprite
+     grande quanto l'edificio, 200 frame: ~300 MB decompressi) di tutto
+     l'atlas attuale, per coprire pure varianti che una singola partita non
+     usa mai tutte (60 decori possibili di `casa`, uno scelto a dado per
+     istanza): `stepLights()` anima invece un fade in alpha sullo sprite
+     fermo gia' caricato, stessa durata (200 tick), con soglia di
+     elettricita' (`r12.ele > 3`, **[C]** `cddvd/Step.gml`) sotto cui la
+     luce non si accende.
+
+- **`parco` (quarto edificio piazzabile) e i lampioni, finora un bottone
+  segnaposto.** Era in `OTHER_BUILDINGS` da subito (`selec==7`, costo 500
+  gia' letto da `placeholder/Mouse_LeftReleased.gml`) ma non in
+  `BUILDING_TYPES`: toccare un placeholder con "Parco" selezionato mostrava
+  "non ancora ricostruito". `lampioncino`/`lampla` (il lampione e la sua
+  luce, STUDIO.md §5.3) non compaiono mai da soli nella room di
+  `match_easy` (0 istanze in `match_easy.scene.json`, contro le 5 di
+  `match`) — l'unico modo in cui esistono davvero e' come figli di
+  `parco/Create.gml`, che ne piazza a dado insieme ad alberi in 7
+  posizioni fisse intorno a se'. Aggiunto in `buildings.js`
+  (`BUILDING_TYPES.parco`, cantiere da 150 tic che riusa gli stessi sprite
+  ir1x/if1x di industria/casa, 8 varianti finali a dado come casa) e
+  `main.js` (`PARCO_SLOTS`/`spawnParcoScatter()`, intercettato dove
+  `spawnDecor()` normalmente leggerebbe un decoro fisso per livello — qui
+  non esiste, ogni slot e' un'entita' diversa a dado). I lampioni
+  scaturiti riusano di peso il sistema "luce" appena descritto sopra
+  (`addDecor()` con `lit: true` per il bagliore, `lit: false` — nuovo, per
+  il palo fermo e per gli alberi dello scatter — per tutto il resto che
+  non deve saltare la tinta giorno/notte). Verificato piazzando un parco e
+  saltando a notte: i lampioni si accendono con la stessa dissolvenza
+  delle finestre.
+
+- **Semafori** (segnalati dall'autore come "quei pali che esistono gia'
+  nella room, ce ne sono 44 o giu' di li" — 48 per l'esattezza): non
+  saltavano fuori da nessuna ricerca per nome ("semaforo", "traffic
+  light", ...) perche' **[C]** l'autore originale non li ha mai
+  rinominati — restano `object8` (il palo, sprite `"se"`, gia' 48 istanze
+  in `match_easy.scene.json`) e `object37` (il figlio che lampeggia,
+  creato da `object8/Create.gml`). Non e' un vero ciclo rosso-giallo-verde
+  sequenziale: **[C]** `object37/Alarm_3.gml` sceglie a dado un tappo
+  colorato — giallo `"se2"`/rosso `"se4"` 25% ciascuno, verde `"se3"` 50%
+  — lo tiene acceso per 74/80/109 tick (**[C]** `Alarm_4.gml`, altro dado),
+  poi 13 tick di buio (`"empty"`, **[C]** `Alarm_0.gml`) prima del
+  prossimo colore, all'infinito; il primo intervallo (prima di accendersi
+  la prima volta) e' piu' lungo, 30 o 308 tick a dado (**[C]**
+  `object37/Create.gml`). Sempre acceso, giorno e notte — a differenza
+  delle luci di finestre/lampioni non dipende da `aura.night` ne'
+  dall'elettricita', e infatti non ha alcuna dissolvenza: e' un cambio di
+  sprite di scatto, non un fade. Nuovo `game/src/semaphores.js`
+  (`createSemaphore()`/`stepSemaphores()`, stesso approccio dati di
+  `cars.js`): un'istanza per ognuno dei 48 pali gia' in `staticWorld` (il
+  palo stesso non si tocca, resta com'era), depth `-y - 1` come le altre
+  luci con `_selfLit` per saltare la tinta giorno/notte allo stesso modo.
+
+- **Il traffico cresce nel tempo, non solo le due auto fisse** (chiesto
+  dall'autore a memoria, confermato leggendo il codice). **[C]**
+  `r12/Create.gml` crea `carmaker` incondizionatamente (`action_create_
+  object(carmaker, 0, 0)`, fuori da qualunque `action_if_number(736,...)`
+  di ramo-room): esiste in ogni room, non solo `match`. `carmaker/
+  Alarm_0.gml` ogni 3600 tick (60s) fa comparire un'altra `honda3..9`, una
+  alla volta (contatore `made`, da 2 a 8), finche' non sono arrivate tutte
+  e sette — poi il timer continua a girare ma non trova piu' nessun `made`
+  da far corrispondere, innocuo. Portato in `game/src/cars.js`
+  (`CARMAKER_SCHEDULE`, sette voci a 60/120/.../420 secondi) e `main.js`
+  (`carmakerT`/`carmakerIdx`, stesso schema di `stepCars`/`spawnCar` gia'
+  in uso per honda_facile_1/2).
+  Ogni `honda3..9` e' la stessa catena di alarm direzione/velocita'/sprite
+  di honda_facile_2, solo piu' lunga (fino a 12 alarm invece di 7 — un
+  percorso a due andate/ritorno invece di una) e con un dettaglio in piu'
+  nel `Create.gml` di ciascuna: **[C]** `action_if_number(736, 1, 0)`
+  (vero per match_easy) sposta l'istanza appena nata di `(+21, -26)`,
+  relativo — le coordinate in `CAR_TYPES` includono gia' questo nudge, non
+  sono quelle scritte a mano in `carmaker`/`honda*`. Depth `-y - 16`
+  (contro `-y - 2` di honda_facile_1/2 — **[C]** `honda3..9/Step.gml`).
+  Due dettagli fedeli non "corretti": `honda4` ha `Alarm_4..6` mai armati
+  (stesso codice morto di `honda_facile_1`, **[C]** `Alarm_3` uccide/
+  ricrea sempre prima), e la sua posizione di nascita da `carmaker`
+  differisce di 10px da quella di ogni rientro successivo (**[C]**
+  `carmaker/Alarm_0.gml` la crea a `(62,526)`, ma lei stessa in
+  `Alarm_3.gml` rinasce a `(72,528)` — un disallineamento gia' presente
+  nel decompilato originale) — riprodotto con `firstSpawn` distinto da
+  `spawn` in `CAR_TYPES.honda4`, invece di "correggerlo".
+
+- **Nuvole e uccelli**, chiesti esplicitamente dopo aver verificato che non
+  ci fosse un altro spawner di veicoli oltre a `carmaker` (c'e' —
+  `cargomaker`, i camion `cargo1..4` — ma il suo unico innesco,
+  `bridge_des2/Alarm_2.gml`, non e' piazzato in nessuna room: morto anche
+  nell'originale, niente da portare). **[C]** `r12/Alarm_0.gml` (armato
+  ogni 140 tick, ~2.3s) fa nascere nuvole (`ni`, solo se non piove) e a
+  dado uccelli isolati o in stormo (`birb`/`birbcluster`) — nessuno dei due
+  ha `notte_target` come parent, quindi nell'originale non prendono la
+  tinta giorno/notte; qui la prendono comunque, la stessa semplificazione
+  gia' scelta per l'intero mondo (STUDIO.md sopra, "Qui: una fase, un
+  colore..."). Puramente estetico (non letto da nessuna regola di gioco),
+  quindi implementato "alleggerito" su richiesta: `game/src/atmosphere.js`
+  usa un'unica formula di deriva (direzione 30° per entrambi) invece di
+  una macchina a stati per ogni dettaglio dell'originale — niente
+  autodistruzione immediata a meta' delle nuvole appena nate (**[C]**
+  `ni/Create.gml`, un dado in piu' che qui e' assorbito nella probabilita'
+  di spawn), niente due alarm separati per lo sbattito d'ali degli uccelli
+  (**[C]** `birb/Alarm_1|2.gml`, qui un solo ciclo). Le nuvole nascono
+  appena fuori dai bordi della room e la attraversano in pochi secondi
+  (ben visibili); gli uccelli nascono molto sotto la mappa (`y=2500`,
+  **[C]** coordinate dell'originale) e la attraversano di sfuggita durante
+  una risalita lenta durata quasi un minuto — rari e discreti, come
+  nell'originale.
+
+- **Pedoni ("omini neri")**: ricordati "spawnati da chies o dal
+  controller principale", ma non e' nessuno dei due — **[C]**
+  `casa1|2|3/Create.gml` (non ancora letti, STUDIO.md non li citava)
+  creano ciascuno un `pplo` (sprite `q1`..`q10`, 9-16px: letteralmente
+  minuscoli omini neri) alla propria posizione, nell'ultima riga. Non un
+  evento per casa: uno per **salto di livello** — una casa arrivata al
+  livello 3 ne ha lasciati indietro due, mai rimossi (nemmeno
+  `casaN/Destroy.gml` li tocca: sopravvivono alla casa che li ha creati).
+  Camminano piano (**[C]** velocita' 0.5 px/tic) in una delle quattro
+  diagonali, cambiando direzione a caso ogni 36-83 tic (**[C]**
+  `pplo/Create.gml` + `Alarm_0.gml`), e rimbalzano contro `chies` e i
+  marker invisibili `pepazzittecollider` gia' in scena (**[C]**
+  `action_bounce`). Puramente estetico, quindi alleggerito su richiesta
+  in `game/src/pedestrians.js`: niente fisica di collisione vera contro i
+  27 collider — restano semplicemente entro un raggio fisso dalla propria
+  casa, la stessa idea ("non si allontanano troppo da dove sono nati")
+  senza portare la mappa dei collider. Agganciato in `main.js` dentro
+  `spawnDecor()`, per il solo tipo `casa`, allo stesso punto in cui gia'
+  intercettava `parco`.
