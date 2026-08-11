@@ -104,7 +104,43 @@ GAMEPLAY_SPRITES = {
         "handee", "groo", "eyeee", "eyee1", "eyee2", "eyee3", "baccc",
         "zoomplus", "zoomminus",
     ],
+    # Alberi (src/objects/albe|albe2|albe3/Create.gml, STUDIO.md): a Create
+    # l'originale sceglie a dado uno sprite finale diverso per istanza fra
+    # queste varianti. Per "albe" il default della room ("a1") resta uno dei
+    # possibili esiti e arriva gia' incluso (e' lo sprite con cui le 131
+    # istanze compaiono in match_easy.scene.json) — ma "albe2"/"albe3" non
+    # hanno NESSUNA istanza in questa room (nascono solo a runtime da una
+    # meccanica di diffusione non ricostruita, STUDIO.md), quindi il loro
+    # "default" ("a21"/"a31") non finisce mai nell'atlas per quella via:
+    # va elencato qui esplicitamente come gli altri, non dato per scontato.
+    "trees": [
+        "a2", "a3", "a4", "a5",             # albe: varianti alternative ad "a1" (default in room)
+        "a21", "a22", "a23", "a24",         # albe2: le 4 varianti possibili
+        "a31", "a32", "a33", "a34",         # albe3: le 4 varianti possibili
+    ],
+    # Automobili decorative (src/objects/honda_facile_1|2, STUDIO.md §5.3
+    # "veicoli_target"): le uniche due presenti in match_easy.scene.json.
+    # honda_facile_1 non cambia mai sprite (la sua catena di alarm che lo
+    # farebbe non e' armata da Create — vedi game/src/cars.js), quindi le
+    # sole sprite in piu' da impacchettare sono quelle di honda_facile_2.
+    "cars": [
+        "c_ad_as", "c_as", "c_as_ad",       # honda_facile_2: fasi accelerazione/svolta/decelerazione
+    ],
+    # Luci (STUDIO.md §5.3 "notte_target", cddvd/d1NN/di11b — le "luci" che
+    # non funzionavano): l'originale anima la transizione con uno sprite "x"
+    # dedicato, un frame per tick (es. "crclx", 200 frame per 200 tick —
+    # verificato: e' una semplice dissolvenza in alpha dello stesso disegno,
+    # non un effetto diverso frame per frame — bbox che si restringe verso i
+    # frame finali solo perche' GameMaker ritaglia i margini trasparenti).
+    # Impacchettare 200 frame di uno sprite grande quanto l'intero edificio
+    # (crclx da solo: ~300 MB di VRAM decompressa) per riprodurre una
+    # dissolvenza costerebbe piu' dell'intero atlas attuale per un identico
+    # identico risultato visivo a un'interpolazione di alpha sullo sprite
+    # fermo gia' impacchettato (crcl/crc2l/... — vedi "buildings" sopra):
+    # game/src/main.js anima la transizione cosi', niente sprite "x" da
+    # aggiungere qui.
 }
+
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
 
 # ---------------------------------------------------------------- raccolta

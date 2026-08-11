@@ -764,3 +764,81 @@ paragrafo 8.
      uscire dal bordo destro su mobile, specialmente la riga 1 che ora ha
      14 voci) — non ricostruito, fuori dallo scopo di questo giro di
      correzioni.
+
+- **Alberi/auto decorative allineati al comportamento originale, zoom solo
+  mobile, UI pixel-perfect, luci finalmente accese.** Cinque correzioni
+  distinte, segnalate insieme dall'autore:
+  1. **Alberi tutti identici**: `albe`/`albe2`/`albe3` (STUDIO.md §5.3)
+     sceglievano a dado uno sprite finale diverso per istanza nel proprio
+     `Create.gml` — qui restavano sempre allo sprite di default della room
+     (`a1`/`a21`/`a31`), quindi le 131 istanze di `albe` in `match_easy`
+     erano visivamente lo stesso identico albero ripetuto. `main.js` ora
+     applica la stessa tavola di probabilita' (`treeVariant()`) una volta
+     al caricamento della scena. Non portata la meccanica di diffusione
+     (`albe/Collision_r12.gml`, un albero che al contatto con `r12` puo'
+     trasformarsi in `albe2`/`albe3`): gli alberi non sono interattivi in
+     questo motore, e nessuna istanza `albe2`/`albe3` esiste comunque nella
+     room — sarebbe codice morto.
+  2. **Auto decorative ferme**: `honda_facile_1`/`honda_facile_2`
+     (STUDIO.md §5.3 "veicoli_target", le uniche due istanze vere in
+     `match_easy.scene.json`) nell'originale guidano lungo un percorso
+     fisso a spezzate — direzione/velocita'/sprite cambiano a tick precisi
+     scanditi da una catena di `alarm`, poi l'istanza si ricrea da capo al
+     punto di partenza se c'e' ancora olio — ma qui restavano le comparse
+     immobili della room. Portata in `game/src/cars.js` come tabella dati
+     (`CAR_TYPES`, stesso approccio di `buildings.js`): `honda_facile_1` in
+     realta' non svolta mai (**[C]** il suo `Create.gml` arma solo
+     l'alarm di durata vita — gli `Alarm_1..6` che pure esistono nel
+     decompilato non vengono mai armati, codice morto anche nell'originale),
+     `honda_facile_2` ha la catena completa a 7 fasi. Tolte da
+     `staticWorld` e sostituite da istanze simulate; tint fanali una tantum
+     alla nascita se e' notte (**[C]** `action_sprite_color(16366009, 1)` —
+     GameMaker codifica i colori R+G*256+B*65536, non 0xRRGGBB: va
+     riscomposto, non letto come esadecimale diretto).
+  3. **Zoom libero su desktop, sprite sfumati**: la rotella cambiava lo
+     zoom anche su mouse/desktop, e li' "zero zoom, solo interfaccia
+     pixel perfect" era la richiesta esplicita (l'unico input pensato per
+     lo zoom e' il pinch, mai generato da un mouse). `isMobile` in
+     `main.js` (un `matchMedia("(pointer: coarse)")`, il segnale che il
+     browser da' per un device a tocco) disattiva `input.onZoom` del tutto
+     su desktop e i due bottoni zoom+/zoom- nel menu "vista"; la camera si
+     blocca a `pixelPerfectZoom()` — zoom uguale al `devicePixelRatio`, non
+     a 1, altrimenti su schermi hidpi un texel dell'atlas coprirebbe piu'
+     di un pixel fisico e si vedrebbe comunque sfumato. Su mobile lo zoom
+     resta quello di prima (pinch + fit-to-screen automatico).
+  4. **Risorse e bottoni al bordo dello schermo**: la barra risorse era
+     disegnata a `(0, 20)` e la riga bottoni ancorata a `x=0`/
+     `y=clientHeight`, letteralmente il primo/ultimo pixel della finestra —
+     sotto una eventuale status bar o gesture bar, non "dentro
+     l'interfaccia". `main.js` ora inserisce un margine (`UI_MARGIN = 8`)
+     su entrambi, con le coordinate sempre arrotondate all'intero (un
+     offset frazionario ricampionerebbe lo sprite fra due pixel fisici,
+     vanificando lo zoom pixel-perfect del punto precedente).
+  5. **"Le luci non funzionano"**: il decoro luminoso (bagliore finestre di
+     chies/casa/industria, aggiunto da `addDecor()` — STUDIO.md §5.3
+     "notte_target", cddvd/d1NN/di11b) di notte veniva moltiplicato per la
+     stessa tinta ambientale scura di tutto il resto del mondo: una luce
+     che si scurisce quanto il buio intorno e' invisibile, non "accesa".
+     L'originale risolveva lo stesso problema dando al decoro un depth piu'
+     vicino di 1 rispetto al proprio edificio (**[C]** `cddvd/Create.gml`:
+     `depth = -y - 1`, gia' presente in `addDecor()` ma finora ignorato dal
+     resto del disegno) per "saltare" davanti a cio' che scurisce la scena;
+     qui l'equivalente e' che la tinta giorno/notte non e' piu' un uniform
+     di shader globale ma una moltiplicazione in JS per ogni sprite
+     (`mulTint()`), saltata apposta per i decori marcati `_selfLit` — la
+     stessa idea "salta davanti al filtro colorato", implementata dove il
+     nostro renderer puo' davvero applicarla. In piu' l'accensione/
+     spegnimento comparivano di scatto: l'originale anima la transizione
+     con uno sprite dedicato, un frame per tick (es. "crclx", 200 frame —
+     verificato pixel per pixel: e' una dissolvenza in alpha dello stesso
+     disegno, non un effetto diverso frame per frame, la bbox che si
+     restringe verso i frame finali e' solo il ritaglio automatico dei
+     margini trasparenti di GameMaker). Impacchettarli tutti per riprodurla
+     frame per frame sarebbe costato piu' VRAM da solo (un singolo sprite
+     grande quanto l'edificio, 200 frame: ~300 MB decompressi) di tutto
+     l'atlas attuale, per coprire pure varianti che una singola partita non
+     usa mai tutte (60 decori possibili di `casa`, uno scelto a dado per
+     istanza): `stepLights()` anima invece un fade in alpha sullo sprite
+     fermo gia' caricato, stessa durata (200 tick), con soglia di
+     elettricita' (`r12.ele > 3`, **[C]** `cddvd/Step.gml`) sotto cui la
+     luce non si accende.

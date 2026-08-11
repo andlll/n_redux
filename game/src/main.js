@@ -3,6 +3,7 @@ import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, tryStartUpgrade, stepConstructions, stepProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked } from "./buildings.js";
+import { spawnCar, stepCars } from "./cars.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -14,6 +15,16 @@ const white = makeSolidTexture(gl);
 const cam = new Camera();
 const input = new Input(canvas);
 
+// Zoom vero solo su mobile. Un puntatore "coarse" (dito, niente hover fine)
+// e' il segnale che il browser stesso da' per un device touch — piu'
+// affidabile di un controllo sulla larghezza schermo (un desktop con
+// finestra stretta non e' un telefono) o sullo user agent (facile da
+// falsificare, e comunque scoraggiato). Su desktop lo zoom resta fermo a un
+// rapporto 1 texel : 1 pixel fisico (vedi `pixelPerfectZoom()` sotto): niente
+// rotella, niente bottoni zoom+/- in UI, solo l'interfaccia com'e' disegnata,
+// pixel per pixel — la richiesta era esplicitamente "zero zoom" su desktop.
+const isMobile = matchMedia("(pointer: coarse)").matches;
+
 // ---------------------------------------------------------------- scena
 const scene = await fetch("./data/match_easy.scene.json").then((x) => x.json());
 cam.bounds = { left: 0, top: 0, right: scene.width, bottom: scene.height };
@@ -24,10 +35,21 @@ cam.y = scene.height / 2;
 // il loro dettaglio reale. maxZoom invece si ricalcola ad ogni resize() in
 // base a quanto serve per inquadrare tutta la room (vedi sotto): non ha
 // senso lasciar allontanare lo zoom molto oltre "si vede tutta la mappa".
+// Ignorati del tutto su desktop, dove lo zoom non si muove mai (vedi sopra).
 cam.minZoom = 0.5;
 // Finche' non tocchi niente la camera inquadra tutta la room, e si riadatta
-// se lo schermo cambia (rotazione del telefono).
+// se lo schermo cambia (rotazione del telefono). Su desktop non si tocca
+// comunque mai (niente zoom interattivo), quindi resta sempre "come se non
+// avessi ancora toccato niente".
 let userMoved = false;
+
+/** zoom = quanti pixel di mondo per pixel di schermo FISICO (camera.js):
+ * per avere 1 texel dell'atlas = 1 pixel del display serve zoom == dpr,
+ * non zoom == 1 (che darebbe 1 texel per pixel CSS, sgranato su schermi
+ * hidpi dove un pixel CSS ne copre dpr^2 fisici). */
+function pixelPerfectZoom() {
+  return Math.min(window.devicePixelRatio || 1, 2);
+}
 
 // Ordinamento dichiarato una volta sola. Nell'originale ogni edificio/albero
 // si auto-assegnava `depth = -y` nel proprio Create (STUDIO.md §5.3, e
@@ -85,6 +107,30 @@ function frameFor(sprName) {
   return { tex: pageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1,
            w: f.w, h: f.h, ox: f.ox, oy: f.oy };
 }
+// Alberi (STUDIO.md §5.3, src/objects/albe|albe2|albe3/Create.gml): a
+// Create l'originale sceglie a dado uno sprite finale diverso per istanza
+// (in albe, se nessun dado va a buon fine resta il default "a1" della
+// room); qui e' 131 volte lo stesso identico albero altrimenti — la
+// tavola di probabilita' sotto e' la stessa, decisa una volta al
+// caricamento della scena invece che alla nascita dell'istanza (nessuna
+// differenza visibile: gli alberi non nascono mai a runtime in questa
+// room, sono tutti gia' in scena da match_easy.scene.json).
+const dice = (n) => Math.random() < 1 / n;
+function treeVariant(obj) {
+  if (obj === "albe") {                              // [C] albe/Create.gml
+    if (dice(5)) return dice(2) ? "a2" : "a5";
+    if (dice(2)) return dice(2) ? "a3" : "a4";
+    return null;                                       // resta "a1", il default
+  }
+  if (obj === "albe2") return dice(2) ? (dice(2) ? "a21" : "a22") : (dice(2) ? "a23" : "a24");
+  if (obj === "albe3") return dice(2) ? (dice(2) ? "a31" : "a32") : (dice(2) ? "a33" : "a34");
+  return null;
+}
+for (const it of staticWorld) {
+  const v = treeVariant(it.obj);
+  if (v) it.spr = v;
+}
+
 for (const it of staticWorld) it._f = frameFor(it.spr);
 const missingArt = staticWorld.filter((it) => !it._f).length;
 
@@ -132,9 +178,24 @@ const chiesScene = chiesIndex >= 0 ? staticWorld.splice(chiesIndex, 1)[0] : null
 const pu1Index = staticWorld.findIndex((it) => it.obj === "pu1");
 if (pu1Index >= 0) staticWorld.splice(pu1Index, 1);
 
+// `honda_facile_1`/`honda_facile_2` sono anche loro gia' istanze vere nella
+// room (STUDIO.md §5.3 "veicoli_target"): nell'originale non stanno ferme,
+// guidano avanti e indietro lungo un percorso fisso finche' l'olio non
+// finisce (game/src/cars.js). Tolte da staticWorld — altrimenti resterebbero
+// due comparse immobili sotto alle auto vere che si muovono sopra di loro —
+// e sostituite dalle istanze simulate in `cars` piu' sotto.
+for (const name of ["honda_facile_1", "honda_facile_2"]) {
+  const idx = staticWorld.findIndex((it) => it.obj === name);
+  if (idx >= 0) staticWorld.splice(idx, 1);
+}
+
 /** @type {ReturnType<typeof placeBuilding>[]} */
 let buildings = [];
 let decorEntities = [];      // ornamenti (permanenti a fine cantiere, o transitori durante)
+// Auto decorative gia' in marcia da subito, come nella room originale
+// (phaseT parte da 0 = fase "giorno" in PHASES piu' sotto, quindi mai
+// notte alla nascita: nessun tint fanali sulle due iniziali).
+let cars = [spawnCar("honda_facile_1", false), spawnCar("honda_facile_2", false)];
 let r12 = createR12();
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
@@ -152,21 +213,23 @@ function spawnDecor(building, decorSprites) {
 /** Decoro transitorio (gru/macerie durante un cantiere): si aggiunge senza
  * rimpiazzare, e sparisce quando `spawnDecor` sostituisce tutto a fine
  * cantiere (STUDIO.md §9: la traccia "f" degli impa* non e' ricostruita,
- * questo e' quanto resta della sua parte scenografica). */
+ * questo e' quanto resta della sua parte scenografica).
+ *
+ * I decori "luce" (bagliore finestre: crcl/c111l/i11l/... — STUDIO.md §5.3
+ * "notte_target") sono lo stesso oggetto ma con un depth piu' vicino di 1
+ * rispetto al proprio edificio (`-y - 1` contro `-y`, esattamente come
+ * cddvd/d111/di11b/Create.gml: `depth = -y - 1`): "saltano" davanti a lui
+ * nell'ordine di disegno invece di restare alla pari, e — vedi
+ * `stepLights()`/il ciclo di disegno piu' sotto — davanti anche alla tinta
+ * giorno/notte, che li spegnerebbe altrimenti invece di farli accendere. */
 function addDecor(building, spawns) {
   for (const { spr, dx, dy } of spawns) {
+    const y = building.y + dy;
     decorEntities.push({
       obj: "decor", buildingId: building.id,
-      // Stesso depth "di mondo" (0) dell'edificio, non depth-1: sotto
-      // effDepth() sopra un depth fisso -1 varrebbe come livello ambiente
-      // (stesso bug di air2), invece il bagliore deve seguire la y vera
-      // del suo edificio (incluso l'offset dx/dy delle gru/macerie ai
-      // corner) per restare correttamente intercalato con gli altri
-      // edifici/alberi. A parita' di depth+y, l'ordine di inserimento in
-      // `dynamic` (building poi decor, sempre) decide chi vince — lo stesso
-      // meccanismo con cui il pareggio si risolveva prima.
-      x: building.x + dx, y: building.y + dy, depth: 0,
+      x: building.x + dx, y, depth: -y - 1,
       spr, _f: frameFor(spr),
+      _selfLit: true, _lightT: 0,   // parte spento, come "empty" in originale (Create.gml)
     });
   }
 }
@@ -264,7 +327,9 @@ window.addEventListener("keydown", (e) => {
 
 // ------------------------------------------------- ciclo giorno/notte
 // Nell'originale: 8 alarm che ricoloravano ~24 gruppi di oggetti uno per uno.
-// Qui: una fase, un colore, applicato a tutto dal fragment shader.
+// Qui: una fase, un colore, moltiplicato per ogni sprite nel ciclo di
+// disegno (non piu' un uniform di shader globale, vedi sotto su
+// `stepLights()`/mulTint(): i decori "luce" devono poter saltarlo).
 const PHASES = [
   { name: "giorno", rgb: [1.00, 1.00, 1.00], dur: 14 },
   { name: "tramonto", rgb: [1.00, 0.82, 0.62], dur: 5 },
@@ -296,13 +361,66 @@ function isNight(t) {
   return PHASES[phaseIndexAt(t).i].name === "notte";
 }
 
+// --------------------------------------------------------------- luci
+// Le "luci" (bagliore finestre di chies/casa/industria, aggiunte da
+// addDecor() come decori con `_selfLit: true`) non funzionavano per due
+// motivi, entrambi da src/objects/cddvd|d111|di11b (STUDIO.md §5.3
+// "notte_target"), studiati insieme:
+//  1. Restavano sempre alla stessa tinta del resto del mondo: di notte la
+//     tinta ambientale (`PHASES` sopra) le scuriva tanto quanto tutto il
+//     resto, invece di restare accese sopra al buio — un bagliore che si
+//     spegne insieme alla luce ambientale non serve a niente. L'originale
+//     risolveva lo stesso problema con un depth piu' vicino di 1 rispetto
+//     al proprio edificio (`addDecor()` sopra, `depth = -y - 1`) per
+//     "saltare" davanti a qualunque cosa scurisse la scena; qui l'analogo
+//     e' saltare la moltiplicazione per la tinta ambientale nel ciclo di
+//     disegno (vedi mulTint() e il layer mondo piu' sotto) — stesso
+//     effetto, un filtro colorato che i decori luce attraversano intatti
+//     invece di esserne oscurati.
+//  2. Comparivano/sparivano di scatto: l'originale anima la transizione con
+//     uno sprite dedicato (es. "crclx", un frame per tick, giocato
+//     all'indietro per accendersi/in avanti per spegnersi — vedi
+//     tools/23_atlas.py per perche' non lo impacchettiamo pixel per pixel:
+//     e' una dissolvenza in alpha dello stesso disegno, non un effetto
+//     diverso frame per frame). Qui la stessa dissolvenza e' un fade in
+//     alpha sullo sprite fermo gia' caricato, con la stessa durata
+//     (200 tick, cddvd/Step.gml — la piu' comune fra i vari decori).
+const TICK = 1 / 60;              // room_speed dell'originale, stessa unita' di buildings.js
+const LIGHT_FADE = 200 * TICK;
+function stepLights(entities, dt, night, r12) {
+  // [C] cddvd/Step.gml: sotto questa soglia di elettricita' la luce non si
+  // accende (o si spegne di colpo se lo era gia', "bout" nel decompilato —
+  // qui la stessa soglia, ma il fade la spegne comunque con una dissolvenza
+  // invece che di scatto: una semplificazione [I], non cambia il succo).
+  const lit = night && r12.ele > 3;
+  for (const d of entities) {
+    if (!d._selfLit) continue;
+    d._lightT = Math.max(0, Math.min(LIGHT_FADE, d._lightT + (lit ? dt : -dt)));
+    d._alpha = d._lightT / LIGHT_FADE;
+  }
+}
+
+/** Moltiplica una tinta 0xRRGGBB per una tinta ambientale [r,g,b] in 0..1. */
+function mulTint(base, rgb) {
+  const r = Math.round(((base >> 16) & 255) * rgb[0]);
+  const g = Math.round(((base >> 8) & 255) * rgb[1]);
+  const b = Math.round((base & 255) * rgb[2]);
+  return (r << 16) | (g << 8) | b;
+}
+
 // ---------------------------------------------------------------- input
 input.onDrag = (dx, dy) => { userMoved = true; cam.panByScreen(dx, dy); };
 // Il fattore si applica a `targetZoom`, non a `zoom` (che insegue con un
 // filo di ritardo, vedi Camera.update()): cosi' una rotellata mentre lo
 // zoom sta ancora animando accumula sul bersaglio invece di "strappare"
 // indietro dal valore corrente, ancora a meta' strada.
-input.onZoom = (f, ax, ay) => { userMoved = true; cam.setZoom(cam.targetZoom * f, ax, ay); };
+// Su desktop `input.onZoom` resta `null` (Input fa gia' `this.onZoom?.()`,
+// nessuna chiamata a vuoto): rotella e pinch — quest'ultimo comunque mai
+// generato da un mouse — non toccano piu' la camera, che resta fissa al
+// suo zoom pixel-perfect impostato in resize().
+if (isMobile) {
+  input.onZoom = (f, ax, ay) => { userMoved = true; cam.setZoom(cam.targetZoom * f, ax, ay); };
+}
 let picked = null;
 let message = "";
 let messageT = 0;
@@ -402,10 +520,10 @@ input.onTap = (sx, sy) => {
   }
   if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
     const it = frameList[i];
-    // il decoro (cddvd*) e l'impalcatura di cantiere sono puramente visivi:
-    // nell'originale non avevano eventi Mouse propri, quindi qui non devono
-    // "rubare" il tocco.
-    if (!it._f || it.obj === "decor" || it.obj === "scaffold") continue;
+    // il decoro (cddvd*), l'impalcatura di cantiere e le auto (honda_facile_1/2)
+    // sono puramente visivi: nell'originale non avevano eventi Mouse propri,
+    // quindi qui non devono "rubare" il tocco.
+    if (!it._f || it.obj === "decor" || it.obj === "scaffold" || it.obj === "car") continue;
     const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
     if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
       picked = it;
@@ -454,7 +572,13 @@ function resize() {
     canvas.width = w; canvas.height = h;
   }
   cam.resize(canvas.clientWidth, canvas.clientHeight);
-  if (canvas.clientWidth > 0) {
+  if (!isMobile) {
+    // Desktop: zero zoom, solo pixel-perfect — lo zoom non insegue mai un
+    // "fit to screen" frazionario (che sfumerebbe gli sprite), resta fisso
+    // al rapporto texel:pixel esatto per tutta la sessione.
+    cam.minZoom = cam.maxZoom = pixelPerfectZoom();
+    cam.setZoomImmediate(cam.minZoom);
+  } else if (canvas.clientWidth > 0) {
     const fitZoom = Math.max(scene.width / cam.viewW, scene.height / cam.viewH);
     // Non ha senso allontanarsi molto oltre "si vede tutta la mappa": un
     // margine per respirare, non lo zoom libero di prima (arrivava a 8,
@@ -478,16 +602,19 @@ function frame(now) {
   phaseT += dt;
   resize();
   cam.update(dt);
+  const night = isNight(phaseT);
 
-  // --- simulazione: cantieri, economia, meteo
+  // --- simulazione: cantieri, economia, meteo, traffico, luci
   stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
   stepProduction(buildings, dt, r12);
   stepGrowth(buildings, dt, r12);
-  stepConsumption(buildings, dt, r12, isNight(phaseT));
+  stepConsumption(buildings, dt, r12, night);
   stepWeather(r12, dt);
   stepStormDamage(buildings, dt, r12);
   for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
   tickR12(r12, dt, buildings);
+  stepCars(cars, dt, r12, night);
+  stepLights(decorEntities, dt, night, r12);
   if (messageT > 0) messageT -= dt;
 
   // --- lista di disegno di questo frame: mondo statico (placeholder consumati
@@ -503,13 +630,19 @@ function frame(now) {
     if (b.capSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.capSpr) });
   }
   for (const d of decorEntities) dynamic.push(d);
-  // Il decoro (bagliore delle finestre) si accende solo di notte (STUDIO.md
-  // §5.3 "notte_target": 231 oggetti reagiscono al ciclo giorno/notte
-  // accendendo le luci di notte) — finora restava sempre acceso, quindi
-  // visibile pure in pieno giorno.
-  const night = isNight(phaseT);
+  // Auto decorative (game/src/cars.js): x/y/sprite gia' avanzati da
+  // stepCars() sopra, il frame va solo riletto ogni volta perche' lo
+  // sprite cambia in corsa (accelerazioni/svolte).
+  for (const c of cars) {
+    dynamic.push({ obj: "car", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr), _tint: c.tint });
+  }
+  // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
+  // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
+  // (`_alpha`, 0 di giorno) che il ciclo di disegno rispetta da solo — a
+  // differenza di un filtro binario, cosi' la dissolvenza resta visibile
+  // durante la transizione invece di sparire di scatto a meta' fade.
   frameList = staticWorld.filter((it) => !(it.obj === "placeholder" && it.consumed))
-    .concat(dynamic).filter((it) => night || it.obj !== "decor").sort(sortWorld);
+    .concat(dynamic).sort(sortWorld);
 
   // [C] src/objects/placeholder/Create.gml + Mouse_MouseEnter/Leave.gml: il
   // placeholder nasce con sprite "empty" (invisibile) e diventa "phold" (il
@@ -532,8 +665,13 @@ function frame(now) {
   r.beginFrame(canvas.width, canvas.height);
   const amb = ambientAt(phaseT);
 
-  // --- layer mondo: segue la camera, tinto dal ciclo giorno/notte
-  r.setAmbient(amb.rgb[0], amb.rgb[1], amb.rgb[2]);
+  // --- layer mondo: segue la camera. La tinta giorno/notte e' moltiplicata
+  // qui in JS invece che nello shader (u_ambient resta a [1,1,1,1], mai
+  // toccato) perche' deve poter essere SALTATA per i decori luce
+  // (`_selfLit`, vedi stepLights() sopra): sono l'unica cosa nel mondo che
+  // deve restare alla propria luminosita' vera invece di scurirsi con tutto
+  // il resto — altrimenti "si accendono" ma restano scure quanto la notte
+  // intorno, indistinguibili (il bug segnalato: "le luci non funzionano").
   r.setProjection(cam.projection());
   let drawn = 0;
   const vw = cam.worldW, vh = cam.worldH;
@@ -544,13 +682,14 @@ function frame(now) {
     if (f) {
       const x0 = it.x - f.ox, y0 = it.y - f.oy;
       if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < t) continue;
-      const tint = isPicked(it) ? 0xbfe0ff : 0xffffff;
-      r.draw(f, it.x, it.y, 1, tint, 1);
+      const base = isPicked(it) ? 0xbfe0ff : (it._tint ?? 0xffffff);
+      const tint = it._selfLit ? base : mulTint(base, amb.rgb);
+      r.draw(f, it.x, it.y, 1, tint, it._alpha ?? 1);
     } else {
       // istanze senza sprite: controller invisibili, li mostro come marcatori
       const s = 24;
       if (it.x > rr + s || it.y > bb + s || it.x < l - s || it.y < t - s) continue;
-      r.draw(solidFrame(white, s, s), it.x - s / 2, it.y - s / 2, 1, it._c, 0.35);
+      r.draw(solidFrame(white, s, s), it.x - s / 2, it.y - s / 2, 1, mulTint(it._c, amb.rgb), 0.35);
     }
     drawn++;
   }
@@ -599,11 +738,20 @@ function frame(now) {
   // (`action_color(0)`); lo stato hover (testo bianco, sfondo
   // `icone_orizz_hc`) non e' riprodotto — nessun concetto di hover nel
   // nostro input touch-first (STUDIO.md §7).
+  // UI_MARGIN: risorse e bottoni non toccano piu' i bordi dello schermo —
+  // da soli sarebbero sotto una status bar/notch su mobile o letteralmente
+  // il primo pixel della finestra su desktop, non "dentro l'interfaccia"
+  // come richiesto. Coordinate sempre arrotondate all'intero: un offset
+  // frazionario (es. 8.3px) farebbe ricampionare lo sprite fra due pixel
+  // fisici invece di allinearlo esattamente a uno solo — non piu'
+  // "pixel perfect" nonostante lo zoom fisso di cui sopra.
+  const UI_MARGIN = 8;
   const barFrame = frameFor("icone_oriz");
-  if (barFrame) r.draw(barFrame, 0, 20, 1, 0xffffff, 1);
+  const barX = UI_MARGIN, barY = UI_MARGIN;
+  if (barFrame) r.draw(barFrame, barX, barY, 1, 0xffffff, 1);
   const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                  [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
-  for (const [value, x] of stats) drawText(r, fontMini, String(value), x, 30, 1, 0x000000, 1);
+  for (const [value, x] of stats) drawText(r, fontMini, String(value), barX + x, barY + 10, 1, 0x000000, 1);
 
   // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
   // ancora ricostruita (STUDIO.md §6/§9), e replica la struttura a tre
@@ -615,9 +763,9 @@ function frame(now) {
   // la larghezza vera di ciascuno sprite (`GAP` px fra l'uno e l'altro).
   // `chies` non ha un bottone: non e' un tipo piazzabile (vedi sopra).
   uiButtons = [];
-  const baseY = canvas.clientHeight;
+  const baseY = Math.round(canvas.clientHeight - UI_MARGIN);
   const GAP = 4;
-  let rx = 0;
+  let rx = UI_MARGIN;
   const row = menoo === 1
     // menoo 1 "edifici" ([C] pu1/Create.gml li crea tutti insieme): i due
     // veri (casa/industria) + il resto del menu, segnaposto (vedi sopra).
@@ -629,13 +777,17 @@ function frame(now) {
       ]
     : menoo === 2
     // menoo 2 "vista" ([C] eyebutton1/2/3 + zoom_plus/zoom_minus): le tre
-    // non ricostruite restano segnaposto, zoom+/- richiamano cam.setZoom.
+    // non ricostruite restano segnaposto, zoom+/- richiamano cam.setZoom —
+    // ma solo su mobile: su desktop lo zoom e' fisso (vedi isMobile sopra),
+    // due bottoni per un'azione che non fa niente sarebbero solo confusione.
     ? [
         { kind: "info", spr: "eyee1", label: "Vista 1" },
         { kind: "info", spr: "eyee2", label: "Vista 2" },
         { kind: "info", spr: "eyee3", label: "Vista 3" },
-        { kind: "zoom", spr: "zoomplus", label: "Zoom +", zoom: 0.8 },
-        { kind: "zoom", spr: "zoomminus", label: "Zoom -", zoom: 1.25 },
+        ...(isMobile ? [
+          { kind: "zoom", spr: "zoomplus", label: "Zoom +", zoom: 0.8 },
+          { kind: "zoom", spr: "zoomminus", label: "Zoom -", zoom: 1.25 },
+        ] : []),
         { kind: "menu", menoo: 0, spr: "baccc", label: "Indietro" },
       ]
     // menoo 0 "casa" ([C] handbutton/buildbutton/eyebutton): la riga di
@@ -706,7 +858,7 @@ requestAnimationFrame(frame);
 // aggancio di debug, comodo per ispezionare senza aspettare il ciclo
 window.__nimbus = {
   cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
-  get uiButtons() { return uiButtons; },
+  get uiButtons() { return uiButtons; }, get cars() { return cars; }, isMobile,
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,
