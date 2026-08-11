@@ -39,6 +39,11 @@ jobs:
             python3 tools/24_blit.py "$room"
           done
 
+      - name: Rigenera i font bitmap della UI
+        run: |
+          python3 tools/25_font.py gotham_mid
+          python3 tools/24_blit.py font_gotham_mid
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3

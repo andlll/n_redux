@@ -296,9 +296,28 @@ paragrafo 8.
   in una sessione di prova, non letti da un `Create` che li dichiari — la
   ruota di scelta edificio (`cre1..cre4`) che li determinava davvero non è
   ancora stata ricostruita.
+- **UI in spazio schermo: partita.** `game/src/font.js` +
+  `tools/25_font.py` ritagliano ed usano il font bitmap vero
+  dell'originale (`data/fonts.json`, "gotham_mid") per disegnare i numeri
+  della barra risorse dentro il canvas, invece dei quadratini colorati
+  segnaposto. È un ritaglio diretto da una texture page (niente
+  ripacchettamento: un font è già un unico rettangolo di glifi), con lo
+  stesso schema `blitplan.json` degli atlas — la pipeline di deploy ora lo
+  rigenera anche lei.
+- **Nota su `cre1..cre4`**: **non** sono una ruota di scelta edificio come
+  inferito inizialmente. Sono sonde invisibili create dal `placeholder` sui
+  suoi 4 angoli che, se toccano un altro `placeholder`, generano `dir1..4`
+  — quasi certamente per capire quali celle vicine sono libere (edifici
+  multi-cella, o un'indicazione visiva di espansione). `chies` resta
+  l'unico edificio con una vera catena piazzamento→livello ricostruita: le
+  altre famiglie simili (`upind12/23`, "industria") delegano l'animazione
+  di passaggio di livello alla famiglia `impa*` (impatti/esplosioni,
+  STUDIO.md §5.5, alarm fino a 12KB) invece che ad un `tic` semplice come
+  `upcrc12/23` — un secondo edificio giocabile richiede prima quella
+  famiglia, non è un copia-incolla di `chies`.
 - **Cosa manca prima del punto 5** (portare le famiglie di comportamenti a
-  gruppi): generalizzare `buildings.js` dalla sola `chies` alle altre
-  famiglie di edifici; la ruota di piazzamento `cre1..cre4` con più scelte;
-  un vero layer UI in spazio schermo (oggi la barra in basso è
-  segnaposto); le minacce (`impa*`, bombe, spie) che oggi non esistono
-  affatto nella nuova versione.
+  gruppi): la famiglia `impa*` come dati (STUDIO.md §7.3), da cui dipende
+  ogni secondo edificio reale; generalizzare `buildings.js` oltre `chies`
+  una volta fatto; le minacce (bombe, spie) che oggi non esistono affatto
+  nella nuova versione; le icone vere della barra risorse (oggi
+  quadratini colorati, il testo sì è reale).

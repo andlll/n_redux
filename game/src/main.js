@@ -4,6 +4,7 @@ import { Input } from "./input.js";
 import { createR12, tickR12 } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, canAfford, tryStartUpgrade, stepConstructions, nextUpgrade, upgradeUnlocked } from "./buildings.js";
 import { save, load } from "./save.js";
+import { loadFont, drawText } from "./font.js";
 
 const canvas = document.getElementById("view");
 const hud = document.getElementById("hud");
@@ -62,6 +63,10 @@ function frameFor(sprName) {
 }
 for (const it of staticWorld) it._f = frameFor(it.spr);
 const missingArt = staticWorld.filter((it) => !it._f).length;
+
+// Font bitmap reale (tools/25_font.py), per la barra risorse: testo vero
+// invece dei quadratini colorati segnaposto (STUDIO.md §7.5, §9).
+const font = await loadFont(gl, "gotham_mid");
 
 // -------------------------------------------------------- piazzabili e edifici
 // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
@@ -288,20 +293,27 @@ function frame(now) {
   const barH = 64;
   r.draw(solidFrame(white, canvas.clientWidth, barH), 0,
          canvas.clientHeight - barH, 1, 0x111a2e, 0.92);
+  // Barra risorse: un quadratino colorato al posto dell'icona vera (non
+  // ancora identificata nell'atlas) + il numero nel font bitmap reale
+  // dell'originale (tools/25_font.py). Testo in spazio schermo, dimensione
+  // costante: non sa niente della camera (STUDIO.md §7.5).
   const stats = [
     ["olio", Math.round(r12.oil), 0xc9a44a],
     ["mon", Math.round(r12.mon), 0x53a06a],
     ["pop", Math.round(r12.pop), 0x4f7fd0],
     ["ele", Math.round(r12.ele), 0xb05a5a],
   ];
-  for (let i = 0; i < stats.length; i++) {
-    r.draw(solidFrame(white, 44, 44), 12 + i * 54, canvas.clientHeight - barH + 10,
-           1, stats[i][2], 1);
+  const scale = 0.5, baseY = canvas.clientHeight - barH + 14;
+  let sx = 12;
+  for (const [label, value, color] of stats) {
+    r.draw(solidFrame(white, 28, 28), sx, baseY + 2, 1, color, 1);
+    const w = drawText(r, font, String(value), sx + 34, baseY, scale, 0xffffff, 1);
+    sx += 34 + w + 26;
   }
   r.flush();
 
-  // --- HUD testuale di debug: le barre vere (numeri, icone) sono un layer
-  // a parte da fare quando l'atlas della UI sara' importato.
+  // --- HUD testuale di debug: numeri e stato dettagliato per lo sviluppo,
+  // sovrapposto in DOM. La barra sopra e' la UI "vera", in canvas.
   let status = "";
   if (picked?.obj === "building") {
     const b = picked.ref;
