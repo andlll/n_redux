@@ -26,9 +26,28 @@ scene = json.load(open(os.path.join(ROOT, "game", "data", room_name + ".scene.js
 spr_by_name = {s["name"]: s for s in sprites}
 page_by_id = {t["id"]: t for t in textures}
 
+# Sprite che non stanno mai ferme in una room ma servono a runtime perche' il
+# giocatore le fa comparire (edifici piazzati, cantieri di potenziamento...).
+# 23_atlas.py impacchetta solo cio' che vede nella room statica: queste sono
+# elencate a mano, per famiglia di gameplay, cosi' l'atlas resta "solo cio'
+# che serve" anche per roba creata a runtime.
+GAMEPLAY_SPRITES = {
+    "buildings": [
+        # chies: chiesa, l'edificio guida per il ciclo piazzamento -> potenziamento.
+        "crc", "crc4", "crc5",                                    # livello 1/2/3
+        "ce11", "ce12", "ce13", "ce14", "ce15", "ce16", "ce17",    # cantiere 1->2
+        "ce18", "ce19", "ce20", "ce21", "ce22", "ce23",
+        "ci21", "ci22", "ci23", "ci24", "ci25", "ci26", "ci27",    # cantiere 2->3
+        "ci28", "ci29", "ci30", "ci31", "ci32", "ci33", "ci34", "ci35", "ci36", "ci37",
+        "crcl", "crc2l", "crc3l", "crc3l2", "crc3l3", "crc3l4", "crc3l5",  # decoro cddvd*
+        "gru1", "gr21",                                           # gru cantiere
+    ],
+}
+EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
+
 # ---------------------------------------------------------------- raccolta
 rects = []                               # frame da sistemare
-used = sorted({i["spr"] for i in scene["instances"] if "spr" in i})
+used = sorted({i["spr"] for i in scene["instances"] if "spr" in i} | set(EXTRA_SPRITES))
 for name in used:
     s = spr_by_name.get(name)
     if not s:

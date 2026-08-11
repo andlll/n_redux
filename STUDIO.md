@@ -264,3 +264,41 @@ viene gratis.
 Il punto 3 è la prima verifica seria: se importare 276 istanze da JSON e
 vederle sullo schermo funziona senza attrito, la pipeline regge e il resto è
 lavoro, non rischio.
+
+---
+
+## 9. Stato dell'implementazione
+
+Aggiornato mano a mano che il codice in `game/` avanza lungo l'ordine del
+paragrafo 8.
+
+- **Punto 1 (renderer + camera + input) fatto.** `game/src/gl.js`,
+  `camera.js`, `input.js`: batch WebGL2, zoom/pan veri, un solo percorso di
+  input per mouse e touch, tinta giorno/notte come uniform globale invece
+  che 24 gruppi ricolorati a mano.
+- **Punto 3 (una room vera) fatto per `match_easy`.** `game/src/main.js`
+  importa `src/rooms/match_easy.json` (via `tools/22_scene.py`), disegna le
+  276 istanze ordinate per depth/y con gli atlas per-room di
+  `tools/23_atlas.py` + `24_blit.py`.
+- **Punto 4 (un edificio completo) fatto per `chies`.** È l'unico edificio
+  di cui è stata ricostruita l'intera catena leggendo il codice
+  decompilato (`src/objects/chies`, `upcrc12`, `upcrc23`): piazzamento su
+  un `placeholder`, soglie di popolazione reali (pop≥500, pop≥1500), costi
+  reali (mon/oil), l'animazione di cantiere sprite-per-sprite con le
+  durate vere in tick, il cambio di sprite/vita a fine livello, il decoro
+  che nell'originale viene ucciso e ricreato ad ogni salto (`cddvd` →
+  `cddvd2` → `cddvd3*`). Codice: `game/src/buildings.js` (tabella dati,
+  non macchina a stati per edificio — STUDIO.md §7.3), `game/src/state.js`
+  (equivalente di `r12`, con [C]/[I] sulle regole economiche esatte),
+  `game/src/save.js` (serializzazione esplicita, stessi nomi di slot
+  dell'originale). Il costo di piazzamento e la curva di crescita di
+  popolazione/denaro sono **[I]**: inferiti e tarati per essere giocabili
+  in una sessione di prova, non letti da un `Create` che li dichiari — la
+  ruota di scelta edificio (`cre1..cre4`) che li determinava davvero non è
+  ancora stata ricostruita.
+- **Cosa manca prima del punto 5** (portare le famiglie di comportamenti a
+  gruppi): generalizzare `buildings.js` dalla sola `chies` alle altre
+  famiglie di edifici; la ruota di piazzamento `cre1..cre4` con più scelte;
+  un vero layer UI in spazio schermo (oggi la barra in basso è
+  segnaposto); le minacce (`impa*`, bombe, spie) che oggi non esistono
+  affatto nella nuova versione.
