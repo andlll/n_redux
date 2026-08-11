@@ -5,6 +5,7 @@ import { createR12, tickR12, stepWeather } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, tryStartUpgrade, stepConstructions, stepProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
+import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -214,6 +215,9 @@ let cars = [spawnCar("honda_facile_1", false), spawnCar("honda_facile_2", false)
 // finche' non sono comparse tutte e sette. `carmakerT` e' lo stesso
 // cronometro, `carmakerIdx` il prossimo tipo ancora da far comparire.
 let carmakerT = 0, carmakerIdx = 0;
+// Nuvole e uccelli (game/src/atmosphere.js): stesso timer di r12/Alarm_0.gml,
+// puramente decorativi (non incidono su niente in r12).
+const atmo = createAtmosphere();
 let r12 = createR12();
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
@@ -584,10 +588,12 @@ input.onTap = (sx, sy) => {
   }
   if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
     const it = frameList[i];
-    // il decoro (cddvd*), l'impalcatura di cantiere, le auto (honda_facile_1/2)
-    // e i tappi dei semafori sono puramente visivi: nell'originale non
-    // avevano eventi Mouse propri, quindi qui non devono "rubare" il tocco.
-    if (!it._f || it.obj === "decor" || it.obj === "scaffold" || it.obj === "car" || it.obj === "semaphore") continue;
+    // il decoro (cddvd*), l'impalcatura di cantiere, le auto (honda_facile_1/2),
+    // i tappi dei semafori e nuvole/uccelli sono puramente visivi:
+    // nell'originale non avevano eventi Mouse propri, quindi qui non
+    // devono "rubare" il tocco.
+    if (!it._f || it.obj === "decor" || it.obj === "scaffold" || it.obj === "car"
+      || it.obj === "semaphore" || it.obj === "cloud" || it.obj === "bird") continue;
     const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
     if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
       picked = it;
@@ -685,6 +691,7 @@ function frame(now) {
   }
   stepLights(decorEntities, dt, night, r12);
   stepSemaphores(semaphores, dt);
+  stepAtmosphere(atmo, dt, !!r12.storm);
   if (messageT > 0) messageT -= dt;
 
   // --- lista di disegno di questo frame: mondo statico (placeholder consumati
@@ -717,6 +724,12 @@ function frame(now) {
     if (!s.spr) continue;
     dynamic.push({ obj: "semaphore", x: s.x, y: s.y, depth: s.depth, _f: frameFor(s.spr), _selfLit: true });
   }
+  // Nuvole e uccelli (game/src/atmosphere.js): x/y spesso ben fuori dai
+  // confini della room (nascono appena fuori mappa, gli uccelli molto piu'
+  // sotto) — il filtro di frustum culling nel ciclo di disegno piu' sotto
+  // li scarta gia' da solo quando non sono in vista, niente da fare qui.
+  for (const c of atmo.clouds) dynamic.push({ obj: "cloud", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr) });
+  for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
   // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
   // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
   // (`_alpha`, 0 di giorno) che il ciclo di disegno rispetta da solo — a
@@ -941,6 +954,7 @@ window.__nimbus = {
   cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
   get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
   get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
+  atmo,
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,

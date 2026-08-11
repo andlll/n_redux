@@ -915,3 +915,27 @@ paragrafo 8.
   `Alarm_3.gml` rinasce a `(72,528)` — un disallineamento gia' presente
   nel decompilato originale) — riprodotto con `firstSpawn` distinto da
   `spawn` in `CAR_TYPES.honda4`, invece di "correggerlo".
+
+- **Nuvole e uccelli**, chiesti esplicitamente dopo aver verificato che non
+  ci fosse un altro spawner di veicoli oltre a `carmaker` (c'e' —
+  `cargomaker`, i camion `cargo1..4` — ma il suo unico innesco,
+  `bridge_des2/Alarm_2.gml`, non e' piazzato in nessuna room: morto anche
+  nell'originale, niente da portare). **[C]** `r12/Alarm_0.gml` (armato
+  ogni 140 tick, ~2.3s) fa nascere nuvole (`ni`, solo se non piove) e a
+  dado uccelli isolati o in stormo (`birb`/`birbcluster`) — nessuno dei due
+  ha `notte_target` come parent, quindi nell'originale non prendono la
+  tinta giorno/notte; qui la prendono comunque, la stessa semplificazione
+  gia' scelta per l'intero mondo (STUDIO.md sopra, "Qui: una fase, un
+  colore..."). Puramente estetico (non letto da nessuna regola di gioco),
+  quindi implementato "alleggerito" su richiesta: `game/src/atmosphere.js`
+  usa un'unica formula di deriva (direzione 30° per entrambi) invece di
+  una macchina a stati per ogni dettaglio dell'originale — niente
+  autodistruzione immediata a meta' delle nuvole appena nate (**[C]**
+  `ni/Create.gml`, un dado in piu' che qui e' assorbito nella probabilita'
+  di spawn), niente due alarm separati per lo sbattito d'ali degli uccelli
+  (**[C]** `birb/Alarm_1|2.gml`, qui un solo ciclo). Le nuvole nascono
+  appena fuori dai bordi della room e la attraversano in pochi secondi
+  (ben visibili); gli uccelli nascono molto sotto la mappa (`y=2500`,
+  **[C]** coordinate dell'originale) e la attraversano di sfuggita durante
+  una risalita lenta durata quasi un minuto — rari e discreti, come
+  nell'originale.

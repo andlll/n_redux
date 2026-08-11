@@ -171,6 +171,11 @@ GAMEPLAY_SPRITES = {
     # match_easy.scene.json. Questi sono solo i tre tappi colorati che il
     # figlio (`object37`) sceglie a dado ad ogni lampeggio.
     "semaphores": ["se2", "se3", "se4"],
+    # Nuvole e uccelli (src/objects/ni|nifast|birb|birbcluster, creati da
+    # r12/Alarm_0.gml — STUDIO.md, game/src/atmosphere.js): nessuna istanza
+    # nella room, nascono e muoiono dinamicamente, quindi vanno elencati
+    # qui come per le altre famiglie mai piazzate staticamente.
+    "atmosphere": ["n1", "n2", "n3", "brb1", "brb2"],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
