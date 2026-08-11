@@ -370,14 +370,19 @@ function frame(now) {
     const b = picked.ref;
     const up = nextUpgrade(b);
     status = `${BUILDING_TYPES[b.type].label} livello ${b.level}  vita ${b.life}`;
+    const g = BUILDING_TYPES[b.type].growth?.[b.level - 1];
     if (b.construction) status += `  [cantiere in corso]`;
-    else if (up) status += upgradeUnlocked(b, r12)
-      ? `  potenziamento pronto (${Object.entries(up.cost).map(([k, v]) => v + " " + k).join(", ")})`
-      : up.atMakee != null
-        ? `  prossimo potenziamento a ${up.atMakee} cicli di produzione (ora ${b.makee ?? 0})`
-        : `  prossimo potenziamento a pop ${up.atPop}`;
-    else if (BUILDING_TYPES[b.type].growth) {
-      const g = BUILDING_TYPES[b.type].growth;
+    else if (up) {
+      if (upgradeUnlocked(b, r12)) {
+        status += `  potenziamento pronto (${Object.entries(up.cost).map(([k, v]) => v + " " + k).join(", ")})`;
+      } else if (up.atMakee != null) {
+        status += `  prossimo potenziamento a ${up.atMakee} cicli di produzione (ora ${b.makee ?? 0})`;
+      } else if (up.atAva != null) {
+        status += `  prossimo potenziamento a crescita completa (${b.ava ?? 0}/${up.atAva})`;
+      } else {
+        status += `  prossimo potenziamento a pop ${up.atPop}`;
+      }
+    } else if (g) {
       status += (b.ava ?? 0) >= g.maxAva ? `  crescita completa` : `  crescita ${b.ava ?? 0}/${g.maxAva}`;
     }
   } else if (picked?.obj === "placeholder") {

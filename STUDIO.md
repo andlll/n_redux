@@ -421,9 +421,8 @@ paragrafo 8.
   fisso a 2000 tick il primo (**[C]** `action_set_alarm(2000,2)` in
   Create), poi scelto a dado uniforme fra 4 valori (3500/5796/11565/14656
   tick) — aggiungendo altri `pop += 2` per stadio, fino a `ava==5` dove
-  l'originale farebbe comparire l'icona di potenziamento (`upsign12`, non
-  ricostruita: qui la crescita si ferma e basta, l'edificio resta
-  "livello 1" per sempre). `stepGrowth()` in `buildings.js`.
+  l'originale fa comparire l'icona di potenziamento (`upsign12`).
+  `stepGrowth()` in `buildings.js`.
   **Consumo elettrico reale**: **[C]** `casa1/Alarm_3.gml`, ogni 120 tick,
   in base allo stadio `ava` e a giorno/notte (`aura.night`) — la prima
   regola che dà al ciclo giorno/notte un effetto di **gioco** reale, non
@@ -436,26 +435,67 @@ paragrafo 8.
   **Non portato**, per lo stesso principio già applicato a industria (letto
   ma non cablato dove servirebbe un sistema che ancora non esiste): il
   danno da fulmine (`Alarm_5`, uguale schema di industria); il "rifai in
-  loco" a pagamento (`Mouse_LeftPressed`/`demobasia`, cosmetico); e — letta
-  ma **non capita abbastanza da cablarla** — la sommossa (`Alarm_4`: se
-  `r12.hap == r12.pop` e `r12.ele <= 0` compaiono `sold1..6` in base allo
-  stadio `ava`; l'uguaglianza esatta fra `hap` e `pop` è una condizione
-  strana per essere quella vera, e `hap`/`wewe` oggi non sono nemmeno
-  aggiornati da nessun edificio nella nuova versione — meglio lasciarla
-  un gap dichiarato che indovinarla). Il potenziamento a `casa2`/`casa3`
-  (`upsign12` → `impacasa1r`/`1f`, un'altra coppia r/f) resta fuori: è
-  un incremento a parte, non un copia-incolla dell'upgrade di chies/
-  industria (nessuna soglia `atPop`/`atMakee` conosciuta per ora).
+  loco" a pagamento (`Mouse_LeftPressed`/`demobasia`, cosmetico — e infatti
+  `demobasia/Collision_casa1.gml` crea `impacasa1r`, non `impa1to2r`: sono
+  due catene diverse, la prima l'abbiamo scartata per errore di lettura
+  iniziale, vedi sotto); e — letta ma **non capita abbastanza da
+  cablarla** — la sommossa (`Alarm_4`: se `r12.hap == r12.pop` e
+  `r12.ele <= 0` compaiono `sold1..6` in base allo stadio `ava`;
+  l'uguaglianza esatta fra `hap` e `pop` è una condizione strana per
+  essere quella vera, e `hap`/`wewe` oggi non sono nemmeno aggiornati da
+  nessun edificio nella nuova versione — meglio lasciarla un gap
+  dichiarato che indovinarla).
   Sprite aggiunti a `GAMEPLAY_SPRITES` in `tools/23_atlas.py`: le 20
-  varianti `c1xx`/`c1xxl`; il cantiere riusa gli `ir1x` già presenti per
-  industria (stesso schema di sprite, oggetto diverso).
+  varianti `c1xx`/`c1xxl` (poi anche `c2xx`/`c3xx`, vedi sotto); il
+  cantiere riusa gli `ir1x` già presenti per industria (stesso schema di
+  sprite, oggetto diverso).
+- **Potenziamento `casa1→casa2→casa3`.** Ripreso subito dopo il primo
+  passaggio su `casa`, che lo dava per fuori scope pensando che
+  `impacasa1r`/`impacasa1f` (creati da `demobasia/Collision_casa1.gml`)
+  fossero la catena di potenziamento: **non lo sono**, sono il "rifai in
+  loco" cosmetico (stesso ruolo del `demobasia` di industria). La catena
+  vera è `upsign12` → **[C]** `impa1to2r`/`impa1to2f`
+  (`upsign12/Mouse_LeftPressed.gml`), e poi `upsign23` → `impa2to3r`/
+  `impa2to3f` allo stesso modo. Costi **[C]** 500 mon (`casa1→2`) e 2000
+  mon (`casa2→3`), entrambi letti da `upsignXX/Mouse_LeftPressed.gml`.
+  Struttura dati: `growth`/`consumption` diventano array indicizzati per
+  livello attuale (`b.level - 1`, stesso schema di `production` per
+  industria — sono "come si comporta l'edificio così com'è", non "cosa
+  succede a fine cantiere"), mentre `variants` si sposta da un campo del
+  tipo a un campo di ciascun `construct`/`upgrades[i]` (ogni livello ha
+  le sue 20 varianti: **[C]** `casa2/Create.gml` e `casa3/Create.gml`,
+  stesso schema a dado di `casa1`). Lo sblocco del potenziamento è una
+  terza specie di soglia, `atAva` (crescita completa, `ava==5`), accanto
+  alle già note `atPop` (chies) e `atMakee` (industria) —
+  `upgradeProgress()` in `buildings.js` le distingue tutte.
+  Il cantiere `casa1→casa2` (**[C]** `impa1to2r/Create.gml` +
+  `Alarm_0.gml`, catena a `tic` 0..10, 990 tick totali) è l'unico fra
+  tutti i cantieri portati finora che **non richiede nessuna troncatura**:
+  l'originale stesso chiama `action_kill_object()` a tic==10, senza coda
+  a specchio da tagliare. Il cantiere `casa2→casa3` invece è la stessa
+  forma già vista per `impaind2to3r` di industria — una catena a `tic`
+  0..22 con una coda cosmetica speculare da tic 11 in poi — e viene
+  troncata a tic 0..10 allo stesso modo, stessa motivazione (STUDIO.md
+  sopra, "secondo edificio giocabile: industria", semplificazione 2).
+  `grantPop` (14 per casa2, 40 per casa3, **[C]** `casa2/3/Create.gml`) e
+  `life` (200/300, **[C]**) si applicano a fine cantiere come per
+  qualunque `up.life`/`up.grantPop`. `b.ava`/`b.makee` e i relativi timer
+  si azzerano ad ogni salto di livello, insieme (prima si azzerava solo
+  `makee`, ora anche `ava`/`growthT`/`growthNext`/`consT`, nello stesso
+  punto di `stepConstructions()`).
+  Sprite aggiunti a `GAMEPLAY_SPRITES`: le varianti `c2xx`/`c2xxl` e
+  `c3xx`/`c3xxl`; il cantiere `casa2→casa3` riusa `gru1` (già presente,
+  letto da `impa2to3r/Alarm_0.gml`, tic==3 — l'oggetto creato si chiama
+  `gru`, non `gru1`, ma `gru` disegna proprio lo sprite `gru1`).
 - **Cosa manca prima del punto 5** (portare le famiglie di comportamenti a
-  gruppi): la traccia "f" degli `impa*` (scenografia, per industria e ora
-  anche casa); il sistema vita/distruzione (bombe, fulmini, `life` che
-  arriva a 0) che oggi non esiste in nessuna forma nella nuova versione,
-  quindi il danno da fulmine di industria/casa resta letto ma non
-  collegato; il sistema `hap`/`wewe` (felicità/inquinamento visivo) e la
-  sommossa che ne dipende; il potenziamento `casa1→casa2→casa3`; le altre
-  ~85 famiglie `impa*` (armi, minacce, altri edifici) non ancora lette; le
+  gruppi): la traccia "f" degli `impa*` (scenografia, per industria e
+  casa, su tutti i salti di livello ora ricostruiti); il sistema
+  vita/distruzione (bombe, fulmini, `life` che arriva a 0) che oggi non
+  esiste in nessuna forma nella nuova versione, quindi il danno da
+  fulmine di industria/casa resta letto ma non collegato; il sistema
+  `hap`/`wewe` (felicità/inquinamento visivo) e la sommossa che ne
+  dipende; i "rifai in loco" cosmetici (`demobasia` + `impacasa*`/
+  `impaind*` "rifatti", non le catene di potenziamento); le altre ~85
+  famiglie `impa*` (armi, minacce, altri edifici) non ancora lette; le
   icone vere della barra risorse (oggi quadratini colorati, il testo sì è
   reale).

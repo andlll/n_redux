@@ -149,47 +149,81 @@ export const BUILDING_TYPES = {
     ],
   },
 
-  // Terzo edificio: `casa` (STUDIO.md §9). Diverso da chies/industria per
-  // due motivi: e' il primo con un aspetto scelto a caso fra varianti (non
-  // "variante 1" scelta a mano), ed e' il primo di cui portiamo una
-  // simulazione che CONSUMA risorse nel tempo (crescita di popolazione,
-  // consumo elettrico) invece di limitarsi a costruzione+potenziamento.
+  // Terzo edificio: `casa` (STUDIO.md §9), e l'unico dei tre con tre livelli
+  // giocati fino in fondo (casa1->casa2->casa3, non solo "un" potenziamento).
+  // Diverso da chies/industria su due assi: e' il primo con un aspetto
+  // scelto a caso fra varianti per livello (non "variante 1" scelta a
+  // mano), ed e' il primo di cui portiamo simulazioni che CONSUMANO risorse
+  // nel tempo (crescita di popolazione, consumo elettrico) invece di
+  // limitarsi a costruzione+potenziamento. `growth`/`consumption` sono
+  // percio' array indicizzati per livello attuale (`b.level - 1`), stesso
+  // schema di `production` per industria — sono comportamento "mentre
+  // l'edificio esiste così com'è", non "cosa succede quando finisce il
+  // cantiere" (quello vive dentro `construct`/`upgrades[i]`, come
+  // `variants`: la lista di varianti cambia da un livello all'altro).
   //
-  // Non portati in questo passaggio, letti ma lasciati fuori (come le
-  // scelte gia' fatte per industria): il danno da fulmine (Alarm_5, stessa
-  // regola letta/non cablata di industria — nessun sistema vita/morte
-  // esiste ancora); la sommossa (Alarm_4: se `r12.hap == r12.pop` e
-  // `r12.ele <= 0` compaiono `sold1..6` — condizione che non capiamo
-  // ancora bene, meglio non cablarla a caso); il "rifai in loco" a
-  // pagamento (`demobasia`, cosmetico, stesso schema di industria); il
-  // potenziamento a `casa2`/`casa3` (`upsign12`/`impacasa1r`, un'altra
-  // coppia r/f da ricostruire — casa qui si ferma al massimo di crescita,
-  // livello dell'edificio sempre 1). `hap`/`wewe` non sono aggiornati:
-  // le regole sono lette ma inerti, non serve a niente scriverle finche'
-  // niente le legge (STUDIO.md, nessuna UI/sistema le consulta ancora).
+  // Il potenziamento si sblocca a `ava==5` (crescita completa), non a una
+  // soglia di popolazione o di produzione: `atAva` in upgradeProgress().
+  //
+  // Non portati, letti ma lasciati fuori (come le scelte gia' fatte per
+  // industria): il danno da fulmine (Alarm_5, stessa regola letta/non
+  // cablata di industria — nessun sistema vita/morte esiste ancora); la
+  // sommossa (Alarm_4: se `r12.hap == r12.pop` e `r12.ele <= 0` compaiono
+  // `sold1..6` — condizione che non capiamo ancora bene, meglio non
+  // cablarla a caso); il "rifai in loco" a pagamento (`demobasia`,
+  // cosmetico, stesso schema di industria). `hap`/`wewe` non sono
+  // aggiornati: le regole sono lette ma inerti, non serve a niente
+  // scriverle finche' niente le legge.
   casa: {
     label: "Casa",
     placeCost: { mon: 100 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==1
-    // [C] casa1/Create.gml: 5 livelli di action_if_dice(2) annidati scelgono
-    // fra 20 coppie (sprite casa, decoro affiancato) — equivalente a un pick
-    // uniforme fra 20, come gia' facciamo con pickSpr() sugli array di step.
-    // Ogni dXXX (decoro) disegna lo sprite "cXXXl"; il branch senza dado
-    // finale (d111) lascia la casa allo sprite di default "c111".
-    variants: [
-      { spr: "c111", decor: "c111l" }, { spr: "c112", decor: "c112l" },
-      { spr: "c113", decor: "c113l" }, { spr: "c114", decor: "c114l" },
-      { spr: "c121", decor: "c121l" }, { spr: "c122", decor: "c122l" },
-      { spr: "c123", decor: "c123l" }, { spr: "c124", decor: "c124l" },
-      { spr: "c131", decor: "c131l" }, { spr: "c132", decor: "c132l" },
-      { spr: "c133", decor: "c133l" }, { spr: "c134", decor: "c134l" },
-      { spr: "c141", decor: "c141l" }, { spr: "c142", decor: "c142l" },
-      { spr: "c143", decor: "c143l" }, { spr: "c144", decor: "c144l" },
-      { spr: "c151", decor: "c151l" }, { spr: "c152", decor: "c152l" },
-      { spr: "c153", decor: "c153l" }, { spr: "c154", decor: "c154l" },
+    // [C] casa1/Alarm_2.gml: `ava` (0..5) e' lo stadio di crescita. Il primo
+    // intervallo dopo la nascita e' fisso (`action_set_alarm(2000,2)` in
+    // Create.gml, uguale per tutti e tre i livelli); da li' in poi ogni
+    // avanzamento riarma con uno dei 4 valori scelti a dado uniforme
+    // (diversi per livello: casa1/2/3/Alarm_2.gml). Ogni avanzamento
+    // aggiunge pop reale, non un contributo generico: e' per questo che
+    // tickR12() (state.js) esclude i tipi con `growth` dalla sua formula
+    // placeholder.
+    growth: [
+      { firstInterval: 2000, intervals: [3500, 5796, 11565, 14656], popPerStage: 2, maxAva: 5 },   // [C] casa1
+      { firstInterval: 2000, intervals: [6000, 7314, 9945, 11154], popPerStage: 4, maxAva: 5 },     // [C] casa2
+      { firstInterval: 2000, intervals: [9000, 11231, 16846, 9912], popPerStage: 4, maxAva: 5 },    // [C] casa3
+    ],
+    // [C] casa1|2|3/Alarm_3.gml: ogni 120 tic consuma energia in base allo
+    // stadio `ava` e al giorno/notte (`aura.night`) — [giorno, notte] per
+    // stadio 0..5, una tabella per livello. E' la prima regola che collega
+    // davvero il ciclo giorno/notte (finora solo una tinta, STUDIO.md §5.2)
+    // a un numero di gioco: main.js calcola `isNight(phaseT)` dalla stessa
+    // tabella `PHASES` usata per il colore ambientale.
+    consumption: [
+      [ { day: 1, night: 2 }, { day: 2, night: 4 }, { day: 3, night: 6 },       // [C] casa1
+        { day: 4, night: 8 }, { day: 5, night: 9 }, { day: 6, night: 11 } ],
+      [ { day: 2, night: 4 }, { day: 4, night: 8 }, { day: 6, night: 12 },      // [C] casa2
+        { day: 8, night: 16 }, { day: 11, night: 19 }, { day: 14, night: 23 } ],
+      [ { day: 3, night: 7 }, { day: 6, night: 11 }, { day: 9, night: 15 },     // [C] casa3
+        { day: 12, night: 20 }, { day: 15, night: 24 }, { day: 18, night: 27 } ],
     ],
     construct: {                 // livello 0 -> 1, impa0to1r (src/objects/impa0to1r)
       life: 100,                  // [C] casa1/Create.gml
       grantPop: 2,                // [C] casa1/Create.gml: r12.pop += 2 alla nascita, prima della crescita
+      // [C] casa1/Create.gml: 5 livelli di action_if_dice(2) annidati
+      // scelgono fra 20 coppie (sprite casa, decoro affiancato) — un pick
+      // uniforme fra 20, come pickSpr() sugli array di step. Ogni dXXX
+      // (decoro) disegna lo sprite "cXXXl"; il branch senza dado finale
+      // (d111) lascia la casa allo sprite di default "c111".
+      variants: [
+        { spr: "c111", decor: "c111l" }, { spr: "c112", decor: "c112l" },
+        { spr: "c113", decor: "c113l" }, { spr: "c114", decor: "c114l" },
+        { spr: "c121", decor: "c121l" }, { spr: "c122", decor: "c122l" },
+        { spr: "c123", decor: "c123l" }, { spr: "c124", decor: "c124l" },
+        { spr: "c131", decor: "c131l" }, { spr: "c132", decor: "c132l" },
+        { spr: "c133", decor: "c133l" }, { spr: "c134", decor: "c134l" },
+        { spr: "c141", decor: "c141l" }, { spr: "c142", decor: "c142l" },
+        { spr: "c143", decor: "c143l" }, { spr: "c144", decor: "c144l" },
+        { spr: "c151", decor: "c151l" }, { spr: "c152", decor: "c152l" },
+        { spr: "c153", decor: "c153l" }, { spr: "c154", decor: "c154l" },
+      ],
       steps: [                    // [C] impa0to1r/Create.gml + Alarm_0/1/2/3 (790 tic: 390+30+310+30+30)
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
         { spr: "ir12", dur: 30 },
@@ -198,22 +232,72 @@ export const BUILDING_TYPES = {
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
       ],
     },
-    // [C] casa1/Alarm_2.gml: `ava` (0..5) e' lo stadio di crescita. Il primo
-    // intervallo dopo la nascita e' fisso (`action_set_alarm(2000,2)` in
-    // Create.gml); da li' in poi ogni avanzamento riarma con uno dei 4
-    // valori scelti a dado uniforme. Ogni avanzamento aggiunge pop reale,
-    // non un contributo generico: e' per questo che tickR12() (state.js)
-    // esclude i tipi con `growth` dalla sua formula placeholder.
-    growth: { firstInterval: 2000, intervals: [3500, 5796, 11565, 14656], popPerStage: 2, maxAva: 5 },
-    // [C] casa1/Alarm_3.gml: ogni 120 tic consuma energia in base allo
-    // stadio `ava` e al giorno/notte (`aura.night`) — [giorno, notte] per
-    // stadio 0..5. E' la prima regola che collega davvero il ciclo
-    // giorno/notte (finora solo una tinta, STUDIO.md §5.2) a un numero di
-    // gioco: main.js calcola `isNight(phaseT)` dalla stessa tabella `PHASES`
-    // usata per il colore ambientale.
-    consumption: [
-      { day: 1, night: 2 }, { day: 2, night: 4 }, { day: 3, night: 6 },
-      { day: 4, night: 8 }, { day: 5, night: 9 }, { day: 6, night: 11 },
+    upgrades: [
+      {                            // livello 1 -> 2, upsign12 costo + impa1to2r (990 tic, completo — l'originale
+                                    // stesso finisce a tic 10, nessuna coda da troncare qui)
+        atAva: 5,                   // [C] casa1/Alarm_2.gml: ava==5 crea upsign12
+        cost: { mon: 500 },        // [C] upsign12/Mouse_LeftPressed.gml
+        life: 200,                  // [C] casa2/Create.gml
+        grantPop: 14,                // [C] casa2/Create.gml: r12.pop += 14 alla nascita
+        drain: { mon: 2, every: 10 },   // [C] impa1to2r/Alarm_10.gml
+        variants: [                  // [C] casa2/Create.gml, stesso schema di casa1
+          { spr: "c211", decor: "c211l" }, { spr: "c212", decor: "c212l" },
+          { spr: "c213", decor: "c213l" }, { spr: "c214", decor: "c214l" },
+          { spr: "c221", decor: "c221l" }, { spr: "c222", decor: "c222l" },
+          { spr: "c223", decor: "c223l" }, { spr: "c224", decor: "c224l" },
+          { spr: "c231", decor: "c231l" }, { spr: "c232", decor: "c232l" },
+          { spr: "c233", decor: "c233l" }, { spr: "c234", decor: "c234l" },
+          { spr: "c241", decor: "c241l" }, { spr: "c242", decor: "c242l" },
+          { spr: "c243", decor: "c243l" }, { spr: "c244", decor: "c244l" },
+          { spr: "c251", decor: "c251l" }, { spr: "c252", decor: "c252l" },
+          { spr: "c253", decor: "c253l" }, { spr: "c254", decor: "c254l" },
+        ],
+        steps: [                     // [C] impa1to2r/Create.gml + Alarm_0.gml, tic 0..10 (fine reale, non troncata)
+          { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
+          { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
+          { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+          { spr: "ir22", dur: 40 }, { spr: "ir21", dur: 600 },
+          { spr: "ir21", dur: 40 },   // tic 5->6: nessun cambio sprite nell'originale, solo un'attesa in piu'
+          { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+          { spr: "ir11", dur: 40 }, { spr: "ir12", dur: 40 },
+          { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 40 },
+        ],
+      },
+      {                            // livello 2 -> 3, upsign23 costo + impa2to3r (troncato a tic 0..10, coda
+                                    // cosmetica fino a tic 22 come impaind2to3r di industria, STUDIO.md sopra)
+        atAva: 5,                   // [C] casa2/Alarm_2.gml: ava==5 crea upsign23
+        cost: { mon: 2000 },       // [C] upsign23/Mouse_LeftPressed.gml
+        life: 300,                  // [C] casa3/Create.gml
+        grantPop: 40,                // [C] casa3/Create.gml: r12.pop += 40 alla nascita
+        drain: { mon: 3, every: 20 },   // [C] impa2to3r/Alarm_10.gml
+        variants: [                  // [C] casa3/Create.gml, stesso schema di casa1/casa2
+          { spr: "c311", decor: "c311l" }, { spr: "c312", decor: "c312l" },
+          { spr: "c313", decor: "c313l" }, { spr: "c314", decor: "c314l" },
+          { spr: "c321", decor: "c321l" }, { spr: "c322", decor: "c322l" },
+          { spr: "c323", decor: "c323l" }, { spr: "c324", decor: "c324l" },
+          { spr: "c331", decor: "c331l" }, { spr: "c332", decor: "c332l" },
+          { spr: "c333", decor: "c333l" }, { spr: "c334", decor: "c334l" },
+          { spr: "c341", decor: "c341l" }, { spr: "c342", decor: "c342l" },
+          { spr: "c343", decor: "c343l" }, { spr: "c344", decor: "c344l" },
+          { spr: "c351", decor: "c351l" }, { spr: "c352", decor: "c352l" },
+          { spr: "c353", decor: "c353l" }, { spr: "c354", decor: "c354l" },
+        ],
+        steps: [                     // [C] impa2to3r/Create.gml + Alarm_0.gml, tic 0..10
+          { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
+          { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
+          { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+          { spr: "ir22", dur: 40, spawn: [                 // tic==3: 4 gru ai corners
+            { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+            { spr: "gru1", dx: -80, dy: -50 }, { spr: "gru1", dx: -80, dy: 50 },
+          ] },
+          { spr: "ir21", dur: 40 },
+          { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 40 },
+          { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
+          { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
+          { spr: "ir42", dur: 40 },
+          { spr: "ir41", dur: 800 },   // tic==10: l'originale continua fino a tic 22 (coda cosmetica)
+        ],
+      },
     ],
   },
 };
@@ -269,14 +353,16 @@ export function nextUpgrade(b) {
 }
 
 /**
- * La soglia di sblocco di un potenziamento e' o una popolazione minima
- * (`atPop`, chies — [C] chies/Step.gml) o un numero di cicli di produzione
- * completati dall'edificio stesso al livello attuale (`atMakee`, industria —
- * [C] industria1|2/Step.gml). Le due famiglie non hanno mai entrambe i due
- * campi: solo una delle due condizioni si applica per tipo.
+ * La soglia di sblocco di un potenziamento e' una fra tre, mutuamente
+ * esclusive per tipo: popolazione minima (`atPop`, chies — [C] chies/
+ * Step.gml), cicli di produzione completati dall'edificio stesso al livello
+ * attuale (`atMakee`, industria — [C] industria1|2/Step.gml), o crescita
+ * completa (`atAva`, casa — [C] casa1|2/Alarm_2.gml: ava==5 crea il segnale
+ * di potenziamento upsign12/23).
  */
 function upgradeProgress(b, up, r12) {
   if (up.atMakee != null) return { done: b.makee ?? 0, needed: up.atMakee, kind: "makee" };
+  if (up.atAva != null) return { done: b.ava ?? 0, needed: up.atAva, kind: "ava" };
   return { done: r12.pop, needed: up.atPop, kind: "pop" };
 }
 
@@ -299,9 +385,9 @@ export function tryStartUpgrade(b, r12) {
   if (!up) return "livello massimo";
   const p = upgradeProgress(b, up, r12);
   if (p.done < p.needed) {
-    return p.kind === "makee"
-      ? `servono ${p.needed} cicli di produzione (ora ${p.done})`
-      : `serve popolazione ${p.needed} (ora ${p.done.toFixed(0)})`;
+    if (p.kind === "makee") return `servono ${p.needed} cicli di produzione (ora ${p.done})`;
+    if (p.kind === "ava") return `serve crescita completa (${p.done}/${p.needed})`;
+    return `serve popolazione ${p.needed} (ora ${p.done.toFixed(0)})`;
   }
   if (!canAfford(r12, up.cost)) {
     const need = Object.entries(up.cost).map(([k, v]) => `${v} ${k}`).join(", ");
@@ -348,11 +434,11 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
     } else {
       if (c.upgradeIndex === -1) b.level = 1; else b.level++;
       b.life = up.life ?? (b.life + (up.lifeBonus ?? 0));
-      if (up.grantPop) r12.pop += up.grantPop;   // [C] casa1/Create.gml: pop += 2 alla nascita
-      if (def.variants) {
-        // Edifici a variante casuale (casa: STUDIO.md §9) — [C] casa1/Create.gml,
+      if (up.grantPop) r12.pop += up.grantPop;   // [C] casa1|2|3/Create.gml: pop += N alla nascita del livello
+      if (up.variants) {
+        // Edifici a variante casuale (casa: STUDIO.md §9) — [C] casa1|2|3/Create.gml,
         // dado uniforme fra sprite+decoro, scelto una volta e persistito sull'istanza.
-        const v = def.variants[(Math.random() * def.variants.length) | 0];
+        const v = up.variants[(Math.random() * up.variants.length) | 0];
         b.spr = v.spr;
         b.decorSpr = v.decor;
         onDecor?.(b, [v.decor]);
@@ -361,12 +447,14 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
         onDecor?.(b, up.decor);
       }
       b.construction = null;
-      // [C] industria1|2|3/Create.gml: `makee = 0`. Nell'originale ogni
-      // livello e' un oggetto diverso che riparte da zero cicli prodotti;
-      // qui e' lo stesso building che continua, quindi il contatore va
-      // azzerato esplicitamente ad ogni salto di livello.
-      b.makee = 0;
-      b.prodT = 0;
+      // [C] industria1|2|3/Create.gml + casa1|2|3/Create.gml: `makee`/`ava`
+      // partono da 0 ad ogni livello. Nell'originale ogni livello e' un
+      // oggetto diverso che riparte da zero; qui e' lo stesso building che
+      // continua, quindi i contatori vanno azzerati esplicitamente ad ogni
+      // salto (insieme ai timer che li accumulano, cosi' non scattano subito
+      // con un resto lasciato dal livello precedente).
+      b.makee = 0; b.prodT = 0;
+      b.ava = 0; b.growthT = 0; b.growthNext = null; b.consT = 0;
     }
   }
 }
@@ -400,17 +488,18 @@ export function stepProduction(buildings, dt, r12) {
 
 /**
  * Avanza la crescita di popolazione degli edifici finiti che dichiarano
- * `growth` (oggi solo `casa`). [C] casa1/Alarm_2.gml: ogni avanzamento di
- * stadio (`b.ava`, 0..`maxAva`) aggiunge `popPerStage` a r12.pop e riarma
- * con un intervallo scelto a dado uniforme fra `intervals` — tranne il
- * primo, che nell'originale e' un valore fisso (`firstInterval`,
- * `action_set_alarm(2000,2)` in Create.gml). Si ferma da solo a `maxAva`.
+ * `growth` per livello (oggi solo `casa`, un valore per casa1/2/3). [C]
+ * casa1|2|3/Alarm_2.gml: ogni avanzamento di stadio (`b.ava`, 0..`maxAva`)
+ * aggiunge `popPerStage` a r12.pop e riarma con un intervallo scelto a dado
+ * uniforme fra `intervals` — tranne il primo, che nell'originale e' un
+ * valore fisso (`firstInterval`, `action_set_alarm(2000,2)` in Create.gml,
+ * uguale per tutti e tre i livelli). Si ferma da solo a `maxAva`.
  */
 export function stepGrowth(buildings, dt, r12) {
   for (const b of buildings) {
     if (b.construction) continue;
     const def = BUILDING_TYPES[b.type];
-    const g = def.growth;
+    const g = def.growth?.[b.level - 1];
     if (!g || (b.ava ?? 0) >= g.maxAva) continue;
     if (b.growthNext == null) b.growthNext = g.firstInterval * TICK;
     b.growthT = (b.growthT ?? 0) + dt;
@@ -425,16 +514,17 @@ export function stepGrowth(buildings, dt, r12) {
 
 /**
  * Avanza il consumo elettrico degli edifici finiti che dichiarano
- * `consumption` per stadio di crescita (oggi solo `casa`). [C]
- * casa1/Alarm_3.gml: ogni 120 tick consuma energia in base allo stadio
- * `b.ava` e a se e' notte (prima regola che collega il ciclo giorno/notte —
- * finora solo una tinta, STUDIO.md §5.2 — a un numero di gioco).
+ * `consumption` per livello e stadio di crescita (oggi solo `casa`, una
+ * tabella per casa1/2/3). [C] casa1|2|3/Alarm_3.gml: ogni 120 tick consuma
+ * energia in base allo stadio `b.ava` e a se e' notte (prima regola che
+ * collega il ciclo giorno/notte — finora solo una tinta, STUDIO.md §5.2 —
+ * a un numero di gioco).
  */
 export function stepConsumption(buildings, dt, r12, isNight) {
   for (const b of buildings) {
     if (b.construction) continue;
     const def = BUILDING_TYPES[b.type];
-    const cons = def.consumption;
+    const cons = def.consumption?.[b.level - 1];
     if (!cons) continue;
     const rate = cons[Math.min(b.ava ?? 0, cons.length - 1)];
     b.consT = (b.consT ?? 0) + dt;

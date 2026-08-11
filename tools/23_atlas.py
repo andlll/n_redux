@@ -51,15 +51,16 @@ GAMEPLAY_SPRITES = {
         "ir21", "ir22", "ir23", "ir24", "ir25", "ir26",           # fase 2
         "ir31", "ir32", "ir33", "ir34", "ir35", "ir36",           # fase 3
         "ir41", "ir42", "ir43", "ir44", "ir45", "ir46",           # fase 4
-        # casa: terzo edificio, 20 varianti sprite+decoro scelte a dado
-        # (src/objects/casa1/Create.gml, STUDIO.md §9). Il cantiere riusa
-        # gli sprite ir1x di industria (stesso impa0to1r/impaind0to1r).
-        "c111", "c112", "c113", "c114", "c121", "c122", "c123", "c124",
-        "c131", "c132", "c133", "c134", "c141", "c142", "c143", "c144",
-        "c151", "c152", "c153", "c154",
-        "c111l", "c112l", "c113l", "c114l", "c121l", "c122l", "c123l", "c124l",
-        "c131l", "c132l", "c133l", "c134l", "c141l", "c142l", "c143l", "c144l",
-        "c151l", "c152l", "c153l", "c154l",
+        # casa: terzo edificio, tre livelli (casa1/2/3), 20 varianti
+        # sprite+decoro a dado per livello (src/objects/casa1|2|3/Create.gml,
+        # STUDIO.md §9). Il cantiere riusa gli sprite ir1x/2x/3x/4x gia'
+        # presenti per industria (stessi sprite, oggetti impa* diversi).
+        "c111", "c112", "c113", "c114", "c121", "c122", "c123", "c124", "c131", "c132", "c133", "c134", "c141", "c142", "c143", "c144", "c151", "c152", "c153", "c154",  # casa1
+        "c111l", "c112l", "c113l", "c114l", "c121l", "c122l", "c123l", "c124l", "c131l", "c132l", "c133l", "c134l", "c141l", "c142l", "c143l", "c144l", "c151l", "c152l", "c153l", "c154l",  # decoro casa1
+        "c211", "c212", "c213", "c214", "c221", "c222", "c223", "c224", "c231", "c232", "c233", "c234", "c241", "c242", "c243", "c244", "c251", "c252", "c253", "c254",  # casa2
+        "c211l", "c212l", "c213l", "c214l", "c221l", "c222l", "c223l", "c224l", "c231l", "c232l", "c233l", "c234l", "c241l", "c242l", "c243l", "c244l", "c251l", "c252l", "c253l", "c254l",  # decoro casa2
+        "c311", "c312", "c313", "c314", "c321", "c322", "c323", "c324", "c331", "c332", "c333", "c334", "c341", "c342", "c343", "c344", "c351", "c352", "c353", "c354",  # casa3
+        "c311l", "c312l", "c313l", "c314l", "c321l", "c322l", "c323l", "c324l", "c331l", "c332l", "c333l", "c334l", "c341l", "c342l", "c343l", "c344l", "c351l", "c352l", "c353l", "c354l",  # decoro casa3
     ],
 }
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
