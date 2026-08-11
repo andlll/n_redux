@@ -1,14 +1,14 @@
 // Edifici come dati, non come codice (STUDIO.md §7.3): la catena di
 // cantiere di `chies` (upcrc12/upcrc23, decompilati da
-// src/objects/upcrc12|upcrc23/Alarm_0.gml) e' una tabella di frame e
-// durate, letta da un'unica macchina a stati in buildingSystem.js.
+// src/objects/upcrc12|upcrc23/Alarm_0.gml) e la famiglia `impa*` di
+// `industria` (impaind0to1r/1to2r/2to3r, STUDIO.md §5.5) sono entrambe
+// tabelle di frame e durate, lette da un'unica macchina a stati in
+// stepConstructions().
 //
 // [C] = valori letti nel codice decompilato (sprite, costi, soglie,
-// durate in tick a 60fps convertite in secondi). Il costo di piazzamento
-// e' l'unico numero inferito [I]: non esiste un `Create` che lo dichiari
-// (lo sceglie il menu a ruota `cre1..cre4` che non abbiamo ancora
-// ricostruito), quindi riuso la soglia di denaro che l'originale controlla
-// per aprire quel menu (`placeholder/Mouse_LeftPressed.gml`, selec 6).
+// durate in tick a 60fps convertite in secondi). [I] = inferito/scelto per
+// restare giocabile dove l'originale randomizzava o non dichiarava un
+// valore esplicito (vedi commenti puntuali sotto).
 
 const TICK = 1 / 60; // le durate degli alarm nell'originale sono in tick a room_speed=60
 
@@ -17,6 +17,7 @@ export const BUILDING_TYPES = {
     label: "Chiesa",
     placeCost: { mon: 5000 },                    // [I] sotto la dote iniziale (5500): la ruota reale apriva a 6000
     baseSprite: "crc", baseLife: 1000,             // [C] chies/Create.gml
+    baseDecor: ["crcl"],                           // [C] chies/Create.gml: action_create_object(cddvd, 0, 0)
     upgrades: [
       {                                            // livello 1 -> 2, upcrc12
         atPop: 500,                                // [C] chies/Step.gml: r12.pop >= 500
@@ -48,18 +49,115 @@ export const BUILDING_TYPES = {
       },
     ],
   },
+
+  // Secondo edificio: la famiglia impa* come dati (STUDIO.md §5.5/§7.3/§9).
+  // A differenza di chies (gia' costruita, in room fin dall'inizio),
+  // industria e' creata dal giocatore anche al livello 1: il codice
+  // originale la fa passare per la stessa macchina a stati impa* usata
+  // per i salti di livello (`impaind0to1r` invece di un semplice sprite
+  // fisso), quindi qui `construct` e' il primo "gradino" della catena.
+  //
+  // Ogni impa* e' in realta' una COPPIA di oggetti paralleli: "r" (le
+  // fondamenta a terra, quello che disegniamo qui) e "f" (un'impalcatura
+  // in sovraimpressione con gru/fumo che crea l'edificio successivo poco
+  // prima che "r" finisca). Non ricostruiamo la traccia "f": costruiamo
+  // solo sulla traccia "r", e completiamo alla fine del suo ultimo passo
+  // invece che ~300 tick prima come nell'originale — la "coda" persa e'
+  // scenografia (gru che si ritirano), non cambia costi ne' tempi totali
+  // in modo percepibile. [I] per questa semplificazione precisa.
+  //
+  // impaind*r ha anche una catena di alarm 1..7/10/11 (im1r..im4r, un
+  // pulsare fuoco) mai armata da Create ne' dalla scala tic: codice morto
+  // nell'originale, non riletto qui.
+  industria: {
+    label: "Industria",
+    placeCost: { mon: 2000 },    // [C] placeholder/Mouse_LeftReleased.gml, selec==2
+    construct: {                  // livello 0 -> 1, impaind0to1r (src/objects/impaind0to1r)
+      drain: { mon: 1, every: 20 },              // [C] impaind0to1r/Alarm_10.gml
+      finalSprite: "i11", life: 50,               // [C] industria1/Create.gml (life=50)
+      decor: ["i11l", "i11ll"],                   // [I] variante 1 delle 4 di industria1/Create.gml (dado non riletto)
+      steps: [                                    // [C] impaind0to1r/Create.gml + Alarm_0/1/2/3
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
+        { spr: "ir12", dur: 30 },
+        { spr: "ir11", dur: 370 },
+        { spr: "ir12", dur: 30 },
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
+      ],
+    },
+    upgrades: [
+      {                          // livello 1 -> 2, upind12 costo + impaind1to2r (troncato a tic 0..10)
+        atPop: 0,                 // [I] nessuna soglia: l'originale sblocca upind12 a industria1.makee>=667
+                                   // (667 cicli di produzione elettrica da 120 tick, ~22 min): la simulazione
+                                   // elettricita'/fumo di industria non e' ancora portata, quindi qui il
+                                   // potenziamento e' disponibile subito (solo il costo lo blocca).
+        cost: { mon: 5000 },      // [C] upind12/Mouse_LeftPressed.gml
+        finalSprite: "i21", life: 100,             // [C] industria2/Create.gml
+        decor: ["i21l", "i21b", "i21c"],           // [I] variante 1 delle 2 di industria2/Create.gml
+        drain: { mon: 3, every: 20 },              // [C] impaind1to2r/Alarm_10.gml
+        steps: [                                    // [C] impaind1to2r/Create.gml + Alarm_0.gml, tic 0..10
+          { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
+          { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
+          { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+          { spr: "ir22", dur: 40, spawn: [                 // tic==3: 4 gru ai corners
+            { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+            { spr: "gru1", dx: -80, dy: -50 }, { spr: "gru1", dx: -80, dy: 50 },
+          ] },
+          { spr: "ir21", dur: 40 },
+          { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 40 },
+          { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
+          { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
+          { spr: "ir42", dur: 40 },
+          { spr: "ir41", dur: 800 },   // tic==10: l'originale continua fino a tic 22 (coda cosmetica, vedi sopra)
+        ],
+      },
+      {                          // livello 2 -> 3, upind23 costo + impaind2to3r (troncato a tic 0..10)
+        atPop: 0,                 // [I] come sopra: nessuna soglia di produzione simulata
+        cost: { mon: 10000 },     // [C] upind23/Mouse_LeftPressed.gml
+        finalSprite: "i31", life: 200,             // [C] industria3/Create.gml
+        decor: ["i31a1", "i31a2", "i31a3", "i31l1l"],  // [C] i31aa1/2/3 sempre creati + [I] variante 1 di di311/di312
+        drain: { mon: 3, every: 20 },              // [C] impaind2to3r/Alarm_10.gml
+        steps: [                                    // [C] impaind2to3r/Create.gml + Alarm_0.gml, tic 0..10
+          { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
+          { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
+          { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+          { spr: "ir22", dur: 40 }, { spr: "ir21", dur: 40 },
+          { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 40 },
+          { spr: "ir32", dur: 40, spawn: [                 // tic==6: 4 macerie/rubble ai corners
+            { spr: "gr21", dx: 80, dy: 50 }, { spr: "gr21", dx: 80, dy: -50 },
+            { spr: "gr21", dx: -80, dy: -50 }, { spr: "gr21", dx: -80, dy: 50 },
+          ] },
+          { spr: "ir31", dur: 40 },
+          { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
+          { spr: "ir42", dur: 40 },
+          { spr: "ir41", dur: 1400 },  // tic==10: come sopra, coda cosmetica non riprodotta
+        ],
+      },
+    ],
+  },
 };
 
 let nextId = 1;
 
-/** Piazza un edificio nuovo, livello 1, sul posto di un placeholder. */
+function pickSpr(spr) {
+  return Array.isArray(spr) ? spr[(Math.random() * spr.length) | 0] : spr;
+}
+
+/**
+ * Piazza un edificio nuovo sul posto di un placeholder. Se il tipo ha
+ * `construct` (industria: impa* anche al primo livello), parte da livello 0
+ * e in cantiere; altrimenti appare gia' finito a livello 1 (chies: gia'
+ * costruita nell'originale, mai vista nascere dal giocatore).
+ */
 export function placeBuilding(type, x, y, depth) {
   const def = BUILDING_TYPES[type];
-  return {
-    id: nextId++, type, x, y, depth,
-    level: 1, life: def.baseLife, spr: def.baseSprite,
-    construction: null,        // { upgradeIndex, stepIndex, t }
-  };
+  const b = { id: nextId++, type, x, y, depth, construction: null };
+  if (def.construct) {
+    b.level = 0; b.life = 0; b.spr = null;
+    b.construction = { upgradeIndex: -1, stepIndex: 0, t: 0 };
+  } else {
+    b.level = 1; b.life = def.baseLife; b.spr = def.baseSprite;
+  }
+  return b;
 }
 
 export function canAfford(r12, cost) {
@@ -69,6 +167,14 @@ export function canAfford(r12, cost) {
 
 function pay(r12, cost) {
   for (const k in cost) r12[k] -= cost[k];
+}
+
+/** I decori del livello attuale di un edificio (cddvd/cddvd2/di*, sostituiti ad ogni salto). */
+export function currentDecor(b) {
+  const def = BUILDING_TYPES[b.type];
+  if (b.level < 1) return [];
+  if (b.level === 1) return def.construct?.decor ?? def.baseDecor ?? [];
+  return def.upgrades[b.level - 2]?.decor ?? [];
 }
 
 /** Il potenziamento che l'edificio potrebbe iniziare ora, se lo tocchi. */
@@ -102,22 +208,41 @@ export function tryStartUpgrade(b, r12) {
   return null;
 }
 
-/** Avanza tutti i cantieri in corso di `dt` secondi. `onDecor` riceve i nomi sprite da spawnare. */
-export function stepConstructions(buildings, dt, onDecor) {
+/**
+ * Avanza tutti i cantieri in corso di `dt` secondi.
+ * `onDecor(b, sprites)` sostituisce il decoro finale dell'edificio (fine
+ * cantiere). `onSpawn(b, [{spr,dx,dy}])` aggiunge decoro transitorio
+ * (gru/macerie) che sparisce quando `onDecor` rimpiazza tutto a fine
+ * cantiere.
+ */
+export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
   for (const b of buildings) {
     const c = b.construction;
     if (!c) continue;
-    const up = BUILDING_TYPES[b.type].upgrades[c.upgradeIndex];
+    const def = BUILDING_TYPES[b.type];
+    const up = c.upgradeIndex === -1 ? def.construct : def.upgrades[c.upgradeIndex];
+    let cur = up.steps[c.stepIndex];
+    if (c.curSpr === undefined) {
+      c.curSpr = pickSpr(cur.spr);
+      if (cur.spawn) onSpawn?.(b, cur.spawn);
+    }
+    if (up.drain) {
+      c.drainT = (c.drainT ?? 0) + dt;
+      const period = up.drain.every * TICK;
+      while (c.drainT >= period) { c.drainT -= period; r12.mon -= up.drain.mon; }
+    }
     c.t += dt;
-    const cur = up.steps[c.stepIndex];
-    if (c.t < cur.dur * TICK) { b.spr = cur.spr; continue; }
+    b.spr = c.curSpr;
+    if (c.t < cur.dur * TICK) continue;
     c.t = 0;
     c.stepIndex++;
     if (c.stepIndex < up.steps.length) {
-      b.spr = up.steps[c.stepIndex].spr;
+      cur = up.steps[c.stepIndex];
+      c.curSpr = pickSpr(cur.spr);
+      if (cur.spawn) onSpawn?.(b, cur.spawn);
     } else {
-      b.level++;
-      b.life += up.lifeBonus;
+      if (c.upgradeIndex === -1) b.level = 1; else b.level++;
+      b.life = up.life ?? (b.life + (up.lifeBonus ?? 0));
       b.spr = up.finalSprite;
       b.construction = null;
       onDecor?.(b, up.decor);

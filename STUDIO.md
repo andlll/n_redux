@@ -315,9 +315,59 @@ paragrafo 8.
   STUDIO.md §5.5, alarm fino a 12KB) invece che ad un `tic` semplice come
   `upcrc12/23` — un secondo edificio giocabile richiede prima quella
   famiglia, non è un copia-incolla di `chies`.
+- **La famiglia `impa*` come dati, e secondo edificio giocabile: `industria`.**
+  `game/src/buildings.js` generalizza `stepConstructions()` oltre al caso
+  `chies`: gli `steps` di un cantiere possono avere uno sprite fisso o un
+  array (scelta casuale uniforme, come i `action_if_dice(2)` binari letti
+  nel codice — sempre 50/50, quindi un array pesa tutte le opzioni
+  uguale), un drenaggio periodico di risorse (`drain: {mon, every}`,
+  letto da `impaind*r/Alarm_10.gml`), e figli scenografici transitori
+  (`spawn`, le gru/macerie). `industria` è il primo edificio a passare
+  per questa macchina anche al piazzamento (`construct`, livello 0→1):
+  a differenza di `chies` — già costruita in room, mai vista nascere dal
+  giocatore — `industria` nell'originale passa per `impaind0to1r` fin
+  dal primo livello, esattamente come i salti di livello successivi
+  (`impaind1to2r`, `impaind2to3r`). Placeholder ora ha un selettore a due
+  bottoni in spazio schermo (`Chiesa`/`Industria` in alto a sinistra) al
+  posto della ruota `cre1..cre4` non ricostruita.
+  Letti direttamente dal decompilato: `placeCost` 2000 mon **[C]**
+  (`placeholder/Mouse_LeftReleased.gml`, `selec==2` — trovato per caso
+  cercando dove viene creato `impaind0to1r`: la stessa funzione rivela
+  anche i costi reali di *tutti* gli altri edifici piazzabili, non
+  riletti qui), costi di potenziamento 5000/10000 mon **[C]**
+  (`upind12`/`upind23`), `life` 50/100/200 **[C]** (`industria1/2/3`,
+  valori assoluti per livello, non un bonus incrementale come in
+  `chies`).
+  Due semplificazioni scelte consapevolmente, non lette dal codice:
+  1. Ogni `impa*` è in realtà una **coppia** di oggetti paralleli — "r"
+     (le fondamenta a terra, quello ricostruito) e "f" (un'impalcatura
+     in sovraimpressione con gru/fumo che crea l'edificio successivo
+     *prima* che "r" finisca la sua sequenza). La traccia "f" non è
+     ricostruita: si completa alla fine della sequenza "r" invece che
+     ~300 tick prima. La "coda" persa è scenografia (gru che si
+     ritirano), non cambia costi né tempi in modo percepibile. **[I]**
+  2. Le catene tic da 22 passi di `impaind1to2r`/`impaind2to3r` sono
+     troncate a tic 0..10 (dove la "f" spedirebbe l'edificio nuovo):
+     stesso motivo, i tic 11..22 sono un replay a specchio degli stessi
+     sprite (coda cosmetica). **[I]**
+  Anche la soglia di sblocco del potenziamento è semplificata:
+  l'originale arma `upind12`/`upind23` solo dopo che `industria1/2`
+  hanno completato 667 cicli di produzione elettrica (120 tick l'uno,
+  ~22 minuti) — non riprodotto perché la simulazione elettricità/fumo/
+  fulmini di `industria` (vista leggendo `industria1/Step.gml` e
+  `Alarm_0..9.gml`: produce `ele` consumando `oil`, emette fumo,
+  rischia danni da fulmine nelle tempeste, ha un tool di demolizione
+  separato da quello di potenziamento) è tutta un sistema a parte, non
+  ancora portato. Qui il potenziamento è disponibile subito, gated solo
+  dal costo. **[I]**
+  Sprite aggiunti a `GAMEPLAY_SPRITES` in `tools/23_atlas.py`
+  (`ir11..46`, `i11/i21/i31` e relativi decori — `gru1`/`gr21` c'erano
+  già per `chies`).
 - **Cosa manca prima del punto 5** (portare le famiglie di comportamenti a
-  gruppi): la famiglia `impa*` come dati (STUDIO.md §7.3), da cui dipende
-  ogni secondo edificio reale; generalizzare `buildings.js` oltre `chies`
-  una volta fatto; le minacce (bombe, spie) che oggi non esistono affatto
-  nella nuova versione; le icone vere della barra risorse (oggi
-  quadratini colorati, il testo sì è reale).
+  gruppi): la traccia "f" degli `impa*` (scenografia, vedi sopra); la
+  simulazione propria di `industria` (elettricità, fumo, fulmini,
+  demolizione — un sistema diverso dagli `impa*`, che sono solo
+  transizioni di livello); le altre ~85 famiglie `impa*` (armi, minacce,
+  altri edifici) non ancora lette; le minacce (bombe, spie) che oggi non
+  esistono affatto nella nuova versione; le icone vere della barra
+  risorse (oggi quadratini colorati, il testo sì è reale).
