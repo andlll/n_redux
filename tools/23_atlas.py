@@ -86,11 +86,12 @@ GAMEPLAY_SPRITES = {
         "p1", "p1ss",          # bottone casa (pu1, selec==1) — piazzabile
         "p2", "p2ss",          # bottone industria (pu2, selec==2) — piazzabile
         # Gli altri bottoni edificio del menu originale (src/objects/pu3|
-        # pu4prov|pu5prov|pu6|pudj|pusolare|pugatling|puvillone|pumediat):
-        # STUDIO.md "cosa manca" li elenca come famiglie impa* non ancora
-        # lette. Mostrati come segnaposto statici nel menu (STUDIO.md §9) —
-        # tap mostra "non ancora ricostruito", non piazzano niente.
-        "p3", "p3ss", "p4", "p4ss", "p5", "p5ss", "p6", "p6ss",
+        # pu4prov|pu5prov|pu6|pu7|pudj|pusolare|pugatling|puvillone|
+        # pumediat): STUDIO.md "cosa manca" li elenca come famiglie impa*
+        # non ancora lette. Mostrati come segnaposto statici nel menu
+        # (STUDIO.md §9) — tap mostra "non ancora ricostruito", non
+        # piazzano niente.
+        "p3", "p3ss", "p4", "p4ss", "p5", "p5ss", "p6", "p6ss", "p7", "p7ss",
         "pdj", "pdjss", "psolare", "psolaress", "pgatling", "pgatlingss",
         "pvilla", "pvillass", "pmuseo", "pmuseoss",
         "ru", "russ",           # puruspa (bulldozer/ripara, selec==11, mai ricostruito)

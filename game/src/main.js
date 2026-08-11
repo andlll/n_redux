@@ -312,18 +312,38 @@ let uiButtons = [];   // { x, y, w, h, type }, ricalcolati ad ogni frame dal dis
 // di modalita' piazzamento nell'originale (1 = casa, 2 = industria, ...).
 const SELEC_BY_TYPE = { casa: 1, industria: 2 };
 
-// Gli altri edifici piazzabili del menu originale (STUDIO.md §9 "cosa
-// manca"): letti da src/objects/pu3|pu4prov|pu5prov|pu6|pudj|pusolare|
-// pugatling|puvillone|pumediat (sprite normale/selezionato, e il `selec`
-// con cui ciascuno riconosce di essere quello scelto) incrociati con
-// src/objects/placeholder/Mouse_LeftReleased.gml per i costi reali, dove
-// quel file li dichiara esplicitamente (`cost: null` altrove — non un
-// valore a caso, proprio "non letto"). Nessuno e' in BUILDING_TYPES
-// (buildings.js): sono famiglie impa* non ancora lette (STUDIO.md), quindi
-// qui sono un segnaposto statico nel menu — selezionabili e evidenziati
-// come casa/industria, ma toccare un placeholder con uno di questi scelto
-// mostra un messaggio invece di costruire (vedi sotto).
+// Il pannello originale non e' un'unica barra: e' tre righe ALTERNATE,
+// mai tutte visibili insieme. [C] `pu1.menoo` (0/1/2) decide quale, letto
+// riga per riga da ogni bottone figlio nel proprio Step.gml (`with (pu1) {
+// if (menoo==N) break }` poi `action_move_to(...)` sulla posizione vera, o
+// fuori schermo altrimenti):
+//   - menoo 0 "casa": handbutton, buildbutton (la gru: apre menoo 1),
+//     eyebutton (l'occhio: apre menoo 2) — quello che si vede all'avvio.
+//   - menoo 1 "edifici": pu1..pu7 e affini (i piazzabili) + backobutton in
+//     fondo per tornare a menoo 0. E' la riga che si apre toccando la gru.
+//   - menoo 2 "vista": eyebutton1/2/3, zoom_plus/zoom_minus + backobutton.
+//     Si apre toccando l'occhio.
+// Una versione precedente mostrava tutti i bottoni sempre, su due righe
+// fisse — comodo ma non e' cosi' che il menu era organizzato davvero
+// (segnalato dall'autore). Qui replichiamo la stessa struttura a tre righe.
+let menoo = 0;
+
+// I piazzabili del menu (menoo 1) che non sono in BUILDING_TYPES
+// (buildings.js): letti da src/objects/pu3|pu4prov|pu5prov|pu6|pu7|pudj|
+// pusolare|pugatling|puvillone|pumediat (sprite normale/selezionato, e il
+// `selec` con cui ciascuno riconosce di essere quello scelto) incrociati
+// con src/objects/placeholder/Mouse_LeftReleased.gml per i costi reali,
+// dove quel file li dichiara esplicitamente (`cost: null` altrove — non un
+// valore a caso, proprio "non letto"). Sono famiglie impa* non ancora
+// lette (STUDIO.md "cosa manca"), quindi qui sono un segnaposto statico —
+// selezionabili ed evidenziati come casa/industria, ma toccare un
+// placeholder con uno di questi scelto mostra un messaggio invece di
+// costruire (vedi sotto). L'originale li affianca in ordine diverso
+// (STUDIO.md §9: pu7 e' unlocked a parte, pu4prov/pu5prov condividono uno
+// slot con altri quattro bottoni mutuamente esclusivi non tracciati qui):
+// l'ordine qui e' solo "tutti visibili, uno per slot", non quello esatto.
 const OTHER_BUILDINGS = [
+  { type: "parco", selec: 7, spr: "p7", sprSel: "p7ss", label: "Parco", cost: 500 },
   { type: "missile", selec: 3, spr: "p3", sprSel: "p3ss", label: "Lanciamissili", cost: 5000 },
   { type: "eolico", selec: 4, spr: "p4", sprSel: "p4ss", label: "Pala eolica", cost: null },
   { type: "laser", selec: 5, spr: "p5", sprSel: "p5ss", label: "Laser", cost: 20000 },
@@ -341,34 +361,17 @@ const OTHER_BUILDINGS = [
 for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
 const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
 
-// I bottoni "di cornice" del pannello originale (src/objects/handbutton|
-// buildbutton|eyebutton|eyebutton1|2|3|backobutton): nell'originale
-// aprivano/chiudevano tre righe alternate del menu (`pu1.menoo`, STUDIO.md
-// §9 — mai ricostruito). Qui il menu edifici e' sempre tutto visibile in
-// un'unica riga, quindi non c'e' niente da aprire/chiudere: una seconda
-// riga statica sopra alla prima. Le uniche due che fanno davvero qualcosa
-// sono zoom+/zoom-, lo stesso `cam.setZoom` gia' agganciato a rotella/pinch.
-const UTILITY_BUTTONS = [
-  { spr: "handee", label: "Seleziona" },
-  { spr: "groo", label: "Menu edifici" },
-  { spr: "eyeee", label: "Vista" },
-  { spr: "eyee1", label: "Vista 1" },
-  { spr: "eyee2", label: "Vista 2" },
-  { spr: "eyee3", label: "Vista 3" },
-  { spr: "baccc", label: "Indietro" },
-  { spr: "zoomplus", label: "Zoom +", zoom: 0.8 },
-  { spr: "zoomminus", label: "Zoom -", zoom: 1.25 },
-];
-
 input.onTap = (sx, sy) => {
   // il selettore edificio vive in spazio schermo, sopra la mappa: un tocco
   // che lo colpisce non deve raggiungere il mondo sotto.
   for (const btn of uiButtons) {
     if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) {
-      if (btn.kind === "zoom") {
+      if (btn.kind === "menu") menoo = btn.menoo;                      // gru/occhio/indietro
+      else if (btn.kind === "deselect") { selectedType = null; r12.selec = 0; }  // handbutton
+      else if (btn.kind === "zoom") {                                  // zoom+/zoom-
         userMoved = true;
         cam.setZoom(cam.targetZoom * btn.zoom, canvas.clientWidth / 2, canvas.clientHeight / 2);
-      } else if (btn.kind === "building") {
+      } else if (btn.kind === "building") {                            // casa/industria/...
         selectedType = btn.type;
         r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
       } else {
@@ -412,8 +415,12 @@ input.onTap = (sx, sy) => {
   if (!picked) return;
   message = ""; messageT = 0;
   if (picked.obj === "placeholder" && !picked.consumed) {
-    const def = BUILDING_TYPES[selectedType];
-    if (!def) {
+    const def = selectedType ? BUILDING_TYPES[selectedType] : null;
+    if (!selectedType) {
+      // [C] handbutton/Mouse_LeftPressed.gml: `r12.selec = 0`, nessun
+      // edificio armato — la modalita' di default prima di aprire il menu.
+      message = "nessun edificio selezionato — apri il menu con la gru";
+    } else if (!def) {
       // Uno degli `OTHER_BUILDINGS` sopra: nel menu, ma non in
       // BUILDING_TYPES — nessuna catena di piazzamento ricostruita.
       message = `${BUILDING_LABEL[selectedType] ?? selectedType}: non ancora ricostruito`;
@@ -599,47 +606,53 @@ function frame(now) {
   for (const [value, x] of stats) drawText(r, fontMini, String(value), x, 30, 1, 0x000000, 1);
 
   // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
-  // ancora ricostruita (STUDIO.md §6/§9). `pu1`/`pu2`/... sono i bottoni
-  // veri (src/objects/pu1|pu2|.../Step.gml): ciascuno ha due sprite,
-  // normale e "selezionato" (`pX`/`pXss`, scambiati in base a `r12.selec` —
-  // non e' un tint, sono disegni diversi). Nell'originale erano ancorati a
-  // x fissi (`action_move_to`/`N*global.sca`); qui invece si accodano da
-  // sinistra usando la larghezza vera di ciascuno sprite (`GAP` px fra
-  // l'uno e l'altro), perche' il menu ora ha piu' voci di quante ne avesse
-  // l'originale in un'unica riga (le altre erano su righe alternate mai
-  // ricostruite, vedi sotto). `chies` non ha un bottone: non e' un tipo
-  // piazzabile (vedi sopra).
+  // ancora ricostruita (STUDIO.md §6/§9), e replica la struttura a tre
+  // righe alternate del pannello originale (`menoo`, vedi sopra) invece di
+  // mostrarle tutte insieme. `pu1`/`pu2`/... hanno due sprite, normale e
+  // "selezionato" (`pX`/`pXss`, scambiati in base a `r12.selec` — non e'
+  // un tint, sono disegni diversi). Nell'originale erano ancorati a x fissi
+  // (`action_move_to`/`N*global.sca`); qui si accodano da sinistra usando
+  // la larghezza vera di ciascuno sprite (`GAP` px fra l'uno e l'altro).
+  // `chies` non ha un bottone: non e' un tipo piazzabile (vedi sopra).
   uiButtons = [];
   const baseY = canvas.clientHeight;
   const GAP = 4;
-  let bx = 0, buildRowH = 0;
-  const buildingRow = [
-    { type: "casa", spr: "p1", sprSel: "p1ss" },
-    { type: "industria", spr: "p2", sprSel: "p2ss" },
-    ...OTHER_BUILDINGS,
-  ];
-  for (const b of buildingRow) {
-    const f = frameFor(selectedType === b.type ? b.sprSel : b.spr);
+  let rx = 0;
+  const row = menoo === 1
+    // menoo 1 "edifici" ([C] pu1/Create.gml li crea tutti insieme): i due
+    // veri (casa/industria) + il resto del menu, segnaposto (vedi sopra).
+    ? [
+        { kind: "building", type: "casa", spr: "p1", sprSel: "p1ss" },
+        { kind: "building", type: "industria", spr: "p2", sprSel: "p2ss" },
+        ...OTHER_BUILDINGS.map((b) => ({ kind: "building", type: b.type, spr: b.spr, sprSel: b.sprSel })),
+        { kind: "menu", menoo: 0, spr: "baccc", label: "Indietro" },
+      ]
+    : menoo === 2
+    // menoo 2 "vista" ([C] eyebutton1/2/3 + zoom_plus/zoom_minus): le tre
+    // non ricostruite restano segnaposto, zoom+/- richiamano cam.setZoom.
+    ? [
+        { kind: "info", spr: "eyee1", label: "Vista 1" },
+        { kind: "info", spr: "eyee2", label: "Vista 2" },
+        { kind: "info", spr: "eyee3", label: "Vista 3" },
+        { kind: "zoom", spr: "zoomplus", label: "Zoom +", zoom: 0.8 },
+        { kind: "zoom", spr: "zoomminus", label: "Zoom -", zoom: 1.25 },
+        { kind: "menu", menoo: 0, spr: "baccc", label: "Indietro" },
+      ]
+    // menoo 0 "casa" ([C] handbutton/buildbutton/eyebutton): la riga di
+    // partenza. handbutton deseleziona (r12.selec=0); gru e occhio aprono
+    // le altre due righe.
+    : [
+        { kind: "deselect", spr: "handee", label: "Deseleziona" },
+        { kind: "menu", menoo: 1, spr: "groo", label: "Menu edifici" },
+        { kind: "menu", menoo: 2, spr: "eyeee", label: "Menu vista" },
+      ];
+  for (const b of row) {
+    const spr = b.kind === "building" && selectedType === b.type ? b.sprSel : b.spr;
+    const f = frameFor(spr);
     if (!f) continue;
-    r.draw(f, bx, baseY, 1, 0xffffff, 1);
-    uiButtons.push({ x: bx, y: baseY - f.h, w: f.w, h: f.h, kind: "building", type: b.type });
-    buildRowH = Math.max(buildRowH, f.h);
-    bx += f.w + GAP;
-  }
-
-  // Seconda riga, sopra alla prima: i bottoni "di cornice" del pannello
-  // originale (handbutton/buildbutton/eyebutton*/backobutton/zoom+-, vedi
-  // sopra su UTILITY_BUTTONS) — nell'originale aprivano/chiudevano righe
-  // alternate del menu edifici, qui sono un'unica riga statica sempre
-  // visibile perche' il menu sotto e' gia' tutto mostrato in una volta.
-  let ux = 0;
-  const utilY = baseY - buildRowH;
-  for (const u of UTILITY_BUTTONS) {
-    const f = frameFor(u.spr);
-    if (!f) continue;
-    r.draw(f, ux, utilY, 1, 0xffffff, 1);
-    uiButtons.push({ x: ux, y: utilY - f.h, w: f.w, h: f.h, kind: u.zoom ? "zoom" : "info", zoom: u.zoom, label: u.label });
-    ux += f.w + GAP;
+    r.draw(f, rx, baseY, 1, 0xffffff, 1);
+    uiButtons.push({ x: rx, y: baseY - f.h, w: f.w, h: f.h, ...b });
+    rx += f.w + GAP;
   }
   r.flush();
 
@@ -666,8 +679,9 @@ function frame(now) {
       status += (b.ava ?? 0) >= g.maxAva ? `  crescita completa` : `  crescita ${b.ava ?? 0}/${g.maxAva}`;
     }
   } else if (picked?.obj === "placeholder") {
-    const def = BUILDING_TYPES[selectedType];
+    const def = selectedType ? BUILDING_TYPES[selectedType] : null;
     status = picked.consumed ? "occupato"
+      : !selectedType ? "vuoto — nessun edificio selezionato"
       : def ? `vuoto — tocca per costruire ${def.label.toLowerCase()} (${def.placeCost.mon} mon)`
       : `vuoto — ${BUILDING_LABEL[selectedType] ?? selectedType} non ancora ricostruito`;
   } else if (picked) {

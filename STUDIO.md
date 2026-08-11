@@ -723,24 +723,44 @@ paragrafo 8.
      `chies`: restava un secondo bottone "casa" fantasma, disegnato come
      sprite di mondo proprio sopra a quello vero in spazio schermo. Tolta
      allo stesso modo di `chies`.
-     Colta l'occasione per rappresentare anche il resto del menu originale
-     (**[C]** `src/objects/pu1/Create.gml` elenca tutti i bottoni figli che
-     genera) come segnaposto statici: gli altri edifici piazzabili — `pu3`
-     (lanciamissili), `pu6` (grattacielo), `pu4prov` (pala eolica),
-     `pu5prov` (laser), `pudj` (club), `pusolare` (pannelli solari),
-     `pugatling` (mitragliatrice), `puvillone` (villa), `pumediat` (museo),
-     `puruspa` (ruspa, STUDIO.md "mai ricostruita") — nessuno in
-     `BUILDING_TYPES`: selezionabili come casa/industria (evidenziati con lo
-     sprite "ss"), ma toccare un placeholder mostra "non ancora
-     ricostruito" invece di costruire (costi reali dove
-     `placeholder/Mouse_LeftReleased.gml` li dichiara esplicitamente,
-     altrimenti omessi, non inventati). E i bottoni "di cornice"
-     (`handbutton`, `buildbutton`, `eyebutton`/`1`/`2`/`3`, `backobutton`,
-     `zoom_plus`/`zoom_minus`) in una seconda riga sopra: nell'originale
-     aprivano/chiudevano tre righe alternate del menu (`pu1.menoo`, mai
-     ricostruito — qui il menu e' gia' tutto visibile in una riga sola,
-     quindi non c'e' niente da aprire/chiudere), inerti tranne zoom+/zoom-,
-     che richiamano lo stesso `cam.setZoom` gia' agganciato a rotella/pinch.
+     Colta l'occasione per rappresentare anche il resto del menu originale.
+     Un primo tentativo li mise tutti su due righe fisse, sempre visibili —
+     comodo ma non e' cosi' che il pannello era organizzato davvero
+     (l'autore ha chiesto di ricontrollare): **[C]** rileggendo
+     `src/objects/pu1/Create.gml` insieme al `Mouse_LeftPressed.gml` di
+     `buildbutton`/`eyebutton`/`backobutton`, il pannello e' tre righe
+     **alternate**, mai tutte visibili insieme, pilotate da `pu1.menoo`
+     (0/1/2 — ogni bottone figlio nel proprio `Step.gml` fa `with (pu1) {
+     if (menoo==N) break }` poi si posiziona o va fuori schermo):
+     - **menoo 0** (avvio): `handbutton` (mano — **[C]**
+       `Mouse_LeftPressed.gml`: `r12.selec = 0`, deseleziona), `buildbutton`
+       (la gru — apre menoo 1), `eyebutton` (l'occhio — apre menoo 2).
+     - **menoo 1**, aperta dalla gru: casa/industria (veri) + il resto dei
+       piazzabili — `pu7` (parco, **[C]** `selec==7`, sbloccato a parte nel
+       decompilato: qui sempre visibile), `pu3` (lanciamissili), `pu6`
+       (grattacielo), `pu4prov` (pala eolica), `pu5prov` (laser), `pudj`
+       (club), `pusolare` (pannelli solari), `pugatling` (mitragliatrice),
+       `puvillone` (villa), `pumediat` (museo), `puruspa` (ruspa, STUDIO.md
+       "mai ricostruita") — nessuno in `BUILDING_TYPES`: selezionabili come
+       casa/industria (evidenziati con lo sprite "ss"), ma toccare un
+       placeholder mostra "non ancora ricostruito" invece di costruire
+       (costi reali dove `placeholder/Mouse_LeftReleased.gml` li dichiara
+       esplicitamente, altrimenti omessi, non inventati) — piu'
+       `backobutton` in fondo (torna a menoo 0).
+     - **menoo 2**, aperta dall'occhio: `eyebutton1/2/3` (segnaposto, mai
+       ricostruiti — probabilmente filtri di visualizzazione) e
+       `zoom_plus`/`zoom_minus`, le uniche due che fanno davvero qualcosa:
+       richiamano lo stesso `cam.setZoom` gia' agganciato a rotella/pinch —
+       piu' `backobutton`.
+     `menoo` e' locale a `main.js`, non un campo di `pu1` (che non esiste
+     piu' come istanza, vedi sopra). L'ordine dei piazzabili nella riga 1 e'
+     "tutti visibili, uno slot ciascuno": l'originale ne affianca alcuni in
+     ordine diverso e ne nasconde altri a vicenda sullo stesso slot in base
+     al progresso di gioco (`pu4prov`/`pu5prov`/`pudj`/`pusolare`/
+     `pugatling`/`puvillone`/`pumediat` condividono `x=591` nel
+     decompilato) — non tracciato qui, quindi mostrati tutti fianco a
+     fianco invece che a rotazione.
      **Limite noto**: la riga bottoni non va a capo su schermi stretti (puo'
-     uscire dal bordo destro su mobile) — non ricostruito, fuori dallo scopo
-     di questo giro di correzioni.
+     uscire dal bordo destro su mobile, specialmente la riga 1 che ora ha
+     14 voci) — non ricostruito, fuori dallo scopo di questo giro di
+     correzioni.
