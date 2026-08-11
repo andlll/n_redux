@@ -148,6 +148,13 @@ GAMEPLAY_SPRITES = {
     # fermo gia' impacchettato (crcl/crc2l/... — vedi "buildings" sopra):
     # game/src/main.js anima la transizione cosi', niente sprite "x" da
     # aggiungere qui.
+    # Semafori (src/objects/object8|object37, STUDIO.md — "se" = semaforo,
+    # mai rinominato dall'autore originale, da cui il nome generico
+    # "object8"/"object37" nel decompilato). Il palo ("se") e' gia'
+    # nell'atlas: e' lo sprite con cui le 48 istanze compaiono in
+    # match_easy.scene.json. Questi sono solo i tre tappi colorati che il
+    # figlio (`object37`) sceglie a dado ad ogni lampeggio.
+    "semaphores": ["se2", "se3", "se4"],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})

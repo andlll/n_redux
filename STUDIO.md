@@ -864,3 +864,25 @@ paragrafo 8.
   non deve saltare la tinta giorno/notte). Verificato piazzando un parco e
   saltando a notte: i lampioni si accendono con la stessa dissolvenza
   delle finestre.
+
+- **Semafori** (segnalati dall'autore come "quei pali che esistono gia'
+  nella room, ce ne sono 44 o giu' di li" — 48 per l'esattezza): non
+  saltavano fuori da nessuna ricerca per nome ("semaforo", "traffic
+  light", ...) perche' **[C]** l'autore originale non li ha mai
+  rinominati — restano `object8` (il palo, sprite `"se"`, gia' 48 istanze
+  in `match_easy.scene.json`) e `object37` (il figlio che lampeggia,
+  creato da `object8/Create.gml`). Non e' un vero ciclo rosso-giallo-verde
+  sequenziale: **[C]** `object37/Alarm_3.gml` sceglie a dado un tappo
+  colorato — giallo `"se2"`/rosso `"se4"` 25% ciascuno, verde `"se3"` 50%
+  — lo tiene acceso per 74/80/109 tick (**[C]** `Alarm_4.gml`, altro dado),
+  poi 13 tick di buio (`"empty"`, **[C]** `Alarm_0.gml`) prima del
+  prossimo colore, all'infinito; il primo intervallo (prima di accendersi
+  la prima volta) e' piu' lungo, 30 o 308 tick a dado (**[C]**
+  `object37/Create.gml`). Sempre acceso, giorno e notte — a differenza
+  delle luci di finestre/lampioni non dipende da `aura.night` ne'
+  dall'elettricita', e infatti non ha alcuna dissolvenza: e' un cambio di
+  sprite di scatto, non un fade. Nuovo `game/src/semaphores.js`
+  (`createSemaphore()`/`stepSemaphores()`, stesso approccio dati di
+  `cars.js`): un'istanza per ognuno dei 48 pali gia' in `staticWorld` (il
+  palo stesso non si tocca, resta com'era), depth `-y - 1` come le altre
+  luci con `_selfLit` per saltare la tinta giorno/notte allo stesso modo.

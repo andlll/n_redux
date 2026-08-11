@@ -4,6 +4,7 @@ import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, tryStartUpgrade, stepConstructions, stepProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked } from "./buildings.js";
 import { spawnCar, stepCars } from "./cars.js";
+import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -188,6 +189,17 @@ for (const name of ["honda_facile_1", "honda_facile_2"]) {
   const idx = staticWorld.findIndex((it) => it.obj === name);
   if (idx >= 0) staticWorld.splice(idx, 1);
 }
+
+// Semafori (game/src/semaphores.js, STUDIO.md): `object8` ("se", il palo —
+// mai rinominato dall'autore originale) resta in staticWorld com'e', un
+// oggetto di mondo fermo come un albero; il tappo colorato che lampeggia
+// (`object37` nel decompilato) e' un figlio creato al suo Create, quindi
+// qui ne creiamo uno per ogni palo gia' in scena — le 48 istanze di
+// match_easy — invece di uno per staticWorld com'era per i cambi di sprite
+// degli alberi, perche' questo ha bisogno di continuare ad avanzare ad ogni
+// frame (stepSemaphores() piu' sotto), non solo di uno sprite scelto una
+// volta.
+const semaphores = staticWorld.filter((it) => it.obj === "object8").map((it) => createSemaphore(it.x, it.y));
 
 /** @type {ReturnType<typeof placeBuilding>[]} */
 let buildings = [];
@@ -566,10 +578,10 @@ input.onTap = (sx, sy) => {
   }
   if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
     const it = frameList[i];
-    // il decoro (cddvd*), l'impalcatura di cantiere e le auto (honda_facile_1/2)
-    // sono puramente visivi: nell'originale non avevano eventi Mouse propri,
-    // quindi qui non devono "rubare" il tocco.
-    if (!it._f || it.obj === "decor" || it.obj === "scaffold" || it.obj === "car") continue;
+    // il decoro (cddvd*), l'impalcatura di cantiere, le auto (honda_facile_1/2)
+    // e i tappi dei semafori sono puramente visivi: nell'originale non
+    // avevano eventi Mouse propri, quindi qui non devono "rubare" il tocco.
+    if (!it._f || it.obj === "decor" || it.obj === "scaffold" || it.obj === "car" || it.obj === "semaphore") continue;
     const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
     if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
       picked = it;
@@ -661,6 +673,7 @@ function frame(now) {
   tickR12(r12, dt, buildings);
   stepCars(cars, dt, r12, night);
   stepLights(decorEntities, dt, night, r12);
+  stepSemaphores(semaphores, dt);
   if (messageT > 0) messageT -= dt;
 
   // --- lista di disegno di questo frame: mondo statico (placeholder consumati
@@ -681,6 +694,17 @@ function frame(now) {
   // sprite cambia in corsa (accelerazioni/svolte).
   for (const c of cars) {
     dynamic.push({ obj: "car", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr), _tint: c.tint });
+  }
+  // Semafori (game/src/semaphores.js): il palo ("se") e' gia' in
+  // staticWorld, qui va solo il tappo colorato quando e' acceso — `spr`
+  // resta `null` durante i vuoti fra un colore e l'altro, niente da
+  // disegnare in quei frame (a differenza delle luci fisse non c'e'
+  // nessuna dissolvenza da animare, l'originale passa a "empty" di
+  // scatto). `_selfLit` come le altre luci: un semaforo e' acceso anche
+  // di giorno, non deve scurirsi con la tinta ambientale.
+  for (const s of semaphores) {
+    if (!s.spr) continue;
+    dynamic.push({ obj: "semaphore", x: s.x, y: s.y, depth: s.depth, _f: frameFor(s.spr), _selfLit: true });
   }
   // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
   // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
@@ -904,7 +928,7 @@ requestAnimationFrame(frame);
 // aggancio di debug, comodo per ispezionare senza aspettare il ciclo
 window.__nimbus = {
   cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
-  get uiButtons() { return uiButtons; }, get cars() { return cars; }, isMobile,
+  get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,
