@@ -10,6 +10,8 @@
 // (§6 "Cosa non so ancora": le regole vere dell'economia non sono note) e'
 // marcato [I]: plausibile, da rivedere quando studieremo gli edifici reali.
 
+import { BUILDING_TYPES } from "./buildings.js";
+
 export function createR12() {
   return {
     oil: 5000,        // [C] r12/Create.gml, ramo match_easy
@@ -38,13 +40,18 @@ export function oilCap(buildings) {
 }
 
 /**
- * [I] Simulazione economica placeholder: le regole vere non sono ancora
- * state lette (STUDIO.md §6). Qui c'e' un ciclo plausibile e reversibile
- * solo per rendere il gioco giocabile mentre si studia il resto:
- * ogni edificio consuma olio e genera popolazione/denaro nel tempo.
+ * [I] Simulazione economica placeholder per i tipi di cui NON conosciamo
+ * ancora la regola vera (STUDIO.md §6): un ciclo plausibile e reversibile
+ * solo per rendere il gioco giocabile mentre si studia il resto, applicato
+ * solo agli edifici il cui tipo non dichiari `production` in buildings.js.
+ * `industria` ne e' escluso da quando ha la sua produzione reale
+ * (industria1|2|3/Alarm_2.gml, vedi stepProduction in buildings.js): qui
+ * contava come un edificio qualsiasi nella formula generica, il che
+ * avrebbe duplicato consumo/produzione gia' simulati per davvero altrove.
  */
 export function tickR12(r12, dt, buildings) {
-  const n = buildings.length;
+  const guessed = buildings.filter((b) => !BUILDING_TYPES[b.type].production);
+  const n = guessed.length;
   if (n > 0) {
     r12.oil -= 0.3 * n * dt;                    // consumo: piu' edifici, piu' olio bruciato
     r12.pop += (1.5 + 0.4 * n) * dt;             // crescita: base + un contributo per edificio

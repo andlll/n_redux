@@ -363,11 +363,48 @@ paragrafo 8.
   Sprite aggiunti a `GAMEPLAY_SPRITES` in `tools/23_atlas.py`
   (`ir11..46`, `i11/i21/i31` e relativi decori — `gru1`/`gr21` c'erano
   già per `chies`).
+- **`industria` produce elettricità per davvero.** Letto `industria1/2/3
+  /Alarm_2.gml`: ogni edificio finito (non in cantiere) riarma un alarm
+  ogni 120 tick che, se `r12.oil > 0`, consuma olio e genera energia a un
+  tasso fisso per livello — **[C]** 7 olio → 50 energia (liv. 1), 20 → 120
+  (liv. 2), 35 → 300 (liv. 3, livello massimo). `game/src/buildings.js`
+  aggiunge `production` per tipo/livello e `stepProduction()`, chiamata
+  da `main.js` accanto a `stepConstructions()`. L'alarm si riarma anche
+  a olio esaurito (il ciclo "salta" senza produrre), riprodotto con un
+  timer che accumula comunque.
+  Questo ha sostituito una soglia di potenziamento che prima era
+  **[I]** finta (`atPop: 0`, sempre sbloccato): `industria1/2/Step.gml`
+  dichiarano per davvero che `upind12`/`upind23` si sbloccano solo dopo
+  che l'edificio ha completato **[C]** 667 / 1000 cicli di produzione
+  (`makee`, un campo per edificio, letto da `industria1/2/Create.gml`:
+  parte da 0 e — punto che il codice originale ottiene gratis avendo un
+  oggetto diverso per livello, e che qui va fatto a mano — **[C]** si
+  azzera ad ogni salto di livello, non accumula fra livelli). La soglia
+  di sblocco ora è o `atPop` (chies) o `atMakee` (industria):
+  `upgradeProgress()` in `buildings.js` distingue le due letture.
+  Conseguenza sul lato economia: `state.js` prima applicava a *tutti* gli
+  edifici, industria inclusa, la formula placeholder generica di consumo
+  olio/crescita popolazione (**[I]**, STUDIO.md §6). Ora `tickR12()`
+  esclude dalla formula generica i tipi che dichiarano `production`, per
+  non contare due volte lo stesso olio.
+  **Non portato** (resta un gap esplicito, non finto): il fumo
+  decorativo (`smoke_ind*`, puramente visivo), il danno da fulmine in
+  tempesta (`Alarm_5`/`6`: **[C]** la regola è letta — dado 1/100..130,
+  vita −50 — ma non è cablata perché `r12.storm` è sempre 0 e non esiste
+  ancora nessun sistema che agisca su `life` arrivata a 0, quindi
+  sarebbe codice morto se collegato ora) e `demobasia`
+  (non è demolizione: è un "rifai in loco" a pagamento che rilancia lo
+  stesso `impa*r` del livello corrente con una skin decorativa diversa,
+  **[C]** letto da `demobasia/Collision_industria*.gml`, cosmetico).
 - **Cosa manca prima del punto 5** (portare le famiglie di comportamenti a
-  gruppi): la traccia "f" degli `impa*` (scenografia, vedi sopra); la
-  simulazione propria di `industria` (elettricità, fumo, fulmini,
-  demolizione — un sistema diverso dagli `impa*`, che sono solo
-  transizioni di livello); le altre ~85 famiglie `impa*` (armi, minacce,
-  altri edifici) non ancora lette; le minacce (bombe, spie) che oggi non
-  esistono affatto nella nuova versione; le icone vere della barra
-  risorse (oggi quadratini colorati, il testo sì è reale).
+  gruppi): la traccia "f" degli `impa*` (scenografia); il sistema
+  vita/distruzione (bombe, fulmini, `life` che arriva a 0) che oggi non
+  esiste in nessuna forma nella nuova versione, quindi il danno da
+  fulmine di `industria` resta letto ma non collegato; le altre ~85
+  famiglie `impa*` (armi, minacce, altri edifici) non ancora lette; la
+  famiglia `casa` (letta in parte: crescita di popolazione a stadi con
+  `ava` 0..5, consumo elettrico crescente, e — scoperta studiando
+  `industria` — un meccanismo di riot/sommossa che spawna `sold1..6`
+  quando l'energia manca e l'infelicità supera la popolazione, non
+  ancora approfondito); le icone vere della barra risorse (oggi
+  quadratini colorati, il testo sì è reale).

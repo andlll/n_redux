@@ -20,6 +20,7 @@ export function save(sceneName, r12, buildings) {
     buildings: buildings.map((b) => ({
       id: b.id, type: b.type, x: b.x, y: b.y, depth: b.depth,
       level: b.level, life: b.life, spr: b.spr, construction: b.construction,
+      makee: b.makee, prodT: b.prodT,
     })),
   };
   localStorage.setItem(saveSlotFor(sceneName), JSON.stringify(data));

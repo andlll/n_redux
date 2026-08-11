@@ -3,7 +3,9 @@
 // src/objects/upcrc12|upcrc23/Alarm_0.gml) e la famiglia `impa*` di
 // `industria` (impaind0to1r/1to2r/2to3r, STUDIO.md §5.5) sono entrambe
 // tabelle di frame e durate, lette da un'unica macchina a stati in
-// stepConstructions().
+// stepConstructions(). stepProduction() fa lo stesso per la simulazione
+// propria di `industria` a edificio finito (elettricita': industria1|2|3/
+// Alarm_2.gml) — dati, non un alarm per oggetto.
 //
 // [C] = valori letti nel codice decompilato (sprite, costi, soglie,
 // durate in tick a 60fps convertite in secondi). [I] = inferito/scelto per
@@ -72,6 +74,19 @@ export const BUILDING_TYPES = {
   industria: {
     label: "Industria",
     placeCost: { mon: 2000 },    // [C] placeholder/Mouse_LeftReleased.gml, selec==2
+    // Produzione elettrica reale per livello (1-indicizzata: production[0]
+    // e' il livello 1). [C] industria1|2|3/Alarm_2.gml: ogni 120 tick, se
+    // r12.oil > 0, consuma `oil` e genera `ele`; l'alarm si riarma comunque
+    // (anche a oil esaurito). `makee` conta i cicli riusciti ed e' letto da
+    // industria1|2/Step.gml per sbloccare il potenziamento (vedi `atMakee`
+    // negli upgrades sotto): finora questa soglia era `atPop: 0` [I], un
+    // "sempre sbloccato" scelto perche' la simulazione non era ancora
+    // portata — ora e' la regola vera.
+    production: [
+      { every: 120, oil: 7, ele: 50 },     // [C] industria1/Alarm_2.gml
+      { every: 120, oil: 20, ele: 120 },   // [C] industria2/Alarm_2.gml
+      { every: 120, oil: 35, ele: 300 },   // [C] industria3/Alarm_2.gml (livello massimo, nessun upgrade a valle)
+    ],
     construct: {                  // livello 0 -> 1, impaind0to1r (src/objects/impaind0to1r)
       drain: { mon: 1, every: 20 },              // [C] impaind0to1r/Alarm_10.gml
       finalSprite: "i11", life: 50,               // [C] industria1/Create.gml (life=50)
@@ -86,10 +101,7 @@ export const BUILDING_TYPES = {
     },
     upgrades: [
       {                          // livello 1 -> 2, upind12 costo + impaind1to2r (troncato a tic 0..10)
-        atPop: 0,                 // [I] nessuna soglia: l'originale sblocca upind12 a industria1.makee>=667
-                                   // (667 cicli di produzione elettrica da 120 tick, ~22 min): la simulazione
-                                   // elettricita'/fumo di industria non e' ancora portata, quindi qui il
-                                   // potenziamento e' disponibile subito (solo il costo lo blocca).
+        atMakee: 667,              // [C] industria1/Step.gml: upo==0 && makee>=667 -> crea upind12
         cost: { mon: 5000 },      // [C] upind12/Mouse_LeftPressed.gml
         finalSprite: "i21", life: 100,             // [C] industria2/Create.gml
         decor: ["i21l", "i21b", "i21c"],           // [I] variante 1 delle 2 di industria2/Create.gml
@@ -111,7 +123,7 @@ export const BUILDING_TYPES = {
         ],
       },
       {                          // livello 2 -> 3, upind23 costo + impaind2to3r (troncato a tic 0..10)
-        atPop: 0,                 // [I] come sopra: nessuna soglia di produzione simulata
+        atMakee: 1000,             // [C] industria2/Step.gml: upo==0 && makee>=1000 -> crea upind23
         cost: { mon: 10000 },     // [C] upind23/Mouse_LeftPressed.gml
         finalSprite: "i31", life: 200,             // [C] industria3/Create.gml
         decor: ["i31a1", "i31a2", "i31a3", "i31l1l"],  // [C] i31aa1/2/3 sempre creati + [I] variante 1 di di311/di312
@@ -183,21 +195,41 @@ export function nextUpgrade(b) {
   return def.upgrades[b.level - 1] ?? null;
 }
 
+/**
+ * La soglia di sblocco di un potenziamento e' o una popolazione minima
+ * (`atPop`, chies — [C] chies/Step.gml) o un numero di cicli di produzione
+ * completati dall'edificio stesso al livello attuale (`atMakee`, industria —
+ * [C] industria1|2/Step.gml). Le due famiglie non hanno mai entrambe i due
+ * campi: solo una delle due condizioni si applica per tipo.
+ */
+function upgradeProgress(b, up, r12) {
+  if (up.atMakee != null) return { done: b.makee ?? 0, needed: up.atMakee, kind: "makee" };
+  return { done: r12.pop, needed: up.atPop, kind: "pop" };
+}
+
 export function upgradeUnlocked(b, r12) {
   const up = nextUpgrade(b);
-  return up ? r12.pop >= up.atPop : false;
+  if (!up) return false;
+  const p = upgradeProgress(b, up, r12);
+  return p.done >= p.needed;
 }
 
 /**
- * Tocco su un edificio: se un potenziamento e' sbloccato (soglia pop) e i
- * costi sono coperti, avvia il cantiere. Restituisce un messaggio per la
- * HUD — null se ha avviato il cantiere, altrimenti il motivo per cui no.
+ * Tocco su un edificio: se un potenziamento e' sbloccato (soglia pop o cicli
+ * di produzione) e i costi sono coperti, avvia il cantiere. Restituisce un
+ * messaggio per la HUD — null se ha avviato il cantiere, altrimenti il
+ * motivo per cui no.
  */
 export function tryStartUpgrade(b, r12) {
   if (b.construction) return "cantiere gia' in corso";
   const up = nextUpgrade(b);
   if (!up) return "livello massimo";
-  if (r12.pop < up.atPop) return `serve popolazione ${up.atPop} (ora ${r12.pop.toFixed(0)})`;
+  const p = upgradeProgress(b, up, r12);
+  if (p.done < p.needed) {
+    return p.kind === "makee"
+      ? `servono ${p.needed} cicli di produzione (ora ${p.done})`
+      : `serve popolazione ${p.needed} (ora ${p.done.toFixed(0)})`;
+  }
   if (!canAfford(r12, up.cost)) {
     const need = Object.entries(up.cost).map(([k, v]) => `${v} ${k}`).join(", ");
     return `serve ${need}`;
@@ -245,7 +277,40 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
       b.life = up.life ?? (b.life + (up.lifeBonus ?? 0));
       b.spr = up.finalSprite;
       b.construction = null;
+      // [C] industria1|2|3/Create.gml: `makee = 0`. Nell'originale ogni
+      // livello e' un oggetto diverso che riparte da zero cicli prodotti;
+      // qui e' lo stesso building che continua, quindi il contatore va
+      // azzerato esplicitamente ad ogni salto di livello.
+      b.makee = 0;
+      b.prodT = 0;
       onDecor?.(b, up.decor);
+    }
+  }
+}
+
+/**
+ * Avanza la produzione elettrica degli edifici finiti (non in cantiere) che
+ * dichiarano `production` per livello (oggi solo `industria`). [C]
+ * industria1|2|3/Alarm_2.gml: ogni `every` tick, se r12.oil > 0, consuma
+ * `oil` e genera `ele`; l'alarm si riarma comunque (anche a olio esaurito,
+ * il ciclo "salta" senza produrre). `b.makee` conta i cicli riusciti ed e'
+ * la soglia reale che sblocca il potenziamento (vedi upgradeProgress sopra).
+ */
+export function stepProduction(buildings, dt, r12) {
+  for (const b of buildings) {
+    if (b.construction) continue;
+    const def = BUILDING_TYPES[b.type];
+    const prod = def.production?.[b.level - 1];
+    if (!prod) continue;
+    b.prodT = (b.prodT ?? 0) + dt;
+    const period = prod.every * TICK;
+    while (b.prodT >= period) {
+      b.prodT -= period;
+      if (r12.oil > 0) {
+        r12.oil -= prod.oil;
+        r12.ele += prod.ele;
+        b.makee = (b.makee ?? 0) + 1;
+      }
     }
   }
 }

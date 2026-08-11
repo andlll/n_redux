@@ -2,7 +2,7 @@ import { Renderer, makeSolidTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12 } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, tryStartUpgrade, stepConstructions, nextUpgrade, upgradeUnlocked } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, tryStartUpgrade, stepConstructions, stepProduction, nextUpgrade, upgradeUnlocked } from "./buildings.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText, measureText } from "./font.js";
 
@@ -266,6 +266,7 @@ function frame(now) {
 
   // --- simulazione: cantieri, economia, autosave
   stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
+  stepProduction(buildings, dt, r12);
   tickR12(r12, dt, buildings);
   if (messageT > 0) messageT -= dt;
   autosaveT += dt;
@@ -359,7 +360,9 @@ function frame(now) {
     if (b.construction) status += `  [cantiere in corso]`;
     else if (up) status += upgradeUnlocked(b, r12)
       ? `  potenziamento pronto (${Object.entries(up.cost).map(([k, v]) => v + " " + k).join(", ")})`
-      : `  prossimo potenziamento a pop ${up.atPop}`;
+      : up.atMakee != null
+        ? `  prossimo potenziamento a ${up.atMakee} cicli di produzione (ora ${b.makee ?? 0})`
+        : `  prossimo potenziamento a pop ${up.atPop}`;
   } else if (picked?.obj === "placeholder") {
     const def = BUILDING_TYPES[selectedType];
     status = picked.consumed ? "occupato" : `vuoto — tocca per costruire ${def.label.toLowerCase()} (${def.placeCost.mon} mon)`;
@@ -385,6 +388,7 @@ window.addEventListener("beforeunload", doSave);
 // aggancio di debug, comodo per ispezionare senza aspettare il ciclo
 window.__nimbus = {
   cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
+  get uiButtons() { return uiButtons; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,
