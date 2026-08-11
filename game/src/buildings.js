@@ -62,13 +62,29 @@ export const BUILDING_TYPES = {
   // fisso), quindi qui `construct` e' il primo "gradino" della catena.
   //
   // Ogni impa* e' in realta' una COPPIA di oggetti paralleli: "r" (le
-  // fondamenta a terra, quello che disegniamo qui) e "f" (un'impalcatura
-  // in sovraimpressione con gru/fumo che crea l'edificio successivo poco
-  // prima che "r" finisca). Non ricostruiamo la traccia "f": costruiamo
-  // solo sulla traccia "r", e completiamo alla fine del suo ultimo passo
-  // invece che ~300 tick prima come nell'originale — la "coda" persa e'
-  // scenografia (gru che si ritirano), non cambia costi ne' tempi totali
-  // in modo percepibile. [I] per questa semplificazione precisa.
+  // fondamenta a terra, quello che guida `steps` qui sotto: costi, durate,
+  // sprite finale) e "f" (un'impalcatura in sovraimpressione, sempre
+  // davanti a "r" — [C] impaind0to1f/Create.gml: `depth = -y - 2` contro
+  // `-y - 1` circa di "r" — con gru/fumo, che crea l'edificio successivo
+  // poco prima che "r" finisca). Completiamo alla fine dell'ultimo passo
+  // di "r" invece che ~300 tick prima come nell'originale — la "coda"
+  // persa e' scenografia (gru che si ritirano), non cambia costi ne' tempi
+  // totali in modo percepibile. [I] per questa semplificazione precisa.
+  //
+  // La traccia "f" stessa pero' SI vede: senza, un cantiere e' solo un
+  // singolo sprite "fondamenta" che cambia, senza nessuna impalcatura
+  // davanti — poco leggibile come "cantiere in corso" (segnalato
+  // dall'autore). [C] i suoi sprite (`if11..if46`) sono, uno a uno, la
+  // stessa sagoma di `ir11..ir46` come reticolo di impalcatura invece che
+  // struttura piena: `frontSprFor()` sotto li deriva dallo sprite "r" gia'
+  // scelto per il passo corrente (stesso dado, non uno indipendente come
+  // nell'originale — [I], evita impalcature scollegate dalla sagoma
+  // sottostante). Il "coperchio" finale (`cap`, sulle sole `upgrades`: la
+  // traccia costruzione a livello 1 non lo usa) e' [C] da
+  // impaind1to2f|2to3f/Alarm_1.gml e impa1to2f|2to3f/Alarm_1.gml:
+  // `action_sprite_set(im2f|im4f)`, mostrato durante l'ultimo passo (quello
+  // lungo, "l'edificio e' quasi finito") invece che al tic esatto
+  // dell'alarm indipendente originale. [I] per la stessa ragione.
   //
   // impaind*r ha anche una catena di alarm 1..7/10/11 (im1r..im4r, un
   // pulsare fuoco) mai armata da Create ne' dalla scala tic: codice morto
@@ -119,6 +135,9 @@ export const BUILDING_TYPES = {
         finalSprite: "i21", life: 100,             // [C] industria2/Create.gml
         decor: ["i21l", "i21b", "i21c"],           // [I] variante 1 delle 2 di industria2/Create.gml
         drain: { mon: 3, every: 20 },              // [C] impaind1to2r/Alarm_10.gml
+        cap: "im2f",   // [C] impaind1to2f/Alarm_1.gml: sprite_set(im2f) — il "coperchio" a gru che
+                        // chiude la traccia f (impalcatura in sovraimpressione, mai ricostruita finora,
+                        // vedi `front` sotto) man mano che l'edificio sale di livello
         steps: [                                    // [C] impaind1to2r/Create.gml + Alarm_0.gml, tic 0..10
           { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
           { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
@@ -141,6 +160,7 @@ export const BUILDING_TYPES = {
         finalSprite: "i31", life: 200,             // [C] industria3/Create.gml
         decor: ["i31a1", "i31a2", "i31a3", "i31l1l"],  // [C] i31aa1/2/3 sempre creati + [I] variante 1 di di311/di312
         drain: { mon: 3, every: 20 },              // [C] impaind2to3r/Alarm_10.gml
+        cap: "im4f",   // [C] impaind2to3f/Alarm_1.gml, stesso ruolo di im2f sopra ma all'altezza massima
         steps: [                                    // [C] impaind2to3r/Create.gml + Alarm_0.gml, tic 0..10
           { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
           { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
@@ -269,6 +289,7 @@ export const BUILDING_TYPES = {
         grantPop: 14,                // [C] casa2/Create.gml: r12.pop += 14 alla nascita
         deathPop: -34,                // [C] casa2/Destroy.gml
         drain: { mon: 2, every: 10 },   // [C] impa1to2r/Alarm_10.gml
+        cap: "im2f",   // [C] impa1to2f/Alarm_1.gml, stesso ruolo di industria (vedi upind12 sopra)
         variants: [                  // [C] casa2/Create.gml, stesso schema di casa1
           { spr: "c211", decor: "c211l" }, { spr: "c212", decor: "c212l" },
           { spr: "c213", decor: "c213l" }, { spr: "c214", decor: "c214l" },
@@ -300,6 +321,7 @@ export const BUILDING_TYPES = {
         grantPop: 40,                // [C] casa3/Create.gml: r12.pop += 40 alla nascita
         deathPop: -60,                // [C] casa3/Destroy.gml
         drain: { mon: 3, every: 20 },   // [C] impa2to3r/Alarm_10.gml
+        cap: "im4f",   // [C] impa2to3f/Alarm_1.gml, stesso ruolo di industria (vedi upind23 sopra)
         variants: [                  // [C] casa3/Create.gml, stesso schema di casa1/casa2
           { spr: "c311", decor: "c311l" }, { spr: "c312", decor: "c312l" },
           { spr: "c313", decor: "c313l" }, { spr: "c314", decor: "c314l" },
@@ -336,6 +358,14 @@ let nextId = 1;
 
 function pickSpr(spr) {
   return Array.isArray(spr) ? spr[(Math.random() * spr.length) | 0] : spr;
+}
+
+/** Lo sprite "f" (impalcatura in sovraimpressione) che corrisponde allo
+ * sprite "r" gia' scelto per il passo di cantiere corrente — vedi il
+ * commento su BUILDING_TYPES.industria piu' sopra. null per le catene che
+ * non hanno una traccia "f" nel decompilato (chies: sprite ce.../ci...). */
+function frontSprFor(spr) {
+  return spr.startsWith("ir") ? "if" + spr.slice(2) : null;
 }
 
 /**
@@ -462,6 +492,12 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
     }
     c.t += dt;
     b.spr = c.curSpr;
+    b.frontSpr = frontSprFor(c.curSpr);
+    // Il coperchio a gru (`up.cap`) compare durante l'ultimo passo: e'
+    // sempre quello lungo ("l'edificio e' quasi finito", vedi steps sopra),
+    // la stessa finestra in cui l'originale lo mostra davvero (poco dopo
+    // l'inizio del cantiere, ma resta a schermo comunque fino alla fine).
+    b.capSpr = (up.cap && c.stepIndex === up.steps.length - 1) ? up.cap : null;
     if (c.t < cur.dur * TICK) continue;
     c.t = 0;
     c.stepIndex++;
@@ -485,6 +521,7 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
         onDecor?.(b, up.decor);
       }
       b.construction = null;
+      b.frontSpr = null; b.capSpr = null;
       // [C] industria1|2|3/Create.gml + casa1|2|3/Create.gml: `makee`/`ava`
       // partono da 0 ad ogni livello. Nell'originale ogni livello e' un
       // oggetto diverso che riparte da zero; qui e' lo stesso building che

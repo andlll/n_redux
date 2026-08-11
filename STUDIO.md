@@ -340,12 +340,23 @@ paragrafo 8.
   `chies`).
   Due semplificazioni scelte consapevolmente, non lette dal codice:
   1. Ogni `impa*` è in realtà una **coppia** di oggetti paralleli — "r"
-     (le fondamenta a terra, quello ricostruito) e "f" (un'impalcatura
-     in sovraimpressione con gru/fumo che crea l'edificio successivo
-     *prima* che "r" finisca la sua sequenza). La traccia "f" non è
-     ricostruita: si completa alla fine della sequenza "r" invece che
-     ~300 tick prima. La "coda" persa è scenografia (gru che si
-     ritirano), non cambia costi né tempi in modo percepibile. **[I]**
+     (le fondamenta a terra, quello che guida costi/durate/sprite finale)
+     e "f" (un'impalcatura in sovraimpressione, sempre davanti a "r" —
+     **[C]** `impaind0to1f/Create.gml`: `depth = -y - 2` contro `-y - 1`
+     circa di "r" — con gru/fumo, che crea l'edificio successivo *prima*
+     che "r" finisca la sua sequenza). Il **timing** della traccia "f" non
+     è ricostruito (l'edificio successivo si completa alla fine della
+     sequenza "r" invece che ~300 tick prima — la "coda" persa è
+     scenografia, gru che si ritirano, non cambia costi né tempi in modo
+     percepibile — e il "coperchio" a gru di fine cantiere, `im2f`/`im4f`,
+     compare durante l'ultimo passo invece che al tic esatto dell'alarm
+     indipendente originale). Il suo **aspetto**, però, ora si vede:
+     senza, un cantiere era solo la fondamenta che cambia sprite, senza
+     nessuna impalcatura davanti (segnalato dall'autore) — `if11..if46`
+     sono, uno a uno, la stessa sagoma di `ir11..ir46` come reticolo
+     invece che struttura piena, quindi `game/src/buildings.js`
+     (`frontSprFor()`) li deriva dallo sprite "r" già scelto per il passo
+     corrente invece di un dado indipendente. **[I]**
   2. Le catene tic da 22 passi di `impaind1to2r`/`impaind2to3r` sono
      troncate a tic 0..10 (dove la "f" spedirebbe l'edificio nuovo):
      stesso motivo, i tic 11..22 sono un replay a specchio degli stessi
@@ -567,13 +578,29 @@ paragrafo 8.
   bottone di test è sparito; `selectedType` di default è `"casa"`.
   **Effetto collaterale scoperto testando la correzione**: toccare chies al
   centro esatto della sua posizione non la selezionava — ci arrivava prima
-  `air2`, un layer atmosferico che copre l'intera mappa (**[C]**
-  1920×1564, depth -1, `mask_sprite: null` nel decompilato: nell'originale
-  non ha mai potuto ricevere click, non ha maschera di collisione). Il
-  picking ora fa due passate: la prima considera solo cio' che e' davvero
-  interattivo (placeholder, edifici) a prescindere dal depth; la seconda,
-  di fallback, e' il vecchio "per z-order" usato solo per ispezionare la
-  scena nell'HUD di debug.
+  `air2` (**[C]** 1920×1564, depth -1, `mask_sprite: null` nel decompilato:
+  nell'originale non ha mai potuto ricevere click, non ha maschera di
+  collisione). **Non** è un layer atmosferico come ipotizzato qui in un
+  primo momento: è il terreno/strade/piazza dell'intera mappa, completamente
+  **opaco** (verificato pixel per pixel sull'atlas generato) — il nome e il
+  fatto che sia figlio di `notte_target` (STUDIO.md §5.3) traggono in
+  inganno. Il picking ora fa due passate: la prima considera solo cio' che
+  e' davvero interattivo (placeholder, edifici) a prescindere dal depth; la
+  seconda, di fallback, e' il vecchio "per z-order" usato solo per
+  ispezionare la scena nell'HUD di debug.
+  Lo stesso equivoco aveva un effetto **visivo**, non solo sul tocco, mai
+  notato finché non segnalato dall'autore ("vedo solo le luci di chies, non
+  l'edificio"): `air2` a depth -1 disegnava *sopra* ogni oggetto "di mondo"
+  fermo a depth 0 (edifici, alberi — la y non li distingueva mai da lui,
+  perché il confronto si fermava al depth prima di arrivarci), coprendo
+  tutto tranne il bagliore delle finestre di chies, che per il solo caso
+  fortuito della propria y finiva sopra `air2` nell'ordinamento. Risolto
+  dando alle istanze "di mondo" un depth effettivo di `-y` invece del
+  `depth: 0` statico della room (`main.js`, `effDepth()`) — la stessa regola
+  che l'originale applicava dinamicamente nel `Create` di ogni edificio
+  (confermato dal decompilato: `impaind0to1f/Create.gml` ha
+  `depth = -y - 2`), qui dichiarata una volta sola nel comparatore invece
+  che in ogni oggetto.
 - **Le tempeste diventano reali (regola di `match`, non `stormeasy`).**
   Deciso di portare comunque `r12.storm` — non perché serva a
   `match_easy` (dove resta cosmetica, vedi sopra), ma perché è la regola
@@ -629,12 +656,15 @@ paragrafo 8.
      questo: l'originale aveva il limite di zoom minimo esplicito apposta
      per non mostrare mai la mappa intera su `match` (STUDIO.md §2), quindi
      il problema a monte non si poneva mai. `main.js` ora disegna quattro
-     rettangoli neri fuori dal rettangolo di schermo dei confini della room
+     rettangoli fuori dal rettangolo di schermo dei confini della room
      (calcolato con `cam.worldToScreen`), nel layer GUI — l'effetto atteso,
-     non il vincolo a monte che lo evitava nell'originale.
+     non il vincolo a monte che lo evitava nell'originale. Bianchi, non
+     neri: con la UI (icone nere) sopra e zoom-out sufficiente, un
+     rettangolo nero ci finiva sotto — nero su nero, illeggibile (segnalato
+     dall'autore, deciso insieme).
 - **Cosa manca prima del punto 5** (portare le famiglie di comportamenti a
-  gruppi): la traccia "f" degli `impa*` (scenografia, per industria e
-  casa, su tutti i salti di livello ora ricostruiti); il sistema
+  gruppi): il *timing* della traccia "f" degli `impa*` (l'aspetto — le
+  impalcature stesse — ora si vede, vedi sopra su industria/casa); il sistema
   `hap`/`wewe` (felicità/inquinamento visivo) e la sommossa che ne
   dipende; i "rifai in loco" cosmetici (`demobasia` + `impacasa*`/
   `impaind*` "rifatti") e il vero strumento di demolizione/riparazione
@@ -646,3 +676,91 @@ paragrafo 8.
   arrivano davvero le minacce vere (bombe/aerei/zeppelin: dipendono da
   contatori — `bombn`, `diron`, `ondan` — che partono a 0 e che nessun
   oggetto letto finora incrementa).
+- **Otto bug segnalati dall'autore dopo aver giocato la build precedente,
+  tutti risolti insieme**:
+  1. **Depth**: vedi sopra (`air2`/effDepth). Gli edifici piazzati dal
+     giocatore avevano lo stesso bug da un'altra strada — nascevano con il
+     depth del `placeholder` che occupavano (-5000, "sempre in primo
+     piano", corretto per un segnaposto ma non per un edificio vero), non
+     con un depth "di mondo": `placeAt()` ora passa `0`, come chies.
+  2. **"Vedo solo le luci di chies"**: stesso bug del punto 1 (`air2` sopra
+     la chiesa, sotto solo al suo bagliore per un caso di y).
+  3. **Persistenza**: il gioco è ancora in sviluppo attivo, e un autoload
+     silenzioso da `localStorage` a ogni apertura pagina faceva ripartire
+     ogni sessione di test dallo stato di una build precedente, mascherando
+     esattamente le modifiche appena fatte. Tolto l'autoload e l'autosave
+     automatico (periodico + `beforeunload`): ogni caricamento è ora una
+     partita nuova, S/L restano per salvare/caricare a mano dentro la
+     stessa sessione.
+  4. **Cantiere poco leggibile**: la traccia "f" (impalcatura in
+     sovraimpressione) non era mai stata disegnata — vedi sopra.
+  5. **Icone illeggibili con zoom-out eccessivo**: la vignetta fuori mappa
+     era nera come le icone della UI che ci finivano sopra — nera su nera.
+     Cambiata in bianca (vedi sopra), deciso insieme fra tre opzioni
+     (l'alternativa "icone bianche di notte" scartata: non copriva il caso
+     "vignetta visibile di giorno").
+  6. **Luci sempre accese**: il decoro (bagliore finestre, STUDIO.md §5.3
+     "notte_target") non veniva mai nascosto di giorno. `main.js` ora lo
+     filtra da `frameList` quando `!isNight(phaseT)`.
+  7. **Placeholder sempre visibili**: dovevano esserlo solo sotto al
+     puntatore — **[C]** `placeholder/Create.gml` parte con sprite `empty`
+     (invisibile), e solo `Mouse_MouseEnter`/`Mouse_MouseLeave` lo cambiano
+     in `phold` (il rombo viola) e viceversa; qui restavano sempre `phold`.
+     Aggiunto un vero hover: `input.js` traccia la posizione del puntatore
+     ad ogni `pointermove` indipendentemente da drag/pinch in corso
+     (`input.hover`, `null` quando il puntatore lascia il canvas — su
+     touch, anche al sollevamento del dito: il touch non ha hover senza
+     contatto, stessa limitazione dell'originale su mobile); `main.js` lo
+     confronta ogni frame contro i placeholder liberi e disegna solo quello
+     sotto al puntatore. Il tocco per costruire resta valido ovunque, anche
+     senza hover precedente (il picking in `input.onTap` non e' cambiato):
+     altrimenti un tap diretto su touch, che non genera mai un hover prima
+     del tocco, non avrebbe piu' funzionato.
+  8. **"Doppia casetta"**: `pu1` e' anche lei gia' un'istanza vera nella
+     room (**[C]** sprite `p1`, la stessa del bottone "casa" — nell'originale
+     e' un pannello invisibile che genera i propri figli/bottoni via codice,
+     STUDIO.md §5.4), mai tolta da `staticWorld` come si era gia' fatto per
+     `chies`: restava un secondo bottone "casa" fantasma, disegnato come
+     sprite di mondo proprio sopra a quello vero in spazio schermo. Tolta
+     allo stesso modo di `chies`.
+     Colta l'occasione per rappresentare anche il resto del menu originale.
+     Un primo tentativo li mise tutti su due righe fisse, sempre visibili —
+     comodo ma non e' cosi' che il pannello era organizzato davvero
+     (l'autore ha chiesto di ricontrollare): **[C]** rileggendo
+     `src/objects/pu1/Create.gml` insieme al `Mouse_LeftPressed.gml` di
+     `buildbutton`/`eyebutton`/`backobutton`, il pannello e' tre righe
+     **alternate**, mai tutte visibili insieme, pilotate da `pu1.menoo`
+     (0/1/2 — ogni bottone figlio nel proprio `Step.gml` fa `with (pu1) {
+     if (menoo==N) break }` poi si posiziona o va fuori schermo):
+     - **menoo 0** (avvio): `handbutton` (mano — **[C]**
+       `Mouse_LeftPressed.gml`: `r12.selec = 0`, deseleziona), `buildbutton`
+       (la gru — apre menoo 1), `eyebutton` (l'occhio — apre menoo 2).
+     - **menoo 1**, aperta dalla gru: casa/industria (veri) + il resto dei
+       piazzabili — `pu7` (parco, **[C]** `selec==7`, sbloccato a parte nel
+       decompilato: qui sempre visibile), `pu3` (lanciamissili), `pu6`
+       (grattacielo), `pu4prov` (pala eolica), `pu5prov` (laser), `pudj`
+       (club), `pusolare` (pannelli solari), `pugatling` (mitragliatrice),
+       `puvillone` (villa), `pumediat` (museo), `puruspa` (ruspa, STUDIO.md
+       "mai ricostruita") — nessuno in `BUILDING_TYPES`: selezionabili come
+       casa/industria (evidenziati con lo sprite "ss"), ma toccare un
+       placeholder mostra "non ancora ricostruito" invece di costruire
+       (costi reali dove `placeholder/Mouse_LeftReleased.gml` li dichiara
+       esplicitamente, altrimenti omessi, non inventati) — piu'
+       `backobutton` in fondo (torna a menoo 0).
+     - **menoo 2**, aperta dall'occhio: `eyebutton1/2/3` (segnaposto, mai
+       ricostruiti — probabilmente filtri di visualizzazione) e
+       `zoom_plus`/`zoom_minus`, le uniche due che fanno davvero qualcosa:
+       richiamano lo stesso `cam.setZoom` gia' agganciato a rotella/pinch —
+       piu' `backobutton`.
+     `menoo` e' locale a `main.js`, non un campo di `pu1` (che non esiste
+     piu' come istanza, vedi sopra). L'ordine dei piazzabili nella riga 1 e'
+     "tutti visibili, uno slot ciascuno": l'originale ne affianca alcuni in
+     ordine diverso e ne nasconde altri a vicenda sullo stesso slot in base
+     al progresso di gioco (`pu4prov`/`pu5prov`/`pudj`/`pusolare`/
+     `pugatling`/`puvillone`/`pumediat` condividono `x=591` nel
+     decompilato) — non tracciato qui, quindi mostrati tutti fianco a
+     fianco invece che a rotazione.
+     **Limite noto**: la riga bottoni non va a capo su schermi stretti (puo'
+     uscire dal bordo destro su mobile, specialmente la riga 1 che ora ha
+     14 voci) — non ricostruito, fuori dallo scopo di questo giro di
+     correzioni.

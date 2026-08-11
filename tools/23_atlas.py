@@ -51,6 +51,17 @@ GAMEPLAY_SPRITES = {
         "ir21", "ir22", "ir23", "ir24", "ir25", "ir26",           # fase 2
         "ir31", "ir32", "ir33", "ir34", "ir35", "ir36",           # fase 3
         "ir41", "ir42", "ir43", "ir44", "ir45", "ir46",           # fase 4
+        # traccia "f": impalcatura in sovraimpressione, sempre davanti a
+        # "r" ([C] impaind0to1f/Create.gml: depth = -y - 2). Stessa sagoma
+        # di ir1x..4x come reticolo invece che struttura piena (STUDIO.md
+        # §9, buildings.js frontSprFor()) — un cantiere senza questa traccia
+        # e' solo la fondamenta che cambia, senza nessuna impalcatura
+        # davanti (segnalato dall'autore).
+        "if11", "if12", "if13", "if14", "if15", "if16",
+        "if21", "if22", "if23", "if24", "if25", "if26",
+        "if31", "if32", "if33", "if34", "if35", "if36",
+        "if41", "if42", "if43", "if44", "if45", "if46",
+        "im2f", "im4f",   # coperchio a gru di fine cantiere (upgrades[i].cap)
         # casa: terzo edificio, tre livelli (casa1/2/3), 20 varianti
         # sprite+decoro a dado per livello (src/objects/casa1|2|3/Create.gml,
         # STUDIO.md §9). Il cantiere riusa gli sprite ir1x/2x/3x/4x gia'
@@ -66,14 +77,32 @@ GAMEPLAY_SPRITES = {
     # immagine con le icone gia' disegnate dentro (src/objects/repre/
     # DrawGUI.gml: action_draw_sprite(icone_oriz, ...) + i numeri col font
     # bitmap "gotham_mini" a offset fissi), non quattro icone separate come
-    # avevamo indovinato. I bottoni edificio (src/objects/pu1|pu2) hanno
+    # avevamo indovinato. I bottoni edificio (src/objects/pu1|pu2|...) hanno
     # ciascuno due sprite, normale e "selezionato" (px / pxss), cambiate a
     # mano nello Step in base a r12.selec — non e' un tint, sono disegni
     # diversi.
     "gui": [
         "icone_oriz",          # sfondo barra risorse (repre/DrawGUI.gml)
-        "p1", "p1ss",          # bottone casa (pu1, selec==1)
-        "p2", "p2ss",          # bottone industria (pu2, selec==2)
+        "p1", "p1ss",          # bottone casa (pu1, selec==1) — piazzabile
+        "p2", "p2ss",          # bottone industria (pu2, selec==2) — piazzabile
+        # Gli altri bottoni edificio del menu originale (src/objects/pu3|
+        # pu4prov|pu5prov|pu6|pu7|pudj|pusolare|pugatling|puvillone|
+        # pumediat): STUDIO.md "cosa manca" li elenca come famiglie impa*
+        # non ancora lette. Mostrati come segnaposto statici nel menu
+        # (STUDIO.md §9) — tap mostra "non ancora ricostruito", non
+        # piazzano niente.
+        "p3", "p3ss", "p4", "p4ss", "p5", "p5ss", "p6", "p6ss", "p7", "p7ss",
+        "pdj", "pdjss", "psolare", "psolaress", "pgatling", "pgatlingss",
+        "pvilla", "pvillass", "pmuseo", "pmuseoss",
+        "ru", "russ",           # puruspa (bulldozer/ripara, selec==11, mai ricostruito)
+        "reset",                # pureset
+        # Gli altri bottoni del pannello (src/objects/handbutton|buildbutton|
+        # eyebutton|eyebutton1|2|3|backobutton): nell'originale aprivano/
+        # chiudevano le righe del menu (STUDIO.md §9 "menoo", tre pannelli
+        # alternati mai ricostruiti) — qui sono una seconda riga sempre
+        # visibile, segnaposto tranne lo zoom (gia' funzionante altrimenti).
+        "handee", "groo", "eyeee", "eyee1", "eyee2", "eyee3", "baccc",
+        "zoomplus", "zoomminus",
     ],
 }
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})

@@ -29,9 +29,29 @@ cam.minZoom = 0.5;
 // se lo schermo cambia (rotazione del telefono).
 let userMoved = false;
 
-// Ordinamento dichiarato una volta sola: prima il layer (depth), poi la y.
-// Nell'originale era `depth = -y` sparso dentro i singoli oggetti.
-const sortWorld = (a, b) => (b.depth - a.depth) || (a.y - b.y);
+// Ordinamento dichiarato una volta sola. Nell'originale ogni edificio/albero
+// si auto-assegnava `depth = -y` nel proprio Create (STUDIO.md §5.3, e
+// confermato dal decompilato di impaind0to1f/Create.gml: `depth = -y - 2`)
+// — la stessa istanza dichiarata a `depth: 0` nella room diventava quindi
+// dinamicamente "-y" a runtime. I livelli fissi (ambiente/UI: air2 -1,
+// aura -10, placeholder -5000, pu1 -9998, ...) restano quelli scritti nella
+// room, perche' il loro codice non tocca mai `depth`.
+//
+// Qui replichiamo la stessa regola: le istanze "di mondo" (`depth === 0`
+// nella room — edifici, alberi, decoro/impalcature che creiamo noi a
+// runtime) si ordinano per `-y`; tutto il resto mantiene il suo depth
+// fisso. Senza questo, `air2` (il livello di terreno/strade, depth -1,
+// STUDIO.md §5.2 lo definiva erroneamente "atmosferico": e' in realta'
+// opaco su tutta la mappa) finiva sopra ENTRAMBI gli edifici e gli alberi,
+// perche' -1 sta "davanti" a 0 nella nostra convenzione (piu' basso =
+// disegnato dopo = piu' vicino alla camera) — il bug dietro sia al mancato
+// ordinamento assonometrico sia a "vedo solo le luci di chies" (il suo
+// unico figlio a depth -1, il bagliore delle finestre, restava sopra
+// `air2` per il solo caso fortuito della y, la chiesa stessa no).
+function effDepth(it) {
+  return it.depth === 0 ? -it.y : it.depth;
+}
+const sortWorld = (a, b) => effDepth(b) - effDepth(a);
 const staticWorld = scene.instances.slice().sort(sortWorld);
 
 // colore stabile per nome oggetto, finche' non abbiamo gli atlas veri
@@ -98,6 +118,20 @@ const placeholderById = new Map(placeholders.map((p) => [p.id, p]));
 const chiesIndex = staticWorld.findIndex((it) => it.obj === "chies");
 const chiesScene = chiesIndex >= 0 ? staticWorld.splice(chiesIndex, 1)[0] : null;
 
+// `pu1` e' anche lei gia' un'istanza vera nella room ([C] src/rooms/
+// match_easy.json, sprite "p1" = la stessa casetta del bottone "casa" qui
+// sotto, a depth -9998 = sempre in primo piano). Nell'originale e' un
+// pannello invisibile che genera i propri figli/bottoni via codice
+// (src/objects/pu1/Create.gml — STUDIO.md §5.4): quello che si vede a
+// schermo non e' mai lei stessa, sono i figli. Qui i suoi figli sono
+// ricostruiti come UI vera in spazio schermo (vedi `uiButtons` piu' sotto),
+// quindi l'istanza originale nel mondo va tolta — altrimenti resta un
+// secondo bottone "casa" fantasma, disegnato come sprite di mondo invece
+// che UI, proprio sopra a quello vero (segnalato dall'autore: "doppia
+// casetta").
+const pu1Index = staticWorld.findIndex((it) => it.obj === "pu1");
+if (pu1Index >= 0) staticWorld.splice(pu1Index, 1);
+
 /** @type {ReturnType<typeof placeBuilding>[]} */
 let buildings = [];
 let decorEntities = [];      // ornamenti (permanenti a fine cantiere, o transitori durante)
@@ -123,7 +157,15 @@ function addDecor(building, spawns) {
   for (const { spr, dx, dy } of spawns) {
     decorEntities.push({
       obj: "decor", buildingId: building.id,
-      x: building.x + dx, y: building.y + dy, depth: building.depth - 1,
+      // Stesso depth "di mondo" (0) dell'edificio, non depth-1: sotto
+      // effDepth() sopra un depth fisso -1 varrebbe come livello ambiente
+      // (stesso bug di air2), invece il bagliore deve seguire la y vera
+      // del suo edificio (incluso l'offset dx/dy delle gru/macerie ai
+      // corner) per restare correttamente intercalato con gli altri
+      // edifici/alberi. A parita' di depth+y, l'ordine di inserimento in
+      // `dynamic` (building poi decor, sempre) decide chi vince — lo stesso
+      // meccanismo con cui il pareggio si risolveva prima.
+      x: building.x + dx, y: building.y + dy, depth: 0,
       spr, _f: frameFor(spr),
     });
   }
@@ -136,7 +178,13 @@ function placeAt(placeholder, type) {
   }
   for (const k in def.placeCost) r12[k] -= def.placeCost[k];
   placeholder.consumed = true;
-  const b = placeBuilding(type, placeholder.x, placeholder.y, placeholder.depth);
+  // depth 0, NON placeholder.depth (-5000): quel numero e' il livello fisso
+  // "sempre in primo piano" del segnaposto vuoto (STUDIO.md, cosi' si vede
+  // sempre sopra il terreno), non un depth di mondo da ereditare. Un
+  // edificio vero e' un oggetto "di mondo" come chies o gli alberi: deve
+  // ordinarsi per la propria y (vedi effDepth() sopra), non restare per
+  // sempre incollato davanti a tutto il resto della mappa.
+  const b = placeBuilding(type, placeholder.x, placeholder.y, 0);
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
   return null;
@@ -176,8 +224,16 @@ function destroyBuilding(b) {
 // Serializzazione esplicita fin da subito (STUDIO.md §5.6/§7.1): lo stato
 // che conta e' gia' dati semplici, quindi non c'e' uno snapshot binario da
 // imitare, solo JSON. Stessi nomi di slot dell'originale ("nimsav_eas" per
-// la mappa facile). Autosave periodico + tasti S/L per salvare/caricare a
-// mano mentre si sviluppa.
+// la mappa facile).
+//
+// NON e' piu' automatico: il gioco e' ancora in sviluppo attivo, e un
+// autoload silenzioso al boot fa ripartire ogni sessione di test da uno
+// stato vecchio (edifici/decoro/depth di una build precedente), mascherando
+// esattamente le modifiche che si sta cercando di verificare — "vedo
+// sempre la versione vecchia" a ogni ricarica. Ogni caricamento della
+// pagina e' quindi una partita nuova, come il primissimo avvio. S/L restano
+// per salvare/ricaricare a mano DENTRO la stessa sessione di test, se
+// serve, ma non sopravvivono piu' da soli a un refresh.
 function doSave() { save(scene.name, r12, buildings); }
 function doLoad() {
   const data = load(scene.name);
@@ -194,7 +250,7 @@ function doLoad() {
   }
   return true;
 }
-if (!doLoad()) seedChies();
+seedChies();
 
 window.addEventListener("keydown", (e) => {
   if (e.key === "s" || e.key === "S") { doSave(); message = "partita salvata"; messageT = 3; }
@@ -205,7 +261,6 @@ window.addEventListener("keydown", (e) => {
     messageT = 3;
   }
 });
-let autosaveT = 0;
 
 // ------------------------------------------------- ciclo giorno/notte
 // Nell'originale: 8 alarm che ricoloravano ~24 gruppi di oggetti uno per uno.
@@ -257,13 +312,72 @@ let uiButtons = [];   // { x, y, w, h, type }, ricalcolati ad ogni frame dal dis
 // di modalita' piazzamento nell'originale (1 = casa, 2 = industria, ...).
 const SELEC_BY_TYPE = { casa: 1, industria: 2 };
 
+// Il pannello originale non e' un'unica barra: e' tre righe ALTERNATE,
+// mai tutte visibili insieme. [C] `pu1.menoo` (0/1/2) decide quale, letto
+// riga per riga da ogni bottone figlio nel proprio Step.gml (`with (pu1) {
+// if (menoo==N) break }` poi `action_move_to(...)` sulla posizione vera, o
+// fuori schermo altrimenti):
+//   - menoo 0 "casa": handbutton, buildbutton (la gru: apre menoo 1),
+//     eyebutton (l'occhio: apre menoo 2) — quello che si vede all'avvio.
+//   - menoo 1 "edifici": pu1..pu7 e affini (i piazzabili) + backobutton in
+//     fondo per tornare a menoo 0. E' la riga che si apre toccando la gru.
+//   - menoo 2 "vista": eyebutton1/2/3, zoom_plus/zoom_minus + backobutton.
+//     Si apre toccando l'occhio.
+// Una versione precedente mostrava tutti i bottoni sempre, su due righe
+// fisse — comodo ma non e' cosi' che il menu era organizzato davvero
+// (segnalato dall'autore). Qui replichiamo la stessa struttura a tre righe.
+let menoo = 0;
+
+// I piazzabili del menu (menoo 1) che non sono in BUILDING_TYPES
+// (buildings.js): letti da src/objects/pu3|pu4prov|pu5prov|pu6|pu7|pudj|
+// pusolare|pugatling|puvillone|pumediat (sprite normale/selezionato, e il
+// `selec` con cui ciascuno riconosce di essere quello scelto) incrociati
+// con src/objects/placeholder/Mouse_LeftReleased.gml per i costi reali,
+// dove quel file li dichiara esplicitamente (`cost: null` altrove — non un
+// valore a caso, proprio "non letto"). Sono famiglie impa* non ancora
+// lette (STUDIO.md "cosa manca"), quindi qui sono un segnaposto statico —
+// selezionabili ed evidenziati come casa/industria, ma toccare un
+// placeholder con uno di questi scelto mostra un messaggio invece di
+// costruire (vedi sotto). L'originale li affianca in ordine diverso
+// (STUDIO.md §9: pu7 e' unlocked a parte, pu4prov/pu5prov condividono uno
+// slot con altri quattro bottoni mutuamente esclusivi non tracciati qui):
+// l'ordine qui e' solo "tutti visibili, uno per slot", non quello esatto.
+const OTHER_BUILDINGS = [
+  { type: "parco", selec: 7, spr: "p7", sprSel: "p7ss", label: "Parco", cost: 500 },
+  { type: "missile", selec: 3, spr: "p3", sprSel: "p3ss", label: "Lanciamissili", cost: 5000 },
+  { type: "eolico", selec: 4, spr: "p4", sprSel: "p4ss", label: "Pala eolica", cost: null },
+  { type: "laser", selec: 5, spr: "p5", sprSel: "p5ss", label: "Laser", cost: 20000 },
+  { type: "grattacielo", selec: 6, spr: "p6", sprSel: "p6ss", label: "Grattacielo", cost: null },
+  { type: "club", selec: 60, spr: "pdj", sprSel: "pdjss", label: "Club", cost: 3500 },
+  { type: "solare", selec: 61, spr: "psolare", sprSel: "psolaress", label: "Pannelli solari", cost: 1000 },
+  { type: "gatling", selec: 62, spr: "pgatling", sprSel: "pgatlingss", label: "Mitragliatrice", cost: 10000 },
+  { type: "villa", selec: 63, spr: "pvilla", sprSel: "pvillass", label: "Villa", cost: 7500 },
+  { type: "museo", selec: 70, spr: "pmuseo", sprSel: "pmuseoss", label: "Museo", cost: null },
+  // [C] STUDIO.md "cosa manca": lo strumento vero di demolizione/
+  // riparazione (selec==11), mai ricostruito — la distruzione oggi e'
+  // immediata (destroyBuilding()) invece di passare da questo strumento.
+  { type: "ruspa", selec: 11, spr: "ru", sprSel: "russ", label: "Ruspa", cost: null },
+];
+for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
+const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
+
 input.onTap = (sx, sy) => {
   // il selettore edificio vive in spazio schermo, sopra la mappa: un tocco
   // che lo colpisce non deve raggiungere il mondo sotto.
   for (const btn of uiButtons) {
     if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) {
-      selectedType = btn.type;
-      r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
+      if (btn.kind === "menu") menoo = btn.menoo;                      // gru/occhio/indietro
+      else if (btn.kind === "deselect") { selectedType = null; r12.selec = 0; }  // handbutton
+      else if (btn.kind === "zoom") {                                  // zoom+/zoom-
+        userMoved = true;
+        cam.setZoom(cam.targetZoom * btn.zoom, canvas.clientWidth / 2, canvas.clientHeight / 2);
+      } else if (btn.kind === "building") {                            // casa/industria/...
+        selectedType = btn.type;
+        r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
+      } else {
+        message = `${btn.label}: non ancora ricostruito`;
+        messageT = 3;
+      }
       return;
     }
   }
@@ -275,10 +389,10 @@ input.onTap = (sx, sy) => {
   // edifici — inclusa chies, ora che vive li' anche lei), a prescindere
   // dal depth; la seconda, di fallback, e' il vecchio picking "per z-order"
   // usato solo per ispezionare la scena nell'HUD di debug. Senza la prima
-  // passata `air2` (il layer atmosferico sull'intera mappa, depth -1,
-  // STUDIO.md §5.2 — `mask_sprite: null` nel decompilato: non ha MAI
-  // ricevuto click nell'originale) coprirebbe chies (depth 0) e la
-  // renderebbe intoccabile.
+  // passata `air2` (il terreno/strade sull'intera mappa, depth -1,
+  // `mask_sprite: null` nel decompilato: non ha MAI ricevuto click
+  // nell'originale) coprirebbe chies (depth 0, per y) e la renderebbe
+  // intoccabile.
   for (const it of frameList) {
     if (it.obj !== "placeholder" && it.obj !== "building") continue;
     const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
@@ -288,9 +402,10 @@ input.onTap = (sx, sy) => {
   }
   if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
     const it = frameList[i];
-    // il decoro (cddvd*) e' puramente visivo: nell'originale non aveva
-    // eventi Mouse propri, quindi qui non deve "rubare" il tocco.
-    if (!it._f || it.obj === "decor") continue;
+    // il decoro (cddvd*) e l'impalcatura di cantiere sono puramente visivi:
+    // nell'originale non avevano eventi Mouse propri, quindi qui non devono
+    // "rubare" il tocco.
+    if (!it._f || it.obj === "decor" || it.obj === "scaffold") continue;
     const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
     if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
       picked = it;
@@ -300,9 +415,19 @@ input.onTap = (sx, sy) => {
   if (!picked) return;
   message = ""; messageT = 0;
   if (picked.obj === "placeholder" && !picked.consumed) {
-    const def = BUILDING_TYPES[selectedType];
-    const err = placeAt(picked, selectedType);
-    message = err ?? `${def.label.toLowerCase()} piazzata (-${def.placeCost.mon} mon)`;
+    const def = selectedType ? BUILDING_TYPES[selectedType] : null;
+    if (!selectedType) {
+      // [C] handbutton/Mouse_LeftPressed.gml: `r12.selec = 0`, nessun
+      // edificio armato — la modalita' di default prima di aprire il menu.
+      message = "nessun edificio selezionato — apri il menu con la gru";
+    } else if (!def) {
+      // Uno degli `OTHER_BUILDINGS` sopra: nel menu, ma non in
+      // BUILDING_TYPES — nessuna catena di piazzamento ricostruita.
+      message = `${BUILDING_LABEL[selectedType] ?? selectedType}: non ancora ricostruito`;
+    } else {
+      const err = placeAt(picked, selectedType);
+      message = err ?? `${def.label.toLowerCase()} piazzata (-${def.placeCost.mon} mon)`;
+    }
     messageT = 3;
   } else if (picked.obj === "building") {
     const err = tryStartUpgrade(picked.ref, r12);
@@ -354,7 +479,7 @@ function frame(now) {
   resize();
   cam.update(dt);
 
-  // --- simulazione: cantieri, economia, meteo, autosave
+  // --- simulazione: cantieri, economia, meteo
   stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
   stepProduction(buildings, dt, r12);
   stepGrowth(buildings, dt, r12);
@@ -364,18 +489,45 @@ function frame(now) {
   for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
   tickR12(r12, dt, buildings);
   if (messageT > 0) messageT -= dt;
-  autosaveT += dt;
-  if (autosaveT > 15) { autosaveT = 0; doSave(); }
 
   // --- lista di disegno di questo frame: mondo statico (placeholder consumati
   // esclusi) + edifici (sprite ricalcolato: cambia durante il cantiere) + decoro
   const dynamic = [];
   for (const b of buildings) {
     dynamic.push({ obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
+    // Impalcatura in sovraimpressione + coperchio di fine cantiere (vedi
+    // buildings.js): stessa x/y/depth dell'edificio, spinti sopra di lui
+    // dall'ordine di inserimento (a parita' di depth+y l'array mantiene
+    // l'ordine con cui e' stato costruito, STUDIO.md sopra su sortWorld).
+    if (b.frontSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.frontSpr) });
+    if (b.capSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.capSpr) });
   }
   for (const d of decorEntities) dynamic.push(d);
+  // Il decoro (bagliore delle finestre) si accende solo di notte (STUDIO.md
+  // §5.3 "notte_target": 231 oggetti reagiscono al ciclo giorno/notte
+  // accendendo le luci di notte) — finora restava sempre acceso, quindi
+  // visibile pure in pieno giorno.
+  const night = isNight(phaseT);
   frameList = staticWorld.filter((it) => !(it.obj === "placeholder" && it.consumed))
-    .concat(dynamic).sort(sortWorld);
+    .concat(dynamic).filter((it) => night || it.obj !== "decor").sort(sortWorld);
+
+  // [C] src/objects/placeholder/Create.gml + Mouse_MouseEnter/Leave.gml: il
+  // placeholder nasce con sprite "empty" (invisibile) e diventa "phold" (il
+  // rombo viola) solo sotto al puntatore, tornando invisibile appena lo
+  // lascia — non e' mai visibile stabilmente come lo era nella build
+  // precedente (segnalato dall'autore). Il tocco per costruire resta
+  // valido ovunque (picking sotto usa sempre `frameList`, indipendente da
+  // questo flag): solo il disegno lo rispetta, piu' sotto.
+  let hoveredPh = null;
+  if (input.hover) {
+    const w = cam.screenToWorld(input.hover.x, input.hover.y);
+    for (const p of placeholders) {
+      if (p.consumed) continue;
+      const x0 = p.x - p._f.ox, y0 = p.y - p._f.oy;
+      if (w.x >= x0 && w.x <= x0 + p._f.w && w.y >= y0 && w.y <= y0 + p._f.h) { hoveredPh = p; break; }
+    }
+  }
+  for (const p of placeholders) p._hovered = p === hoveredPh;
 
   r.beginFrame(canvas.width, canvas.height);
   const amb = ambientAt(phaseT);
@@ -387,6 +539,7 @@ function frame(now) {
   const vw = cam.worldW, vh = cam.worldH;
   const l = cam.x - vw / 2, t = cam.y - vh / 2, rr = l + vw, bb = t + vh;
   for (const it of frameList) {
+    if (it.obj === "placeholder" && !it._hovered) continue;
     const f = it._f;
     if (f) {
       const x0 = it.x - f.ox, y0 = it.y - f.oy;
@@ -407,22 +560,30 @@ function frame(now) {
   r.setAmbient(1, 1, 1);
   r.setProjection(screenProjection(canvas.clientWidth, canvas.clientHeight));
 
-  // Fuori dai confini della room: nero pieno invece dei bordi "strappati"
-  // del terreno quando lo zoom indietro supera la mappa (il terreno non e'
-  // disegnato per essere visto da fuori dai suoi bordi). Non ho trovato un
-  // oggetto originale dedicato: l'originale aveva un limite minimo di zoom
-  // esplicito apposta per non mostrare mai la mappa intera su `match`
-  // (STUDIO.md §2), quindi il problema a monte non si poneva mai. Qui
-  // ricreiamo l'effetto (vignetta nera) invece del vincolo che lo evitava.
+  // Fuori dai confini della room: vignetta piena invece dei bordi
+  // "strappati" del terreno quando lo zoom indietro supera la mappa (il
+  // terreno non e' disegnato per essere visto da fuori dai suoi bordi). Non
+  // ho trovato un oggetto originale dedicato: l'originale aveva un limite
+  // minimo di zoom esplicito apposta per non mostrare mai la mappa intera
+  // su `match` (STUDIO.md §2), quindi il problema a monte non si poneva
+  // mai. Qui ricreiamo l'effetto (vignetta) invece del vincolo che lo
+  // evitava.
+  //
+  // Bianca, non nera: le icone della UI (bottoni edificio, testo risorse)
+  // sono nere, e con zoom-out sufficiente la vignetta arriva a toccarle —
+  // nero su nero, illeggibile. Decisione presa insieme (segnalato
+  // dall'autore): il bianco resta leggibile sotto qualunque icona/testo
+  // scuro in ogni condizione di zoom o fase giorno/notte, senza bisogno di
+  // asset o logica in piu'.
   {
     const b = cam.bounds;
     const p0 = cam.worldToScreen(b.left, b.top);
     const p1 = cam.worldToScreen(b.right, b.bottom);
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
-    if (p0.y > 0) r.draw(solidFrame(white, cw, p0.y), 0, 0, 1, 0x000000, 1);
-    if (p1.y < ch) r.draw(solidFrame(white, cw, ch - p1.y), 0, p1.y, 1, 0x000000, 1);
-    if (p0.x > 0) r.draw(solidFrame(white, p0.x, ch), 0, 0, 1, 0x000000, 1);
-    if (p1.x < cw) r.draw(solidFrame(white, cw - p1.x, ch), p1.x, 0, 1, 0x000000, 1);
+    if (p0.y > 0) r.draw(solidFrame(white, cw, p0.y), 0, 0, 1, 0xffffff, 1);
+    if (p1.y < ch) r.draw(solidFrame(white, cw, ch - p1.y), 0, p1.y, 1, 0xffffff, 1);
+    if (p0.x > 0) r.draw(solidFrame(white, p0.x, ch), 0, 0, 1, 0xffffff, 1);
+    if (p1.x < cw) r.draw(solidFrame(white, cw - p1.x, ch), p1.x, 0, 1, 0xffffff, 1);
   }
 
   // Barra risorse vera (STUDIO.md §9 "GUI vera"). [C] src/objects/repre/
@@ -445,21 +606,53 @@ function frame(now) {
   for (const [value, x] of stats) drawText(r, fontMini, String(value), x, 30, 1, 0x000000, 1);
 
   // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
-  // ancora ricostruita (STUDIO.md §6/§9). `pu1`/`pu2` sono i bottoni veri
-  // (src/objects/pu1|pu2/Step.gml): ciascuno ha due sprite, normale e
+  // ancora ricostruita (STUDIO.md §6/§9), e replica la struttura a tre
+  // righe alternate del pannello originale (`menoo`, vedi sopra) invece di
+  // mostrarle tutte insieme. `pu1`/`pu2`/... hanno due sprite, normale e
   // "selezionato" (`pX`/`pXss`, scambiati in base a `r12.selec` — non e'
-  // un tint, sono disegni diversi), ancorati in basso a sinistra a x=0/184
-  // (letto da `action_move_to`/`184*global.sca`: nel nostro spazio schermo
-  // gia' scala-costante l'equivalente e' lo stesso numero in px, senza
-  // il balletto di sca che serviva nell'originale). `chies` non ha un
-  // bottone: non e' un tipo piazzabile (vedi sopra).
+  // un tint, sono disegni diversi). Nell'originale erano ancorati a x fissi
+  // (`action_move_to`/`N*global.sca`); qui si accodano da sinistra usando
+  // la larghezza vera di ciascuno sprite (`GAP` px fra l'uno e l'altro).
+  // `chies` non ha un bottone: non e' un tipo piazzabile (vedi sopra).
   uiButtons = [];
   const baseY = canvas.clientHeight;
-  for (const [type, x, spr, sprSel] of [["casa", 0, "p1", "p1ss"], ["industria", 184, "p2", "p2ss"]]) {
-    const f = frameFor(selectedType === type ? sprSel : spr);
+  const GAP = 4;
+  let rx = 0;
+  const row = menoo === 1
+    // menoo 1 "edifici" ([C] pu1/Create.gml li crea tutti insieme): i due
+    // veri (casa/industria) + il resto del menu, segnaposto (vedi sopra).
+    ? [
+        { kind: "building", type: "casa", spr: "p1", sprSel: "p1ss" },
+        { kind: "building", type: "industria", spr: "p2", sprSel: "p2ss" },
+        ...OTHER_BUILDINGS.map((b) => ({ kind: "building", type: b.type, spr: b.spr, sprSel: b.sprSel })),
+        { kind: "menu", menoo: 0, spr: "baccc", label: "Indietro" },
+      ]
+    : menoo === 2
+    // menoo 2 "vista" ([C] eyebutton1/2/3 + zoom_plus/zoom_minus): le tre
+    // non ricostruite restano segnaposto, zoom+/- richiamano cam.setZoom.
+    ? [
+        { kind: "info", spr: "eyee1", label: "Vista 1" },
+        { kind: "info", spr: "eyee2", label: "Vista 2" },
+        { kind: "info", spr: "eyee3", label: "Vista 3" },
+        { kind: "zoom", spr: "zoomplus", label: "Zoom +", zoom: 0.8 },
+        { kind: "zoom", spr: "zoomminus", label: "Zoom -", zoom: 1.25 },
+        { kind: "menu", menoo: 0, spr: "baccc", label: "Indietro" },
+      ]
+    // menoo 0 "casa" ([C] handbutton/buildbutton/eyebutton): la riga di
+    // partenza. handbutton deseleziona (r12.selec=0); gru e occhio aprono
+    // le altre due righe.
+    : [
+        { kind: "deselect", spr: "handee", label: "Deseleziona" },
+        { kind: "menu", menoo: 1, spr: "groo", label: "Menu edifici" },
+        { kind: "menu", menoo: 2, spr: "eyeee", label: "Menu vista" },
+      ];
+  for (const b of row) {
+    const spr = b.kind === "building" && selectedType === b.type ? b.sprSel : b.spr;
+    const f = frameFor(spr);
     if (!f) continue;
-    r.draw(f, x, baseY, 1, 0xffffff, 1);
-    uiButtons.push({ x, y: baseY - f.h, w: f.w, h: f.h, type });
+    r.draw(f, rx, baseY, 1, 0xffffff, 1);
+    uiButtons.push({ x: rx, y: baseY - f.h, w: f.w, h: f.h, ...b });
+    rx += f.w + GAP;
   }
   r.flush();
 
@@ -486,8 +679,11 @@ function frame(now) {
       status += (b.ava ?? 0) >= g.maxAva ? `  crescita completa` : `  crescita ${b.ava ?? 0}/${g.maxAva}`;
     }
   } else if (picked?.obj === "placeholder") {
-    const def = BUILDING_TYPES[selectedType];
-    status = picked.consumed ? "occupato" : `vuoto — tocca per costruire ${def.label.toLowerCase()} (${def.placeCost.mon} mon)`;
+    const def = selectedType ? BUILDING_TYPES[selectedType] : null;
+    status = picked.consumed ? "occupato"
+      : !selectedType ? "vuoto — nessun edificio selezionato"
+      : def ? `vuoto — tocca per costruire ${def.label.toLowerCase()} (${def.placeCost.mon} mon)`
+      : `vuoto — ${BUILDING_LABEL[selectedType] ?? selectedType} non ancora ricostruito`;
   } else if (picked) {
     status = `${picked.obj}${picked.spr ? " [" + picked.spr + "]" : ""}`;
   }
@@ -506,7 +702,6 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.addEventListener("beforeunload", doSave);
 
 // aggancio di debug, comodo per ispezionare senza aspettare il ciclo
 window.__nimbus = {
