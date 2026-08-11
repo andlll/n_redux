@@ -3,7 +3,7 @@ import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, tryStartUpgrade, stepConstructions, stepProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked } from "./buildings.js";
-import { spawnCar, stepCars } from "./cars.js";
+import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
@@ -208,6 +208,12 @@ let decorEntities = [];      // ornamenti (permanenti a fine cantiere, o transit
 // (phaseT parte da 0 = fase "giorno" in PHASES piu' sotto, quindi mai
 // notte alla nascita: nessun tint fanali sulle due iniziali).
 let cars = [spawnCar("honda_facile_1", false), spawnCar("honda_facile_2", false)];
+// `carmaker` (game/src/cars.js, CARMAKER_SCHEDULE): non e' un edificio ne'
+// un'istanza di scena, e' un timer che r12 avvia incondizionatamente in
+// ogni room — ogni 60s di gioco arriva un'altra auto (honda3..honda9),
+// finche' non sono comparse tutte e sette. `carmakerT` e' lo stesso
+// cronometro, `carmakerIdx` il prossimo tipo ancora da far comparire.
+let carmakerT = 0, carmakerIdx = 0;
 let r12 = createR12();
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
@@ -672,6 +678,11 @@ function frame(now) {
   for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
   tickR12(r12, dt, buildings);
   stepCars(cars, dt, r12, night);
+  carmakerT += dt;
+  while (carmakerIdx < CARMAKER_SCHEDULE.length && carmakerT >= CARMAKER_SCHEDULE[carmakerIdx].at) {
+    cars.push(spawnCar(CARMAKER_SCHEDULE[carmakerIdx].type, night));
+    carmakerIdx++;
+  }
   stepLights(decorEntities, dt, night, r12);
   stepSemaphores(semaphores, dt);
   if (messageT > 0) messageT -= dt;
@@ -929,6 +940,7 @@ requestAnimationFrame(frame);
 window.__nimbus = {
   cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
   get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
+  get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,

@@ -886,3 +886,32 @@ paragrafo 8.
   `cars.js`): un'istanza per ognuno dei 48 pali gia' in `staticWorld` (il
   palo stesso non si tocca, resta com'era), depth `-y - 1` come le altre
   luci con `_selfLit` per saltare la tinta giorno/notte allo stesso modo.
+
+- **Il traffico cresce nel tempo, non solo le due auto fisse** (chiesto
+  dall'autore a memoria, confermato leggendo il codice). **[C]**
+  `r12/Create.gml` crea `carmaker` incondizionatamente (`action_create_
+  object(carmaker, 0, 0)`, fuori da qualunque `action_if_number(736,...)`
+  di ramo-room): esiste in ogni room, non solo `match`. `carmaker/
+  Alarm_0.gml` ogni 3600 tick (60s) fa comparire un'altra `honda3..9`, una
+  alla volta (contatore `made`, da 2 a 8), finche' non sono arrivate tutte
+  e sette — poi il timer continua a girare ma non trova piu' nessun `made`
+  da far corrispondere, innocuo. Portato in `game/src/cars.js`
+  (`CARMAKER_SCHEDULE`, sette voci a 60/120/.../420 secondi) e `main.js`
+  (`carmakerT`/`carmakerIdx`, stesso schema di `stepCars`/`spawnCar` gia'
+  in uso per honda_facile_1/2).
+  Ogni `honda3..9` e' la stessa catena di alarm direzione/velocita'/sprite
+  di honda_facile_2, solo piu' lunga (fino a 12 alarm invece di 7 — un
+  percorso a due andate/ritorno invece di una) e con un dettaglio in piu'
+  nel `Create.gml` di ciascuna: **[C]** `action_if_number(736, 1, 0)`
+  (vero per match_easy) sposta l'istanza appena nata di `(+21, -26)`,
+  relativo — le coordinate in `CAR_TYPES` includono gia' questo nudge, non
+  sono quelle scritte a mano in `carmaker`/`honda*`. Depth `-y - 16`
+  (contro `-y - 2` di honda_facile_1/2 — **[C]** `honda3..9/Step.gml`).
+  Due dettagli fedeli non "corretti": `honda4` ha `Alarm_4..6` mai armati
+  (stesso codice morto di `honda_facile_1`, **[C]** `Alarm_3` uccide/
+  ricrea sempre prima), e la sua posizione di nascita da `carmaker`
+  differisce di 10px da quella di ogni rientro successivo (**[C]**
+  `carmaker/Alarm_0.gml` la crea a `(62,526)`, ma lei stessa in
+  `Alarm_3.gml` rinasce a `(72,528)` — un disallineamento gia' presente
+  nel decompilato originale) — riprodotto con `firstSpawn` distinto da
+  `spawn` in `CAR_TYPES.honda4`, invece di "correggerlo".

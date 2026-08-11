@@ -127,13 +127,29 @@ GAMEPLAY_SPRITES = {
         "a21", "a22", "a23", "a24",         # albe2: le 4 varianti possibili
         "a31", "a32", "a33", "a34",         # albe3: le 4 varianti possibili
     ],
-    # Automobili decorative (src/objects/honda_facile_1|2, STUDIO.md §5.3
-    # "veicoli_target"): le uniche due presenti in match_easy.scene.json.
+    # Automobili decorative (src/objects/honda_facile_1|2/honda3..9,
+    # STUDIO.md §5.3 "veicoli_target"). honda_facile_1/2 sono le uniche due
+    # presenti in match_easy.scene.json da subito; honda3..9 non ci sono
+    # ancora quando la room carica — arrivano col tempo, un tipo alla volta
+    # ogni 60s, fatte comparire da `carmaker` (creato incondizionatamente
+    # da `r12/Create.gml` in ogni room, non solo `match`: CARMAKER_SCHEDULE
+    # in game/src/cars.js). Ogni honda3..9 ha 4-6 sprite di "posa" (usato
+    # solo il primo frame, vedi cars.js) piu' 4-5 transizioni multi-frame
+    # (svolta/accelerazione, es. "g_bs_as" — 38 frame, ne pacchettiamo
+    # comunque solo il primo: nessun sistema di image_speed nel motore).
     # honda_facile_1 non cambia mai sprite (la sua catena di alarm che lo
     # farebbe non e' armata da Create — vedi game/src/cars.js), quindi le
-    # sole sprite in piu' da impacchettare sono quelle di honda_facile_2.
+    # uniche sprite di honda_facile_1/2 in piu' da impacchettare sono
+    # quelle di honda_facile_2.
     "cars": [
         "c_ad_as", "c_as", "c_as_ad",       # honda_facile_2: fasi accelerazione/svolta/decelerazione
+        "g_bs", "g_bs_as", "g_as", "g_as_bs",                       # honda3 (e honda8 riusa "g_bs")
+        "p_bd", "p_bd_ad", "p_ad",                                   # honda4
+        "c_bs", "c_bs_as",                                           # honda5 (c_as/c_as_ad gia' sopra)
+        "v_bs", "v_bs_as", "v_as", "v_as_ad", "v_ad", "v_ad_bd", "v_bd", "v_bd_ad",  # honda6
+        "r_bd", "r_bd_bs", "r_bs", "r_bs_as", "r_as", "r_as_ad", "r_ad", "r_ad_bd",  # honda7
+        "g_bs_bd", "g_bd", "g_bd_ad", "g_ad", "g_ad_as",             # honda8
+        "p_as_ad", "p_ad_bd", "p_bd_bs", "p_bs", "p_bs_as",          # honda9 (p_as/p_ad gia' sopra)
     ],
     # Luci (STUDIO.md §5.3 "notte_target", cddvd/d1NN/di11b — le "luci" che
     # non funzionavano): l'originale anima la transizione con uno sprite "x"
