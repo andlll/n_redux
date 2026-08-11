@@ -51,6 +51,17 @@ GAMEPLAY_SPRITES = {
         "ir21", "ir22", "ir23", "ir24", "ir25", "ir26",           # fase 2
         "ir31", "ir32", "ir33", "ir34", "ir35", "ir36",           # fase 3
         "ir41", "ir42", "ir43", "ir44", "ir45", "ir46",           # fase 4
+        # traccia "f": impalcatura in sovraimpressione, sempre davanti a
+        # "r" ([C] impaind0to1f/Create.gml: depth = -y - 2). Stessa sagoma
+        # di ir1x..4x come reticolo invece che struttura piena (STUDIO.md
+        # §9, buildings.js frontSprFor()) — un cantiere senza questa traccia
+        # e' solo la fondamenta che cambia, senza nessuna impalcatura
+        # davanti (segnalato dall'autore).
+        "if11", "if12", "if13", "if14", "if15", "if16",
+        "if21", "if22", "if23", "if24", "if25", "if26",
+        "if31", "if32", "if33", "if34", "if35", "if36",
+        "if41", "if42", "if43", "if44", "if45", "if46",
+        "im2f", "im4f",   # coperchio a gru di fine cantiere (upgrades[i].cap)
         # casa: terzo edificio, tre livelli (casa1/2/3), 20 varianti
         # sprite+decoro a dado per livello (src/objects/casa1|2|3/Create.gml,
         # STUDIO.md §9). Il cantiere riusa gli sprite ir1x/2x/3x/4x gia'

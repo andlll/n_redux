@@ -1,5 +1,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<!-- Il gioco e' ancora in sviluppo attivo: il sito statico non deve
+     "ricordarsi" una build precedente. Lo stato di gioco non persiste piu'
+     da solo fra un caricamento e l'altro (game/src/main.js, seedChies()
+     sempre), e questi header spingono anche il browser a non tenersi in
+     cache l'HTML stesso invece di riservare la versione vecchia finche' la
+     cache non scade da sola. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>NIMBUS</title>
 <style>
   html, body { margin: 0; height: 100%; background: #0b1020; overflow: hidden;

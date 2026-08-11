@@ -29,9 +29,29 @@ cam.minZoom = 0.5;
 // se lo schermo cambia (rotazione del telefono).
 let userMoved = false;
 
-// Ordinamento dichiarato una volta sola: prima il layer (depth), poi la y.
-// Nell'originale era `depth = -y` sparso dentro i singoli oggetti.
-const sortWorld = (a, b) => (b.depth - a.depth) || (a.y - b.y);
+// Ordinamento dichiarato una volta sola. Nell'originale ogni edificio/albero
+// si auto-assegnava `depth = -y` nel proprio Create (STUDIO.md §5.3, e
+// confermato dal decompilato di impaind0to1f/Create.gml: `depth = -y - 2`)
+// — la stessa istanza dichiarata a `depth: 0` nella room diventava quindi
+// dinamicamente "-y" a runtime. I livelli fissi (ambiente/UI: air2 -1,
+// aura -10, placeholder -5000, pu1 -9998, ...) restano quelli scritti nella
+// room, perche' il loro codice non tocca mai `depth`.
+//
+// Qui replichiamo la stessa regola: le istanze "di mondo" (`depth === 0`
+// nella room — edifici, alberi, decoro/impalcature che creiamo noi a
+// runtime) si ordinano per `-y`; tutto il resto mantiene il suo depth
+// fisso. Senza questo, `air2` (il livello di terreno/strade, depth -1,
+// STUDIO.md §5.2 lo definiva erroneamente "atmosferico": e' in realta'
+// opaco su tutta la mappa) finiva sopra ENTRAMBI gli edifici e gli alberi,
+// perche' -1 sta "davanti" a 0 nella nostra convenzione (piu' basso =
+// disegnato dopo = piu' vicino alla camera) — il bug dietro sia al mancato
+// ordinamento assonometrico sia a "vedo solo le luci di chies" (il suo
+// unico figlio a depth -1, il bagliore delle finestre, restava sopra
+// `air2` per il solo caso fortuito della y, la chiesa stessa no).
+function effDepth(it) {
+  return it.depth === 0 ? -it.y : it.depth;
+}
+const sortWorld = (a, b) => effDepth(b) - effDepth(a);
 const staticWorld = scene.instances.slice().sort(sortWorld);
 
 // colore stabile per nome oggetto, finche' non abbiamo gli atlas veri
@@ -123,7 +143,15 @@ function addDecor(building, spawns) {
   for (const { spr, dx, dy } of spawns) {
     decorEntities.push({
       obj: "decor", buildingId: building.id,
-      x: building.x + dx, y: building.y + dy, depth: building.depth - 1,
+      // Stesso depth "di mondo" (0) dell'edificio, non depth-1: sotto
+      // effDepth() sopra un depth fisso -1 varrebbe come livello ambiente
+      // (stesso bug di air2), invece il bagliore deve seguire la y vera
+      // del suo edificio (incluso l'offset dx/dy delle gru/macerie ai
+      // corner) per restare correttamente intercalato con gli altri
+      // edifici/alberi. A parita' di depth+y, l'ordine di inserimento in
+      // `dynamic` (building poi decor, sempre) decide chi vince — lo stesso
+      // meccanismo con cui il pareggio si risolveva prima.
+      x: building.x + dx, y: building.y + dy, depth: 0,
       spr, _f: frameFor(spr),
     });
   }
@@ -136,7 +164,13 @@ function placeAt(placeholder, type) {
   }
   for (const k in def.placeCost) r12[k] -= def.placeCost[k];
   placeholder.consumed = true;
-  const b = placeBuilding(type, placeholder.x, placeholder.y, placeholder.depth);
+  // depth 0, NON placeholder.depth (-5000): quel numero e' il livello fisso
+  // "sempre in primo piano" del segnaposto vuoto (STUDIO.md, cosi' si vede
+  // sempre sopra il terreno), non un depth di mondo da ereditare. Un
+  // edificio vero e' un oggetto "di mondo" come chies o gli alberi: deve
+  // ordinarsi per la propria y (vedi effDepth() sopra), non restare per
+  // sempre incollato davanti a tutto il resto della mappa.
+  const b = placeBuilding(type, placeholder.x, placeholder.y, 0);
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
   return null;
@@ -176,8 +210,16 @@ function destroyBuilding(b) {
 // Serializzazione esplicita fin da subito (STUDIO.md §5.6/§7.1): lo stato
 // che conta e' gia' dati semplici, quindi non c'e' uno snapshot binario da
 // imitare, solo JSON. Stessi nomi di slot dell'originale ("nimsav_eas" per
-// la mappa facile). Autosave periodico + tasti S/L per salvare/caricare a
-// mano mentre si sviluppa.
+// la mappa facile).
+//
+// NON e' piu' automatico: il gioco e' ancora in sviluppo attivo, e un
+// autoload silenzioso al boot fa ripartire ogni sessione di test da uno
+// stato vecchio (edifici/decoro/depth di una build precedente), mascherando
+// esattamente le modifiche che si sta cercando di verificare — "vedo
+// sempre la versione vecchia" a ogni ricarica. Ogni caricamento della
+// pagina e' quindi una partita nuova, come il primissimo avvio. S/L restano
+// per salvare/ricaricare a mano DENTRO la stessa sessione di test, se
+// serve, ma non sopravvivono piu' da soli a un refresh.
 function doSave() { save(scene.name, r12, buildings); }
 function doLoad() {
   const data = load(scene.name);
@@ -194,7 +236,7 @@ function doLoad() {
   }
   return true;
 }
-if (!doLoad()) seedChies();
+seedChies();
 
 window.addEventListener("keydown", (e) => {
   if (e.key === "s" || e.key === "S") { doSave(); message = "partita salvata"; messageT = 3; }
@@ -205,7 +247,6 @@ window.addEventListener("keydown", (e) => {
     messageT = 3;
   }
 });
-let autosaveT = 0;
 
 // ------------------------------------------------- ciclo giorno/notte
 // Nell'originale: 8 alarm che ricoloravano ~24 gruppi di oggetti uno per uno.
@@ -288,9 +329,10 @@ input.onTap = (sx, sy) => {
   }
   if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
     const it = frameList[i];
-    // il decoro (cddvd*) e' puramente visivo: nell'originale non aveva
-    // eventi Mouse propri, quindi qui non deve "rubare" il tocco.
-    if (!it._f || it.obj === "decor") continue;
+    // il decoro (cddvd*) e l'impalcatura di cantiere sono puramente visivi:
+    // nell'originale non avevano eventi Mouse propri, quindi qui non devono
+    // "rubare" il tocco.
+    if (!it._f || it.obj === "decor" || it.obj === "scaffold") continue;
     const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
     if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
       picked = it;
@@ -354,7 +396,7 @@ function frame(now) {
   resize();
   cam.update(dt);
 
-  // --- simulazione: cantieri, economia, meteo, autosave
+  // --- simulazione: cantieri, economia, meteo
   stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
   stepProduction(buildings, dt, r12);
   stepGrowth(buildings, dt, r12);
@@ -364,18 +406,27 @@ function frame(now) {
   for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
   tickR12(r12, dt, buildings);
   if (messageT > 0) messageT -= dt;
-  autosaveT += dt;
-  if (autosaveT > 15) { autosaveT = 0; doSave(); }
 
   // --- lista di disegno di questo frame: mondo statico (placeholder consumati
   // esclusi) + edifici (sprite ricalcolato: cambia durante il cantiere) + decoro
   const dynamic = [];
   for (const b of buildings) {
     dynamic.push({ obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
+    // Impalcatura in sovraimpressione + coperchio di fine cantiere (vedi
+    // buildings.js): stessa x/y/depth dell'edificio, spinti sopra di lui
+    // dall'ordine di inserimento (a parita' di depth+y l'array mantiene
+    // l'ordine con cui e' stato costruito, STUDIO.md sopra su sortWorld).
+    if (b.frontSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.frontSpr) });
+    if (b.capSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.capSpr) });
   }
   for (const d of decorEntities) dynamic.push(d);
+  // Il decoro (bagliore delle finestre) si accende solo di notte (STUDIO.md
+  // §5.3 "notte_target": 231 oggetti reagiscono al ciclo giorno/notte
+  // accendendo le luci di notte) — finora restava sempre acceso, quindi
+  // visibile pure in pieno giorno.
+  const night = isNight(phaseT);
   frameList = staticWorld.filter((it) => !(it.obj === "placeholder" && it.consumed))
-    .concat(dynamic).sort(sortWorld);
+    .concat(dynamic).filter((it) => night || it.obj !== "decor").sort(sortWorld);
 
   r.beginFrame(canvas.width, canvas.height);
   const amb = ambientAt(phaseT);
@@ -407,22 +458,30 @@ function frame(now) {
   r.setAmbient(1, 1, 1);
   r.setProjection(screenProjection(canvas.clientWidth, canvas.clientHeight));
 
-  // Fuori dai confini della room: nero pieno invece dei bordi "strappati"
-  // del terreno quando lo zoom indietro supera la mappa (il terreno non e'
-  // disegnato per essere visto da fuori dai suoi bordi). Non ho trovato un
-  // oggetto originale dedicato: l'originale aveva un limite minimo di zoom
-  // esplicito apposta per non mostrare mai la mappa intera su `match`
-  // (STUDIO.md §2), quindi il problema a monte non si poneva mai. Qui
-  // ricreiamo l'effetto (vignetta nera) invece del vincolo che lo evitava.
+  // Fuori dai confini della room: vignetta piena invece dei bordi
+  // "strappati" del terreno quando lo zoom indietro supera la mappa (il
+  // terreno non e' disegnato per essere visto da fuori dai suoi bordi). Non
+  // ho trovato un oggetto originale dedicato: l'originale aveva un limite
+  // minimo di zoom esplicito apposta per non mostrare mai la mappa intera
+  // su `match` (STUDIO.md §2), quindi il problema a monte non si poneva
+  // mai. Qui ricreiamo l'effetto (vignetta) invece del vincolo che lo
+  // evitava.
+  //
+  // Bianca, non nera: le icone della UI (bottoni edificio, testo risorse)
+  // sono nere, e con zoom-out sufficiente la vignetta arriva a toccarle —
+  // nero su nero, illeggibile. Decisione presa insieme (segnalato
+  // dall'autore): il bianco resta leggibile sotto qualunque icona/testo
+  // scuro in ogni condizione di zoom o fase giorno/notte, senza bisogno di
+  // asset o logica in piu'.
   {
     const b = cam.bounds;
     const p0 = cam.worldToScreen(b.left, b.top);
     const p1 = cam.worldToScreen(b.right, b.bottom);
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
-    if (p0.y > 0) r.draw(solidFrame(white, cw, p0.y), 0, 0, 1, 0x000000, 1);
-    if (p1.y < ch) r.draw(solidFrame(white, cw, ch - p1.y), 0, p1.y, 1, 0x000000, 1);
-    if (p0.x > 0) r.draw(solidFrame(white, p0.x, ch), 0, 0, 1, 0x000000, 1);
-    if (p1.x < cw) r.draw(solidFrame(white, cw - p1.x, ch), p1.x, 0, 1, 0x000000, 1);
+    if (p0.y > 0) r.draw(solidFrame(white, cw, p0.y), 0, 0, 1, 0xffffff, 1);
+    if (p1.y < ch) r.draw(solidFrame(white, cw, ch - p1.y), 0, p1.y, 1, 0xffffff, 1);
+    if (p0.x > 0) r.draw(solidFrame(white, p0.x, ch), 0, 0, 1, 0xffffff, 1);
+    if (p1.x < cw) r.draw(solidFrame(white, cw - p1.x, ch), p1.x, 0, 1, 0xffffff, 1);
   }
 
   // Barra risorse vera (STUDIO.md §9 "GUI vera"). [C] src/objects/repre/
@@ -506,7 +565,6 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.addEventListener("beforeunload", doSave);
 
 // aggancio di debug, comodo per ispezionare senza aspettare il ciclo
 window.__nimbus = {
