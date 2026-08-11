@@ -40,7 +40,17 @@ GAMEPLAY_SPRITES = {
         "ci21", "ci22", "ci23", "ci24", "ci25", "ci26", "ci27",    # cantiere 2->3
         "ci28", "ci29", "ci30", "ci31", "ci32", "ci33", "ci34", "ci35", "ci36", "ci37",
         "crcl", "crc2l", "crc3l", "crc3l2", "crc3l3", "crc3l4", "crc3l5",  # decoro cddvd*
-        "gru1", "gr21",                                           # gru cantiere
+        "gru1", "gr21",                                           # gru/rubble cantiere
+        # industria: secondo edificio, catena impaind0to1r/1to2r/2to3r
+        # (src/objects/impaind*, STUDIO.md §5.5/§7.3/§9 "impa* come dati").
+        "i11", "i21", "i31",                                      # livello 1/2/3 (variante 1)
+        "i11l", "i11ll",                                          # decoro livello 1
+        "i21l", "i21b", "i21c",                                   # decoro livello 2
+        "i31a1", "i31a2", "i31a3", "i31l1l",                      # decoro livello 3
+        "ir11", "ir12", "ir13", "ir14", "ir15", "ir16",           # cantiere: fondamenta, fase 1
+        "ir21", "ir22", "ir23", "ir24", "ir25", "ir26",           # fase 2
+        "ir31", "ir32", "ir33", "ir34", "ir35", "ir36",           # fase 3
+        "ir41", "ir42", "ir43", "ir44", "ir45", "ir46",           # fase 4
     ],
 }
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})

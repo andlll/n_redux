@@ -2,9 +2,9 @@ import { Renderer, makeSolidTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12 } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, tryStartUpgrade, stepConstructions, nextUpgrade, upgradeUnlocked } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, tryStartUpgrade, stepConstructions, nextUpgrade, upgradeUnlocked } from "./buildings.js";
 import { save, load } from "./save.js";
-import { loadFont, drawText } from "./font.js";
+import { loadFont, drawText, measureText } from "./font.js";
 
 const canvas = document.getElementById("view");
 const hud = document.getElementById("hud");
@@ -72,44 +72,56 @@ const font = await loadFont(gl, "gotham_mid");
 // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
 // gli edifici" (STUDIO.md §6, confermato dall'autore). Nell'originale
 // diventano un edificio vero al tocco, tramite una ruota di scelta
-// (`cre1..cre4`) che non abbiamo ancora ricostruito: per ora ogni
-// placeholder piazza sempre una `chies` (STUDIO.md §5.3), l'unico edificio
-// di cui abbiamo ricostruito l'intera catena piazzamento -> potenziamento
-// leggendo `chies`, `upcrc12` e `upcrc23` decompilati.
+// (`cre1..cre4`) che non abbiamo ancora ricostruito: qui la sostituisce un
+// selettore a due bottoni (vedi `uiButtons` piu' sotto), uno per ciascuno
+// dei due edifici di cui abbiamo ricostruito l'intera catena — `chies`
+// (upcrc12/upcrc23) e `industria` (impaind0to1r/1to2r/2to3r, STUDIO.md
+// §5.5/§7.3/§9: la famiglia impa* come dati).
 const placeholders = staticWorld.filter((it) => it.obj === "placeholder");
 for (const p of placeholders) { p.id = `ph_${p.x}_${p.y}`; p.consumed = false; }
 const placeholderById = new Map(placeholders.map((p) => [p.id, p]));
 
 /** @type {ReturnType<typeof placeBuilding>[]} */
 let buildings = [];
-let decorEntities = [];      // ornamenti permanenti spawnati a fine cantiere
+let decorEntities = [];      // ornamenti (permanenti a fine cantiere, o transitori durante)
 let r12 = createR12();
+let selectedType = "chies";  // scelto dal selettore in alto a sinistra
 
-// Il decoro (`cddvd`/`cddvd2`/`cddvd3*`) non si accumula: ogni salto di
-// livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd) {
-// action_kill_object(); }` dentro upcrc12/upcrc23). Qui equivale a
-// rimpiazzare tutte le entita' decoro di quell'edificio.
+// Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
+// di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
+// { action_kill_object(); }` dentro upcrc12/upcrc23, stesso schema per
+// industria). Qui equivale a rimpiazzare tutte le entita' decoro di
+// quell'edificio, incluso il decoro transitorio (gru/macerie) di un
+// cantiere in corso.
 function spawnDecor(building, decorSprites) {
   decorEntities = decorEntities.filter((d) => d.buildingId !== building.id);
-  for (const spr of decorSprites) {
+  addDecor(building, decorSprites.map((spr) => ({ spr, dx: 0, dy: 0 })));
+}
+
+/** Decoro transitorio (gru/macerie durante un cantiere): si aggiunge senza
+ * rimpiazzare, e sparisce quando `spawnDecor` sostituisce tutto a fine
+ * cantiere (STUDIO.md §9: la traccia "f" degli impa* non e' ricostruita,
+ * questo e' quanto resta della sua parte scenografica). */
+function addDecor(building, spawns) {
+  for (const { spr, dx, dy } of spawns) {
     decorEntities.push({
       obj: "decor", buildingId: building.id,
-      x: building.x, y: building.y, depth: building.depth - 1,
+      x: building.x + dx, y: building.y + dy, depth: building.depth - 1,
       spr, _f: frameFor(spr),
     });
   }
 }
 
-function placeAt(placeholder) {
-  const def = BUILDING_TYPES.chies;
+function placeAt(placeholder, type) {
+  const def = BUILDING_TYPES[type];
   if (!canAfford(r12, def.placeCost)) {
     return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
   }
   for (const k in def.placeCost) r12[k] -= def.placeCost[k];
   placeholder.consumed = true;
-  const b = placeBuilding("chies", placeholder.x, placeholder.y, placeholder.depth);
+  const b = placeBuilding(type, placeholder.x, placeholder.y, placeholder.depth);
   buildings.push(b);
-  spawnDecor(b, ["crcl"]);   // chies/Create.gml: action_create_object(cddvd, 0, 0)
+  if (b.level >= 1) spawnDecor(b, currentDecor(b));   // chies: istantaneo; industria: arriva a fine cantiere
   return null;
 }
 
@@ -131,9 +143,7 @@ function doLoad() {
     // ricostruisce quale placeholder e' occupato dalla posizione salvata
     const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === b.x && p.y === b.y);
     if (ph) { ph.consumed = true; usedIds.add(ph.id); }
-    spawnDecor(b, ["crcl"]);
-    if (b.level >= 2) spawnDecor(b, BUILDING_TYPES.chies.upgrades[0].decor);
-    if (b.level >= 3) spawnDecor(b, BUILDING_TYPES.chies.upgrades[1].decor);
+    if (b.level >= 1) spawnDecor(b, currentDecor(b));
   }
   return true;
 }
@@ -180,8 +190,17 @@ input.onZoom = (f, ax, ay) => { userMoved = true; cam.setZoom(cam.zoom * f, ax, 
 let picked = null;
 let message = "";
 let messageT = 0;
+let uiButtons = [];   // { x, y, w, h, type }, ricalcolati ad ogni frame dal disegno del selettore
 
 input.onTap = (sx, sy) => {
+  // il selettore edificio vive in spazio schermo, sopra la mappa: un tocco
+  // che lo colpisce non deve raggiungere il mondo sotto.
+  for (const btn of uiButtons) {
+    if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) {
+      selectedType = btn.type;
+      return;
+    }
+  }
   const w = cam.screenToWorld(sx, sy);
   picked = null;
   // frameList e' ricostruita ad ogni frame di disegno: e' la stessa lista,
@@ -200,8 +219,9 @@ input.onTap = (sx, sy) => {
   if (!picked) return;
   message = ""; messageT = 0;
   if (picked.obj === "placeholder" && !picked.consumed) {
-    const err = placeAt(picked);
-    message = err ?? `chiesa piazzata (-${BUILDING_TYPES.chies.placeCost.mon} mon)`;
+    const def = BUILDING_TYPES[selectedType];
+    const err = placeAt(picked, selectedType);
+    message = err ?? `${def.label.toLowerCase()} piazzata (-${def.placeCost.mon} mon)`;
     messageT = 3;
   } else if (picked.obj === "building") {
     const err = tryStartUpgrade(picked.ref, r12);
@@ -245,7 +265,7 @@ function frame(now) {
   resize();
 
   // --- simulazione: cantieri, economia, autosave
-  stepConstructions(buildings, dt, spawnDecor);
+  stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
   tickR12(r12, dt, buildings);
   if (messageT > 0) messageT -= dt;
   autosaveT += dt;
@@ -310,6 +330,23 @@ function frame(now) {
     const w = drawText(r, font, String(value), sx + 34, baseY, scale, 0xffffff, 1);
     sx += 34 + w + 26;
   }
+
+  // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
+  // ancora ricostruita (STUDIO.md §6/§9) — solo i due edifici di cui
+  // abbiamo la catena piazzamento->potenziamento intera. Tocca un
+  // placeholder vuoto per piazzare il tipo evidenziato.
+  uiButtons = [];
+  let bx = 12, by = 12;
+  for (const type of ["chies", "industria"]) {
+    const def = BUILDING_TYPES[type];
+    const label = `${def.label} (${def.placeCost.mon})`;
+    const bw = measureText(font, label, scale) + 20;
+    const active = type === selectedType;
+    r.draw(solidFrame(white, bw, 32), bx, by, 1, active ? 0x3a6ea5 : 0x111a2e, active ? 1 : 0.85);
+    drawText(r, font, label, bx + 10, by + 8, scale, 0xffffff, 1);
+    uiButtons.push({ x: bx, y: by, w: bw, h: 32, type });
+    bx += bw + 8;
+  }
   r.flush();
 
   // --- HUD testuale di debug: numeri e stato dettagliato per lo sviluppo,
@@ -324,7 +361,8 @@ function frame(now) {
       ? `  potenziamento pronto (${Object.entries(up.cost).map(([k, v]) => v + " " + k).join(", ")})`
       : `  prossimo potenziamento a pop ${up.atPop}`;
   } else if (picked?.obj === "placeholder") {
-    status = picked.consumed ? "occupato" : `vuoto — tocca per costruire (${BUILDING_TYPES.chies.placeCost.mon} mon)`;
+    const def = BUILDING_TYPES[selectedType];
+    status = picked.consumed ? "occupato" : `vuoto — tocca per costruire ${def.label.toLowerCase()} (${def.placeCost.mon} mon)`;
   } else if (picked) {
     status = `${picked.obj}${picked.spr ? " [" + picked.spr + "]" : ""}`;
   }
