@@ -396,15 +396,66 @@ paragrafo 8.
   (non è demolizione: è un "rifai in loco" a pagamento che rilancia lo
   stesso `impa*r` del livello corrente con una skin decorativa diversa,
   **[C]** letto da `demobasia/Collision_industria*.gml`, cosmetico).
+- **Terzo edificio giocabile: `casa`.** Diverso dai primi due su due assi:
+  è il primo con un aspetto scelto a caso invece che fisso (**[C]**
+  `casa1/Create.gml`: 5 livelli di `action_if_dice(2)` annidati, letti
+  come un pick uniforme fra **20 coppie** sprite+decoro — stesso principio
+  del `pickSpr` già usato per gli step con sprite ad array, esteso a un
+  campo `variants` sul tipo; la coppia scelta si salva sull'istanza
+  (`b.decorSpr`) invece che nella tabella statica per livello, perché
+  `currentDecor()` doveva sapere QUALE variante è stata tirata a sorte,
+  non solo il tipo), ed è il primo la cui simulazione **consuma** risorse
+  nel tempo invece di limitarsi a costruzione+potenziamento.
+  Piazzamento: **[C]** `placeCost` 100 mon (`placeholder/Mouse_LeftReleased.gml`,
+  `selec==1` → crea `impa0to1r`, non `impaind0to1r`: due oggetti diversi
+  quasi identici, stessa scoperta della coppia r/f già nota per industria
+  — qui il cantiere dura 790 tick invece di 850, letto da `impa0to1r/
+  Create.gml` + `Alarm_0..3.gml`). La casa vera e propria (`casa1`) non è
+  creata dalla traccia "r" che ricostruiamo, ma dalla "f" (`impa0to1f/
+  Alarm_3.gml`, a tic 685 su 850) — stessa semplificazione già scelta per
+  industria: costruiamo solo "r" e creiamo `casa1` alla fine della sua
+  sequenza (790 tick) invece che a metà.
+  **Crescita di popolazione reale**, non più solo formula-placeholder:
+  **[C]** `casa1/Create.gml` assegna `pop += 2` alla nascita; poi
+  `casa1/Alarm_2.gml` avanza uno stadio `ava` (0..5) ogni intervallo —
+  fisso a 2000 tick il primo (**[C]** `action_set_alarm(2000,2)` in
+  Create), poi scelto a dado uniforme fra 4 valori (3500/5796/11565/14656
+  tick) — aggiungendo altri `pop += 2` per stadio, fino a `ava==5` dove
+  l'originale farebbe comparire l'icona di potenziamento (`upsign12`, non
+  ricostruita: qui la crescita si ferma e basta, l'edificio resta
+  "livello 1" per sempre). `stepGrowth()` in `buildings.js`.
+  **Consumo elettrico reale**: **[C]** `casa1/Alarm_3.gml`, ogni 120 tick,
+  in base allo stadio `ava` e a giorno/notte (`aura.night`) — la prima
+  regola che dà al ciclo giorno/notte un effetto di **gioco** reale, non
+  solo la tinta cosmetica di STUDIO.md §5.2: `main.js` calcola
+  `isNight(phaseT)` dalla stessa tabella `PHASES` usata per il colore.
+  `stepConsumption()` in `buildings.js`.
+  `state.js`/`tickR12()` esclude ora anche i tipi con `growth` dalla
+  formula placeholder generica (oltre a quelli con `production`), per lo
+  stesso motivo di industria: non contare due volte la stessa popolazione.
+  **Non portato**, per lo stesso principio già applicato a industria (letto
+  ma non cablato dove servirebbe un sistema che ancora non esiste): il
+  danno da fulmine (`Alarm_5`, uguale schema di industria); il "rifai in
+  loco" a pagamento (`Mouse_LeftPressed`/`demobasia`, cosmetico); e — letta
+  ma **non capita abbastanza da cablarla** — la sommossa (`Alarm_4`: se
+  `r12.hap == r12.pop` e `r12.ele <= 0` compaiono `sold1..6` in base allo
+  stadio `ava`; l'uguaglianza esatta fra `hap` e `pop` è una condizione
+  strana per essere quella vera, e `hap`/`wewe` oggi non sono nemmeno
+  aggiornati da nessun edificio nella nuova versione — meglio lasciarla
+  un gap dichiarato che indovinarla). Il potenziamento a `casa2`/`casa3`
+  (`upsign12` → `impacasa1r`/`1f`, un'altra coppia r/f) resta fuori: è
+  un incremento a parte, non un copia-incolla dell'upgrade di chies/
+  industria (nessuna soglia `atPop`/`atMakee` conosciuta per ora).
+  Sprite aggiunti a `GAMEPLAY_SPRITES` in `tools/23_atlas.py`: le 20
+  varianti `c1xx`/`c1xxl`; il cantiere riusa gli `ir1x` già presenti per
+  industria (stesso schema di sprite, oggetto diverso).
 - **Cosa manca prima del punto 5** (portare le famiglie di comportamenti a
-  gruppi): la traccia "f" degli `impa*` (scenografia); il sistema
-  vita/distruzione (bombe, fulmini, `life` che arriva a 0) che oggi non
-  esiste in nessuna forma nella nuova versione, quindi il danno da
-  fulmine di `industria` resta letto ma non collegato; le altre ~85
-  famiglie `impa*` (armi, minacce, altri edifici) non ancora lette; la
-  famiglia `casa` (letta in parte: crescita di popolazione a stadi con
-  `ava` 0..5, consumo elettrico crescente, e — scoperta studiando
-  `industria` — un meccanismo di riot/sommossa che spawna `sold1..6`
-  quando l'energia manca e l'infelicità supera la popolazione, non
-  ancora approfondito); le icone vere della barra risorse (oggi
-  quadratini colorati, il testo sì è reale).
+  gruppi): la traccia "f" degli `impa*` (scenografia, per industria e ora
+  anche casa); il sistema vita/distruzione (bombe, fulmini, `life` che
+  arriva a 0) che oggi non esiste in nessuna forma nella nuova versione,
+  quindi il danno da fulmine di industria/casa resta letto ma non
+  collegato; il sistema `hap`/`wewe` (felicità/inquinamento visivo) e la
+  sommossa che ne dipende; il potenziamento `casa1→casa2→casa3`; le altre
+  ~85 famiglie `impa*` (armi, minacce, altri edifici) non ancora lette; le
+  icone vere della barra risorse (oggi quadratini colorati, il testo sì è
+  reale).

@@ -43,14 +43,16 @@ export function oilCap(buildings) {
  * [I] Simulazione economica placeholder per i tipi di cui NON conosciamo
  * ancora la regola vera (STUDIO.md §6): un ciclo plausibile e reversibile
  * solo per rendere il gioco giocabile mentre si studia il resto, applicato
- * solo agli edifici il cui tipo non dichiari `production` in buildings.js.
- * `industria` ne e' escluso da quando ha la sua produzione reale
- * (industria1|2|3/Alarm_2.gml, vedi stepProduction in buildings.js): qui
- * contava come un edificio qualsiasi nella formula generica, il che
- * avrebbe duplicato consumo/produzione gia' simulati per davvero altrove.
+ * solo agli edifici il cui tipo non dichiari una simulazione reale in
+ * buildings.js (`production`: industria, industria1|2|3/Alarm_2.gml;
+ * `growth`: casa, casa1/Alarm_2.gml). Escluderli evita di contare due volte
+ * lo stesso olio/popolazione gia' simulati per davvero altrove.
  */
 export function tickR12(r12, dt, buildings) {
-  const guessed = buildings.filter((b) => !BUILDING_TYPES[b.type].production);
+  const guessed = buildings.filter((b) => {
+    const def = BUILDING_TYPES[b.type];
+    return !def.production && !def.growth;
+  });
   const n = guessed.length;
   if (n > 0) {
     r12.oil -= 0.3 * n * dt;                    // consumo: piu' edifici, piu' olio bruciato

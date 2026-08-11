@@ -2,7 +2,7 @@ import { Renderer, makeSolidTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12 } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, tryStartUpgrade, stepConstructions, stepProduction, nextUpgrade, upgradeUnlocked } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, tryStartUpgrade, stepConstructions, stepProduction, stepGrowth, stepConsumption, nextUpgrade, upgradeUnlocked } from "./buildings.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText, measureText } from "./font.js";
 
@@ -170,11 +170,15 @@ const PHASES = [
   { name: "alba", rgb: [0.92, 0.80, 0.78], dur: 5 },
 ];
 let phaseT = 0;
-function ambientAt(t) {
+function phaseIndexAt(t) {
   const total = PHASES.reduce((s, p) => s + p.dur, 0);
   let u = t % total;
   let i = 0;
   while (u > PHASES[i].dur) { u -= PHASES[i].dur; i = (i + 1) % PHASES.length; }
+  return { i, u };
+}
+function ambientAt(t) {
+  const { i, u } = phaseIndexAt(t);
   const a = PHASES[i], b = PHASES[(i + 1) % PHASES.length];
   const k = Math.min(1, u / a.dur);
   const s = k * k * (3 - 2 * k);                    // smoothstep
@@ -182,6 +186,12 @@ function ambientAt(t) {
     rgb: a.rgb.map((v, j) => v + (b.rgb[j] - v) * s),
     label: k < 0.75 ? a.name : a.name + " → " + b.name,
   };
+}
+// [C] casa1/Alarm_3.gml: `aura.night` — booleano secco, a differenza della
+// tinta ambientale che sfuma. Usa la stessa fase di ambientAt() (nessuno
+// smoothstep: qui serve un confine netto, com'era nell'originale).
+function isNight(t) {
+  return PHASES[phaseIndexAt(t).i].name === "notte";
 }
 
 // ---------------------------------------------------------------- input
@@ -267,6 +277,8 @@ function frame(now) {
   // --- simulazione: cantieri, economia, autosave
   stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
   stepProduction(buildings, dt, r12);
+  stepGrowth(buildings, dt, r12);
+  stepConsumption(buildings, dt, r12, isNight(phaseT));
   tickR12(r12, dt, buildings);
   if (messageT > 0) messageT -= dt;
   autosaveT += dt;
@@ -333,12 +345,13 @@ function frame(now) {
   }
 
   // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
-  // ancora ricostruita (STUDIO.md §6/§9) — solo i due edifici di cui
-  // abbiamo la catena piazzamento->potenziamento intera. Tocca un
-  // placeholder vuoto per piazzare il tipo evidenziato.
+  // ancora ricostruita (STUDIO.md §6/§9) — i tre edifici di cui abbiamo
+  // la catena di piazzamento (chies/industria: piazzamento->potenziamento
+  // intera; casa: piazzamento->crescita, senza ancora il potenziamento a
+  // casa2/3). Tocca un placeholder vuoto per piazzare il tipo evidenziato.
   uiButtons = [];
   let bx = 12, by = 12;
-  for (const type of ["chies", "industria"]) {
+  for (const type of ["chies", "industria", "casa"]) {
     const def = BUILDING_TYPES[type];
     const label = `${def.label} (${def.placeCost.mon})`;
     const bw = measureText(font, label, scale) + 20;
@@ -363,6 +376,10 @@ function frame(now) {
       : up.atMakee != null
         ? `  prossimo potenziamento a ${up.atMakee} cicli di produzione (ora ${b.makee ?? 0})`
         : `  prossimo potenziamento a pop ${up.atPop}`;
+    else if (BUILDING_TYPES[b.type].growth) {
+      const g = BUILDING_TYPES[b.type].growth;
+      status += (b.ava ?? 0) >= g.maxAva ? `  crescita completa` : `  crescita ${b.ava ?? 0}/${g.maxAva}`;
+    }
   } else if (picked?.obj === "placeholder") {
     const def = BUILDING_TYPES[selectedType];
     status = picked.consumed ? "occupato" : `vuoto — tocca per costruire ${def.label.toLowerCase()} (${def.placeCost.mon} mon)`;

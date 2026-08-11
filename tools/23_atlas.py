@@ -51,6 +51,15 @@ GAMEPLAY_SPRITES = {
         "ir21", "ir22", "ir23", "ir24", "ir25", "ir26",           # fase 2
         "ir31", "ir32", "ir33", "ir34", "ir35", "ir36",           # fase 3
         "ir41", "ir42", "ir43", "ir44", "ir45", "ir46",           # fase 4
+        # casa: terzo edificio, 20 varianti sprite+decoro scelte a dado
+        # (src/objects/casa1/Create.gml, STUDIO.md §9). Il cantiere riusa
+        # gli sprite ir1x di industria (stesso impa0to1r/impaind0to1r).
+        "c111", "c112", "c113", "c114", "c121", "c122", "c123", "c124",
+        "c131", "c132", "c133", "c134", "c141", "c142", "c143", "c144",
+        "c151", "c152", "c153", "c154",
+        "c111l", "c112l", "c113l", "c114l", "c121l", "c122l", "c123l", "c124l",
+        "c131l", "c132l", "c133l", "c134l", "c141l", "c142l", "c143l", "c144l",
+        "c151l", "c152l", "c153l", "c154l",
     ],
 }
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
