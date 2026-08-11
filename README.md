@@ -106,21 +106,37 @@ locale. Tutto ciò che non è versionato si rigenera da ciò che lo è.
 
 ## Far girare il gioco
 
+`game/` è pensato per finire su un hosting statico (GitHub Pages, Netlify,
+qualunque server di file): niente backend, solo fetch di JSON/PNG e moduli ES.
+L'unico passo che serve prima è generare gli atlas per room.
+
 ```bash
-py -3 tools/23_atlas.py match_easy
+python3 -m pip install pillow    # unica dipendenza esterna della toolchain
+python3 tools/23_atlas.py match_easy
+python3 tools/24_blit.py match_easy
 ```
 
-Poi il blit degli atlas e un server statico:
+`24_blit.py` è la versione Python/Pillow — cross-platform — di
+`24_blit.ps1` (PowerShell + GDI+, Windows-only, tenuto per chi già lavora lì).
+Fanno lo stesso lavoro a partire dallo stesso `blitplan.json`; usa quello che
+preferisci.
+
+Poi un server statico qualsiasi:
 
 ```bash
-powershell -File tools/24_blit.ps1 -Room match_easy
-```
-
-```bash
-py -3 -m http.server 5173 --directory game
+python3 -m http.server 5173 --directory game
 ```
 
 E si apre `http://127.0.0.1:5173/`.
+
+### Deploy come sito statico
+
+`.github/workflows/deploy-pages.yml` rigenera gli atlas per `match_easy` e
+`match` ad ogni push su `main` e pubblica `game/` su GitHub Pages. Va
+abilitato una volta sola in Settings → Pages → Source → "GitHub Actions".
+Nessun altro passo: `game/assets/` resta fuori da git (è derivato) e viene
+ricostruito ad ogni deploy dalle texture page versionate in
+`assets/textures/`.
 
 ## I tool
 
@@ -132,7 +148,8 @@ Due famiglie, e la differenza conta.
 |---|---|
 | `22_scene.py <room>` | room → formato del motore |
 | `23_atlas.py <room>` | reimpacchetta gli atlas della room |
-| `24_blit.ps1 -Room <room>` | esegue il blit degli atlas |
+| `24_blit.py <room>` | esegue il blit degli atlas (cross-platform, Pillow) |
+| `24_blit.ps1 -Room <room>` | lo stesso, Windows-only (GDI+, nessuna dipendenza da installare) |
 | `10_sprites.ps1` | rigenera i 17.224 frame PNG singoli |
 | `16_dupes.py` | quanto codice è davvero unico |
 | `17_survey.py` | room, oggetti con input, gerarchia parent |
