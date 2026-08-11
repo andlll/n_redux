@@ -64,9 +64,12 @@ function frameFor(sprName) {
 for (const it of staticWorld) it._f = frameFor(it.spr);
 const missingArt = staticWorld.filter((it) => !it._f).length;
 
-// Font bitmap reale (tools/25_font.py), per la barra risorse: testo vero
-// invece dei quadratini colorati segnaposto (STUDIO.md §7.5, §9).
+// Font bitmap reali (tools/25_font.py). "gotham_mid" per i testi generici
+// (bottoni non canonici, HUD); "gotham_mini" e' quello vero della barra
+// risorse (src/objects/repre/DrawGUI.gml: action_font(gotham_mini, 0) —
+// un font diverso da quello usato altrove, non lo stesso rimpicciolito).
 const font = await loadFont(gl, "gotham_mid");
+const fontMini = await loadFont(gl, "gotham_mini");
 
 // -------------------------------------------------------- piazzabili e edifici
 // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
@@ -202,12 +205,20 @@ let message = "";
 let messageT = 0;
 let uiButtons = [];   // { x, y, w, h, type }, ricalcolati ad ogni frame dal disegno del selettore
 
+// [C] placeholder/Mouse_LeftReleased.gml: `r12.selec` e' il vero selettore
+// di modalita' piazzamento nell'originale (1 = casa, 2 = industria, ...).
+// `chies` non ha un valore: non e' mai piazzata dal giocatore (STUDIO.md
+// §9), quindi non entra in questa tabella — selezionarla lascia r12.selec a
+// 0 ("niente"), fedele al fatto che non esiste un vero bottone per lei.
+const SELEC_BY_TYPE = { casa: 1, industria: 2 };
+
 input.onTap = (sx, sy) => {
   // il selettore edificio vive in spazio schermo, sopra la mappa: un tocco
   // che lo colpisce non deve raggiungere il mondo sotto.
   for (const btn of uiButtons) {
     if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) {
       selectedType = btn.type;
+      r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
       return;
     }
   }
@@ -323,43 +334,53 @@ function frame(now) {
   // --- layer GUI: spazio schermo, dimensione costante, nessuna tinta
   r.setAmbient(1, 1, 1);
   r.setProjection(screenProjection(canvas.clientWidth, canvas.clientHeight));
-  const barH = 64;
-  r.draw(solidFrame(white, canvas.clientWidth, barH), 0,
-         canvas.clientHeight - barH, 1, 0x111a2e, 0.92);
-  // Barra risorse: un quadratino colorato al posto dell'icona vera (non
-  // ancora identificata nell'atlas) + il numero nel font bitmap reale
-  // dell'originale (tools/25_font.py). Testo in spazio schermo, dimensione
-  // costante: non sa niente della camera (STUDIO.md §7.5).
-  const stats = [
-    ["olio", Math.round(r12.oil), 0xc9a44a],
-    ["mon", Math.round(r12.mon), 0x53a06a],
-    ["pop", Math.round(r12.pop), 0x4f7fd0],
-    ["ele", Math.round(r12.ele), 0xb05a5a],
-  ];
-  const scale = 0.5, baseY = canvas.clientHeight - barH + 14;
-  let sx = 12;
-  for (const [label, value, color] of stats) {
-    r.draw(solidFrame(white, 28, 28), sx, baseY + 2, 1, color, 1);
-    const w = drawText(r, font, String(value), sx + 34, baseY, scale, 0xffffff, 1);
-    sx += 34 + w + 26;
-  }
+
+  // Barra risorse vera (STUDIO.md §9 "GUI vera"). [C] src/objects/repre/
+  // DrawGUI.gml: e' un `DrawGUI`, quindi le coordinate sono gia' spazio
+  // schermo assoluto — nessuna proiezione da rifare. Un'unica immagine con
+  // le icone gia' dentro (`icone_oriz`), non quattro icone separate come
+  // nella prima versione: la prima ipotesi era sbagliata. I numeri usano
+  // "gotham_mini" — un font diverso da quello del resto della UI, non lo
+  // stesso rimpicciolito — ai quattro offset letti nel decompilato: pop 30,
+  // olio 142, energia 228, denaro 340, tutti a y=30 (+ `global.upp`, un
+  // offset di sicurezza per notch/status-bar non ancora identificato: qui
+  // trattato come 0). Colore nero come lo stato "non hover" dell'originale
+  // (`action_color(0)`); lo stato hover (testo bianco, sfondo
+  // `icone_orizz_hc`) non e' riprodotto — nessun concetto di hover nel
+  // nostro input touch-first (STUDIO.md §7).
+  const barFrame = frameFor("icone_oriz");
+  if (barFrame) r.draw(barFrame, 0, 20, 1, 0xffffff, 1);
+  const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
+                 [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
+  for (const [value, x] of stats) drawText(r, fontMini, String(value), x, 30, 1, 0x000000, 1);
 
   // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
-  // ancora ricostruita (STUDIO.md §6/§9) — i tre edifici di cui abbiamo
-  // la catena di piazzamento (chies/industria: piazzamento->potenziamento
-  // intera; casa: piazzamento->crescita, senza ancora il potenziamento a
-  // casa2/3). Tocca un placeholder vuoto per piazzare il tipo evidenziato.
+  // ancora ricostruita (STUDIO.md §6/§9). `pu1`/`pu2` sono i bottoni veri
+  // (src/objects/pu1|pu2/Step.gml): ciascuno ha due sprite, normale e
+  // "selezionato" (`pX`/`pXss`, scambiati in base a `r12.selec` — non e'
+  // un tint, sono disegni diversi), ancorati in basso a sinistra a x=0/184
+  // (letto da `action_move_to`/`184*global.sca`: nel nostro spazio schermo
+  // gia' scala-costante l'equivalente e' lo stesso numero in px, senza
+  // il balletto di sca che serviva nell'originale). `chies` non ha un vero
+  // bottone (non e' mai piazzata dal giocatore, STUDIO.md §9): resta un
+  // bottone di test, disegnato in uno stile deliberatamente diverso.
   uiButtons = [];
-  let bx = 12, by = 12;
-  for (const type of ["chies", "industria", "casa"]) {
-    const def = BUILDING_TYPES[type];
-    const label = `${def.label} (${def.placeCost.mon})`;
+  const baseY = canvas.clientHeight;
+  for (const [type, x, spr, sprSel] of [["casa", 0, "p1", "p1ss"], ["industria", 184, "p2", "p2ss"]]) {
+    const f = frameFor(selectedType === type ? sprSel : spr);
+    if (!f) continue;
+    r.draw(f, x, baseY, 1, 0xffffff, 1);
+    uiButtons.push({ x, y: baseY - f.h, w: f.w, h: f.h, type });
+  }
+  {
+    const scale = 0.5, def = BUILDING_TYPES.chies;
+    const label = `${def.label}* (${def.placeCost.mon})`;
     const bw = measureText(font, label, scale) + 20;
-    const active = type === selectedType;
+    const bx = 184 + 118 + 8, by = canvas.clientHeight - 40;
+    const active = selectedType === "chies";
     r.draw(solidFrame(white, bw, 32), bx, by, 1, active ? 0x3a6ea5 : 0x111a2e, active ? 1 : 0.85);
     drawText(r, font, label, bx + 10, by + 8, scale, 0xffffff, 1);
-    uiButtons.push({ x: bx, y: by, w: bw, h: 32, type });
-    bx += bw + 8;
+    uiButtons.push({ x: bx, y: by, w: bw, h: 32, type: "chies" });
   }
   r.flush();
 

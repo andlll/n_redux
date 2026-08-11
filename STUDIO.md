@@ -487,15 +487,80 @@ paragrafo 8.
   `c3xx`/`c3xxl`; il cantiere `casa2→casa3` riusa `gru1` (già presente,
   letto da `impa2to3r/Alarm_0.gml`, tic==3 — l'oggetto creato si chiama
   `gru`, non `gru1`, ma `gru` disegna proprio lo sprite `gru1`).
+- **Le tempeste sono cosmetiche in `match_easy`, e il danno da fulmine è
+  morto anche nell'originale.** Prima di mettere mano al sistema
+  vita/distruzione ho letto `r12` (STUDIO.md §4, "il regista del mondo")
+  per capire cosa accende davvero `r12.storm`. **[C]** `r12/Alarm_2.gml`:
+  il ramo `match` normale usa `storm` (dado 1/800 al secondo, dura
+  1800/2100 tick), ma il ramo `match_easy` — quello su cui gira questa
+  riscrittura — usa una variabile **diversa**, `stormeasy` (dado 1/450,
+  stessa durata). **[C]** Ho cercato `stormeasy` in tutti gli oggetti: lo
+  legge solo `r12` stesso, per le nuvole scure/pioggia cosmetiche
+  (`nidark_slow`, `rainlauncher`). Nessun edificio lo controlla mai. Il
+  danno da fulmine letto per industria/casa (Alarm_5/6) controlla invece
+  `r12.storm` — che su `match_easy` **non viene mai impostato**. Quindi:
+  non è che la nostra riscrittura non ha ancora collegato quel danno, è
+  che il gioco originale stesso, su questa mappa, non lo attiva mai.
+  Costruire un sistema vita/morte apposta per abilitarlo sarebbe infedele,
+  non incompleto. Ho controllato anche da dove partono le minacce vere
+  (bombe/aerei/zeppelin, `r12/Alarm_5/6.gml`): dipendono da contatori
+  (`bombn`, `diron`, `ondan`) che partono a 0 e che nessun oggetto letto
+  finora incrementa — trovarli è lavoro serio a sé, coerente con "le
+  altre ~85 famiglie `impa*`" già segnate sotto, non un seguito rapido.
+- **GUI vera: barra risorse e bottoni edificio.** Sostituiti i
+  segnaposto (quadratini colorati, bottoni rettangolari col solo testo)
+  con gli sprite e i font reali dell'originale.
+  **Barra risorse**: **[C]** `repre/DrawGUI.gml` — la prima ipotesi (icona
+  per statistica + font "gotham_mid" rimpicciolito) era sbagliata su
+  entrambi i punti. È un `DrawGUI`, quindi le coordinate sono già spazio
+  schermo assoluto: un'unica immagine con le quattro icone già disegnate
+  dentro (`icone_oriz`, 604×55) e i numeri in un font *diverso* da quello
+  usato altrove (`gotham_mini`, non lo stesso rimpicciolito — estratto con
+  la stessa pipeline di `tools/25_font.py`), agli offset letti nel
+  decompilato: pop 30px, olio 142px, energia 228px, denaro 340px, tutti a
+  y=30. Colore nero, come lo stato "non hover" dell'originale
+  (`action_color(0)`) — lo stato hover (testo bianco, sfondo
+  `icone_orizz_hc`) non è riprodotto: non esiste un concetto di hover nel
+  nostro input touch-first (STUDIO.md §7). `global.upp` (l'offset di
+  sicurezza per notch/status-bar sommato a quasi tutte le y della GUI,
+  **[?]** STUDIO.md §6) resta non identificato: trattato come 0.
+  **Bottoni edificio**: `pu1` (casa, `selec==1`) e `pu2` (industria,
+  `selec==2`) — **[C]** `pu1|pu2/Step.gml`. Ciascuno ha due sprite,
+  normale e "selezionato" (`p1`/`p1ss`, `p2`/`p2ss`), scambiati in base a
+  `r12.selec` — **non** un tint come nella prima versione, sono disegni
+  diversi (la variante selezionata è la stessa sagoma ricolorata a mano
+  nell'arte originale). Ancorati in basso a sinistra a x=0/184 — nel
+  nostro spazio schermo già a scala costante l'equivalente diretto di
+  `184*global.sca` è lo stesso numero in pixel, senza bisogno del
+  balletto di contro-scala che serviva all'originale (STUDIO.md §2).
+  `r12.selec` ora viene scritto per davvero al tocco del bottone (prima
+  esisteva nello stato ma nessuno lo toccava mai).
+  **`chies` non ha un vero bottone**: non è mai piazzata dal giocatore
+  nell'originale (STUDIO.md, "secondo edificio giocabile"), quindi non
+  esiste un `pu0`/`p0` da leggere. Resta un bottone di test, disegnato
+  deliberatamente in uno stile diverso (rettangolo blu con testo, non uno
+  sprite reale) per non farlo passare per un bottone vero.
+  **Non riprodotto**: i cartellini di prezzo a comparsa sul passaggio del
+  mouse (`cc100`, `cc2000ind`, STUDIO.md §5.4 — richiederebbero tracciare
+  l'hover, che il nostro `Input` oggi non fa); gli altri ~18 bottoni della
+  barra (`pu3..puvillone`, `puruspa`/`pureset` — zoom, occhio, reset,
+  *bulldozer*: `ruspa` è italiano per "ruspa/bulldozer", quasi certamente
+  il vero strumento di demolizione, distinto sia da `demobasia` — il
+  "rifai in loco" — sia dal tool di potenziamento; non ancora letto); il
+  calendario cosmetico (`repre` disegna anche un mese Gen–Dic e un giorno,
+  legato a un contatore locale confuso col nome della variabile denaro di
+  `r12` — stesso nome, oggetti diversi).
+  Sprite aggiunti a `GAMEPLAY_SPRITES` (categoria `gui`, nuova):
+  `icone_oriz`, `p1`, `p1ss`, `p2`, `p2ss`. Font `gotham_mini` estratto ed
+  impaginato con la stessa pipeline di `gotham_mid`.
 - **Cosa manca prima del punto 5** (portare le famiglie di comportamenti a
   gruppi): la traccia "f" degli `impa*` (scenografia, per industria e
   casa, su tutti i salti di livello ora ricostruiti); il sistema
-  vita/distruzione (bombe, fulmini, `life` che arriva a 0) che oggi non
-  esiste in nessuna forma nella nuova versione, quindi il danno da
-  fulmine di industria/casa resta letto ma non collegato; il sistema
-  `hap`/`wewe` (felicità/inquinamento visivo) e la sommossa che ne
-  dipende; i "rifai in loco" cosmetici (`demobasia` + `impacasa*`/
-  `impaind*` "rifatti", non le catene di potenziamento); le altre ~85
-  famiglie `impa*` (armi, minacce, altri edifici) non ancora lette; le
-  icone vere della barra risorse (oggi quadratini colorati, il testo sì è
-  reale).
+  vita/distruzione (bombe, fulmini — vedi sopra, per `match_easy` è un
+  problema diverso da come sembrava); il sistema `hap`/`wewe`
+  (felicità/inquinamento visivo) e la sommossa che ne dipende; i "rifai in
+  loco" cosmetici (`demobasia` + `impacasa*`/`impaind*` "rifatti", non le
+  catene di potenziamento); gli altri ~18 bottoni della barra (zoom,
+  occhio, reset, `puruspa` — probabile bulldozer/demolizione vera); le
+  altre ~85 famiglie `impa*` (armi, minacce, altri edifici) non ancora
+  lette.

@@ -62,6 +62,19 @@ GAMEPLAY_SPRITES = {
         "c311", "c312", "c313", "c314", "c321", "c322", "c323", "c324", "c331", "c332", "c333", "c334", "c341", "c342", "c343", "c344", "c351", "c352", "c353", "c354",  # casa3
         "c311l", "c312l", "c313l", "c314l", "c321l", "c322l", "c323l", "c324l", "c331l", "c332l", "c333l", "c334l", "c341l", "c342l", "c343l", "c344l", "c351l", "c352l", "c353l", "c354l",  # decoro casa3
     ],
+    # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
+    # immagine con le icone gia' disegnate dentro (src/objects/repre/
+    # DrawGUI.gml: action_draw_sprite(icone_oriz, ...) + i numeri col font
+    # bitmap "gotham_mini" a offset fissi), non quattro icone separate come
+    # avevamo indovinato. I bottoni edificio (src/objects/pu1|pu2) hanno
+    # ciascuno due sprite, normale e "selezionato" (px / pxss), cambiate a
+    # mano nello Step in base a r12.selec — non e' un tint, sono disegni
+    # diversi.
+    "gui": [
+        "icone_oriz",          # sfondo barra risorse (repre/DrawGUI.gml)
+        "p1", "p1ss",          # bottone casa (pu1, selec==1)
+        "p2", "p2ss",          # bottone industria (pu2, selec==2)
+    ],
 }
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
 
