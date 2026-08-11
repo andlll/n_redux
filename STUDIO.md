@@ -939,3 +939,23 @@ paragrafo 8.
   **[C]** coordinate dell'originale) e la attraversano di sfuggita durante
   una risalita lenta durata quasi un minuto — rari e discreti, come
   nell'originale.
+
+- **Pedoni ("omini neri")**: ricordati "spawnati da chies o dal
+  controller principale", ma non e' nessuno dei due — **[C]**
+  `casa1|2|3/Create.gml` (non ancora letti, STUDIO.md non li citava)
+  creano ciascuno un `pplo` (sprite `q1`..`q10`, 9-16px: letteralmente
+  minuscoli omini neri) alla propria posizione, nell'ultima riga. Non un
+  evento per casa: uno per **salto di livello** — una casa arrivata al
+  livello 3 ne ha lasciati indietro due, mai rimossi (nemmeno
+  `casaN/Destroy.gml` li tocca: sopravvivono alla casa che li ha creati).
+  Camminano piano (**[C]** velocita' 0.5 px/tic) in una delle quattro
+  diagonali, cambiando direzione a caso ogni 36-83 tic (**[C]**
+  `pplo/Create.gml` + `Alarm_0.gml`), e rimbalzano contro `chies` e i
+  marker invisibili `pepazzittecollider` gia' in scena (**[C]**
+  `action_bounce`). Puramente estetico, quindi alleggerito su richiesta
+  in `game/src/pedestrians.js`: niente fisica di collisione vera contro i
+  27 collider — restano semplicemente entro un raggio fisso dalla propria
+  casa, la stessa idea ("non si allontanano troppo da dove sono nati")
+  senza portare la mappa dei collider. Agganciato in `main.js` dentro
+  `spawnDecor()`, per il solo tipo `casa`, allo stesso punto in cui gia'
+  intercettava `parco`.

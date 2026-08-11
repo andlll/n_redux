@@ -176,6 +176,11 @@ GAMEPLAY_SPRITES = {
     # nella room, nascono e muoiono dinamicamente, quindi vanno elencati
     # qui come per le altre famiglie mai piazzate staticamente.
     "atmosphere": ["n1", "n2", "n3", "brb1", "brb2"],
+    # Pedoni ("omini neri", src/objects/pplo — STUDIO.md, game/src/
+    # pedestrians.js): un abitante per ogni salto di livello di una casa,
+    # mai piazzato nella room. "q8"/"q9" non esistono nella tavola a dado
+    # dell'originale (salta da q7 a q10): non e' un refuso qui, e' fedele.
+    "pedestrians": ["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q10"],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})

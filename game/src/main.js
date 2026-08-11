@@ -6,6 +6,7 @@ import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
+import { spawnPedestrian, stepPedestrians } from "./pedestrians.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -218,6 +219,10 @@ let carmakerT = 0, carmakerIdx = 0;
 // Nuvole e uccelli (game/src/atmosphere.js): stesso timer di r12/Alarm_0.gml,
 // puramente decorativi (non incidono su niente in r12).
 const atmo = createAtmosphere();
+// Pedoni (game/src/pedestrians.js): un "pplo" per ogni salto di livello di
+// una casa (vedi spawnDecor() piu' sotto) — vuoto all'avvio, match_easy
+// parte senza nessuna casa gia' costruita.
+let pedestrians = [];
 let r12 = createR12();
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
@@ -237,6 +242,11 @@ function spawnDecor(building, decorSprites) {
   // lampioni.
   if (building.type === "parco") { spawnParcoScatter(building); return; }
   addDecor(building, decorSprites.map((spr) => ({ spr, dx: 0, dy: 0 })));
+  // [C] casa1|2|3/Create.gml: l'ultima riga crea un "pplo" (STUDIO.md) alla
+  // posizione della casa — un abitante per ogni salto di livello, non uno
+  // per casa: una casa a livello 3 ne ha lasciati indietro due, mai
+  // rimossi (nemmeno casaN/Destroy.gml li tocca — sopravvivono alla casa).
+  if (building.type === "casa") pedestrians.push(spawnPedestrian(building.x, building.y));
 }
 
 /** Decoro transitorio (gru/macerie durante un cantiere): si aggiunge senza
@@ -589,11 +599,12 @@ input.onTap = (sx, sy) => {
   if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
     const it = frameList[i];
     // il decoro (cddvd*), l'impalcatura di cantiere, le auto (honda_facile_1/2),
-    // i tappi dei semafori e nuvole/uccelli sono puramente visivi:
-    // nell'originale non avevano eventi Mouse propri, quindi qui non
-    // devono "rubare" il tocco.
+    // i tappi dei semafori, nuvole/uccelli e i pedoni sono puramente
+    // visivi: nell'originale non avevano eventi Mouse propri (i pedoni
+    // solo eventi Collision, non replicati — vedi pedestrians.js), quindi
+    // qui non devono "rubare" il tocco.
     if (!it._f || it.obj === "decor" || it.obj === "scaffold" || it.obj === "car"
-      || it.obj === "semaphore" || it.obj === "cloud" || it.obj === "bird") continue;
+      || it.obj === "semaphore" || it.obj === "cloud" || it.obj === "bird" || it.obj === "pedestrian") continue;
     const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
     if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
       picked = it;
@@ -692,6 +703,7 @@ function frame(now) {
   stepLights(decorEntities, dt, night, r12);
   stepSemaphores(semaphores, dt);
   stepAtmosphere(atmo, dt, !!r12.storm);
+  stepPedestrians(pedestrians, dt);
   if (messageT > 0) messageT -= dt;
 
   // --- lista di disegno di questo frame: mondo statico (placeholder consumati
@@ -730,6 +742,9 @@ function frame(now) {
   // li scarta gia' da solo quando non sono in vista, niente da fare qui.
   for (const c of atmo.clouds) dynamic.push({ obj: "cloud", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr) });
   for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
+  // Pedoni (game/src/pedestrians.js): x/y/depth gia' avanzati da
+  // stepPedestrians() sopra.
+  for (const p of pedestrians) dynamic.push({ obj: "pedestrian", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
   // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
   // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
   // (`_alpha`, 0 di giorno) che il ciclo di disegno rispetta da solo — a
@@ -954,7 +969,7 @@ window.__nimbus = {
   cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
   get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
   get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
-  atmo,
+  atmo, get pedestrians() { return pedestrians; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,
