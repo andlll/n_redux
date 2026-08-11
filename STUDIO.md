@@ -363,11 +363,286 @@ paragrafo 8.
   Sprite aggiunti a `GAMEPLAY_SPRITES` in `tools/23_atlas.py`
   (`ir11..46`, `i11/i21/i31` e relativi decori — `gru1`/`gr21` c'erano
   già per `chies`).
+- **`industria` produce elettricità per davvero.** Letto `industria1/2/3
+  /Alarm_2.gml`: ogni edificio finito (non in cantiere) riarma un alarm
+  ogni 120 tick che, se `r12.oil > 0`, consuma olio e genera energia a un
+  tasso fisso per livello — **[C]** 7 olio → 50 energia (liv. 1), 20 → 120
+  (liv. 2), 35 → 300 (liv. 3, livello massimo). `game/src/buildings.js`
+  aggiunge `production` per tipo/livello e `stepProduction()`, chiamata
+  da `main.js` accanto a `stepConstructions()`. L'alarm si riarma anche
+  a olio esaurito (il ciclo "salta" senza produrre), riprodotto con un
+  timer che accumula comunque.
+  Questo ha sostituito una soglia di potenziamento che prima era
+  **[I]** finta (`atPop: 0`, sempre sbloccato): `industria1/2/Step.gml`
+  dichiarano per davvero che `upind12`/`upind23` si sbloccano solo dopo
+  che l'edificio ha completato **[C]** 667 / 1000 cicli di produzione
+  (`makee`, un campo per edificio, letto da `industria1/2/Create.gml`:
+  parte da 0 e — punto che il codice originale ottiene gratis avendo un
+  oggetto diverso per livello, e che qui va fatto a mano — **[C]** si
+  azzera ad ogni salto di livello, non accumula fra livelli). La soglia
+  di sblocco ora è o `atPop` (chies) o `atMakee` (industria):
+  `upgradeProgress()` in `buildings.js` distingue le due letture.
+  Conseguenza sul lato economia: `state.js` prima applicava a *tutti* gli
+  edifici, industria inclusa, la formula placeholder generica di consumo
+  olio/crescita popolazione (**[I]**, STUDIO.md §6). Ora `tickR12()`
+  esclude dalla formula generica i tipi che dichiarano `production`, per
+  non contare due volte lo stesso olio.
+  **Non portato** (resta un gap esplicito, non finto): il fumo
+  decorativo (`smoke_ind*`, puramente visivo), il danno da fulmine in
+  tempesta (`Alarm_5`/`6`: **[C]** la regola è letta — dado 1/100..130,
+  vita −50 — ma non è cablata perché `r12.storm` è sempre 0 e non esiste
+  ancora nessun sistema che agisca su `life` arrivata a 0, quindi
+  sarebbe codice morto se collegato ora) e `demobasia`
+  (non è demolizione: è un "rifai in loco" a pagamento che rilancia lo
+  stesso `impa*r` del livello corrente con una skin decorativa diversa,
+  **[C]** letto da `demobasia/Collision_industria*.gml`, cosmetico).
+- **Terzo edificio giocabile: `casa`.** Diverso dai primi due su due assi:
+  è il primo con un aspetto scelto a caso invece che fisso (**[C]**
+  `casa1/Create.gml`: 5 livelli di `action_if_dice(2)` annidati, letti
+  come un pick uniforme fra **20 coppie** sprite+decoro — stesso principio
+  del `pickSpr` già usato per gli step con sprite ad array, esteso a un
+  campo `variants` sul tipo; la coppia scelta si salva sull'istanza
+  (`b.decorSpr`) invece che nella tabella statica per livello, perché
+  `currentDecor()` doveva sapere QUALE variante è stata tirata a sorte,
+  non solo il tipo), ed è il primo la cui simulazione **consuma** risorse
+  nel tempo invece di limitarsi a costruzione+potenziamento.
+  Piazzamento: **[C]** `placeCost` 100 mon (`placeholder/Mouse_LeftReleased.gml`,
+  `selec==1` → crea `impa0to1r`, non `impaind0to1r`: due oggetti diversi
+  quasi identici, stessa scoperta della coppia r/f già nota per industria
+  — qui il cantiere dura 790 tick invece di 850, letto da `impa0to1r/
+  Create.gml` + `Alarm_0..3.gml`). La casa vera e propria (`casa1`) non è
+  creata dalla traccia "r" che ricostruiamo, ma dalla "f" (`impa0to1f/
+  Alarm_3.gml`, a tic 685 su 850) — stessa semplificazione già scelta per
+  industria: costruiamo solo "r" e creiamo `casa1` alla fine della sua
+  sequenza (790 tick) invece che a metà.
+  **Crescita di popolazione reale**, non più solo formula-placeholder:
+  **[C]** `casa1/Create.gml` assegna `pop += 2` alla nascita; poi
+  `casa1/Alarm_2.gml` avanza uno stadio `ava` (0..5) ogni intervallo —
+  fisso a 2000 tick il primo (**[C]** `action_set_alarm(2000,2)` in
+  Create), poi scelto a dado uniforme fra 4 valori (3500/5796/11565/14656
+  tick) — aggiungendo altri `pop += 2` per stadio, fino a `ava==5` dove
+  l'originale fa comparire l'icona di potenziamento (`upsign12`).
+  `stepGrowth()` in `buildings.js`.
+  **Consumo elettrico reale**: **[C]** `casa1/Alarm_3.gml`, ogni 120 tick,
+  in base allo stadio `ava` e a giorno/notte (`aura.night`) — la prima
+  regola che dà al ciclo giorno/notte un effetto di **gioco** reale, non
+  solo la tinta cosmetica di STUDIO.md §5.2: `main.js` calcola
+  `isNight(phaseT)` dalla stessa tabella `PHASES` usata per il colore.
+  `stepConsumption()` in `buildings.js`.
+  `state.js`/`tickR12()` esclude ora anche i tipi con `growth` dalla
+  formula placeholder generica (oltre a quelli con `production`), per lo
+  stesso motivo di industria: non contare due volte la stessa popolazione.
+  **Non portato**, per lo stesso principio già applicato a industria (letto
+  ma non cablato dove servirebbe un sistema che ancora non esiste): il
+  danno da fulmine (`Alarm_5`, uguale schema di industria); il "rifai in
+  loco" a pagamento (`Mouse_LeftPressed`/`demobasia`, cosmetico — e infatti
+  `demobasia/Collision_casa1.gml` crea `impacasa1r`, non `impa1to2r`: sono
+  due catene diverse, la prima l'abbiamo scartata per errore di lettura
+  iniziale, vedi sotto); e — letta ma **non capita abbastanza da
+  cablarla** — la sommossa (`Alarm_4`: se `r12.hap == r12.pop` e
+  `r12.ele <= 0` compaiono `sold1..6` in base allo stadio `ava`;
+  l'uguaglianza esatta fra `hap` e `pop` è una condizione strana per
+  essere quella vera, e `hap`/`wewe` oggi non sono nemmeno aggiornati da
+  nessun edificio nella nuova versione — meglio lasciarla un gap
+  dichiarato che indovinarla).
+  Sprite aggiunti a `GAMEPLAY_SPRITES` in `tools/23_atlas.py`: le 20
+  varianti `c1xx`/`c1xxl` (poi anche `c2xx`/`c3xx`, vedi sotto); il
+  cantiere riusa gli `ir1x` già presenti per industria (stesso schema di
+  sprite, oggetto diverso).
+- **Potenziamento `casa1→casa2→casa3`.** Ripreso subito dopo il primo
+  passaggio su `casa`, che lo dava per fuori scope pensando che
+  `impacasa1r`/`impacasa1f` (creati da `demobasia/Collision_casa1.gml`)
+  fossero la catena di potenziamento: **non lo sono**, sono il "rifai in
+  loco" cosmetico (stesso ruolo del `demobasia` di industria). La catena
+  vera è `upsign12` → **[C]** `impa1to2r`/`impa1to2f`
+  (`upsign12/Mouse_LeftPressed.gml`), e poi `upsign23` → `impa2to3r`/
+  `impa2to3f` allo stesso modo. Costi **[C]** 500 mon (`casa1→2`) e 2000
+  mon (`casa2→3`), entrambi letti da `upsignXX/Mouse_LeftPressed.gml`.
+  Struttura dati: `growth`/`consumption` diventano array indicizzati per
+  livello attuale (`b.level - 1`, stesso schema di `production` per
+  industria — sono "come si comporta l'edificio così com'è", non "cosa
+  succede a fine cantiere"), mentre `variants` si sposta da un campo del
+  tipo a un campo di ciascun `construct`/`upgrades[i]` (ogni livello ha
+  le sue 20 varianti: **[C]** `casa2/Create.gml` e `casa3/Create.gml`,
+  stesso schema a dado di `casa1`). Lo sblocco del potenziamento è una
+  terza specie di soglia, `atAva` (crescita completa, `ava==5`), accanto
+  alle già note `atPop` (chies) e `atMakee` (industria) —
+  `upgradeProgress()` in `buildings.js` le distingue tutte.
+  Il cantiere `casa1→casa2` (**[C]** `impa1to2r/Create.gml` +
+  `Alarm_0.gml`, catena a `tic` 0..10, 990 tick totali) è l'unico fra
+  tutti i cantieri portati finora che **non richiede nessuna troncatura**:
+  l'originale stesso chiama `action_kill_object()` a tic==10, senza coda
+  a specchio da tagliare. Il cantiere `casa2→casa3` invece è la stessa
+  forma già vista per `impaind2to3r` di industria — una catena a `tic`
+  0..22 con una coda cosmetica speculare da tic 11 in poi — e viene
+  troncata a tic 0..10 allo stesso modo, stessa motivazione (STUDIO.md
+  sopra, "secondo edificio giocabile: industria", semplificazione 2).
+  `grantPop` (14 per casa2, 40 per casa3, **[C]** `casa2/3/Create.gml`) e
+  `life` (200/300, **[C]**) si applicano a fine cantiere come per
+  qualunque `up.life`/`up.grantPop`. `b.ava`/`b.makee` e i relativi timer
+  si azzerano ad ogni salto di livello, insieme (prima si azzerava solo
+  `makee`, ora anche `ava`/`growthT`/`growthNext`/`consT`, nello stesso
+  punto di `stepConstructions()`).
+  Sprite aggiunti a `GAMEPLAY_SPRITES`: le varianti `c2xx`/`c2xxl` e
+  `c3xx`/`c3xxl`; il cantiere `casa2→casa3` riusa `gru1` (già presente,
+  letto da `impa2to3r/Alarm_0.gml`, tic==3 — l'oggetto creato si chiama
+  `gru`, non `gru1`, ma `gru` disegna proprio lo sprite `gru1`).
+- **Le tempeste sono cosmetiche in `match_easy`, e il danno da fulmine è
+  morto anche nell'originale.** Prima di mettere mano al sistema
+  vita/distruzione ho letto `r12` (STUDIO.md §4, "il regista del mondo")
+  per capire cosa accende davvero `r12.storm`. **[C]** `r12/Alarm_2.gml`:
+  il ramo `match` normale usa `storm` (dado 1/800 al secondo, dura
+  1800/2100 tick), ma il ramo `match_easy` — quello su cui gira questa
+  riscrittura — usa una variabile **diversa**, `stormeasy` (dado 1/450,
+  stessa durata). **[C]** Ho cercato `stormeasy` in tutti gli oggetti: lo
+  legge solo `r12` stesso, per le nuvole scure/pioggia cosmetiche
+  (`nidark_slow`, `rainlauncher`). Nessun edificio lo controlla mai. Il
+  danno da fulmine letto per industria/casa (Alarm_5/6) controlla invece
+  `r12.storm` — che su `match_easy` **non viene mai impostato**. Quindi:
+  non è che la nostra riscrittura non ha ancora collegato quel danno, è
+  che il gioco originale stesso, su questa mappa, non lo attiva mai.
+  Costruire un sistema vita/morte apposta per abilitarlo sarebbe infedele,
+  non incompleto. Ho controllato anche da dove partono le minacce vere
+  (bombe/aerei/zeppelin, `r12/Alarm_5/6.gml`): dipendono da contatori
+  (`bombn`, `diron`, `ondan`) che partono a 0 e che nessun oggetto letto
+  finora incrementa — trovarli è lavoro serio a sé, coerente con "le
+  altre ~85 famiglie `impa*`" già segnate sotto, non un seguito rapido.
+- **GUI vera: barra risorse e bottoni edificio.** Sostituiti i
+  segnaposto (quadratini colorati, bottoni rettangolari col solo testo)
+  con gli sprite e i font reali dell'originale.
+  **Barra risorse**: **[C]** `repre/DrawGUI.gml` — la prima ipotesi (icona
+  per statistica + font "gotham_mid" rimpicciolito) era sbagliata su
+  entrambi i punti. È un `DrawGUI`, quindi le coordinate sono già spazio
+  schermo assoluto: un'unica immagine con le quattro icone già disegnate
+  dentro (`icone_oriz`, 604×55) e i numeri in un font *diverso* da quello
+  usato altrove (`gotham_mini`, non lo stesso rimpicciolito — estratto con
+  la stessa pipeline di `tools/25_font.py`), agli offset letti nel
+  decompilato: pop 30px, olio 142px, energia 228px, denaro 340px, tutti a
+  y=30. Colore nero, come lo stato "non hover" dell'originale
+  (`action_color(0)`) — lo stato hover (testo bianco, sfondo
+  `icone_orizz_hc`) non è riprodotto: non esiste un concetto di hover nel
+  nostro input touch-first (STUDIO.md §7). `global.upp` (l'offset di
+  sicurezza per notch/status-bar sommato a quasi tutte le y della GUI,
+  **[?]** STUDIO.md §6) resta non identificato: trattato come 0.
+  **Bottoni edificio**: `pu1` (casa, `selec==1`) e `pu2` (industria,
+  `selec==2`) — **[C]** `pu1|pu2/Step.gml`. Ciascuno ha due sprite,
+  normale e "selezionato" (`p1`/`p1ss`, `p2`/`p2ss`), scambiati in base a
+  `r12.selec` — **non** un tint come nella prima versione, sono disegni
+  diversi (la variante selezionata è la stessa sagoma ricolorata a mano
+  nell'arte originale). Ancorati in basso a sinistra a x=0/184 — nel
+  nostro spazio schermo già a scala costante l'equivalente diretto di
+  `184*global.sca` è lo stesso numero in pixel, senza bisogno del
+  balletto di contro-scala che serviva all'originale (STUDIO.md §2).
+  `r12.selec` ora viene scritto per davvero al tocco del bottone (prima
+  esisteva nello stato ma nessuno lo toccava mai).
+  **`chies` non ha un vero bottone**: non è mai piazzata dal giocatore
+  nell'originale (STUDIO.md, "secondo edificio giocabile"), quindi non
+  esiste un `pu0`/`p0` da leggere. Resta un bottone di test, disegnato
+  deliberatamente in uno stile diverso (rettangolo blu con testo, non uno
+  sprite reale) per non farlo passare per un bottone vero.
+  **Non riprodotto**: i cartellini di prezzo a comparsa sul passaggio del
+  mouse (`cc100`, `cc2000ind`, STUDIO.md §5.4 — richiederebbero tracciare
+  l'hover, che il nostro `Input` oggi non fa); gli altri ~18 bottoni della
+  barra (`pu3..puvillone`, `puruspa`/`pureset` — zoom, occhio, reset,
+  *bulldozer*: `ruspa` è italiano per "ruspa/bulldozer", quasi certamente
+  il vero strumento di demolizione, distinto sia da `demobasia` — il
+  "rifai in loco" — sia dal tool di potenziamento; non ancora letto); il
+  calendario cosmetico (`repre` disegna anche un mese Gen–Dic e un giorno,
+  legato a un contatore locale confuso col nome della variabile denaro di
+  `r12` — stesso nome, oggetti diversi).
+  Sprite aggiunti a `GAMEPLAY_SPRITES` (categoria `gui`, nuova):
+  `icone_oriz`, `p1`, `p1ss`, `p2`, `p2ss`. Font `gotham_mini` estratto ed
+  impaginato con la stessa pipeline di `gotham_mid`.
+- **`chies` è l'edificio unico e preesistente, non un tipo piazzabile.**
+  Correzione di un errore: la versione precedente trattava `chies` come un
+  quarto "tipo" scelto dal selettore, con un bottone di test per piazzarne
+  quante se ne vuole. Sbagliato su due fronti — **[C]** `src/rooms/
+  match_easy.json` ha **una sola** istanza `chies`, a centro mappa
+  (851,513): non nasce da un placeholder e il giocatore non ne piazza
+  altre (STUDIO.md §5.3, già scritto ma non tradotto in codice). Ora
+  `main.js` toglie quell'istanza da `staticWorld` e la aggiunge a
+  `buildings` all'avvio (`seedChies()`, solo a partita nuova — se c'è un
+  salvataggio la chies ricaricata è già lì), cosi' la sua catena di
+  potenziamento vera (upcrc12/upcrc23) resta raggiungibile toccandola. Il
+  bottone di test è sparito; `selectedType` di default è `"casa"`.
+  **Effetto collaterale scoperto testando la correzione**: toccare chies al
+  centro esatto della sua posizione non la selezionava — ci arrivava prima
+  `air2`, un layer atmosferico che copre l'intera mappa (**[C]**
+  1920×1564, depth -1, `mask_sprite: null` nel decompilato: nell'originale
+  non ha mai potuto ricevere click, non ha maschera di collisione). Il
+  picking ora fa due passate: la prima considera solo cio' che e' davvero
+  interattivo (placeholder, edifici) a prescindere dal depth; la seconda,
+  di fallback, e' il vecchio "per z-order" usato solo per ispezionare la
+  scena nell'HUD di debug.
+- **Le tempeste diventano reali (regola di `match`, non `stormeasy`).**
+  Deciso di portare comunque `r12.storm` — non perché serva a
+  `match_easy` (dove resta cosmetica, vedi sopra), ma perché è la regola
+  che conta su `match`, la mappa difficile, ed è quella che il danno da
+  fulmine di industria/casa legge davvero. **[C]** `r12/Alarm_2.gml`
+  (ramo `match`): ogni secondo, un dado 1 su 800 fa iniziare una tempesta,
+  che dura 30 o 35 secondi (**[C]** `r12/Alarm_7.gml` la spegne).
+  `stepWeather()` in `state.js`.
+  Danno da fulmine per livello, letto per davvero invece di lasciarlo
+  inerte: **[C]** `industria1/Alarm_5.gml`, `industria2/Alarm_5.gml`,
+  `industria3/Alarm_6.gml`, `casa1/Alarm_5.gml`, `casa2/Alarm_5.gml` — ogni
+  57 tick, se la tempesta è attiva, un dado toglie vita.
+  **Scoperta leggendo `casa3`**: nel decompilato arma un `Alarm_5`
+  (`action_set_alarm(23,5)` in Create.gml) ma non esiste nessun
+  `casa3/Alarm_5.gml` — l'alarm scatta e non fa niente, codice morto
+  nell'originale stesso. Riprodotto fedelmente: `casa3` non prende mai
+  danno da fulmine nella tabella `storm` di `buildings.js`.
+  `stepStormDamage()` in `buildings.js`.
+  **Primo sistema vita/morte reale**: quando `life` arriva a 0
+  (`destroyBuilding()` in `main.js`) si applica il bilancio popolazione del
+  livello a cui è morto (**[C]** `casaX/Destroy.gml`: -10/-34/-60 — non
+  l'esatto opposto di quanto guadagnato in vita, l'originale stesso non
+  torna) e il placeholder torna libero. **Semplificazione dichiarata**:
+  nell'originale l'edificio distrutto resterebbe un rudere (`ruin1/2/3`)
+  riparabile solo con lo strumento ruspa/bulldozer (`selec==11`,
+  `puruspa`, mai ricostruito — vedi sotto) pagando per rifarlo con la
+  stessa catena "rifai in loco" di `demobasia`: un vicolo cieco per chi
+  gioca senza quello strumento. `industria` tocca `hap` in `Destroy.gml`
+  invece di `pop`, ma `hap` non è tracciato da nessun'altra parte del
+  gioco (STUDIO.md, deciso già per `industria`/`casa`): per coerenza resta
+  fuori anche qui, non solo per industria.
+- **Zoom fluido, con limiti sensati, e nero fuori dai confini della mappa.**
+  Tre correzioni distinte alla camera:
+  1. Lo zoom da rotella applicava l'intero salto in un frame solo
+     ("scattoso"): ora `Camera.setZoom()` aggiorna solo un `targetZoom`, e
+     `Camera.update()` (chiamata una volta a frame) lo insegue con
+     un'interpolazione esponenziale, ricalcolando il pan ad ogni passo
+     cosi' il punto sotto al cursore/dito resta fermo per tutta la durata
+     dell'animazione, non solo all'inizio e alla fine. L'originale non
+     aveva questo problema: `zoom_plus`/`zoom_minus` avanzavano già
+     gradualmente da soli (STUDIO.md §2, "0,005 per frame") — qui e' la
+     controparte per un input istantaneo come la rotella.
+  2. `minZoom` (quanto ci si può avvicinare) abbassato da 0.25 a 0.5: sotto
+     quella soglia gli sprite, disegnati alla risoluzione nativa
+     dell'atlas, si vedevano ingranditi oltre il loro dettaglio reale
+     ("sgranati"). `maxZoom` (quanto ci si può allontanare) non è più un
+     numero fisso (era 8, ben oltre la mappa): ora si ricalcola ad ogni
+     `resize()` come 1.3× lo zoom che inquadra tutta la room, cosi' non ha
+     senso allontanarsi molto oltre "si vede tutta la mappa".
+  3. Zoomando indietro oltre i confini della room si vedevano i bordi del
+     terreno "strappati" (il terreno non è disegnato per essere visto da
+     fuori dai suoi bordi). Non ho trovato un oggetto originale dedicato a
+     questo: l'originale aveva il limite di zoom minimo esplicito apposta
+     per non mostrare mai la mappa intera su `match` (STUDIO.md §2), quindi
+     il problema a monte non si poneva mai. `main.js` ora disegna quattro
+     rettangoli neri fuori dal rettangolo di schermo dei confini della room
+     (calcolato con `cam.worldToScreen`), nel layer GUI — l'effetto atteso,
+     non il vincolo a monte che lo evitava nell'originale.
 - **Cosa manca prima del punto 5** (portare le famiglie di comportamenti a
-  gruppi): la traccia "f" degli `impa*` (scenografia, vedi sopra); la
-  simulazione propria di `industria` (elettricità, fumo, fulmini,
-  demolizione — un sistema diverso dagli `impa*`, che sono solo
-  transizioni di livello); le altre ~85 famiglie `impa*` (armi, minacce,
-  altri edifici) non ancora lette; le minacce (bombe, spie) che oggi non
-  esistono affatto nella nuova versione; le icone vere della barra
-  risorse (oggi quadratini colorati, il testo sì è reale).
+  gruppi): la traccia "f" degli `impa*` (scenografia, per industria e
+  casa, su tutti i salti di livello ora ricostruiti); il sistema
+  `hap`/`wewe` (felicità/inquinamento visivo) e la sommossa che ne
+  dipende; i "rifai in loco" cosmetici (`demobasia` + `impacasa*`/
+  `impaind*` "rifatti") e il vero strumento di demolizione/riparazione
+  (`puruspa`, `selec==11` — oggi la distruzione libera subito il
+  placeholder invece di lasciare un rudere riparabile solo con
+  quello strumento); gli altri ~17 bottoni della barra (zoom, occhio,
+  reset — non più `puruspa`, appena discusso); le altre ~85 famiglie
+  `impa*` (armi, minacce, altri edifici) non ancora lette; da dove
+  arrivano davvero le minacce vere (bombe/aerei/zeppelin: dipendono da
+  contatori — `bombn`, `diron`, `ondan` — che partono a 0 e che nessun
+  oggetto letto finora incrementa).

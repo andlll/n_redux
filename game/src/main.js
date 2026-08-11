@@ -1,10 +1,10 @@
 import { Renderer, makeSolidTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
-import { createR12, tickR12 } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, tryStartUpgrade, stepConstructions, nextUpgrade, upgradeUnlocked } from "./buildings.js";
+import { createR12, tickR12, stepWeather } from "./state.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, tryStartUpgrade, stepConstructions, stepProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked } from "./buildings.js";
 import { save, load } from "./save.js";
-import { loadFont, drawText, measureText } from "./font.js";
+import { loadFont, drawText } from "./font.js";
 
 const canvas = document.getElementById("view");
 const hud = document.getElementById("hud");
@@ -19,8 +19,12 @@ const scene = await fetch("./data/match_easy.scene.json").then((x) => x.json());
 cam.bounds = { left: 0, top: 0, right: scene.width, bottom: scene.height };
 cam.x = scene.width / 2;
 cam.y = scene.height / 2;
-cam.maxZoom = 8;
-cam.minZoom = 0.25;
+// minZoom = quanto ci si puo' avvicinare: sotto 0.5 gli sprite (disegnati
+// alla risoluzione nativa dell'atlas) si vedono sgranati, ingranditi oltre
+// il loro dettaglio reale. maxZoom invece si ricalcola ad ogni resize() in
+// base a quanto serve per inquadrare tutta la room (vedi sotto): non ha
+// senso lasciar allontanare lo zoom molto oltre "si vede tutta la mappa".
+cam.minZoom = 0.5;
 // Finche' non tocchi niente la camera inquadra tutta la room, e si riadatta
 // se lo schermo cambia (rotazione del telefono).
 let userMoved = false;
@@ -64,28 +68,41 @@ function frameFor(sprName) {
 for (const it of staticWorld) it._f = frameFor(it.spr);
 const missingArt = staticWorld.filter((it) => !it._f).length;
 
-// Font bitmap reale (tools/25_font.py), per la barra risorse: testo vero
-// invece dei quadratini colorati segnaposto (STUDIO.md §7.5, §9).
-const font = await loadFont(gl, "gotham_mid");
+// Font bitmap reale della barra risorse (tools/25_font.py). [C]
+// src/objects/repre/DrawGUI.gml: action_font(gotham_mini, 0) — un font
+// dedicato, non lo stesso usato altrove rimpicciolito (era l'ipotesi
+// iniziale, sbagliata: "gotham_mid" non e' piu' usato in questo file da
+// quando il bottone di test di chies e' sparito, STUDIO.md §9).
+const fontMini = await loadFont(gl, "gotham_mini");
 
 // -------------------------------------------------------- piazzabili e edifici
 // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
 // gli edifici" (STUDIO.md §6, confermato dall'autore). Nell'originale
 // diventano un edificio vero al tocco, tramite una ruota di scelta
 // (`cre1..cre4`) che non abbiamo ancora ricostruito: qui la sostituisce un
-// selettore a due bottoni (vedi `uiButtons` piu' sotto), uno per ciascuno
-// dei due edifici di cui abbiamo ricostruito l'intera catena — `chies`
-// (upcrc12/upcrc23) e `industria` (impaind0to1r/1to2r/2to3r, STUDIO.md
-// §5.5/§7.3/§9: la famiglia impa* come dati).
+// selettore a bottoni (vedi `uiButtons` piu' sotto) per gli edifici di cui
+// abbiamo ricostruito la catena di piazzamento — `industria` e `casa`.
+// `chies` non e' fra questi: e' l'edificio principale, unico e
+// preesistente a centro mappa (STUDIO.md §9), non un tipo che il
+// giocatore piazza.
 const placeholders = staticWorld.filter((it) => it.obj === "placeholder");
 for (const p of placeholders) { p.id = `ph_${p.x}_${p.y}`; p.consumed = false; }
 const placeholderById = new Map(placeholders.map((p) => [p.id, p]));
+
+// `chies` e' gia' un'istanza vera nella room (src/rooms/match_easy.json:
+// un solo `chies` a (851,513), STUDIO.md §5.3), non nasce da un
+// placeholder. Va tolta da `staticWorld` (altrimenti sarebbe disegnata due
+// volte) e diventa la prima entita' di `buildings`, cosi' la sua catena di
+// potenziamento vera (upcrc12/upcrc23) resta raggiungibile toccandola,
+// esattamente come per gli edifici piazzati dal giocatore.
+const chiesIndex = staticWorld.findIndex((it) => it.obj === "chies");
+const chiesScene = chiesIndex >= 0 ? staticWorld.splice(chiesIndex, 1)[0] : null;
 
 /** @type {ReturnType<typeof placeBuilding>[]} */
 let buildings = [];
 let decorEntities = [];      // ornamenti (permanenti a fine cantiere, o transitori durante)
 let r12 = createR12();
-let selectedType = "chies";  // scelto dal selettore in alto a sinistra
+let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
 // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
 // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
@@ -121,8 +138,38 @@ function placeAt(placeholder, type) {
   placeholder.consumed = true;
   const b = placeBuilding(type, placeholder.x, placeholder.y, placeholder.depth);
   buildings.push(b);
-  if (b.level >= 1) spawnDecor(b, currentDecor(b));   // chies: istantaneo; industria: arriva a fine cantiere
+  if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
   return null;
+}
+
+/** Aggiunge `chies` a `buildings` a partita nuova (nessun salvataggio): non
+ * costa niente e non consuma un placeholder, e' gia' li' (STUDIO.md §9). */
+function seedChies() {
+  if (!chiesScene) return;
+  const b = placeBuilding("chies", chiesScene.x, chiesScene.y, chiesScene.depth);
+  buildings.push(b);
+  spawnDecor(b, currentDecor(b));
+}
+
+/**
+ * Un edificio la cui vita e' scesa a 0 (oggi solo per fulmine, STUDIO.md
+ * §9 "le tempeste non sono cosmetiche in match"). Nell'originale resterebbe
+ * un rudere (`ruin1`/`ruin2`/`ruin3`) riparabile solo con lo strumento
+ * ruspa/bulldozer (`selec==11`, mai ricostruito, STUDIO.md §9 "GUI vera") —
+ * un vicolo cieco per chi gioca senza quello strumento. Qui la rimozione e'
+ * immediata e il placeholder torna libero: una semplificazione dichiarata,
+ * non il comportamento vero. Applica il bilancio pop del livello a cui e'
+ * morto (`currentDeathPop`, letto da chiesX/industriaX/casaX/Destroy.gml —
+ * industria tocca `hap`, non ancora tracciato in nessun'altra parte del
+ * gioco: per coerenza resta fuori anche qui, vedi STUDIO.md).
+ */
+function destroyBuilding(b) {
+  r12.pop += currentDeathPop(b);
+  decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
+  const ph = placeholders.find((p) => p.x === b.x && p.y === b.y);
+  if (ph) ph.consumed = false;
+  buildings = buildings.filter((x) => x !== b);
+  if (picked?.obj === "building" && picked.ref === b) picked = null;
 }
 
 // -------------------------------------------------------------- salvataggio
@@ -147,7 +194,7 @@ function doLoad() {
   }
   return true;
 }
-doLoad();
+if (!doLoad()) seedChies();
 
 window.addEventListener("keydown", (e) => {
   if (e.key === "s" || e.key === "S") { doSave(); message = "partita salvata"; messageT = 3; }
@@ -170,11 +217,15 @@ const PHASES = [
   { name: "alba", rgb: [0.92, 0.80, 0.78], dur: 5 },
 ];
 let phaseT = 0;
-function ambientAt(t) {
+function phaseIndexAt(t) {
   const total = PHASES.reduce((s, p) => s + p.dur, 0);
   let u = t % total;
   let i = 0;
   while (u > PHASES[i].dur) { u -= PHASES[i].dur; i = (i + 1) % PHASES.length; }
+  return { i, u };
+}
+function ambientAt(t) {
+  const { i, u } = phaseIndexAt(t);
   const a = PHASES[i], b = PHASES[(i + 1) % PHASES.length];
   const k = Math.min(1, u / a.dur);
   const s = k * k * (3 - 2 * k);                    // smoothstep
@@ -183,14 +234,28 @@ function ambientAt(t) {
     label: k < 0.75 ? a.name : a.name + " → " + b.name,
   };
 }
+// [C] casa1/Alarm_3.gml: `aura.night` — booleano secco, a differenza della
+// tinta ambientale che sfuma. Usa la stessa fase di ambientAt() (nessuno
+// smoothstep: qui serve un confine netto, com'era nell'originale).
+function isNight(t) {
+  return PHASES[phaseIndexAt(t).i].name === "notte";
+}
 
 // ---------------------------------------------------------------- input
 input.onDrag = (dx, dy) => { userMoved = true; cam.panByScreen(dx, dy); };
-input.onZoom = (f, ax, ay) => { userMoved = true; cam.setZoom(cam.zoom * f, ax, ay); };
+// Il fattore si applica a `targetZoom`, non a `zoom` (che insegue con un
+// filo di ritardo, vedi Camera.update()): cosi' una rotellata mentre lo
+// zoom sta ancora animando accumula sul bersaglio invece di "strappare"
+// indietro dal valore corrente, ancora a meta' strada.
+input.onZoom = (f, ax, ay) => { userMoved = true; cam.setZoom(cam.targetZoom * f, ax, ay); };
 let picked = null;
 let message = "";
 let messageT = 0;
 let uiButtons = [];   // { x, y, w, h, type }, ricalcolati ad ogni frame dal disegno del selettore
+
+// [C] placeholder/Mouse_LeftReleased.gml: `r12.selec` e' il vero selettore
+// di modalita' piazzamento nell'originale (1 = casa, 2 = industria, ...).
+const SELEC_BY_TYPE = { casa: 1, industria: 2 };
 
 input.onTap = (sx, sy) => {
   // il selettore edificio vive in spazio schermo, sopra la mappa: un tocco
@@ -198,17 +263,33 @@ input.onTap = (sx, sy) => {
   for (const btn of uiButtons) {
     if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) {
       selectedType = btn.type;
+      r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
       return;
     }
   }
   const w = cam.screenToWorld(sx, sy);
   picked = null;
   // frameList e' ricostruita ad ogni frame di disegno: e' la stessa lista,
-  // gia' ordinata top-most-last, che serve per il picking.
-  for (let i = frameList.length - 1; i >= 0; i--) {
+  // gia' ordinata top-most-last, che serve per il picking. Due passate: la
+  // prima considera solo cio' che e' davvero interattivo (placeholder,
+  // edifici — inclusa chies, ora che vive li' anche lei), a prescindere
+  // dal depth; la seconda, di fallback, e' il vecchio picking "per z-order"
+  // usato solo per ispezionare la scena nell'HUD di debug. Senza la prima
+  // passata `air2` (il layer atmosferico sull'intera mappa, depth -1,
+  // STUDIO.md §5.2 — `mask_sprite: null` nel decompilato: non ha MAI
+  // ricevuto click nell'originale) coprirebbe chies (depth 0) e la
+  // renderebbe intoccabile.
+  for (const it of frameList) {
+    if (it.obj !== "placeholder" && it.obj !== "building") continue;
+    const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
+    if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
+      if (!picked || it.depth < picked.depth) picked = it;
+    }
+  }
+  if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
     const it = frameList[i];
     // il decoro (cddvd*) e' puramente visivo: nell'originale non aveva
-    // eventi Mouse propri, quindi qui non deve "rubare" il tocco a chies.
+    // eventi Mouse propri, quindi qui non deve "rubare" il tocco.
     if (!it._f || it.obj === "decor") continue;
     const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
     if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
@@ -248,10 +329,18 @@ function resize() {
     canvas.width = w; canvas.height = h;
   }
   cam.resize(canvas.clientWidth, canvas.clientHeight);
-  if (!userMoved && canvas.clientWidth > 0) {
-    cam.zoom = Math.max(scene.width / cam.viewW, scene.height / cam.viewH);
-    cam.x = scene.width / 2;
-    cam.y = scene.height / 2;
+  if (canvas.clientWidth > 0) {
+    const fitZoom = Math.max(scene.width / cam.viewW, scene.height / cam.viewH);
+    // Non ha senso allontanarsi molto oltre "si vede tutta la mappa": un
+    // margine per respirare, non lo zoom libero di prima (arrivava a 8,
+    // ben oltre i bordi della room — da li' i bordi "strappati" invece di
+    // un margine pulito, vedi sotto).
+    cam.maxZoom = fitZoom * 1.3;
+    if (!userMoved) {
+      cam.setZoomImmediate(fitZoom);
+      cam.x = scene.width / 2;
+      cam.y = scene.height / 2;
+    }
   }
   cam.clamp();
 }
@@ -263,9 +352,16 @@ function frame(now) {
   last = now;
   phaseT += dt;
   resize();
+  cam.update(dt);
 
-  // --- simulazione: cantieri, economia, autosave
+  // --- simulazione: cantieri, economia, meteo, autosave
   stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
+  stepProduction(buildings, dt, r12);
+  stepGrowth(buildings, dt, r12);
+  stepConsumption(buildings, dt, r12, isNight(phaseT));
+  stepWeather(r12, dt);
+  stepStormDamage(buildings, dt, r12);
+  for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
   tickR12(r12, dt, buildings);
   if (messageT > 0) messageT -= dt;
   autosaveT += dt;
@@ -310,42 +406,60 @@ function frame(now) {
   // --- layer GUI: spazio schermo, dimensione costante, nessuna tinta
   r.setAmbient(1, 1, 1);
   r.setProjection(screenProjection(canvas.clientWidth, canvas.clientHeight));
-  const barH = 64;
-  r.draw(solidFrame(white, canvas.clientWidth, barH), 0,
-         canvas.clientHeight - barH, 1, 0x111a2e, 0.92);
-  // Barra risorse: un quadratino colorato al posto dell'icona vera (non
-  // ancora identificata nell'atlas) + il numero nel font bitmap reale
-  // dell'originale (tools/25_font.py). Testo in spazio schermo, dimensione
-  // costante: non sa niente della camera (STUDIO.md §7.5).
-  const stats = [
-    ["olio", Math.round(r12.oil), 0xc9a44a],
-    ["mon", Math.round(r12.mon), 0x53a06a],
-    ["pop", Math.round(r12.pop), 0x4f7fd0],
-    ["ele", Math.round(r12.ele), 0xb05a5a],
-  ];
-  const scale = 0.5, baseY = canvas.clientHeight - barH + 14;
-  let sx = 12;
-  for (const [label, value, color] of stats) {
-    r.draw(solidFrame(white, 28, 28), sx, baseY + 2, 1, color, 1);
-    const w = drawText(r, font, String(value), sx + 34, baseY, scale, 0xffffff, 1);
-    sx += 34 + w + 26;
+
+  // Fuori dai confini della room: nero pieno invece dei bordi "strappati"
+  // del terreno quando lo zoom indietro supera la mappa (il terreno non e'
+  // disegnato per essere visto da fuori dai suoi bordi). Non ho trovato un
+  // oggetto originale dedicato: l'originale aveva un limite minimo di zoom
+  // esplicito apposta per non mostrare mai la mappa intera su `match`
+  // (STUDIO.md §2), quindi il problema a monte non si poneva mai. Qui
+  // ricreiamo l'effetto (vignetta nera) invece del vincolo che lo evitava.
+  {
+    const b = cam.bounds;
+    const p0 = cam.worldToScreen(b.left, b.top);
+    const p1 = cam.worldToScreen(b.right, b.bottom);
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    if (p0.y > 0) r.draw(solidFrame(white, cw, p0.y), 0, 0, 1, 0x000000, 1);
+    if (p1.y < ch) r.draw(solidFrame(white, cw, ch - p1.y), 0, p1.y, 1, 0x000000, 1);
+    if (p0.x > 0) r.draw(solidFrame(white, p0.x, ch), 0, 0, 1, 0x000000, 1);
+    if (p1.x < cw) r.draw(solidFrame(white, cw - p1.x, ch), p1.x, 0, 1, 0x000000, 1);
   }
 
+  // Barra risorse vera (STUDIO.md §9 "GUI vera"). [C] src/objects/repre/
+  // DrawGUI.gml: e' un `DrawGUI`, quindi le coordinate sono gia' spazio
+  // schermo assoluto — nessuna proiezione da rifare. Un'unica immagine con
+  // le icone gia' dentro (`icone_oriz`), non quattro icone separate come
+  // nella prima versione: la prima ipotesi era sbagliata. I numeri usano
+  // "gotham_mini" — un font diverso da quello del resto della UI, non lo
+  // stesso rimpicciolito — ai quattro offset letti nel decompilato: pop 30,
+  // olio 142, energia 228, denaro 340, tutti a y=30 (+ `global.upp`, un
+  // offset di sicurezza per notch/status-bar non ancora identificato: qui
+  // trattato come 0). Colore nero come lo stato "non hover" dell'originale
+  // (`action_color(0)`); lo stato hover (testo bianco, sfondo
+  // `icone_orizz_hc`) non e' riprodotto — nessun concetto di hover nel
+  // nostro input touch-first (STUDIO.md §7).
+  const barFrame = frameFor("icone_oriz");
+  if (barFrame) r.draw(barFrame, 0, 20, 1, 0xffffff, 1);
+  const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
+                 [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
+  for (const [value, x] of stats) drawText(r, fontMini, String(value), x, 30, 1, 0x000000, 1);
+
   // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
-  // ancora ricostruita (STUDIO.md §6/§9) — solo i due edifici di cui
-  // abbiamo la catena piazzamento->potenziamento intera. Tocca un
-  // placeholder vuoto per piazzare il tipo evidenziato.
+  // ancora ricostruita (STUDIO.md §6/§9). `pu1`/`pu2` sono i bottoni veri
+  // (src/objects/pu1|pu2/Step.gml): ciascuno ha due sprite, normale e
+  // "selezionato" (`pX`/`pXss`, scambiati in base a `r12.selec` — non e'
+  // un tint, sono disegni diversi), ancorati in basso a sinistra a x=0/184
+  // (letto da `action_move_to`/`184*global.sca`: nel nostro spazio schermo
+  // gia' scala-costante l'equivalente e' lo stesso numero in px, senza
+  // il balletto di sca che serviva nell'originale). `chies` non ha un
+  // bottone: non e' un tipo piazzabile (vedi sopra).
   uiButtons = [];
-  let bx = 12, by = 12;
-  for (const type of ["chies", "industria"]) {
-    const def = BUILDING_TYPES[type];
-    const label = `${def.label} (${def.placeCost.mon})`;
-    const bw = measureText(font, label, scale) + 20;
-    const active = type === selectedType;
-    r.draw(solidFrame(white, bw, 32), bx, by, 1, active ? 0x3a6ea5 : 0x111a2e, active ? 1 : 0.85);
-    drawText(r, font, label, bx + 10, by + 8, scale, 0xffffff, 1);
-    uiButtons.push({ x: bx, y: by, w: bw, h: 32, type });
-    bx += bw + 8;
+  const baseY = canvas.clientHeight;
+  for (const [type, x, spr, sprSel] of [["casa", 0, "p1", "p1ss"], ["industria", 184, "p2", "p2ss"]]) {
+    const f = frameFor(selectedType === type ? sprSel : spr);
+    if (!f) continue;
+    r.draw(f, x, baseY, 1, 0xffffff, 1);
+    uiButtons.push({ x, y: baseY - f.h, w: f.w, h: f.h, type });
   }
   r.flush();
 
@@ -356,10 +470,21 @@ function frame(now) {
     const b = picked.ref;
     const up = nextUpgrade(b);
     status = `${BUILDING_TYPES[b.type].label} livello ${b.level}  vita ${b.life}`;
+    const g = BUILDING_TYPES[b.type].growth?.[b.level - 1];
     if (b.construction) status += `  [cantiere in corso]`;
-    else if (up) status += upgradeUnlocked(b, r12)
-      ? `  potenziamento pronto (${Object.entries(up.cost).map(([k, v]) => v + " " + k).join(", ")})`
-      : `  prossimo potenziamento a pop ${up.atPop}`;
+    else if (up) {
+      if (upgradeUnlocked(b, r12)) {
+        status += `  potenziamento pronto (${Object.entries(up.cost).map(([k, v]) => v + " " + k).join(", ")})`;
+      } else if (up.atMakee != null) {
+        status += `  prossimo potenziamento a ${up.atMakee} cicli di produzione (ora ${b.makee ?? 0})`;
+      } else if (up.atAva != null) {
+        status += `  prossimo potenziamento a crescita completa (${b.ava ?? 0}/${up.atAva})`;
+      } else {
+        status += `  prossimo potenziamento a pop ${up.atPop}`;
+      }
+    } else if (g) {
+      status += (b.ava ?? 0) >= g.maxAva ? `  crescita completa` : `  crescita ${b.ava ?? 0}/${g.maxAva}`;
+    }
   } else if (picked?.obj === "placeholder") {
     const def = BUILDING_TYPES[selectedType];
     status = picked.consumed ? "occupato" : `vuoto — tocca per costruire ${def.label.toLowerCase()} (${def.placeCost.mon} mon)`;
@@ -372,7 +497,8 @@ function frame(now) {
     `istanze ${frameList.length}  disegnate ${drawn}  drawcall ${r.drawCalls}\n` +
     `atlas ${atlas.pages.length} pagine  senza sprite ${missingArt}\n` +
     `zoom ${cam.zoom.toFixed(2)}  camera ${cam.x.toFixed(0)},${cam.y.toFixed(0)}\n` +
-    `fase ${amb.label}  edifici ${buildings.length}\n` +
+    `fase ${amb.label}  edifici ${buildings.length}` +
+    (r12.storm ? `  ⛈ tempesta (${r12.stormT.toFixed(0)}s)\n` : `\n`) +
     (status ? status + "\n" : "") +
     (messageT > 0 ? message + "\n" : "") +
     `trascina, rotella/pinch, tap — [S] salva [L] carica`;
@@ -385,6 +511,7 @@ window.addEventListener("beforeunload", doSave);
 // aggancio di debug, comodo per ispezionare senza aspettare il ciclo
 window.__nimbus = {
   cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
+  get uiButtons() { return uiButtons; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,
