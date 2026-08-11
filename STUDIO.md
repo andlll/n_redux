@@ -553,14 +553,96 @@ paragrafo 8.
   Sprite aggiunti a `GAMEPLAY_SPRITES` (categoria `gui`, nuova):
   `icone_oriz`, `p1`, `p1ss`, `p2`, `p2ss`. Font `gotham_mini` estratto ed
   impaginato con la stessa pipeline di `gotham_mid`.
+- **`chies` è l'edificio unico e preesistente, non un tipo piazzabile.**
+  Correzione di un errore: la versione precedente trattava `chies` come un
+  quarto "tipo" scelto dal selettore, con un bottone di test per piazzarne
+  quante se ne vuole. Sbagliato su due fronti — **[C]** `src/rooms/
+  match_easy.json` ha **una sola** istanza `chies`, a centro mappa
+  (851,513): non nasce da un placeholder e il giocatore non ne piazza
+  altre (STUDIO.md §5.3, già scritto ma non tradotto in codice). Ora
+  `main.js` toglie quell'istanza da `staticWorld` e la aggiunge a
+  `buildings` all'avvio (`seedChies()`, solo a partita nuova — se c'è un
+  salvataggio la chies ricaricata è già lì), cosi' la sua catena di
+  potenziamento vera (upcrc12/upcrc23) resta raggiungibile toccandola. Il
+  bottone di test è sparito; `selectedType` di default è `"casa"`.
+  **Effetto collaterale scoperto testando la correzione**: toccare chies al
+  centro esatto della sua posizione non la selezionava — ci arrivava prima
+  `air2`, un layer atmosferico che copre l'intera mappa (**[C]**
+  1920×1564, depth -1, `mask_sprite: null` nel decompilato: nell'originale
+  non ha mai potuto ricevere click, non ha maschera di collisione). Il
+  picking ora fa due passate: la prima considera solo cio' che e' davvero
+  interattivo (placeholder, edifici) a prescindere dal depth; la seconda,
+  di fallback, e' il vecchio "per z-order" usato solo per ispezionare la
+  scena nell'HUD di debug.
+- **Le tempeste diventano reali (regola di `match`, non `stormeasy`).**
+  Deciso di portare comunque `r12.storm` — non perché serva a
+  `match_easy` (dove resta cosmetica, vedi sopra), ma perché è la regola
+  che conta su `match`, la mappa difficile, ed è quella che il danno da
+  fulmine di industria/casa legge davvero. **[C]** `r12/Alarm_2.gml`
+  (ramo `match`): ogni secondo, un dado 1 su 800 fa iniziare una tempesta,
+  che dura 30 o 35 secondi (**[C]** `r12/Alarm_7.gml` la spegne).
+  `stepWeather()` in `state.js`.
+  Danno da fulmine per livello, letto per davvero invece di lasciarlo
+  inerte: **[C]** `industria1/Alarm_5.gml`, `industria2/Alarm_5.gml`,
+  `industria3/Alarm_6.gml`, `casa1/Alarm_5.gml`, `casa2/Alarm_5.gml` — ogni
+  57 tick, se la tempesta è attiva, un dado toglie vita.
+  **Scoperta leggendo `casa3`**: nel decompilato arma un `Alarm_5`
+  (`action_set_alarm(23,5)` in Create.gml) ma non esiste nessun
+  `casa3/Alarm_5.gml` — l'alarm scatta e non fa niente, codice morto
+  nell'originale stesso. Riprodotto fedelmente: `casa3` non prende mai
+  danno da fulmine nella tabella `storm` di `buildings.js`.
+  `stepStormDamage()` in `buildings.js`.
+  **Primo sistema vita/morte reale**: quando `life` arriva a 0
+  (`destroyBuilding()` in `main.js`) si applica il bilancio popolazione del
+  livello a cui è morto (**[C]** `casaX/Destroy.gml`: -10/-34/-60 — non
+  l'esatto opposto di quanto guadagnato in vita, l'originale stesso non
+  torna) e il placeholder torna libero. **Semplificazione dichiarata**:
+  nell'originale l'edificio distrutto resterebbe un rudere (`ruin1/2/3`)
+  riparabile solo con lo strumento ruspa/bulldozer (`selec==11`,
+  `puruspa`, mai ricostruito — vedi sotto) pagando per rifarlo con la
+  stessa catena "rifai in loco" di `demobasia`: un vicolo cieco per chi
+  gioca senza quello strumento. `industria` tocca `hap` in `Destroy.gml`
+  invece di `pop`, ma `hap` non è tracciato da nessun'altra parte del
+  gioco (STUDIO.md, deciso già per `industria`/`casa`): per coerenza resta
+  fuori anche qui, non solo per industria.
+- **Zoom fluido, con limiti sensati, e nero fuori dai confini della mappa.**
+  Tre correzioni distinte alla camera:
+  1. Lo zoom da rotella applicava l'intero salto in un frame solo
+     ("scattoso"): ora `Camera.setZoom()` aggiorna solo un `targetZoom`, e
+     `Camera.update()` (chiamata una volta a frame) lo insegue con
+     un'interpolazione esponenziale, ricalcolando il pan ad ogni passo
+     cosi' il punto sotto al cursore/dito resta fermo per tutta la durata
+     dell'animazione, non solo all'inizio e alla fine. L'originale non
+     aveva questo problema: `zoom_plus`/`zoom_minus` avanzavano già
+     gradualmente da soli (STUDIO.md §2, "0,005 per frame") — qui e' la
+     controparte per un input istantaneo come la rotella.
+  2. `minZoom` (quanto ci si può avvicinare) abbassato da 0.25 a 0.5: sotto
+     quella soglia gli sprite, disegnati alla risoluzione nativa
+     dell'atlas, si vedevano ingranditi oltre il loro dettaglio reale
+     ("sgranati"). `maxZoom` (quanto ci si può allontanare) non è più un
+     numero fisso (era 8, ben oltre la mappa): ora si ricalcola ad ogni
+     `resize()` come 1.3× lo zoom che inquadra tutta la room, cosi' non ha
+     senso allontanarsi molto oltre "si vede tutta la mappa".
+  3. Zoomando indietro oltre i confini della room si vedevano i bordi del
+     terreno "strappati" (il terreno non è disegnato per essere visto da
+     fuori dai suoi bordi). Non ho trovato un oggetto originale dedicato a
+     questo: l'originale aveva il limite di zoom minimo esplicito apposta
+     per non mostrare mai la mappa intera su `match` (STUDIO.md §2), quindi
+     il problema a monte non si poneva mai. `main.js` ora disegna quattro
+     rettangoli neri fuori dal rettangolo di schermo dei confini della room
+     (calcolato con `cam.worldToScreen`), nel layer GUI — l'effetto atteso,
+     non il vincolo a monte che lo evitava nell'originale.
 - **Cosa manca prima del punto 5** (portare le famiglie di comportamenti a
   gruppi): la traccia "f" degli `impa*` (scenografia, per industria e
   casa, su tutti i salti di livello ora ricostruiti); il sistema
-  vita/distruzione (bombe, fulmini — vedi sopra, per `match_easy` è un
-  problema diverso da come sembrava); il sistema `hap`/`wewe`
-  (felicità/inquinamento visivo) e la sommossa che ne dipende; i "rifai in
-  loco" cosmetici (`demobasia` + `impacasa*`/`impaind*` "rifatti", non le
-  catene di potenziamento); gli altri ~18 bottoni della barra (zoom,
-  occhio, reset, `puruspa` — probabile bulldozer/demolizione vera); le
-  altre ~85 famiglie `impa*` (armi, minacce, altri edifici) non ancora
-  lette.
+  `hap`/`wewe` (felicità/inquinamento visivo) e la sommossa che ne
+  dipende; i "rifai in loco" cosmetici (`demobasia` + `impacasa*`/
+  `impaind*` "rifatti") e il vero strumento di demolizione/riparazione
+  (`puruspa`, `selec==11` — oggi la distruzione libera subito il
+  placeholder invece di lasciare un rudere riparabile solo con
+  quello strumento); gli altri ~17 bottoni della barra (zoom, occhio,
+  reset — non più `puruspa`, appena discusso); le altre ~85 famiglie
+  `impa*` (armi, minacce, altri edifici) non ancora lette; da dove
+  arrivano davvero le minacce vere (bombe/aerei/zeppelin: dipendono da
+  contatori — `bombn`, `diron`, `ondan` — che partono a 0 e che nessun
+  oggetto letto finora incrementa).

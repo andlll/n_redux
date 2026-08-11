@@ -5,16 +5,25 @@
 // zoom piu' grande => si vede piu' mondo (rimpicciolito). E' la stessa
 // convenzione di global.sca nell'originale.
 
+// Quanto rapidamente `zoom` insegue `targetZoom`: piu' alto = piu' pronto.
+// L'originale non aveva questo problema perche' zoom_plus/zoom_minus
+// avanzavano gia' gradualmente da soli (STUDIO.md §2, "0,005 per frame");
+// la rotella del mouse invece qui applicava l'intero salto in un frame
+// solo, "scattoso". ZOOM_EASE e' la sua controparte per un input istantaneo.
+const ZOOM_EASE = 12;
+
 export class Camera {
   constructor() {
     this.x = 0;                 // centro della vista, in coordinate mondo
     this.y = 0;
     this.zoom = 1;
+    this.targetZoom = 1;        // dove sta andando `zoom`, aggiornato all'istante da setZoom()
     this.minZoom = 0.4;
     this.maxZoom = 3;
     this.bounds = null;         // {left, top, right, bottom} in coordinate mondo
     this.viewW = 1;             // dimensione viewport in pixel schermo
     this.viewH = 1;
+    this._anchor = null;        // { sx, sy, wx, wy }: punto di mondo da tenere fermo mentre si anima
   }
 
   resize(w, h) { this.viewW = w; this.viewH = h; }
@@ -23,16 +32,36 @@ export class Camera {
   get worldW() { return this.viewW * this.zoom; }
   get worldH() { return this.viewH * this.zoom; }
 
+  /** Fissa lo zoom di schermo, senza animazione (usato per il fit iniziale). */
+  setZoomImmediate(z) {
+    this.zoom = this.targetZoom = Math.min(this.maxZoom, Math.max(this.minZoom, z));
+    this._anchor = null;
+    this.clamp();
+  }
+
+  /** Chiede un nuovo zoom (rotella o pinch): l'avvicinamento vero e proprio
+   * lo fa update() ad ogni frame, cosi' resta fluido anche per un singolo
+   * "scatto" di rotella. `anchorSx/Sy` e' il punto di schermo che deve
+   * restare fermo sotto il dito/cursore per tutta la durata dell'animazione. */
   setZoom(z, anchorSx, anchorSy) {
-    const nz = Math.min(this.maxZoom, Math.max(this.minZoom, z));
-    if (nz === this.zoom) return;
-    if (anchorSx === undefined) { this.zoom = nz; this.clamp(); return; }
-    // mantiene fermo il punto di mondo sotto l'ancora (pinch / rotella)
-    const before = this.screenToWorld(anchorSx, anchorSy);
-    this.zoom = nz;
-    const after = this.screenToWorld(anchorSx, anchorSy);
-    this.x += before.x - after.x;
-    this.y += before.y - after.y;
+    this.targetZoom = Math.min(this.maxZoom, Math.max(this.minZoom, z));
+    this._anchor = anchorSx === undefined ? null
+      : { sx: anchorSx, sy: anchorSy, ...this.screenToWorld(anchorSx, anchorSy) };
+  }
+
+  /** Avvicina `zoom` a `targetZoom` di un frame. Va chiamato una volta per frame. */
+  update(dt) {
+    if (this.zoom === this.targetZoom) return;
+    const t = Math.min(1, dt * ZOOM_EASE);
+    this.zoom += (this.targetZoom - this.zoom) * t;
+    if (Math.abs(this.zoom - this.targetZoom) < 0.0005) this.zoom = this.targetZoom;
+    if (this._anchor) {
+      // ricalcola il pan ad ogni passo cosi' il punto sotto anchor resta fermo
+      // anche a meta' dell'animazione, non solo all'inizio e alla fine.
+      const after = this.screenToWorld(this._anchor.sx, this._anchor.sy);
+      this.x += this._anchor.x - after.x;
+      this.y += this._anchor.y - after.y;
+    }
     this.clamp();
   }
 

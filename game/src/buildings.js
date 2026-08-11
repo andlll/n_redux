@@ -89,6 +89,17 @@ export const BUILDING_TYPES = {
       { every: 120, oil: 20, ele: 120 },   // [C] industria2/Alarm_2.gml
       { every: 120, oil: 35, ele: 300 },   // [C] industria3/Alarm_2.gml (livello massimo, nessun upgrade a valle)
     ],
+    // Danno da fulmine per livello: ogni 57 tick, se `r12.storm` e' attivo,
+    // un dado (1 su `dice`) fa perdere `loss` vita. [C]
+    // industria1/Alarm_5.gml, industria2/Alarm_5.gml, industria3/Alarm_6.gml.
+    // Su `match_easy` la tempesta reale (`r12.storm`, non `stormeasy`) resta
+    // rara di suo (STUDIO.md §9) — qui la regola c'e' per davvero, non solo
+    // letta, perche' su `match` (mappa difficile) non e' affatto cosmetica.
+    storm: [
+      { dice: 130, loss: 50 },   // [C] industria1
+      { dice: 120, loss: 50 },   // [C] industria2
+      { dice: 100, loss: 50 },   // [C] industria3
+    ],
     construct: {                  // livello 0 -> 1, impaind0to1r (src/objects/impaind0to1r)
       drain: { mon: 1, every: 20 },              // [C] impaind0to1r/Alarm_10.gml
       finalSprite: "i11", life: 50,               // [C] industria1/Create.gml (life=50)
@@ -204,9 +215,26 @@ export const BUILDING_TYPES = {
       [ { day: 3, night: 7 }, { day: 6, night: 11 }, { day: 9, night: 15 },     // [C] casa3
         { day: 12, night: 20 }, { day: 15, night: 24 }, { day: 18, night: 27 } ],
     ],
+    // Danno da fulmine per livello, stesso schema di industria (ogni 57
+    // tick, 1 dado su `dice` se `r12.storm`). [C] casa1/Alarm_5.gml,
+    // casa2/Alarm_5.gml. **casa3 non ha danno da fulmine**: nel decompilato
+    // arma un `Alarm_5` (`action_set_alarm(23,5)` in Create.gml) ma non
+    // esiste nessun `casa3/Alarm_5.gml` — l'alarm scatta e non fa niente,
+    // codice morto nell'originale stesso. `null` qui riproduce fedelmente
+    // quel "niente", non una dimenticanza.
+    storm: [
+      { dice: 180, loss: 50 },   // [C] casa1
+      { dice: 170, loss: 50 },   // [C] casa2
+      null,                       // [C] casa3: Alarm_5 armato ma senza codice
+    ],
     construct: {                 // livello 0 -> 1, impa0to1r (src/objects/impa0to1r)
       life: 100,                  // [C] casa1/Create.gml
       grantPop: 2,                // [C] casa1/Create.gml: r12.pop += 2 alla nascita, prima della crescita
+      // [C] casa1/Destroy.gml: r12.pop += -10 quando muore (non l'esatto
+      // opposto dei +12 accumulati in vita — 2 alla nascita + 2 per ognuno
+      // dei 5 stadi di crescita: l'originale stesso non torna, letto cosi'
+      // com'e', non "corretto").
+      deathPop: -10,
       // [C] casa1/Create.gml: 5 livelli di action_if_dice(2) annidati
       // scelgono fra 20 coppie (sprite casa, decoro affiancato) — un pick
       // uniforme fra 20, come pickSpr() sugli array di step. Ogni dXXX
@@ -239,6 +267,7 @@ export const BUILDING_TYPES = {
         cost: { mon: 500 },        // [C] upsign12/Mouse_LeftPressed.gml
         life: 200,                  // [C] casa2/Create.gml
         grantPop: 14,                // [C] casa2/Create.gml: r12.pop += 14 alla nascita
+        deathPop: -34,                // [C] casa2/Destroy.gml
         drain: { mon: 2, every: 10 },   // [C] impa1to2r/Alarm_10.gml
         variants: [                  // [C] casa2/Create.gml, stesso schema di casa1
           { spr: "c211", decor: "c211l" }, { spr: "c212", decor: "c212l" },
@@ -269,6 +298,7 @@ export const BUILDING_TYPES = {
         cost: { mon: 2000 },       // [C] upsign23/Mouse_LeftPressed.gml
         life: 300,                  // [C] casa3/Create.gml
         grantPop: 40,                // [C] casa3/Create.gml: r12.pop += 40 alla nascita
+        deathPop: -60,                // [C] casa3/Destroy.gml
         drain: { mon: 3, every: 20 },   // [C] impa2to3r/Alarm_10.gml
         variants: [                  // [C] casa3/Create.gml, stesso schema di casa1/casa2
           { spr: "c311", decor: "c311l" }, { spr: "c312", decor: "c312l" },
@@ -344,6 +374,14 @@ export function currentDecor(b) {
   if (b.decorSpr) return [b.decorSpr];
   if (b.level === 1) return def.construct?.decor ?? def.baseDecor ?? [];
   return def.upgrades?.[b.level - 2]?.decor ?? [];
+}
+
+/** r12.pop da applicare se l'edificio muore ora, al suo livello attuale (0 se il tipo non ne ha). */
+export function currentDeathPop(b) {
+  const def = BUILDING_TYPES[b.type];
+  if (b.level < 1) return 0;
+  const cur = b.level === 1 ? def.construct : def.upgrades?.[b.level - 2];
+  return cur?.deathPop ?? 0;
 }
 
 /** Il potenziamento che l'edificio potrebbe iniziare ora, se lo tocchi (null se il tipo non ne ha). */
@@ -532,6 +570,34 @@ export function stepConsumption(buildings, dt, r12, isNight) {
     while (b.consT >= period) {
       b.consT -= period;
       r12.ele -= isNight ? rate.night : rate.day;
+    }
+  }
+}
+
+const STORM_CHECK = 57 * TICK;   // [C] industria1|2/Alarm_5.gml, industria3/Alarm_6.gml, casa1|2/Alarm_5.gml: si riarmano tutti a 57 tick
+
+/**
+ * Avanza il danno da fulmine degli edifici finiti che dichiarano `storm`
+ * per livello (industria, casa — non tutti i livelli: `null` = quel
+ * livello non ha danno da fulmine nell'originale, vedi commenti sulle
+ * tabelle in BUILDING_TYPES). [C] ogni 57 tick, se `r12.storm` e' attivo,
+ * un dado (1 su N) toglie vita. Non uccide l'edificio qui — si limita a
+ * portare `b.life` a 0 o sotto: la conseguenza (rimuoverlo, liberare il
+ * placeholder, il bilancio pop/hap di `currentDeathPop`) e' responsabilita'
+ * di chi chiama, perche' tocca cose che buildings.js non conosce (i
+ * placeholder, il decoro in scena) — stesso confine di `spawnDecor`/
+ * `addDecor` in main.js.
+ */
+export function stepStormDamage(buildings, dt, r12) {
+  for (const b of buildings) {
+    if (b.construction || b.life <= 0) continue;
+    const def = BUILDING_TYPES[b.type];
+    const sd = def.storm?.[b.level - 1];
+    if (!sd) continue;
+    b.stormT = (b.stormT ?? 0) + dt;
+    while (b.stormT >= STORM_CHECK) {
+      b.stormT -= STORM_CHECK;
+      if (r12.storm && Math.random() < 1 / sd.dice) b.life = Math.max(0, b.life - sd.loss);
     }
   }
 }
