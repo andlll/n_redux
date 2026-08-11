@@ -77,14 +77,31 @@ GAMEPLAY_SPRITES = {
     # immagine con le icone gia' disegnate dentro (src/objects/repre/
     # DrawGUI.gml: action_draw_sprite(icone_oriz, ...) + i numeri col font
     # bitmap "gotham_mini" a offset fissi), non quattro icone separate come
-    # avevamo indovinato. I bottoni edificio (src/objects/pu1|pu2) hanno
+    # avevamo indovinato. I bottoni edificio (src/objects/pu1|pu2|...) hanno
     # ciascuno due sprite, normale e "selezionato" (px / pxss), cambiate a
     # mano nello Step in base a r12.selec — non e' un tint, sono disegni
     # diversi.
     "gui": [
         "icone_oriz",          # sfondo barra risorse (repre/DrawGUI.gml)
-        "p1", "p1ss",          # bottone casa (pu1, selec==1)
-        "p2", "p2ss",          # bottone industria (pu2, selec==2)
+        "p1", "p1ss",          # bottone casa (pu1, selec==1) — piazzabile
+        "p2", "p2ss",          # bottone industria (pu2, selec==2) — piazzabile
+        # Gli altri bottoni edificio del menu originale (src/objects/pu3|
+        # pu4prov|pu5prov|pu6|pudj|pusolare|pugatling|puvillone|pumediat):
+        # STUDIO.md "cosa manca" li elenca come famiglie impa* non ancora
+        # lette. Mostrati come segnaposto statici nel menu (STUDIO.md §9) —
+        # tap mostra "non ancora ricostruito", non piazzano niente.
+        "p3", "p3ss", "p4", "p4ss", "p5", "p5ss", "p6", "p6ss",
+        "pdj", "pdjss", "psolare", "psolaress", "pgatling", "pgatlingss",
+        "pvilla", "pvillass", "pmuseo", "pmuseoss",
+        "ru", "russ",           # puruspa (bulldozer/ripara, selec==11, mai ricostruito)
+        "reset",                # pureset
+        # Gli altri bottoni del pannello (src/objects/handbutton|buildbutton|
+        # eyebutton|eyebutton1|2|3|backobutton): nell'originale aprivano/
+        # chiudevano le righe del menu (STUDIO.md §9 "menoo", tre pannelli
+        # alternati mai ricostruiti) — qui sono una seconda riga sempre
+        # visibile, segnaposto tranne lo zoom (gia' funzionante altrimenti).
+        "handee", "groo", "eyeee", "eyee1", "eyee2", "eyee3", "baccc",
+        "zoomplus", "zoomminus",
     ],
 }
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})

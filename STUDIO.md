@@ -676,7 +676,7 @@ paragrafo 8.
   arrivano davvero le minacce vere (bombe/aerei/zeppelin: dipendono da
   contatori — `bombn`, `diron`, `ondan` — che partono a 0 e che nessun
   oggetto letto finora incrementa).
-- **Sette bug segnalati dall'autore dopo aver giocato la build precedente,
+- **Otto bug segnalati dall'autore dopo aver giocato la build precedente,
   tutti risolti insieme**:
   1. **Depth**: vedi sopra (`air2`/effDepth). Gli edifici piazzati dal
      giocatore avevano lo stesso bug da un'altra strada — nascevano con il
@@ -716,3 +716,31 @@ paragrafo 8.
      senza hover precedente (il picking in `input.onTap` non e' cambiato):
      altrimenti un tap diretto su touch, che non genera mai un hover prima
      del tocco, non avrebbe piu' funzionato.
+  8. **"Doppia casetta"**: `pu1` e' anche lei gia' un'istanza vera nella
+     room (**[C]** sprite `p1`, la stessa del bottone "casa" — nell'originale
+     e' un pannello invisibile che genera i propri figli/bottoni via codice,
+     STUDIO.md §5.4), mai tolta da `staticWorld` come si era gia' fatto per
+     `chies`: restava un secondo bottone "casa" fantasma, disegnato come
+     sprite di mondo proprio sopra a quello vero in spazio schermo. Tolta
+     allo stesso modo di `chies`.
+     Colta l'occasione per rappresentare anche il resto del menu originale
+     (**[C]** `src/objects/pu1/Create.gml` elenca tutti i bottoni figli che
+     genera) come segnaposto statici: gli altri edifici piazzabili — `pu3`
+     (lanciamissili), `pu6` (grattacielo), `pu4prov` (pala eolica),
+     `pu5prov` (laser), `pudj` (club), `pusolare` (pannelli solari),
+     `pugatling` (mitragliatrice), `puvillone` (villa), `pumediat` (museo),
+     `puruspa` (ruspa, STUDIO.md "mai ricostruita") — nessuno in
+     `BUILDING_TYPES`: selezionabili come casa/industria (evidenziati con lo
+     sprite "ss"), ma toccare un placeholder mostra "non ancora
+     ricostruito" invece di costruire (costi reali dove
+     `placeholder/Mouse_LeftReleased.gml` li dichiara esplicitamente,
+     altrimenti omessi, non inventati). E i bottoni "di cornice"
+     (`handbutton`, `buildbutton`, `eyebutton`/`1`/`2`/`3`, `backobutton`,
+     `zoom_plus`/`zoom_minus`) in una seconda riga sopra: nell'originale
+     aprivano/chiudevano tre righe alternate del menu (`pu1.menoo`, mai
+     ricostruito — qui il menu e' gia' tutto visibile in una riga sola,
+     quindi non c'e' niente da aprire/chiudere), inerti tranne zoom+/zoom-,
+     che richiamano lo stesso `cam.setZoom` gia' agganciato a rotella/pinch.
+     **Limite noto**: la riga bottoni non va a capo su schermi stretti (puo'
+     uscire dal bordo destro su mobile) — non ricostruito, fuori dallo scopo
+     di questo giro di correzioni.
