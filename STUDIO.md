@@ -676,7 +676,7 @@ paragrafo 8.
   arrivano davvero le minacce vere (bombe/aerei/zeppelin: dipendono da
   contatori — `bombn`, `diron`, `ondan` — che partono a 0 e che nessun
   oggetto letto finora incrementa).
-- **Sei bug segnalati dall'autore dopo aver giocato la build precedente,
+- **Sette bug segnalati dall'autore dopo aver giocato la build precedente,
   tutti risolti insieme**:
   1. **Depth**: vedi sopra (`air2`/effDepth). Gli edifici piazzati dal
      giocatore avevano lo stesso bug da un'altra strada — nascevano con il
@@ -702,3 +702,17 @@ paragrafo 8.
   6. **Luci sempre accese**: il decoro (bagliore finestre, STUDIO.md §5.3
      "notte_target") non veniva mai nascosto di giorno. `main.js` ora lo
      filtra da `frameList` quando `!isNight(phaseT)`.
+  7. **Placeholder sempre visibili**: dovevano esserlo solo sotto al
+     puntatore — **[C]** `placeholder/Create.gml` parte con sprite `empty`
+     (invisibile), e solo `Mouse_MouseEnter`/`Mouse_MouseLeave` lo cambiano
+     in `phold` (il rombo viola) e viceversa; qui restavano sempre `phold`.
+     Aggiunto un vero hover: `input.js` traccia la posizione del puntatore
+     ad ogni `pointermove` indipendentemente da drag/pinch in corso
+     (`input.hover`, `null` quando il puntatore lascia il canvas — su
+     touch, anche al sollevamento del dito: il touch non ha hover senza
+     contatto, stessa limitazione dell'originale su mobile); `main.js` lo
+     confronta ogni frame contro i placeholder liberi e disegna solo quello
+     sotto al puntatore. Il tocco per costruire resta valido ovunque, anche
+     senza hover precedente (il picking in `input.onTap` non e' cambiato):
+     altrimenti un tap diretto su touch, che non genera mai un hover prima
+     del tocco, non avrebbe piu' funzionato.

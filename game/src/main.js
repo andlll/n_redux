@@ -428,6 +428,24 @@ function frame(now) {
   frameList = staticWorld.filter((it) => !(it.obj === "placeholder" && it.consumed))
     .concat(dynamic).filter((it) => night || it.obj !== "decor").sort(sortWorld);
 
+  // [C] src/objects/placeholder/Create.gml + Mouse_MouseEnter/Leave.gml: il
+  // placeholder nasce con sprite "empty" (invisibile) e diventa "phold" (il
+  // rombo viola) solo sotto al puntatore, tornando invisibile appena lo
+  // lascia — non e' mai visibile stabilmente come lo era nella build
+  // precedente (segnalato dall'autore). Il tocco per costruire resta
+  // valido ovunque (picking sotto usa sempre `frameList`, indipendente da
+  // questo flag): solo il disegno lo rispetta, piu' sotto.
+  let hoveredPh = null;
+  if (input.hover) {
+    const w = cam.screenToWorld(input.hover.x, input.hover.y);
+    for (const p of placeholders) {
+      if (p.consumed) continue;
+      const x0 = p.x - p._f.ox, y0 = p.y - p._f.oy;
+      if (w.x >= x0 && w.x <= x0 + p._f.w && w.y >= y0 && w.y <= y0 + p._f.h) { hoveredPh = p; break; }
+    }
+  }
+  for (const p of placeholders) p._hovered = p === hoveredPh;
+
   r.beginFrame(canvas.width, canvas.height);
   const amb = ambientAt(phaseT);
 
@@ -438,6 +456,7 @@ function frame(now) {
   const vw = cam.worldW, vh = cam.worldH;
   const l = cam.x - vw / 2, t = cam.y - vh / 2, rr = l + vw, bb = t + vh;
   for (const it of frameList) {
+    if (it.obj === "placeholder" && !it._hovered) continue;
     const f = it._f;
     if (f) {
       const x0 = it.x - f.ox, y0 = it.y - f.oy;
