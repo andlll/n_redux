@@ -959,3 +959,68 @@ paragrafo 8.
   senza portare la mappa dei collider. Agganciato in `main.js` dentro
   `spawnDecor()`, per il solo tipo `casa`, allo stesso punto in cui gia'
   intercettava `parco`.
+
+- **Le mongolfiere.** Non sono `cargo1..4`/`cargomaker` (i camion colorati
+  gia' scartati piu' sopra come codice morto): sono una famiglia distinta,
+  mai letta finora, trovata risalendo dagli sprite (`monv`/`monss`/`mong`/
+  `monviola`/`monr`, tutte hot-air-balloon veri, verificato visivamente
+  ritagliando gli atlas, non solo dal nome) agli oggetti che li usano. Tre
+  gruppi, `game/src/balloons.js`:
+  1. **Risorse**: `monvo` (verde, petrolio), `monvo_giga` (verde gigante),
+     `monbo` (blu/petrolio, sprite `monss`, denaro), `mongo` (giallo/oliva,
+     energia), `monviolo` (viola, cristalli) — **[C]** nessun evento Mouse
+     nel decompilato: non cliccabili in volo. Volano 3600 tic (60s, stessa
+     diagonale di 30° di nuvole/uccelli) e alla fine — o se un fulmine le
+     colpisce durante una tempesta vera (STUDIO.md sopra "le tempeste
+     diventano reali", stesso schema di `stepStormDamage`) — lasciano
+     cadere una cassa (bar-us/-us_giga/-bluss/-gia/-viola, quella si'
+     cliccabile: nell'originale al passaggio del mouse, `Mouse_
+     MouseEnter.gml`, qui un tap, coerente con l'input touch-first del
+     resto del motore, STUDIO.md §7). Importi reali: 700 petrolio/denaro,
+     1100 energia, 2300 petrolio (gigante), 1-3 cristalli (`irandom_range`).
+  2. **Spia**: `monspi` (rossa). Stessa diagonale, nessun loot: dopo 750
+     tic "riferisce" — alza `r12.onda`/`ondan` e fa comparire l'avviso
+     ATTACK INCOMING (`aincom`, un banner che lampeggia ogni 0.5s per 4s,
+     **[C]** `aincom/Create.gml` + `Alarm_1|2.gml`) — invece di limitarsi a
+     sparire. Sbloccata solo dopo **[C]** ~8 minuti di partita
+     (`r12/Create.gml`: `action_set_alarm(29000, 8)` arma `r12.spy`). Un
+     fulmine prima di allora la cancella senza conseguenze (nessun
+     `Destroy.gml` nel decompilato, a differenza delle risorse). `recogn` —
+     stesso ruolo ma un aereo da ricognizione, non una mongolfiera (sprite
+     `reconspr`, verificato visivamente) — resta fuori: non e' una
+     mongolfiera, gap dichiarato.
+  3. **Pacco di cantiere**: `mon_bil`/`mon_bbil` (**[C]** `placeholder/
+     Mouse_LeftReleased.gml`, creato insieme a ogni `impa*` alla posizione
+     relativa `(-1559, +680)` dal placeholder appena occupato). Vola 225
+     tic portando una cassa (`mon_box`, che cade e sparisce), la sgancia,
+     poi **[C]** una vera `action_set_gravity(90, 0.1)` la fa "alleggerire"
+     e accelerare verso l'alto per altri 1000 tic prima di sparire — non un
+     placeholder, la gravita' vera dell'originale. Solo `mon_bil` e'
+     cablata: e' quella che l'originale usa per `casa` (`selec==1`) e
+     `industria` (`selec==2`), gli unici due tipi piazzabili dal giocatore
+     che la creano — **[C]** `parco` (`selec==7`) non crea nessun pallone
+     nel decompilato, `mon_bbil` serve solo a tipi non ancora ricostruiti
+     (banca, laser).
+  Il regista (`stepBalloonSpawner`, equivalente di `r12/Alarm_1.gml`, ogni
+  300 tic/5s) riproduce le probabilita' reali: verde sempre, giallo 1/10,
+  blu 1/13, viola e verde-gigante 1/15-1/18 solo se `chies.level>=2`, verde
+  extra 1/2 se `chies.level>=3`, spia 1/2 (o 1/17 se `r12.hap==r12.pop` —
+  **[I]** mai vero in pratica, `hap` non e' aggiornato da nessuna parte del
+  motore, stesso gap gia' dichiarato per casa/industria: l'originale stesso
+  finisce quindi per usare sempre il dado 1/2). **[I]** Un'intera "ondata"
+  (`r12.ondan`) sospende tutte le nuove nascite finche' non decade (-0.5/s):
+  riprodotto senza la cerimonia di armamento originale (`r12.arma` che arma
+  gli alarm 4/5/6 di `r12` al prossimo Step) perche' pilota anche
+  un'ondata di bombardieri non ancora ricostruita — qui decade
+  incondizionatamente appena `ondan>0`, stesso risultato pratico. **[I]** Il
+  gate `action_if_number(160, 0, 0)` che nel decompilato precede
+  `monviolo` (un flag globale non identificato) non e' riprodotto: dipende
+  solo dal livello di chies, come `monvo_giga` nello stesso `Alarm_1` che
+  non ha un gate simile. **[I]** Il range di nascita e' quello che
+  l'originale stesso usa per il ramo "mappa facile" di `monspi`/`recogn`
+  (`380..1620`, **[C]** `action_if_number(162, 0, 0)`), esteso per analogia
+  anche alle risorse: l'altro range scritto a mano nel decompilato
+  (`380..3120`) e' tarato per `match` (2090px di altezza), troppo per
+  `match_easy` (1086px). Fumo/esplosioni decorative del fulmine e della
+  cassa a terra (`smoko`) non riprodotte — stesso gap gia' dichiarato per
+  il fumo di `industria`.

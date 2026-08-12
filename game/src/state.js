@@ -22,6 +22,11 @@ export function createR12() {
     hap: 600,           // [C] 400 base + 200 del ramo match_easy
     crys: 0, storm: 0, stormT: 0, stormeasy: 0, biotech: 0, autocore: 0,
     allerta: 0, selec: 0,
+    // [C] r12/Create.gml: onda/ondan/arma partono a 0, spy a 0 (si sblocca
+    // dopo 29000 tick, r12/Alarm_8.gml) — usati dalle mongolfiere di
+    // risorse/spia, game/src/balloons.js: STUDIO.md non li cita ancora
+    // perche' letti solo ora, insieme al resto della famiglia "mon*".
+    onda: 0, ondan: 0, arma: 0, spy: 0,
   };
 }
 

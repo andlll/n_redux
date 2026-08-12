@@ -7,6 +7,10 @@ import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
 import { spawnPedestrian, stepPedestrians } from "./pedestrians.js";
+import {
+  stepBalloonSpawner, stepBalloons, stepLoot, collectLoot,
+  spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
+} from "./balloons.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -223,6 +227,15 @@ const atmo = createAtmosphere();
 // una casa (vedi spawnDecor() piu' sotto) — vuoto all'avvio, match_easy
 // parte senza nessuna casa gia' costruita.
 let pedestrians = [];
+// Mongolfiere (game/src/balloons.js): `balloons`/`loot` sono le mongolfiere
+// di risorse/spia e le casse che lasciano cadere (r12/Alarm_1.gml, ogni 5s);
+// `constructionBalloons`/`constructionBoxes` sono il pacco che ogni `casa`/
+// `industria` piazzata si porta dietro (placeholder/Mouse_LeftReleased.gml),
+// spawnate una alla volta da placeAt() piu' sotto, non da un timer.
+let balloons = [];
+let loot = [];
+let constructionBalloons = [];
+let constructionBoxes = [];
 let r12 = createR12();
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
@@ -328,6 +341,13 @@ function placeAt(placeholder, type) {
   const b = placeBuilding(type, placeholder.x, placeholder.y, 0);
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
+  // [C] placeholder/Mouse_LeftReleased.gml: solo selec==1 (casa) e selec==2
+  // (industria) creano `mon_bil` — gli unici due tipi piazzabili dal
+  // giocatore che lo fanno (`parco`, selec==7, non crea nessun pallone nel
+  // decompilato — game/src/balloons.js, in cima al file).
+  if (type === "casa" || type === "industria") {
+    constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
+  }
   return null;
 }
 
@@ -582,15 +602,21 @@ input.onTap = (sx, sy) => {
   // frameList e' ricostruita ad ogni frame di disegno: e' la stessa lista,
   // gia' ordinata top-most-last, che serve per il picking. Due passate: la
   // prima considera solo cio' che e' davvero interattivo (placeholder,
-  // edifici — inclusa chies, ora che vive li' anche lei), a prescindere
-  // dal depth; la seconda, di fallback, e' il vecchio picking "per z-order"
-  // usato solo per ispezionare la scena nell'HUD di debug. Senza la prima
-  // passata `air2` (il terreno/strade sull'intera mappa, depth -1,
-  // `mask_sprite: null` nel decompilato: non ha MAI ricevuto click
-  // nell'originale) coprirebbe chies (depth 0, per y) e la renderebbe
-  // intoccabile.
+  // edifici — inclusa chies, ora che vive li' anche lei — e le casse di
+  // risorse lasciate cadere dalle mongolfiere), a prescindere dal depth; la
+  // seconda, di fallback, e' il vecchio picking "per z-order" usato solo
+  // per ispezionare la scena nell'HUD di debug. Senza la prima passata
+  // `air2` (il terreno/strade sull'intera mappa, depth -1, `mask_sprite:
+  // null` nel decompilato: non ha MAI ricevuto click nell'originale)
+  // coprirebbe chies (depth 0, per y) e la renderebbe intoccabile.
+  //
+  // Le casse (obj: "loot") sono qui invece che nel fallback perche'
+  // nell'originale si raccolgono al passaggio del mouse (bar*/Mouse_
+  // MouseEnter.gml), non con un click — un tap va quindi trattato come il
+  // gesto piu' "sicuro" possibile, non come l'ultima risorsa dopo aver
+  // controllato tutto il resto per z-order.
   for (const it of frameList) {
-    if (it.obj !== "placeholder" && it.obj !== "building") continue;
+    if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot") continue;
     const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
     if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
       if (!picked || it.depth < picked.depth) picked = it;
@@ -632,6 +658,12 @@ input.onTap = (sx, sy) => {
     const err = tryStartUpgrade(picked.ref, r12);
     message = err ?? "cantiere avviato";
     messageT = 3;
+  } else if (picked.obj === "loot") {
+    const item = picked.ref;
+    collectLoot(loot, item, r12);
+    message = `+${item.amount} ${item.key}`;
+    messageT = 3;
+    picked = null;   // raccolta, non c'e' piu' niente da tenere selezionato
   }
 };
 
@@ -704,6 +736,16 @@ function frame(now) {
   stepSemaphores(semaphores, dt);
   stepAtmosphere(atmo, dt, !!r12.storm);
   stepPedestrians(pedestrians, dt);
+  // Mongolfiere (game/src/balloons.js): risorse/spia a intervalli regolari
+  // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
+  // cantiere che casa/industria si porta dietro (spawnato da placeAt(),
+  // solo avanzato qui).
+  stepBalloonSpawner(r12, balloons, dt, buildings);
+  stepBalloons(balloons, loot, dt, r12);
+  stepLoot(loot, dt);
+  stepConstructionBalloons(constructionBalloons, constructionBoxes, dt);
+  stepConstructionBoxes(constructionBoxes, dt);
+  if (r12.alertT > 0) r12.alertT -= dt;
   if (messageT > 0) messageT -= dt;
 
   // --- lista di disegno di questo frame: mondo statico (placeholder consumati
@@ -745,6 +787,13 @@ function frame(now) {
   // Pedoni (game/src/pedestrians.js): x/y/depth gia' avanzati da
   // stepPedestrians() sopra.
   for (const p of pedestrians) dynamic.push({ obj: "pedestrian", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
+  // Mongolfiere (game/src/balloons.js): risorse/spia + le casse che
+  // lasciano cadere (obj: "loot", l'unica cliccabile — vedi picking sotto)
+  // + il pacco di cantiere di casa/industria.
+  for (const b of balloons) dynamic.push({ obj: "balloon", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
+  for (const l of loot) dynamic.push({ obj: "loot", ref: l, x: l.x, y: l.y, depth: l.depth, _f: frameFor(l.spr) });
+  for (const m of constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
+  for (const bx of constructionBoxes) dynamic.push({ obj: "decor", x: bx.x, y: bx.y, depth: bx.depth, _f: frameFor(bx.spr) });
   // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
   // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
   // (`_alpha`, 0 di giorno) che il ciclo di disegno rispetta da solo — a
@@ -915,6 +964,23 @@ function frame(now) {
     uiButtons.push({ x: rx, y: baseY - f.h, w: f.w, h: f.h, ...b });
     rx += f.w + GAP;
   }
+
+  // Avviso "ATTACK INCOMING" (src/objects/aincom, game/src/balloons.js): una
+  // mongolfiera spia ha completato il suo giro. [C] aincom/Create.gml +
+  // Alarm_1/2.gml: lampeggia (mostra/nasconde ogni 30 tick = 0.5s) per 240
+  // tick (4s) al centro della view — qui al centro dello schermo, coerente
+  // col resto della GUI in spazio schermo (STUDIO.md §7.3 "L'interfaccia va
+  // in uno spazio schermo separato").
+  if (r12.alertT > 0) {
+    const ainco = frameFor("ainco");
+    // r.draw ancora sull'origine dello sprite (data/sprites.json: "ainco" ha
+    // origin ~(w/2, h/2), gia' centrato — a differenza di "icone_oriz" sopra,
+    // che ha origine in alto a sinistra), quindi il centro schermo e' gia'
+    // il punto giusto da passare, non il suo angolo in alto a sinistra.
+    if (ainco && Math.floor((ALERT_DURATION - r12.alertT) / 0.5) % 2 === 0) {
+      r.draw(ainco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
+    }
+  }
   r.flush();
 
   // --- HUD testuale di debug: numeri e stato dettagliato per lo sviluppo,
@@ -970,6 +1036,8 @@ window.__nimbus = {
   get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
   get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
   atmo, get pedestrians() { return pedestrians; },
+  get balloons() { return balloons; }, get loot() { return loot; },
+  get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,

@@ -181,6 +181,21 @@ GAMEPLAY_SPRITES = {
     # mai piazzato nella room. "q8"/"q9" non esistono nella tavola a dado
     # dell'originale (salta da q7 a q10): non e' un refuso qui, e' fedele.
     "pedestrians": ["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q10"],
+    # Mongolfiere (src/objects/monvo|monvo_giga|monbo|mongo|monviolo|monspi,
+    # mon_bil|mon_box, src/objects/aincom — game/src/balloons.js). Nessuna
+    # istanza nella room: nascono a intervalli (risorse/spia) o quando un
+    # edificio viene piazzato (pacco di cantiere), stesso schema di
+    # atmosphere.js/pedestrians.js sopra.
+    "balloons": [
+        "monv", "monv_bar",                 # monvo: verde, petrolio
+        "monv_giga", "monv_giga_bar",       # monvo_giga: verde gigante
+        "monss", "monss_bar",               # monbo: blu, denaro
+        "mong", "mong_bar",                 # mongo: giallo/oliva, energia
+        "monviola", "monviola_bar",         # monviolo: viola, cristalli
+        "monr",                             # monspi: rossa, spia (nessun loot)
+        "mon_bild", "mon_bild_empty", "mon_bild_box",   # pacco di cantiere (casa/industria)
+        "ainco",                            # avviso "ATTACK INCOMING" (spia riuscita)
+    ],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
