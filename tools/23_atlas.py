@@ -92,6 +92,12 @@ GAMEPLAY_SPRITES = {
         "rl_as", "toppers",
         "lrn1", "lrn2", "lrn3", "lrn4", "lrn5", "lrn6", "lrn7", "lrn8",
         "lrn9", "lrn10", "lrn11", "lrn12", "lrn13", "lrn14", "lrn15", "lrn16",
+        # solare: pannelli solari, un solo livello (nessun upXX lo referenzia
+        # nel decompilato — sooool/Create.gml non arma nessun "upo" reale,
+        # game/src/buildings.js). Il cantiere (impasolr/impasolf) riusa gli
+        # stessi ir1x/if1x/"toppers" gia' elencati sopra, nessuno sprite di
+        # cantiere in piu' — "sool" e' il solo sprite finale nuovo.
+        "sool",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/
@@ -223,6 +229,13 @@ GAMEPLAY_SPRITES = {
     # 0.4) e' gia' in "threats" sopra, nessuno sprite in piu' da aggiungere
     # per quello.
     "projectiles": ["redb"],
+    # I pulsanti blu delle monete (src/objects/sold1..18, game/src/coins.js)
+    # e il segnale verde di potenziamento (src/objects/upsign12|23|upcrc12|
+    # 23|upind12|23 — tutti la stessa icona "upico", game/src/main.js
+    # renderUpgradeSign()). "soldico" e' il pin statico (nessun chies di
+    # livello 3), "soldfade" la stessa icona con la dissolvenza a 20 frame
+    # usata quando invece si autoriscuote.
+    "coins": ["soldico", "soldfade", "upico"],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
@@ -244,25 +257,6 @@ for name in used:
             "ox": s["origin_x"] - fr["render_x"],
             "oy": s["origin_y"] - fr["render_y"],
         })
-
-# Luci di finestra come sprite a se' stanti (tools/26_lights.py, data/
-# lights.json): non frame di uno sprite "sprites.json" esistente, ritagli
-# sintetizzati confrontando i frame dell'animazione originale — un piccolo
-# quadrato per finestra invece dell'intera sagoma dell'edificio ripetuta
-# decine di volte (STUDIO.md "le luci delle case"). Centrati sul proprio
-# ritaglio (ox=w/2, oy=h/2): a runtime si posizionano con l'offset dx/dy
-# gia' calcolato da 26_lights.py, non con l'origine dello sprite base.
-lights_path = os.path.join(ROOT, "data", "lights.json")
-if os.path.exists(lights_path):
-    lights = json.load(open(lights_path, encoding="utf-8"))
-    for base, windows in lights.items():
-        for win in windows:
-            rects.append({
-                "spr": win["spr"], "frame": 0,
-                "src": win["tex"], "sx": win["sx"], "sy": win["sy"],
-                "w": win["sw"], "h": win["sh"],
-                "ox": win["sw"] / 2, "oy": win["sh"] / 2,
-            })
 
 if not rects:
     sys.exit("nessun frame da impacchettare per %s" % room_name)

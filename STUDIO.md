@@ -1205,58 +1205,39 @@ paragrafo 8.
   giusta; una minaccia e una mongolfiera nello stesso punto muoiono una
   sola alla volta, mai entrambe dallo stesso colpo.
 
-- **Le luci delle case si accendono una finestra alla volta.** Una nota
-  precedente di questo stesso file (sopra, sull'animazione `crclx`)
-  affermava che l'accensione notturna fosse "una semplice dissolvenza in
-  alpha... non un effetto diverso frame per frame" — **sbagliata**,
-  segnalato dall'autore e verificato ritagliando i frame veri: `crclx`/
-  `cNNNx` (58-200 frame, uno per decoro di luce: `crcl`/`crc2l`/`crc3l`/
-  `i11l`, e tutte le 60 varianti `cLVLab l` delle case) letti al contrario
-  (dal piu' buio al piu' acceso, come nell'originale — `image_speed`
-  negativo) mostrano finestre SINGOLE che compaiono una alla volta, non
-  un'unica sagoma che sfuma. Riprodurlo senza impacchettare gli sprite
-  animati per intero (a piena risoluzione centinaia di MB decompressi,
-  vedi sotto sul font) richiedeva sapere DOVE e QUANDO si accende ogni
-  finestra: `tools/26_lights.py` (nuovo, fuori dalla pipeline atlas
-  normale — stesso schema di `tools/25_font.py`) lo scopre confrontando
-  ogni coppia di frame consecutivi (numpy + `scipy.ndimage.label`) e
-  isolando i blob di pixel appena diventati opachi. Per ogni finestra
-  cosi' trovata salva: la posizione relativa all'origine dello sprite
-  statico (`dx`,`dy`), il momento normalizzato (0..1) in cui si accende
-  (`t`, dall'ordine dei frame), e — solo per la pipeline atlas, non per il
-  motore — il ritaglio in coordinate della texture page originale (nessun
-  pixel nuovo disegnato, solo un rettangolo piu' piccolo della stessa
-  immagine, preso dal frame finale dove tutte le finestre sono gia'
-  accese). Output: `data/lights.json` (con i ritagli, letto da
-  `tools/23_atlas.py` per impacchettare 1345 piccoli sprite — +4MB VRAM in
-  tutto, contro le ~300MB temute impacchettando gli sprite animati
-  interi) e `game/data/lights.json` (copia di sola runtime, senza pixel,
-  letta da `main.js`). `addDecor()` in `main.js` divide un decoro "...l"
-  in tante entita' quante sono le sue finestre quando `lightWindows[spr]`
-  esiste; `stepLights()` accende ciascuna di scatto (non in dissolvenza)
-  quando il progresso della dissolvenza complessiva supera la sua soglia
-  `t` — l'illusione di finestre indipendenti da un unico timer condiviso,
-  fedele a come si accendono realmente nell'originale (tutte insieme
-  quando `night && ele>3`, STUDIO.md §5.2, ma non nello stesso istante
-  visivo).
-  **Bug di depth trovato e corretto prima di pubblicare**: la prima
-  versione calcolava il depth di ogni finestra dalla SUA posizione nel
-  mondo (`-( building.y + dy ) - 1`, con `dy` anche di -200px rispetto al
-  centro edificio) — ma l'edificio stesso viene disegnato DOPO le sue
-  entita' di decoro nella lista di disegno, con un depth meno negativo:
-  finiva sopra le finestre, coprendole quasi tutte (su `chies` si vedevano
-  accendersi solo 2 finestre su ~105 attese). Corretto calcolando il
-  depth UNA sola volta per spawn dall'ancora propria dell'edificio (non
-  da quella della singola finestra) e riusandolo per tutte le finestre
-  divise — lo stesso valore che avrebbe usato il vecchio decoro-bagliore
-  unico non diviso. Verificato in browser confrontando il numero di
-  entita' "disegnate" con luci attive prima/dopo la correzione, e con
-  screenshot su `chies` e su una `casa` di livello 3.
-  **[I]** Nessun'altra famiglia di edifici con animazione di luce diversa
-  da queste quattro e' stata trovata nel dump degli sprite (`crclx`/
-  `cNNNx` coprono chies+industria+tutte le case); se ne esistono altre non
-  ancora piazzabili in questo motore, resteranno con la vecchia
-  dissolvenza finche' non verranno lette.
+- **Le "finestre singole" per le luci delle case sono state ritentate e
+  ritirate.** Il tentativo descritto in una revisione precedente di questo
+  paragrafo — `tools/26_lights.py`, un ritaglio per finestra ottenuto dal
+  bounding box del blob di pixel appena apparso fra due frame consecutivi
+  di `crclx`/`cNNNx` — produceva luci visibilmente **rettangolari**, che
+  non seguivano la sagoma isometrica (a rombo) delle finestre vere:
+  segnalato dall'autore con uno screenshot. La causa e' strutturale, non
+  un bug di soglia: il ritaglio viene preso dal FRAME FINALE (tutte le
+  finestre gia' accese), dove i pixel di parete intorno alla finestra sono
+  gia' opachi quanto la finestra stessa — il bounding box axis-aligned di
+  un rombo include per forza gli angoli del rettangolo che lo circoscrive,
+  e in quel frame quegli angoli non sono trasparenti come nel frame in cui
+  il blob e' stato individuato, sono parete piena. Mascherare il ritaglio
+  con la forma esatta del blob (invece del solo bounding box) risolverebbe
+  la sagoma ma non vale la complessita' aggiunta rispetto a rivedere
+  l'obiettivo:
+  - `chies` (`crcl`/`crc2l`/`crc3l`): **tornato** alla dissolvenza uniforme
+    in alpha sull'intera sagoma, cosi' com'era prima di questo tentativo
+    (vedi sopra, sull'animazione `crclx`) — l'autore l'ha confermata
+    visivamente corretta.
+  - `casa` (le 60 varianti `cLVLab l`): **tornato** allo stesso decoro
+    unico gia' impacchettato come sprite nell'atlas (l'immagine
+    `cLVLab l` gia' caricata, non un ritaglio sintetizzato a runtime),
+    con la stessa dissolvenza uniforme.
+  `tools/26_lights.py`, `data/lights.json` e `game/data/lights.json`
+  rimossi (nessun altro codice li leggeva); `addDecor()`/`stepLights()` in
+  `main.js` tornati alla singola entita' per decoro con alpha continua,
+  senza il ramo `lightWindows`/`_lightAt`. Il blob-diff per finestra
+  singola resta un'idea valida per il TIMING (`t`, il momento 0..1 in cui
+  una finestra si accende) — non necessariamente per la GEOMETRIA del
+  ritaglio: se si vuole recuperare l'effetto "una finestra alla volta" in
+  futuro, va rifatto mascherando il ritaglio con la forma del blob (alpha
+  0 fuori dal rombo), non con un rettangolo.
 
 - **Le auto sterzano davvero, non restano fisse sulla posa finale.** Una
   nota precedente di questo file (STUDIO.md §7, sulle auto) diceva "nessun
@@ -1312,3 +1293,90 @@ paragrafo 8.
   il gioco non disegnava nulla e uno script di test lo confermava con un
   `pageerror`; con la correzione 300+ frame consecutivi osservati senza
   errori, e la simulazione (edifici/luci/auto/minacce) avanza normalmente.
+
+- **I pulsanti blu delle monete di `casa`, e il segnale verde di
+  potenziamento come icona vera invece del tap-ovunque sull'edificio**
+  (chiesto dall'autore). Nuovo `game/src/coins.js` (`stepCoinSpawner`/
+  `stepCoins`/`collectCoin`) porta `casa1|2|3/Alarm_4.gml` — vedi il
+  commento in cima al file e quello aggiornato su `BUILDING_TYPES.casa` in
+  buildings.js per la lettura completa (`hap>=pop && ele>0`, non la
+  "sommossa" di una nota precedente). Questo sbloccava `r12.hap`, mai
+  scritto da nessuna parte del motore: ora lo e' (industria -50/-100/-150
+  alla nascita di ogni livello, +50/+150/+400 alla morte — numeri non
+  simmetrici, letti cosi' come sono dal decompilato; parco +200/-210),
+  applicato negli stessi punti dove gia' viveva `pop`
+  (`stepConstructions()`/`destroyBuilding()`) invece che con un sistema a
+  parte.
+  Il segnale verde (`upsign12|23`/`upcrc12|23`/`upind12|23`, tutti la
+  stessa icona "upico") era finora invisibile: il tap funzionava (tap
+  ovunque sull'edificio, `tryStartUpgrade()` gia' controllava soglia e
+  costo) ma non c'era niente da vedere finche' non si sbloccava — niente
+  che dicesse "questo e' pronto". Ora e' un'entita' vera nel mondo
+  (`obj: "upsign"`), pushata insieme all'edificio quando
+  `upgradeUnlocked()` e' vera e nessun cantiere e' gia' in corso, con
+  picking prioritario (depth -9001, sempre in primo piano) — tap-la o
+  tap-l'edificio-sotto fanno la stessa cosa (`tryStartUpgrade()`), la
+  seconda via resta per compatibilita' col comportamento gia' testato.
+  **Bug trovato e corretto prima di pubblicare, non legato alla logica ma
+  a un commento**: `/** [C] sold*/Mouse_MouseEnter.gml: ... */` in
+  `coins.js` chiudeva il blocco JSDoc in anticipo — `*/` dentro "sold*/"
+  (riferimento a `sold1..18`, con la barra del path subito dopo
+  l'asterisco del wildcard) e' letto dal parser come la chiusura vera del
+  commento, lasciando il resto della riga come codice: `SyntaxError:
+  Unexpected token ':'` al caricamento, silenzioso su `node --check`
+  (verifica solo sintassi CommonJS, non ha notato il problema) ma reale
+  su un `import()` vero, sia in Node che nel browser. Trovato bisecando il
+  file a meta' con `import()` finche' l'errore non spariva. Corretto
+  scrivendo per esteso `sold1..18/Mouse_MouseEnter.gml` invece del
+  wildcard.
+  Verificato in browser: una `casa` piazzata e lasciata correre ~28s (fine
+  cantiere + primo controllo a 600 tick) fa comparire una moneta da 20 mon
+  (livello 1, `ava` 0) esattamente all'ancora dell'edificio; il tap la
+  riscuote e la fa sparire. Forzando `b.ava = 5` via `window.__nimbus` (la
+  crescita reale richiederebbe diversi minuti) fa comparire il segnale
+  verde nella stessa posizione; il tap avvia il cantiere (-500 mon,
+  `b.construction` valorizzato). Piazzando un'`industria` e aspettando che
+  finisca il primo livello, `r12.hap` scende di 50 esattamente al
+  completamento — non prima, durante il cantiere.
+
+- **Quinto edificio giocabile: `solare`** (`sooool`, src/objects/sooool —
+  "Pannelli solari" nel menu, gia' un bottone segnaposto). Come `missile`,
+  un solo livello (nessun `upXXX` lo referenzia nel decompilato), ma non
+  e' una torretta: e' il primo la cui produzione dipende dall'ORA DEL
+  GIORNO invece che da un consumo di materia prima. **[C]**
+  `sooool/Alarm_4.gml` (ogni 30 tick): sempre -5 mon; `ele` -1 di notte,
+  +5 all'alba, +9 altrimenti (giorno/tramonto — il decompilato ha solo
+  due flag booleani, `aura.night`/`aura.dawn`, non le quattro fasi di
+  questo motore: "ne' notte ne' alba" copre sia giorno che tramonto).
+  Nuovo `stepSolarProduction()`/`isDawn()` (stesso confine netto di
+  `isNight()`, nessuno smoothstep). Placement cost **[C]** 1000 mon,
+  trovato nello stesso posto dei costi gia' letti per industria/casa/
+  missile/parco — `placeholder/Mouse_LeftReleased.gml` in un'unica
+  funzione, `selec==61` — che rivela anche i costi di *tutti* gli altri
+  edifici non ancora piazzabili (villa 7500, club 3500, gatling 10000
+  con lo stesso controllo `close` di missile, monumento 20000 SENZA
+  controllo affordability nel decompilato — un'asimmetria letta, non
+  wired qui — banca senza alcun costo scalato): non riletti finche' non
+  tocchera' a quei tipi.
+  Il cantiere (`impasolr`/`impasolf`) riusa gli stessi sprite `ir1x`/
+  `if1x`/`toppers` gia' in atlas per industria/casa/missile — solo
+  `sool` (lo sprite finale) e' nuovo. Stessa semplificazione [I] gia'
+  scelta per industria: si completa alla fine della traccia "r" (770
+  tick) invece che a meta' della traccia "f" (dove l'originale crea
+  davvero `sooool`, tick ~725) — differenza cosmetica sotto la soglia.
+  **Bug trovato e corretto prima di pubblicare**: `solarProduction` non
+  era escluso dalla simulazione economica placeholder di `state.js`
+  (`tickR12()`, STUDIO.md §6) come gia' lo erano `production`/`growth` —
+  `solare` veniva quindi contato *due volte* (olio/popolazione fantasma
+  dalla formula generica, oltre alla sua produzione vera), verificato
+  confrontando `r12.mon`/`ele` nei 2s dopo il completamento del cantiere
+  prima e dopo la correzione (-9.8 mon con doppio conteggio, -15.8 senza
+  — quest'ultimo torna con -5 mon/30 tick + la sola tassazione generica
+  sulla popolazione, senza olio/pop fantasma).
+  **[C]** `sooool/Destroy.gml`: hap +50 alla morte, nessun costo
+  corrispondente alla nascita (`Create.gml` non tocca `hap`) — non
+  simmetrico, letto cosi' come sta, stesso principio gia' scelto per
+  industria/parco sopra. Verificato in browser: piazzata una `solare`,
+  cantiere completo in ~14s (sprite finale `sool`), `ele`/`mon` che si
+  muovono nella direzione giusta nei secondi successivi, `r12.hap` +50
+  esatto forzando `life = 0` da console.

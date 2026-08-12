@@ -22,6 +22,7 @@ export function save(sceneName, r12, buildings) {
       level: b.level, life: b.life, spr: b.spr, construction: b.construction,
       makee: b.makee, prodT: b.prodT, decorSpr: b.decorSpr,
       ava: b.ava, growthT: b.growthT, growthNext: b.growthNext, consT: b.consT,
+      coinT: b.coinT, coinNext: b.coinNext, solarT: b.solarT,
     })),
   };
   localStorage.setItem(saveSlotFor(sceneName), JSON.stringify(data));

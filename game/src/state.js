@@ -57,13 +57,14 @@ export function oilCap(buildings) {
  * solo per rendere il gioco giocabile mentre si studia il resto, applicato
  * solo agli edifici il cui tipo non dichiari una simulazione reale in
  * buildings.js (`production`: industria, industria1|2|3/Alarm_2.gml;
- * `growth`: casa, casa1/Alarm_2.gml). Escluderli evita di contare due volte
- * lo stesso olio/popolazione gia' simulati per davvero altrove.
+ * `growth`: casa, casa1/Alarm_2.gml; `solarProduction`: solare,
+ * sooool/Alarm_4.gml). Escluderli evita di contare due volte lo stesso
+ * olio/popolazione gia' simulati per davvero altrove.
  */
 export function tickR12(r12, dt, buildings) {
   const guessed = buildings.filter((b) => {
     const def = BUILDING_TYPES[b.type];
-    return !def.production && !def.growth;
+    return !def.production && !def.growth && !def.solarProduction;
   });
   const n = guessed.length;
   if (n > 0) {
