@@ -123,15 +123,6 @@ function frameFor(sprName, frameIdx = 0) {
   return { tex: pageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1,
            w: f.w, h: f.h, ox: f.ox, oy: f.oy };
 }
-// Luci di finestra come finestre singole, non una dissolvenza sull'intera
-// sagoma (STUDIO.md "le luci delle case", tools/26_lights.py): per ogni
-// decoro "...l" che ha finestre individuabili, un elenco {spr,dx,dy,t} —
-// `t` e' il momento (0..1) in cui quella finestra si accende, `spr` un
-// ritaglio gia' nell'atlas (vedi sopra), `dx/dy` l'offset dalla posizione
-// dell'edificio. I decori senza voce qui (industria, il lampione di parco,
-// i pezzi extra di chies livello 3) restano sulla dissolvenza uniforme
-// gia' esistente — non avevano un'animazione a finestre nel decompilato.
-const lightWindows = await fetch("./data/lights.json").then((x) => x.json()).catch(() => ({}));
 // Alberi (STUDIO.md §5.3, src/objects/albe|albe2|albe3/Create.gml): a
 // Create l'originale sceglie a dado uno sprite finale diverso per istanza
 // (in albe, se nessun dado va a buon fine resta il default "a1" della
@@ -308,40 +299,9 @@ function spawnDecor(building, decorSprites) {
  * `lit: false` (usato per gli alberi/i pali dei lampioni dello scatter di
  * parco, vedi sotto) disattiva tutto questo: resta un decoro qualunque,
  * fermo alla y del suo edificio come un albero vero, tinto dal ciclo
- * giorno/notte come qualunque altro oggetto di mondo.
- *
- * Le finestre di `chies`/`casa` (STUDIO.md "le luci delle case",
- * `lightWindows` sopra) non sono un'unica dissolvenza: `spr` diventa N
- * piccole finestre reali (ritagliate dall'animazione originale,
- * tools/26_lights.py), ognuna con la propria `_lightAt` — il momento
- * (0..1) in cui si accende, letto da `stepLights()` invece dell'alpha
- * continua. I decori senza voce in `lightWindows` (industria, il lampione
- * di parco, i pezzi extra di chies livello 3) restano sulla dissolvenza
- * uniforme di prima: non avevano un'animazione a finestre nel decompilato,
- * STUDIO.md. */
+ * giorno/notte come qualunque altro oggetto di mondo. */
 function addDecor(building, spawns) {
   for (const { spr, dx, dy, lit = true } of spawns) {
-    const windows = lit ? lightWindows[spr] : null;
-    if (windows?.length) {
-      // Il depth resta quello dell'intera sagoma (building.y + dy, come il
-      // singolo bagliore che sostituisce — [C] cddvd/Create.gml: depth =
-      // -y - 1, dove "y" e' la posizione dell'ISTANZA cddvd, creata alla
-      // stessa posizione dell'edificio, non quella del singolo pixel che
-      // finisce per disegnare). Usare la y VERA della finestra (spesso
-      // lontana dall'ancora, es. una finestra vicino alla cima di un
-      // campanile) la farebbe ordinare come un oggetto "di mondo" separato
-      // — dietro l'edificio invece che sopra la sua facciata.
-      const anchorDepth = -(building.y + dy) - 1;
-      for (const w of windows) {
-        decorEntities.push({
-          obj: "decor", buildingId: building.id,
-          x: building.x + dx + w.dx, y: building.y + dy + w.dy, depth: anchorDepth,
-          spr: w.spr, _f: frameFor(w.spr),
-          _selfLit: true, _lightT: 0, _lightAt: w.t,
-        });
-      }
-      continue;
-    }
     const y = building.y + dy;
     decorEntities.push({
       obj: "decor", buildingId: building.id,
@@ -563,16 +523,7 @@ function stepLights(entities, dt, night, r12) {
   for (const d of entities) {
     if (!d._selfLit) continue;
     d._lightT = Math.max(0, Math.min(LIGHT_FADE, d._lightT + (lit ? dt : -dt)));
-    const progress = d._lightT / LIGHT_FADE;
-    // Finestre singole (STUDIO.md "le luci delle case"): niente dissolvenza,
-    // uno scatto secco quando la transizione raggiunge il momento in cui
-    // QUELLA finestra si accende — esattamente come nel decompilato
-    // (sprite_index che avanza di frame in frame, non un alpha continuo).
-    // La stessa soglia funziona identica in entrambe le direzioni: spegnersi
-    // e' la stessa sequenza letta al contrario, quindi l'ultima finestra
-    // accesa e' la prima a spegnersi non appena `progress` scende sotto la
-    // sua `_lightAt`.
-    d._alpha = d._lightAt != null ? (progress >= d._lightAt ? 1 : 0) : progress;
+    d._alpha = d._lightT / LIGHT_FADE;
   }
 }
 

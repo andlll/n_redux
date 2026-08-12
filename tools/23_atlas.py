@@ -245,25 +245,6 @@ for name in used:
             "oy": s["origin_y"] - fr["render_y"],
         })
 
-# Luci di finestra come sprite a se' stanti (tools/26_lights.py, data/
-# lights.json): non frame di uno sprite "sprites.json" esistente, ritagli
-# sintetizzati confrontando i frame dell'animazione originale — un piccolo
-# quadrato per finestra invece dell'intera sagoma dell'edificio ripetuta
-# decine di volte (STUDIO.md "le luci delle case"). Centrati sul proprio
-# ritaglio (ox=w/2, oy=h/2): a runtime si posizionano con l'offset dx/dy
-# gia' calcolato da 26_lights.py, non con l'origine dello sprite base.
-lights_path = os.path.join(ROOT, "data", "lights.json")
-if os.path.exists(lights_path):
-    lights = json.load(open(lights_path, encoding="utf-8"))
-    for base, windows in lights.items():
-        for win in windows:
-            rects.append({
-                "spr": win["spr"], "frame": 0,
-                "src": win["tex"], "sx": win["sx"], "sy": win["sy"],
-                "w": win["sw"], "h": win["sh"],
-                "ox": win["sw"] / 2, "oy": win["sh"] / 2,
-            })
-
 if not rects:
     sys.exit("nessun frame da impacchettare per %s" % room_name)
 

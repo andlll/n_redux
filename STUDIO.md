@@ -1205,58 +1205,39 @@ paragrafo 8.
   giusta; una minaccia e una mongolfiera nello stesso punto muoiono una
   sola alla volta, mai entrambe dallo stesso colpo.
 
-- **Le luci delle case si accendono una finestra alla volta.** Una nota
-  precedente di questo stesso file (sopra, sull'animazione `crclx`)
-  affermava che l'accensione notturna fosse "una semplice dissolvenza in
-  alpha... non un effetto diverso frame per frame" — **sbagliata**,
-  segnalato dall'autore e verificato ritagliando i frame veri: `crclx`/
-  `cNNNx` (58-200 frame, uno per decoro di luce: `crcl`/`crc2l`/`crc3l`/
-  `i11l`, e tutte le 60 varianti `cLVLab l` delle case) letti al contrario
-  (dal piu' buio al piu' acceso, come nell'originale — `image_speed`
-  negativo) mostrano finestre SINGOLE che compaiono una alla volta, non
-  un'unica sagoma che sfuma. Riprodurlo senza impacchettare gli sprite
-  animati per intero (a piena risoluzione centinaia di MB decompressi,
-  vedi sotto sul font) richiedeva sapere DOVE e QUANDO si accende ogni
-  finestra: `tools/26_lights.py` (nuovo, fuori dalla pipeline atlas
-  normale — stesso schema di `tools/25_font.py`) lo scopre confrontando
-  ogni coppia di frame consecutivi (numpy + `scipy.ndimage.label`) e
-  isolando i blob di pixel appena diventati opachi. Per ogni finestra
-  cosi' trovata salva: la posizione relativa all'origine dello sprite
-  statico (`dx`,`dy`), il momento normalizzato (0..1) in cui si accende
-  (`t`, dall'ordine dei frame), e — solo per la pipeline atlas, non per il
-  motore — il ritaglio in coordinate della texture page originale (nessun
-  pixel nuovo disegnato, solo un rettangolo piu' piccolo della stessa
-  immagine, preso dal frame finale dove tutte le finestre sono gia'
-  accese). Output: `data/lights.json` (con i ritagli, letto da
-  `tools/23_atlas.py` per impacchettare 1345 piccoli sprite — +4MB VRAM in
-  tutto, contro le ~300MB temute impacchettando gli sprite animati
-  interi) e `game/data/lights.json` (copia di sola runtime, senza pixel,
-  letta da `main.js`). `addDecor()` in `main.js` divide un decoro "...l"
-  in tante entita' quante sono le sue finestre quando `lightWindows[spr]`
-  esiste; `stepLights()` accende ciascuna di scatto (non in dissolvenza)
-  quando il progresso della dissolvenza complessiva supera la sua soglia
-  `t` — l'illusione di finestre indipendenti da un unico timer condiviso,
-  fedele a come si accendono realmente nell'originale (tutte insieme
-  quando `night && ele>3`, STUDIO.md §5.2, ma non nello stesso istante
-  visivo).
-  **Bug di depth trovato e corretto prima di pubblicare**: la prima
-  versione calcolava il depth di ogni finestra dalla SUA posizione nel
-  mondo (`-( building.y + dy ) - 1`, con `dy` anche di -200px rispetto al
-  centro edificio) — ma l'edificio stesso viene disegnato DOPO le sue
-  entita' di decoro nella lista di disegno, con un depth meno negativo:
-  finiva sopra le finestre, coprendole quasi tutte (su `chies` si vedevano
-  accendersi solo 2 finestre su ~105 attese). Corretto calcolando il
-  depth UNA sola volta per spawn dall'ancora propria dell'edificio (non
-  da quella della singola finestra) e riusandolo per tutte le finestre
-  divise — lo stesso valore che avrebbe usato il vecchio decoro-bagliore
-  unico non diviso. Verificato in browser confrontando il numero di
-  entita' "disegnate" con luci attive prima/dopo la correzione, e con
-  screenshot su `chies` e su una `casa` di livello 3.
-  **[I]** Nessun'altra famiglia di edifici con animazione di luce diversa
-  da queste quattro e' stata trovata nel dump degli sprite (`crclx`/
-  `cNNNx` coprono chies+industria+tutte le case); se ne esistono altre non
-  ancora piazzabili in questo motore, resteranno con la vecchia
-  dissolvenza finche' non verranno lette.
+- **Le "finestre singole" per le luci delle case sono state ritentate e
+  ritirate.** Il tentativo descritto in una revisione precedente di questo
+  paragrafo — `tools/26_lights.py`, un ritaglio per finestra ottenuto dal
+  bounding box del blob di pixel appena apparso fra due frame consecutivi
+  di `crclx`/`cNNNx` — produceva luci visibilmente **rettangolari**, che
+  non seguivano la sagoma isometrica (a rombo) delle finestre vere:
+  segnalato dall'autore con uno screenshot. La causa e' strutturale, non
+  un bug di soglia: il ritaglio viene preso dal FRAME FINALE (tutte le
+  finestre gia' accese), dove i pixel di parete intorno alla finestra sono
+  gia' opachi quanto la finestra stessa — il bounding box axis-aligned di
+  un rombo include per forza gli angoli del rettangolo che lo circoscrive,
+  e in quel frame quegli angoli non sono trasparenti come nel frame in cui
+  il blob e' stato individuato, sono parete piena. Mascherare il ritaglio
+  con la forma esatta del blob (invece del solo bounding box) risolverebbe
+  la sagoma ma non vale la complessita' aggiunta rispetto a rivedere
+  l'obiettivo:
+  - `chies` (`crcl`/`crc2l`/`crc3l`): **tornato** alla dissolvenza uniforme
+    in alpha sull'intera sagoma, cosi' com'era prima di questo tentativo
+    (vedi sopra, sull'animazione `crclx`) — l'autore l'ha confermata
+    visivamente corretta.
+  - `casa` (le 60 varianti `cLVLab l`): **tornato** allo stesso decoro
+    unico gia' impacchettato come sprite nell'atlas (l'immagine
+    `cLVLab l` gia' caricata, non un ritaglio sintetizzato a runtime),
+    con la stessa dissolvenza uniforme.
+  `tools/26_lights.py`, `data/lights.json` e `game/data/lights.json`
+  rimossi (nessun altro codice li leggeva); `addDecor()`/`stepLights()` in
+  `main.js` tornati alla singola entita' per decoro con alpha continua,
+  senza il ramo `lightWindows`/`_lightAt`. Il blob-diff per finestra
+  singola resta un'idea valida per il TIMING (`t`, il momento 0..1 in cui
+  una finestra si accende) — non necessariamente per la GEOMETRIA del
+  ritaglio: se si vuole recuperare l'effetto "una finestra alla volta" in
+  futuro, va rifatto mascherando il ritaglio con la forma del blob (alpha
+  0 fuori dal rombo), non con un rettangolo.
 
 - **Le auto sterzano davvero, non restano fisse sulla posa finale.** Una
   nota precedente di questo file (STUDIO.md §7, sulle auto) diceva "nessun
