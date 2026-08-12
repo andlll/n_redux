@@ -1204,3 +1204,111 @@ paragrafo 8.
   quel bersaglio); colpire una mongolfiera di risorse fa cadere la cassa
   giusta; una minaccia e una mongolfiera nello stesso punto muoiono una
   sola alla volta, mai entrambe dallo stesso colpo.
+
+- **Le luci delle case si accendono una finestra alla volta.** Una nota
+  precedente di questo stesso file (sopra, sull'animazione `crclx`)
+  affermava che l'accensione notturna fosse "una semplice dissolvenza in
+  alpha... non un effetto diverso frame per frame" — **sbagliata**,
+  segnalato dall'autore e verificato ritagliando i frame veri: `crclx`/
+  `cNNNx` (58-200 frame, uno per decoro di luce: `crcl`/`crc2l`/`crc3l`/
+  `i11l`, e tutte le 60 varianti `cLVLab l` delle case) letti al contrario
+  (dal piu' buio al piu' acceso, come nell'originale — `image_speed`
+  negativo) mostrano finestre SINGOLE che compaiono una alla volta, non
+  un'unica sagoma che sfuma. Riprodurlo senza impacchettare gli sprite
+  animati per intero (a piena risoluzione centinaia di MB decompressi,
+  vedi sotto sul font) richiedeva sapere DOVE e QUANDO si accende ogni
+  finestra: `tools/26_lights.py` (nuovo, fuori dalla pipeline atlas
+  normale — stesso schema di `tools/25_font.py`) lo scopre confrontando
+  ogni coppia di frame consecutivi (numpy + `scipy.ndimage.label`) e
+  isolando i blob di pixel appena diventati opachi. Per ogni finestra
+  cosi' trovata salva: la posizione relativa all'origine dello sprite
+  statico (`dx`,`dy`), il momento normalizzato (0..1) in cui si accende
+  (`t`, dall'ordine dei frame), e — solo per la pipeline atlas, non per il
+  motore — il ritaglio in coordinate della texture page originale (nessun
+  pixel nuovo disegnato, solo un rettangolo piu' piccolo della stessa
+  immagine, preso dal frame finale dove tutte le finestre sono gia'
+  accese). Output: `data/lights.json` (con i ritagli, letto da
+  `tools/23_atlas.py` per impacchettare 1345 piccoli sprite — +4MB VRAM in
+  tutto, contro le ~300MB temute impacchettando gli sprite animati
+  interi) e `game/data/lights.json` (copia di sola runtime, senza pixel,
+  letta da `main.js`). `addDecor()` in `main.js` divide un decoro "...l"
+  in tante entita' quante sono le sue finestre quando `lightWindows[spr]`
+  esiste; `stepLights()` accende ciascuna di scatto (non in dissolvenza)
+  quando il progresso della dissolvenza complessiva supera la sua soglia
+  `t` — l'illusione di finestre indipendenti da un unico timer condiviso,
+  fedele a come si accendono realmente nell'originale (tutte insieme
+  quando `night && ele>3`, STUDIO.md §5.2, ma non nello stesso istante
+  visivo).
+  **Bug di depth trovato e corretto prima di pubblicare**: la prima
+  versione calcolava il depth di ogni finestra dalla SUA posizione nel
+  mondo (`-( building.y + dy ) - 1`, con `dy` anche di -200px rispetto al
+  centro edificio) — ma l'edificio stesso viene disegnato DOPO le sue
+  entita' di decoro nella lista di disegno, con un depth meno negativo:
+  finiva sopra le finestre, coprendole quasi tutte (su `chies` si vedevano
+  accendersi solo 2 finestre su ~105 attese). Corretto calcolando il
+  depth UNA sola volta per spawn dall'ancora propria dell'edificio (non
+  da quella della singola finestra) e riusandolo per tutte le finestre
+  divise — lo stesso valore che avrebbe usato il vecchio decoro-bagliore
+  unico non diviso. Verificato in browser confrontando il numero di
+  entita' "disegnate" con luci attive prima/dopo la correzione, e con
+  screenshot su `chies` e su una `casa` di livello 3.
+  **[I]** Nessun'altra famiglia di edifici con animazione di luce diversa
+  da queste quattro e' stata trovata nel dump degli sprite (`crclx`/
+  `cNNNx` coprono chies+industria+tutte le case); se ne esistono altre non
+  ancora piazzabili in questo motore, resteranno con la vecchia
+  dissolvenza finche' non verranno lette.
+
+- **Le auto sterzano davvero, non restano fisse sulla posa finale.** Una
+  nota precedente di questo file (STUDIO.md §7, sulle auto) diceva "nessun
+  sistema di `image_speed`" — anche questa **sbagliata** in parte:
+  `action_sprite_set(c_ad_as, 0, 1)` in `honda_facile_2/Alarm_0.gml` (e
+  l'equivalente nelle altre honda) passa un `image_speed` di 1, non 0 — lo
+  sprite di svolta (`c_ad_as`, 38 frame; `c_as_ad`, altrettanti; uno per
+  ogni coppia di direzioni) avanza per davvero un frame a Step invece di
+  restare fermo al primo. **[C]** Non serviva nessun asset nuovo:
+  `tools/23_atlas.py` gia' impacchettava tutti i frame di ogni sprite
+  multi-frame (itera `s["frames"]` per intero), semplicemente
+  `frameFor()` in `main.js` non ne leggeva mai altri oltre il primo — la
+  correzione e' tutta logica, non pipeline. `frameFor(sprName, frameIdx)`
+  accetta ora un indice di frame (0 per gli sprite fermi, come prima);
+  `cars.js` traccia `c.frame` (tick trascorsi dall'ultima volta che lo
+  sprite e' cambiato) e lo azzera solo quando una fase di `schedule` porta
+  un `spr` nuovo.
+  **Un dettaglio non ovvio, verificato leggendo il decompilato con
+  attenzione**: l'alarm che arma lo sprite di svolta (275) e quello
+  successivo che lo ferma (313 = 275+38, esattamente la durata
+  dell'animazione) sono sincronizzati apposta — ma in mezzo puo' scattare
+  un TERZO alarm (`Alarm_1`, a 294) che cambia SOLO la direzione
+  (`action_set_motion`, senza `action_sprite_set`): la svolta continua ad
+  animarsi senza interruzioni, la nuova direzione si applica alla posa che
+  sta gia' scorrendo a meta'. Se `c.frame` fosse stato azzerato ad ogni
+  fase di `schedule` (non solo quando cambia `spr`) l'animazione
+  ripartirebbe da capo a meta' svolta, un artefatto visibile assente
+  nell'originale. Verificato in browser forzando `honda_facile_2` a
+  passare per la sua svolta (schedule reale: 275→`c_ad_as`, 294→solo
+  `dir`, 313→`c_as`, 314→`c_as_ad`, 333→solo `dir`, 352→`c_ad`) e
+  campionando `c.frame`/`c.spr` ad ogni fase: il frame avanza con
+  continuita' (mai un salto a 0) attraverso il cambio di direzione a 294,
+  e si azzera solo ai cambi di sprite (313, 314, 352) — confermato anche
+  via screenshot, due frame diversi della stessa svolta mostrano
+  effettivamente due pose diverse dell'auto.
+  **Bug trovato mentre si testava questa modifica, non causato da essa ma
+  scoperto grazie ad essa (corretto prima di pubblicare)**: il ciclo di
+  gioco calcolava `dt` come `Math.min(0.05, (now - last) / 1000)` senza
+  mai escludere valori negativi — al primissimo frame (e in generale con
+  WebGL software, piu' lento), il timestamp passato da
+  `requestAnimationFrame` puo' precedere di poco il `performance.now()`
+  con cui e' stato inizializzato `last`, producendo un `dt` leggermente
+  negativo. Con le auto ferme (senza frame multi-pose) l'effetto era
+  innocuo (`c.t` leggermente negativo, invisibile); con `c.frame` ora
+  passato a `frameFor()` come indice di array, un singolo frame con `dt`
+  negativo bastava a produrre un indice negativo e un `frames[-1]`
+  `undefined` — **bloccando l'intero ciclo di gioco al primissimo frame**
+  (l'eccezione, non gestita, interrompeva `frame()` prima della riga che
+  pianifica il proprio richiamo). Corretto in due punti: `Math.max(0, ...)`
+  sul calcolo di `dt` in `main.js` (la causa vera, previene anche derive
+  simili su qualunque altro timer del motore) e, per difesa, lo stesso
+  clamp sull'indice dentro `frameFor()`. Verificato: senza la correzione
+  il gioco non disegnava nulla e uno script di test lo confermava con un
+  `pageerror`; con la correzione 300+ frame consecutivi osservati senza
+  errori, e la simulazione (edifici/luci/auto/minacce) avanza normalmente.
