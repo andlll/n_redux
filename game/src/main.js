@@ -561,6 +561,23 @@ input.onDrag = (dx, dy) => { userMoved = true; cam.panByScreen(dx, dy); };
 if (isMobile) {
   input.onZoom = (f, ax, ay) => { userMoved = true; cam.setZoom(cam.targetZoom * f, ax, ay); };
 }
+// Selettore edificio scorrevole: su schermi stretti in portrait la riga di
+// bottoni (fino a 13 nel menu "edifici", vedi OTHER_BUILDINGS piu' sotto) e'
+// piu' larga dello schermo — senza scroll, quelli oltre il bordo destro non
+// sono ne' visibili ne' toccabili (segnalato dall'autore). `uiRowBounds` e'
+// la sagoma della riga corrente (ricalcolata ad ogni frame dal disegno,
+// piu' sotto), usata da `input.uiHitTest` per capire se un gesto e' iniziato
+// sopra la UI invece che sulla mappa: solo allora scorre `uiScrollX` invece
+// di far partire un pan di camera. Solo su mobile: su desktop la riga sta
+// gia' intera nella finestra (STUDIO.md "zero zoom"), niente da scorrere.
+let uiScrollX = 0;
+let uiRowBounds = null;
+if (isMobile) {
+  input.uiHitTest = (sx, sy) => !!uiRowBounds
+    && sx >= uiRowBounds.x0 && sx <= uiRowBounds.x1
+    && sy >= uiRowBounds.y0 && sy <= uiRowBounds.y1;
+  input.onUIDrag = (dx) => { uiScrollX -= dx; };
+}
 let picked = null;
 let message = "";
 let messageT = 0;
@@ -1042,10 +1059,15 @@ function frame(now) {
   // (`action_move_to`/`N*global.sca`); qui si accodano da sinistra usando
   // la larghezza vera di ciascuno sprite (`GAP` px fra l'uno e l'altro).
   // `chies` non ha un bottone: non e' un tipo piazzabile (vedi sopra).
-  uiButtons = [];
+  // UI_SCALE: solo su mobile i bottoni sono piu' piccoli (STUDIO.md
+  // scorrevolezza qui sotto) — su desktop restano alla dimensione vera
+  // dello sprite, non c'e' bisogno di comprimerli. 0.6 e' il punto in cui
+  // ~13 bottoni (il menu "edifici" al completo) stanno in 4-5 schermate di
+  // scroll su un telefono stretto (~360-430px) restando comunque sopra i
+  // ~44px minimi comunemente raccomandati per un tocco.
+  const UI_SCALE = isMobile ? 0.6 : 1;
   const baseY = Math.round(canvas.clientHeight - UI_MARGIN);
-  const GAP = 4;
-  let rx = UI_MARGIN;
+  const GAP = isMobile ? 3 : 4;
   const row = menoo === 1
     // menoo 1 "edifici" ([C] pu1/Create.gml li crea tutti insieme): i due
     // veri (casa/industria) + il resto del menu, segnaposto (vedi sopra).
@@ -1078,14 +1100,45 @@ function frame(now) {
         { kind: "menu", menoo: 1, spr: "groo", label: "Menu edifici" },
         { kind: "menu", menoo: 2, spr: "eyeee", label: "Menu vista" },
       ];
-  for (const b of row) {
-    const spr = b.kind === "building" && selectedType === b.type ? b.sprSel : b.spr;
-    const f = frameFor(spr);
+  // Prima passata, solo misure: serve la larghezza totale della riga PRIMA
+  // di disegnare, per sapere quanto scroll orizzontale ha senso concedere
+  // (uiScrollX va sempre bloccato all'intervallo [0, maxScroll] di QUESTA
+  // riga, che cambia ad ogni `menoo` — una riga corta non deve poter
+  // scorrere via lo scroll accumulato su una riga lunga vista prima).
+  const frames = row.map((b) => frameFor(b.kind === "building" && selectedType === b.type ? b.sprSel : b.spr));
+  let rowWidth = 0;
+  for (const f of frames) if (f) rowWidth += f.w * UI_SCALE + GAP;
+  if (rowWidth > 0) rowWidth -= GAP;
+  const visibleW = Math.max(0, canvas.clientWidth - UI_MARGIN * 2);
+  const maxScroll = Math.max(0, rowWidth - visibleW);
+  uiScrollX = Math.min(Math.max(uiScrollX, 0), maxScroll);
+
+  uiButtons = [];
+  let rx = UI_MARGIN - uiScrollX;
+  let rowTop = baseY;
+  for (let i = 0; i < row.length; i++) {
+    const b = row[i], f = frames[i];
     if (!f) continue;
-    r.draw(f, rx, baseY, 1, 0xffffff, 1);
-    uiButtons.push({ x: rx, y: baseY - f.h, w: f.w, h: f.h, ...b });
-    rx += f.w + GAP;
+    const w = f.w * UI_SCALE, h = f.h * UI_SCALE;
+    // Bottoni scrollati fuori dai due lati non vengono ne' disegnati ne'
+    // resi toccabili — stesso principio del culling gia' usato altrove nel
+    // motore, qui serve anche a non lasciare hitbox "fantasma" fuori
+    // schermo che intercetterebbero un tap sulla mappa sottostante.
+    if (rx + w >= 0 && rx <= canvas.clientWidth) {
+      r.draw(f, rx, baseY, UI_SCALE, 0xffffff, 1);
+      uiButtons.push({ x: rx, y: baseY - h, w, h, ...b });
+      rowTop = Math.min(rowTop, baseY - h);
+    }
+    rx += w + GAP;
   }
+  // Banda di trascinamento per lo scroll: tutta la larghezza schermo, dal
+  // bordo superiore della riga fino in fondo — non solo i pixel dei
+  // bottoni, cosi' anche un dito che parte fra due bottoni o dopo l'ultimo
+  // (schermo non del tutto riempito) scorre la riga invece di spostare la
+  // mappa sotto. Nulla da intercettare se la riga sta gia' tutta a schermo.
+  uiRowBounds = (isMobile && maxScroll > 0)
+    ? { x0: 0, y0: rowTop, x1: canvas.clientWidth, y1: canvas.clientHeight }
+    : null;
 
   // Avviso "ATTACK INCOMING" (src/objects/aincom, game/src/balloons.js): una
   // mongolfiera spia ha completato il suo giro. [C] aincom/Create.gml +
@@ -1156,6 +1209,7 @@ requestAnimationFrame(frame);
 window.__nimbus = {
   cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
   get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
+  get uiScrollX() { return uiScrollX; }, setUiScrollX: (x) => { uiScrollX = x; },
   get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
   atmo, get pedestrians() { return pedestrians; },
   get balloons() { return balloons; }, get loot() { return loot; }, get coins() { return coins; },

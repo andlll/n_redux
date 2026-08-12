@@ -1380,3 +1380,57 @@ paragrafo 8.
   cantiere completo in ~14s (sprite finale `sool`), `ele`/`mon` che si
   muovono nella direzione giusta nei secondi successivi, `r12.hap` +50
   esatto forzando `life = 0` da console.
+
+- **Selettore edificio scorrevole su mobile** (segnalato dall'autore: in
+  portrait i bottoni a destra finivano fuori schermo, senza modo di
+  toccarli). Non e' un problema del gioco originale da riprodurre — la sua
+  UI si riposizionava scalando per `global.sca` (STUDIO.md §2, `Scala UI`
+  0.89 su Android) su un layout che qui non esiste ancora — e' un limite
+  del nostro selettore "a riga" (STUDIO.md §9 "Selettore edificio"), che
+  accoda i bottoni da sinistra per la larghezza vera dello sprite senza mai
+  chiedersi se la riga sta nello schermo: con 13 bottoni nel menu "edifici"
+  (`casa`+`industria`+i 10 `OTHER_BUILDINGS`+indietro) la riga e' larga
+  ~1150px, piu' di qualunque telefono in verticale — gli ultimi bottoni
+  (compreso "Indietro", l'unico modo di uscire dal menu) erano disegnati
+  fuori dal canvas: ne' visibili ne' toccabili, nessuna via per raggiungerli.
+  Due modifiche in `game/src/main.js`, solo su mobile (`isMobile`, gia'
+  usato per la scelta zoom rotella/bottoni): bottoni rimpiccioliti
+  (`UI_SCALE` 0.6, sopra i ~44px minimi comuni per un tocco) e riga
+  scorrevole (`uiScrollX`, bloccato ad ogni frame in `[0, maxScroll]` della
+  riga corrente — una riga corta come "casa" a menoo 0 non eredita mai lo
+  scroll di una vista precedente piu' lunga). Il calcolo e' a due passate:
+  la prima misura solo le larghezze (serve `maxScroll` prima di sapere da
+  dove disegnare), la seconda disegna e registra le hitbox, saltando i
+  bottoni scrollati fuori da entrambi i lati (stesso culling gia' usato
+  altrove, evita anche hitbox "fantasma" che intercetterebbero un tap
+  sulla mappa sotto).
+  Il gesto di scroll doveva restare distinto dal trascinamento mappa
+  esistente (`input.onDrag` in main.js pana la camera incondizionatamente,
+  da sempre) senza duplicare la logica di touch/mouse gia' unificata in
+  `game/src/input.js` (STUDIO.md §7 "un solo percorso di input"): nuovo
+  hook `input.uiHitTest(sx, sy)`, valutato una sola volta al pointerdown e
+  memorizzato sul puntatore (`st.ui`), che sceglie se le mosse successive
+  di quel dito vanno a `onUIDrag` (scorre `uiScrollX`) invece che a
+  `onDrag` (pana la camera) — deciso all'inizio del gesto, non ad ogni
+  move, cosi' un dito che scorre la riga verso l'alto/basso non "sfugge"
+  a meta' gesto verso il pan sotto. La zona toccabile (`uiRowBounds`,
+  ricalcolata ad ogni frame insieme al disegno) e' larga quanto lo schermo
+  — non solo i pixel dei bottoni — cosi' anche un dito che parte fra due
+  bottoni o oltre l'ultimo scorre comunque la riga; esiste solo quando
+  `maxScroll > 0` (una riga che sta gia' tutta a schermo, come menoo 0 e
+  spesso menoo 2, non intercetta niente: il pan mappa sotto resta
+  invariato li'). Su desktop nessuna delle due modifiche si attiva
+  (`UI_SCALE` resta 1, `uiHitTest`/`onUIDrag` restano `null` come prima di
+  questa modifica): la riga ci stava gia' per intero, STUDIO.md "zero
+  zoom" vale anche qui.
+  Verificato in browser (viewport 390×844, touch emulato): con la riga
+  "edifici" aperta su schermo stretto, solo 6 dei 13 bottoni entravano a
+  schermo (`casa`..`laser`) e `uiButtons` non conteneva gli altri 7 — la
+  stessa assenza di hitbox segnalata dall'autore, confermata prima di
+  correggere. Uno swipe orizzontale sopra la riga sposta `uiScrollX` senza
+  spostare la camera (`cam.x/y` invariati durante il trascinamento, a
+  differenza di un trascinamento sulla mappa); swipe ripetuti arrivano
+  fino in fondo (`uiScrollX` si ferma da solo al bordo, non scorre oltre
+  l'ultimo bottone) e rendono visibile e toccabile "Indietro", che lo
+  riporta correttamente al menu "casa" (`menoo` 1→0) — il bottone che
+  prima era irraggiungibile.
