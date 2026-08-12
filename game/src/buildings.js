@@ -518,6 +518,62 @@ export const BUILDING_TYPES = {
       ],
     },
   },
+
+  // Settimo edificio: `club` (src/objects/club1 — "Club" nel menu,
+  // `pudj`/`selec==60`). Come `missile`/`solare`, un solo livello (nessun
+  // `upXXX` lo referenzia nel decompilato). Il cantiere e' la stessa coppia
+  // "r"/"f" gia' nota (`impaclubr`/`impaclubf`), che riusa gli stessi
+  // sprite ir1x/if1x/"toppers" gia' in atlas per industria/missile/solare —
+  // nessuno sprite di cantiere in piu' da aggiungere, solo lo sprite
+  // finale (in realta' quattro, vedi sotto).
+  //
+  // A differenza di missile/solare l'edificio finito non e' un solo sprite
+  // fisso: come `casa` (STUDIO.md §9), `club1/Create.gml` sceglie a dado
+  // uniforme una fra 4 varianti (club11..14), ciascuna col proprio decoro
+  // luce abbinato (gli sprite reali sono club11i..14i — gli OGGETTI
+  // originali si chiamano clublite1..4, ma qui `decor` vuole nomi di
+  // sprite, non di oggetto, stesso schema di `variants` gia' letto per
+  // casa/parco sopra) — stessa macchina generica in stepConstructions().
+  club: {
+    label: "Club",
+    placeCost: { mon: 3500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==60
+    storm: [{ dice: 200, loss: 50 }],   // [C] club1/Alarm_5.gml
+    // [C] club1/Destroy.gml: hap +50 alla morte, nessun costo alla nascita
+    // (Create.gml scrive solo `wewe` — resta inerte, stesso principio gia'
+    // scelto per industria sopra: letto ma non cablato da nessuna regola,
+    // il suo significato reale [?] non e' ancora chiaro) — non simmetrico,
+    // stesso schema gia' letto per solare/parco.
+    construct: {                  // livello 0 -> 1, impaclubr (src/objects/impaclubr)
+      drain: { mon: 2, every: 10 },              // [C] impaclubr/Alarm_10.gml
+      life: 50,                                    // [C] club1/Create.gml
+      hap: { destroy: 50 },
+      variants: [                                  // [C] club1/Create.gml, dado uniforme fra 4
+        { spr: "club11", decor: "club11i" },
+        { spr: "club12", decor: "club12i" },
+        { spr: "club13", decor: "club13i" },
+        { spr: "club14", decor: "club14i" },
+      ],
+      // [C] impaclubr/Create.gml + Alarm_0.gml, tic 0..10 (1350 tic totali:
+      // 390+40*8+640 — leggermente piu' lungo di missile/solare, un club
+      // costa di piu': 3500 mon contro i 1000-5000 degli altri). tic==4
+      // (durata 600) + tic==5 (durata 40, nessun cambio sprite nel
+      // decompilato) fusi in un solo passo, stesso schema gia' scelto per
+      // missile — [C] impaclubf/Alarm_0.gml tic==5 crea "tops2" (stesso
+      // oggetto/offset del topper di missile, sprite reale "toppers").
+      steps: [
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
+        { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
+        { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+        { spr: "ir22", dur: 40 },
+        { spr: "ir21", dur: 640, spawn: [
+          { spr: "toppers", dx: 0, dy: -86 },
+        ] },
+        { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+        { spr: "ir11", dur: 40 }, { spr: "ir12", dur: 40 },
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 40 },
+      ],
+    },
+  },
 };
 
 let nextId = 1;

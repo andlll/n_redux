@@ -1434,3 +1434,73 @@ paragrafo 8.
   l'ultimo bottone) e rendono visibile e toccabile "Indietro", che lo
   riporta correttamente al menu "casa" (`menoo` 1→0) — il bottone che
   prima era irraggiungibile.
+
+- **Settimo edificio giocabile: `club`** (`club1`, src/objects/club1 —
+  "Club" nel menu, gia' un bottone segnaposto `pudj`/`selec==60`). Come
+  `missile`/`solare`, un solo livello (nessun `upXXX` lo referenzia nel
+  decompilato). Il cantiere e' la stessa coppia "r"/"f" gia' nota
+  (`impaclubr`/`impaclubf`, `game/src/buildings.js`), che riusa gli
+  stessi sprite `ir1x`/`if1x`/"toppers" gia' in atlas per industria/
+  missile/solare — nessuno sprite di cantiere in piu' da aggiungere,
+  solo lo sprite finale (in realta' quattro: vedi sotto). Placement cost
+  **[C]** 3500 mon, letto nello stesso punto degli altri costi
+  (`placeholder/Mouse_LeftReleased.gml`, `selec==60`) — la stessa
+  funzione conferma che `club` e' anche il quinto tipo (dopo casa/
+  industria/missile/solare) a creare `mon_bil`, il pacco di cantiere
+  raccoglibile: `game/src/main.js` aveva quel controllo hard-coded a
+  quattro tipi, ora cinque.
+  A differenza di missile/solare l'edificio finito non e' un solo sprite
+  fisso: come `casa` (STUDIO.md sopra), `club1/Create.gml` sceglie a
+  dado uniforme una fra 4 varianti (`club11`..`club14`), ciascuna col
+  proprio decoro luce abbinato — gli sprite reali sono `club11i`..
+  `club14i` (gli OGGETTI originali si chiamano `clublite1..4`, ma
+  `decor` nella tabella vuole nomi di sprite, non di oggetto, verificato
+  in `data/sprites.json`/`data/objects.json` prima di scrivere la
+  tabella: usare i nomi oggetto per sbaglio avrebbe fatto fallire
+  silenziosamente `frameFor()`). Stessa macchina generica
+  (`up.variants`) gia' letta per casa/parco, nessun codice nuovo in
+  `stepConstructions()`.
+  **[C]** `club1/Destroy.gml`: hap +50 alla morte, nessun costo
+  corrispondente alla nascita — stessa asimmetria gia' letta per solare/
+  parco. **[C]** `club1/Create.gml` scrive anche `wewe = wewe + 20`:
+  come gia' notato per industria (STUDIO.md sopra), `wewe` resta
+  inerte — letto nel decompilato ma non cablato a nessuna regola
+  implementata, il suo significato reale [?] non e' ancora chiaro.
+  **[C]** danno da fulmine durante la tempesta: `storm: [{dice: 200,
+  loss: 50}]` (`club1/Alarm_5.gml`, stessa tabella gia' generalizzata da
+  `stepStormDamage()` per casa/industria/missile/solare).
+  **Non riprodotto, con motivazione**: `club1/Alarm_0.gml` (armato ogni
+  10-150 tic) cicla un tint casuale e RI-sceglie lo sprite dell'istanza
+  fra `c112`..`c144` — non `club11`..`club14` come ci si aspetterebbe,
+  ma gli stessi nomi sprite usati dalle VARIANTI DI CASA (STUDIO.md
+  sopra, `BUILDING_TYPES.casa.construct.variants`). Lo stesso identico
+  blocco di codice (byte per byte, stessi nomi sprite "casa") compare
+  anche in `villa1/Alarm_0.gml`: quasi certamente codice condiviso/
+  copiato fra oggetti diversi nel progetto originale (un pattern
+  "scintillio colore + variante a dado" riusato senza aggiornare i nomi
+  sprite per ogni copia) piuttosto che un comportamento voluto — non
+  c'e' modo plausibile che i progettisti intendessero un nightclub che
+  si trasforma periodicamente in una casetta a due piani. Riprodurlo
+  fedelmente vorrebbe dire far scomparire un club a caso ogni 2-2.5s per
+  mostrare al suo posto uno sprite di `casa` scelto anch'esso a caso: un
+  bug quasi certo del gioco originale, sotto la soglia di quanto vale
+  riprodurre fedelmente (nessuna conseguenza di gameplay, e nessuna
+  certezza che sia mai stato visibile in pratica — richiederebbe capire
+  quale delle due `action_sprite_color`/`action_sprite_set` per tic
+  arrivi davvero a schermo prima del prossimo Step). Lo `Alarm_1`
+  gemello (tint bianco fisso) e il ramo "ruspa"/`demobasia` (riparazione
+  a pagamento, selec==11) restano fuori per lo stesso motivo gia'
+  dichiarato altrove: nessuno strumento ruspa ricostruito.
+  `tools/23_atlas.py`: aggiunte le 8 sprite nuove (`club11..14`,
+  `club11i..14i`) al manifest `GAMEPLAY_SPRITES["buildings"]`; nessuna
+  delle due ha un'istanza statica in `match_easy`, quindi senza
+  elencarle esplicitamente l'atlas non le avrebbe mai impacchettate
+  (stesso motivo gia' documentato per `sool`/`rl_as` sopra).
+  Verificato in browser: piazzato un `club` (dote forzata da console),
+  `r12.mon` -3500 esatto e un pacco di cantiere compare nel punto giusto
+  (`constructionBalloons.length` 0→1); portando il cantiere all'ultimo
+  passo da console e aspettando che finisca, l'edificio compare con uno
+  sprite fra `club11`..`club14` e il `decorSpr` abbinato corretto
+  (`club14`↔`club14i` osservato in una run, schermata a corredo);
+  forzando `life = 0` l'edificio sparisce e `r12.hap` sale esattamente
+  di 50 — non prima, solo alla distruzione.

@@ -98,6 +98,14 @@ GAMEPLAY_SPRITES = {
         # stessi ir1x/if1x/"toppers" gia' elencati sopra, nessuno sprite di
         # cantiere in piu' — "sool" e' il solo sprite finale nuovo.
         "sool",
+        # club: settimo edificio, un solo livello (impaclubr/impaclubf, che
+        # riusano gli stessi ir1x/if1x/"toppers" di sopra). A differenza di
+        # missile/solare l'edificio finito ha 4 varianti a dado (club1/
+        # Create.gml) col proprio decoro luce abbinato — "club11".."club14"
+        # (sprite finale) e "club11i".."club14i" (decoro, oggetti originali
+        # clublite1..4) sono le uniche otto nuove.
+        "club11", "club12", "club13", "club14",
+        "club11i", "club12i", "club13i", "club14i",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/

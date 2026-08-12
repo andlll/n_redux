@@ -375,11 +375,11 @@ function placeAt(placeholder, type) {
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
   // [C] placeholder/Mouse_LeftReleased.gml: selec==1 (casa), selec==2
-  // (industria), selec==3 (missile) e selec==61 (solare) creano `mon_bil` —
-  // gli unici quattro tipi piazzabili dal giocatore che lo fanno finora
-  // (`parco`, selec==7, non crea nessun pallone nel decompilato —
+  // (industria), selec==3 (missile), selec==60 (club) e selec==61 (solare)
+  // creano `mon_bil` — i cinque tipi piazzabili dal giocatore che lo fanno
+  // finora (`parco`, selec==7, non crea nessun pallone nel decompilato —
   // game/src/balloons.js, in cima al file).
-  if (type === "casa" || type === "industria" || type === "missile" || type === "solare") {
+  if (type === "casa" || type === "industria" || type === "missile" || type === "solare" || type === "club") {
     constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
   }
   return null;
@@ -603,27 +603,31 @@ const SELEC_BY_TYPE = { casa: 1, industria: 2 };
 // (segnalato dall'autore). Qui replichiamo la stessa struttura a tre righe.
 let menoo = 0;
 
-// I piazzabili del menu (menoo 1) che non sono in BUILDING_TYPES
-// (buildings.js): letti da src/objects/pu3|pu4prov|pu5prov|pu6|pu7|pudj|
-// pusolare|pugatling|puvillone|pumediat (sprite normale/selezionato, e il
-// `selec` con cui ciascuno riconosce di essere quello scelto) incrociati
-// con src/objects/placeholder/Mouse_LeftReleased.gml per i costi reali,
-// dove quel file li dichiara esplicitamente (`cost: null` altrove — non un
-// valore a caso, proprio "non letto"). Sono famiglie impa* non ancora
-// lette (STUDIO.md "cosa manca"), quindi qui sono un segnaposto statico —
-// selezionabili ed evidenziati come casa/industria, ma toccare un
-// placeholder con uno di questi scelto mostra un messaggio invece di
-// costruire (vedi sotto). L'originale li affianca in ordine diverso
-// (STUDIO.md §9: pu7 e' unlocked a parte, pu4prov/pu5prov condividono uno
-// slot con altri quattro bottoni mutuamente esclusivi non tracciati qui):
-// l'ordine qui e' solo "tutti visibili, uno per slot", non quello esatto.
+// I piazzabili del menu (menoo 1) che casa/industria non coprono da sole:
+// letti da src/objects/pu3|pu4prov|pu5prov|pu6|pu7|pudj|pusolare|pugatling|
+// puvillone|pumediat (sprite normale/selezionato, e il `selec` con cui
+// ciascuno riconosce di essere quello scelto) incrociati con
+// src/objects/placeholder/Mouse_LeftReleased.gml per i costi reali, dove
+// quel file li dichiara esplicitamente (`cost: null` altrove — non un
+// valore a caso, proprio "non letto"). Alcuni (parco/missile/solare/club,
+// via BUILDING_TYPES in buildings.js) sono ormai piazzabili per davvero;
+// gli altri restano un segnaposto statico — selezionabili ed evidenziati
+// come qualunque tipo vero, ma toccare un placeholder con uno di questi
+// ancora senza `BUILDING_TYPES[type]` mostra un messaggio invece di
+// costruire (vedi `def` sotto, in `input.onTap`). Questo array resta
+// comunque la fonte unica di sprite/selec/costo per il bottone, vero o
+// segnaposto che sia — non toglierne una riga quando il tipo diventa
+// implementato. L'originale li affianca in ordine diverso (STUDIO.md §9:
+// pu7 e' unlocked a parte, pu4prov/pu5prov condividono uno slot con altri
+// quattro bottoni mutuamente esclusivi non tracciati qui): l'ordine qui e'
+// solo "tutti visibili, uno per slot", non quello esatto.
 const OTHER_BUILDINGS = [
   { type: "parco", selec: 7, spr: "p7", sprSel: "p7ss", label: "Parco", cost: 500 },
   { type: "missile", selec: 3, spr: "p3", sprSel: "p3ss", label: "Lanciamissili", cost: 5000 },
   { type: "eolico", selec: 4, spr: "p4", sprSel: "p4ss", label: "Pala eolica", cost: null },
   { type: "laser", selec: 5, spr: "p5", sprSel: "p5ss", label: "Laser", cost: 20000 },
   { type: "grattacielo", selec: 6, spr: "p6", sprSel: "p6ss", label: "Grattacielo", cost: null },
-  { type: "club", selec: 60, spr: "pdj", sprSel: "pdjss", label: "Club", cost: 3500 },
+  { type: "club", selec: 60, spr: "pdj", sprSel: "pdjss", label: "Club", cost: 3500 },   // ora vero, BUILDING_TYPES.club
   { type: "solare", selec: 61, spr: "psolare", sprSel: "psolaress", label: "Pannelli solari", cost: 1000 },
   { type: "gatling", selec: 62, spr: "pgatling", sprSel: "pgatlingss", label: "Mitragliatrice", cost: 10000 },
   { type: "villa", selec: 63, spr: "pvilla", sprSel: "pvillass", label: "Villa", cost: 7500 },
