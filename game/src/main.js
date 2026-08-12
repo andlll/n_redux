@@ -2,7 +2,7 @@ import { Renderer, makeSolidTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, tryStartUpgrade, stepConstructions, stepProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -375,10 +375,11 @@ function placeAt(placeholder, type) {
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
   // [C] placeholder/Mouse_LeftReleased.gml: selec==1 (casa), selec==2
-  // (industria) e selec==3 (missile) creano `mon_bil` — gli unici tre tipi
-  // piazzabili dal giocatore che lo fanno finora (`parco`, selec==7, non
-  // crea nessun pallone nel decompilato — game/src/balloons.js, in cima al file).
-  if (type === "casa" || type === "industria" || type === "missile") {
+  // (industria), selec==3 (missile) e selec==61 (solare) creano `mon_bil` —
+  // gli unici quattro tipi piazzabili dal giocatore che lo fanno finora
+  // (`parco`, selec==7, non crea nessun pallone nel decompilato —
+  // game/src/balloons.js, in cima al file).
+  if (type === "casa" || type === "industria" || type === "missile" || type === "solare") {
     constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
   }
   return null;
@@ -492,6 +493,11 @@ function ambientAt(t) {
 // smoothstep: qui serve un confine netto, com'era nell'originale).
 function isNight(t) {
   return PHASES[phaseIndexAt(t).i].name === "notte";
+}
+// [C] sooool/Alarm_4.gml: `aura.dawn` — lo stesso confine netto di isNight()
+// sopra, per la produzione elettrica di `solare` (stepSolarProduction()).
+function isDawn(t) {
+  return PHASES[phaseIndexAt(t).i].name === "alba";
 }
 
 // --------------------------------------------------------------- luci
@@ -778,10 +784,12 @@ function frame(now) {
   resize();
   cam.update(dt);
   const night = isNight(phaseT);
+  const dawn = isDawn(phaseT);
 
   // --- simulazione: cantieri, economia, meteo, traffico, luci
   stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
   stepProduction(buildings, dt, r12);
+  stepSolarProduction(buildings, dt, r12, night, dawn);
   stepGrowth(buildings, dt, r12);
   stepConsumption(buildings, dt, r12, night);
   stepWeather(r12, dt);

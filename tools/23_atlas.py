@@ -92,6 +92,12 @@ GAMEPLAY_SPRITES = {
         "rl_as", "toppers",
         "lrn1", "lrn2", "lrn3", "lrn4", "lrn5", "lrn6", "lrn7", "lrn8",
         "lrn9", "lrn10", "lrn11", "lrn12", "lrn13", "lrn14", "lrn15", "lrn16",
+        # solare: pannelli solari, un solo livello (nessun upXX lo referenzia
+        # nel decompilato — sooool/Create.gml non arma nessun "upo" reale,
+        # game/src/buildings.js). Il cantiere (impasolr/impasolf) riusa gli
+        # stessi ir1x/if1x/"toppers" gia' elencati sopra, nessuno sprite di
+        # cantiere in piu' — "sool" e' il solo sprite finale nuovo.
+        "sool",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/

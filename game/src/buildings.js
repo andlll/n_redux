@@ -439,10 +439,45 @@ export const BUILDING_TYPES = {
     },
   },
 
-  // Quarto edificio: `parco` (STUDIO.md §9 "GUI vera", `pu7`/`selec==7`,
-  // gia' nel menu ma segnaposto). E' l'unico dei quattro senza potenziamenti
+  // Quinto edificio: `solare` (`sooool`, src/objects/sooool — "Pannelli
+  // solari" nel menu, `pusolare`/`selec==61`). Come `missile`, un solo
+  // livello (nessun `upXXX` lo referenzia nel decompilato: niente
+  // `upgrades` qui) — ma non e' una torretta: e' il primo edificio la cui
+  // produzione dipende dall'ORA DEL GIORNO invece che da un consumo di
+  // materia prima (`solarProduction`, stepSolarProduction() sotto).
+  // Placement cost **[C]** trovato nello stesso posto dei costi di
+  // industria/casa: `placeholder/Mouse_LeftReleased.gml`, `selec==61`.
+  solare: {
+    label: "Pannelli solari",
+    placeCost: { mon: 1000 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==61
+    // [C] sooool/Alarm_4.gml, ogni 30 tick: sempre -5 mon; ele -1 di notte,
+    // +5 all'alba, +9 altrimenti (giorno/tramonto) — vedi stepSolarProduction().
+    solarProduction: { every: 30, mon: 5, ele: { night: -1, dawn: 5, day: 9 } },
+    storm: [{ dice: 200, loss: 50 }],   // [C] sooool/Alarm_5.gml
+    // [C] sooool/Destroy.gml: hap +50 alla morte — nessun costo corrispondente
+    // alla nascita (sooool/Create.gml non tocca hap): non simmetrico, letto
+    // cosi' come sta, stesso principio gia' scelto per industria/parco sopra.
+    construct: {                  // livello 0 -> 1, impasolr (src/objects/impasolr)
+      drain: { mon: 2, every: 20 },              // [C] impasolr/Alarm_10.gml
+      finalSprite: "sool", life: 50,              // [C] sooool/Create.gml
+      decor: [],                                   // [C] sooool/Create.gml non crea nessun cddvd (non e' un chies/casa/industria)
+      hap: { destroy: 50 },
+      steps: [                                    // [C] impasolr/Create.gml + Alarm_0/1/2/3/4, tic 0..770
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 370 },
+        { spr: "ir12", dur: 30 },
+        { spr: "ir11", dur: 310, spawn: [                 // [C] impasolf/Alarm_4.gml crea "tops1" (sprite
+          { spr: "toppers", dx: 0, dy: -42 },              // "toppers", stessa forma di "tops2" per missile/
+        ] },                                                // club ma offset -42 invece di -86) a meta' cantiere
+        { spr: "ir12", dur: 30 },
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
+      ],
+    },
+  },
+
+  // Sesto edificio: `parco` (STUDIO.md §9 "GUI vera", `pu7`/`selec==7`,
+  // gia' nel menu ma segnaposto). Come `missile`/`solare`, senza potenziamenti
   // (nessun `upXXX` lo referenzia nel decompilato: resta cosi' com'e' una
-  // volta finito) e l'unico il cui decoro non e' un bagliore fisso per
+  // volta finito) ma e' l'unico il cui decoro non e' un bagliore fisso per
   // livello, ma uno scatter casuale di alberi e lampioni intorno a se' — 7
   // posizioni fisse, ciascuna a dado albero/lampione/niente (STUDIO.md, la
   // meccanica dietro "implementa anche i lampioni colorati": i lampioni non
@@ -714,6 +749,32 @@ export function stepProduction(buildings, dt, r12) {
         r12.ele += prod.ele;
         b.makee = (b.makee ?? 0) + 1;
       }
+    }
+  }
+}
+
+/**
+ * Avanza `solare` (`sooool/Alarm_4.gml`, `def.solarProduction`): l'unico
+ * edificio la cui produzione dipende dall'ORA DEL GIORNO invece che da un
+ * consumo di materia prima (`oil` per industria). [C] ogni 30 tick: sempre
+ * -5 mon; `ele` varia con la fase — -1 di notte, +5 all'alba, +9 altrimenti
+ * (giorno/tramonto: il decompilato ha solo due flag booleani, `night` e
+ * `dawn`, non le quattro fasi di questo motore — "ne' notte ne' alba" copre
+ * entrambe). `isNight`/`isDawn` sono gli stessi booleani netti (nessuno
+ * smoothstep) gia' usati da stepConsumption() per `casa`.
+ */
+export function stepSolarProduction(buildings, dt, r12, isNight, isDawn) {
+  for (const b of buildings) {
+    if (b.construction) continue;
+    const def = BUILDING_TYPES[b.type];
+    const prod = def.solarProduction;
+    if (!prod) continue;
+    b.solarT = (b.solarT ?? 0) + dt;
+    const period = prod.every * TICK;
+    while (b.solarT >= period) {
+      b.solarT -= period;
+      r12.mon -= prod.mon;
+      r12.ele += isNight ? prod.ele.night : isDawn ? prod.ele.dawn : prod.ele.day;
     }
   }
 }

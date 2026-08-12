@@ -1338,3 +1338,45 @@ paragrafo 8.
   `b.construction` valorizzato). Piazzando un'`industria` e aspettando che
   finisca il primo livello, `r12.hap` scende di 50 esattamente al
   completamento — non prima, durante il cantiere.
+
+- **Quinto edificio giocabile: `solare`** (`sooool`, src/objects/sooool —
+  "Pannelli solari" nel menu, gia' un bottone segnaposto). Come `missile`,
+  un solo livello (nessun `upXXX` lo referenzia nel decompilato), ma non
+  e' una torretta: e' il primo la cui produzione dipende dall'ORA DEL
+  GIORNO invece che da un consumo di materia prima. **[C]**
+  `sooool/Alarm_4.gml` (ogni 30 tick): sempre -5 mon; `ele` -1 di notte,
+  +5 all'alba, +9 altrimenti (giorno/tramonto — il decompilato ha solo
+  due flag booleani, `aura.night`/`aura.dawn`, non le quattro fasi di
+  questo motore: "ne' notte ne' alba" copre sia giorno che tramonto).
+  Nuovo `stepSolarProduction()`/`isDawn()` (stesso confine netto di
+  `isNight()`, nessuno smoothstep). Placement cost **[C]** 1000 mon,
+  trovato nello stesso posto dei costi gia' letti per industria/casa/
+  missile/parco — `placeholder/Mouse_LeftReleased.gml` in un'unica
+  funzione, `selec==61` — che rivela anche i costi di *tutti* gli altri
+  edifici non ancora piazzabili (villa 7500, club 3500, gatling 10000
+  con lo stesso controllo `close` di missile, monumento 20000 SENZA
+  controllo affordability nel decompilato — un'asimmetria letta, non
+  wired qui — banca senza alcun costo scalato): non riletti finche' non
+  tocchera' a quei tipi.
+  Il cantiere (`impasolr`/`impasolf`) riusa gli stessi sprite `ir1x`/
+  `if1x`/`toppers` gia' in atlas per industria/casa/missile — solo
+  `sool` (lo sprite finale) e' nuovo. Stessa semplificazione [I] gia'
+  scelta per industria: si completa alla fine della traccia "r" (770
+  tick) invece che a meta' della traccia "f" (dove l'originale crea
+  davvero `sooool`, tick ~725) — differenza cosmetica sotto la soglia.
+  **Bug trovato e corretto prima di pubblicare**: `solarProduction` non
+  era escluso dalla simulazione economica placeholder di `state.js`
+  (`tickR12()`, STUDIO.md §6) come gia' lo erano `production`/`growth` —
+  `solare` veniva quindi contato *due volte* (olio/popolazione fantasma
+  dalla formula generica, oltre alla sua produzione vera), verificato
+  confrontando `r12.mon`/`ele` nei 2s dopo il completamento del cantiere
+  prima e dopo la correzione (-9.8 mon con doppio conteggio, -15.8 senza
+  — quest'ultimo torna con -5 mon/30 tick + la sola tassazione generica
+  sulla popolazione, senza olio/pop fantasma).
+  **[C]** `sooool/Destroy.gml`: hap +50 alla morte, nessun costo
+  corrispondente alla nascita (`Create.gml` non tocca `hap`) — non
+  simmetrico, letto cosi' come sta, stesso principio gia' scelto per
+  industria/parco sopra. Verificato in browser: piazzata una `solare`,
+  cantiere completo in ~14s (sprite finale `sool`), `ele`/`mon` che si
+  muovono nella direzione giusta nei secondi successivi, `r12.hap` +50
+  esatto forzando `life = 0` da console.
