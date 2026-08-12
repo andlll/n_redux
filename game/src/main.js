@@ -2,11 +2,17 @@ import { Renderer, makeSolidTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, tryStartUpgrade, stepConstructions, stepProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, tryStartUpgrade, stepConstructions, stepProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
 import { spawnPedestrian, stepPedestrians } from "./pedestrians.js";
+import {
+  stepBalloonSpawner, stepBalloons, stepLoot, collectLoot,
+  spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
+} from "./balloons.js";
+import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions } from "./threats.js";
+import { stepTurretFire, stepProjectiles } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -103,13 +109,29 @@ const atlas = await fetch("./data/match_easy.atlas.json").then((x) => x.json());
 const pageTex = await Promise.all(
   atlas.pages.map((p) => loadTexture(gl, "./assets/" + p.file))
 );
-function frameFor(sprName) {
+// `frameIdx` (default 0): quasi tutti gli sprite del motore sono statici,
+// una sola posa (STUDIO.md, "nessun sistema di image_speed") — ma alcuni
+// (le svolte delle auto, game/src/cars.js) sono davvero multi-frame
+// nell'originale e ora vengono animati per davvero, non piu' fermi al
+// primo frame: vedi stepCars() e il suo uso qui sotto. L'atlas li
+// impacchetta gia' tutti (tools/23_atlas.py itera `s["frames"]` per
+// intero), semplicemente prima non venivano mai letti oltre il primo.
+function frameFor(sprName, frameIdx = 0) {
   const frames = atlas.sprites[sprName];
   if (!frames || !frames.length) return null;
-  const f = frames[0];
+  const f = frames[Math.max(0, Math.min(frameIdx, frames.length - 1))];
   return { tex: pageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1,
            w: f.w, h: f.h, ox: f.ox, oy: f.oy };
 }
+// Luci di finestra come finestre singole, non una dissolvenza sull'intera
+// sagoma (STUDIO.md "le luci delle case", tools/26_lights.py): per ogni
+// decoro "...l" che ha finestre individuabili, un elenco {spr,dx,dy,t} —
+// `t` e' il momento (0..1) in cui quella finestra si accende, `spr` un
+// ritaglio gia' nell'atlas (vedi sopra), `dx/dy` l'offset dalla posizione
+// dell'edificio. I decori senza voce qui (industria, il lampione di parco,
+// i pezzi extra di chies livello 3) restano sulla dissolvenza uniforme
+// gia' esistente — non avevano un'animazione a finestre nel decompilato.
+const lightWindows = await fetch("./data/lights.json").then((x) => x.json()).catch(() => ({}));
 // Alberi (STUDIO.md §5.3, src/objects/albe|albe2|albe3/Create.gml): a
 // Create l'originale sceglie a dado uno sprite finale diverso per istanza
 // (in albe, se nessun dado va a buon fine resta il default "a1" della
@@ -223,6 +245,27 @@ const atmo = createAtmosphere();
 // una casa (vedi spawnDecor() piu' sotto) — vuoto all'avvio, match_easy
 // parte senza nessuna casa gia' costruita.
 let pedestrians = [];
+// Mongolfiere (game/src/balloons.js): `balloons`/`loot` sono le mongolfiere
+// di risorse/spia e le casse che lasciano cadere (r12/Alarm_1.gml, ogni 5s);
+// `constructionBalloons`/`constructionBoxes` sono il pacco che ogni `casa`/
+// `industria` piazzata si porta dietro (placeholder/Mouse_LeftReleased.gml),
+// spawnate una alla volta da placeAt() piu' sotto, non da un timer.
+let balloons = [];
+let loot = [];
+let constructionBalloons = [];
+let constructionBoxes = [];
+// Minacce vere (game/src/threats.js): `threats` sono aerei/bombardieri/
+// zeppelin, fatti nascere da stepThreatSpawner (r12/Alarm_4|5|6.gml) ogni
+// volta che una mongolfiera spia viene ignorata abbastanza a lungo da
+// "riuscire" (balloons.js). `bombs`/`explosions` sono quello che lasciano
+// cadere in volo.
+let threats = [];
+let bombs = [];
+let explosions = [];
+// Il fuoco vero del lanciarazzi (game/src/projectiles.js): stepTurretFire
+// crea i razzi (dalla punta del cannone, quando una minaccia vera e' entro
+// 250px), stepProjectiles li fa volare e colpire.
+let projectiles = [];
 let r12 = createR12();
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
@@ -265,9 +308,40 @@ function spawnDecor(building, decorSprites) {
  * `lit: false` (usato per gli alberi/i pali dei lampioni dello scatter di
  * parco, vedi sotto) disattiva tutto questo: resta un decoro qualunque,
  * fermo alla y del suo edificio come un albero vero, tinto dal ciclo
- * giorno/notte come qualunque altro oggetto di mondo. */
+ * giorno/notte come qualunque altro oggetto di mondo.
+ *
+ * Le finestre di `chies`/`casa` (STUDIO.md "le luci delle case",
+ * `lightWindows` sopra) non sono un'unica dissolvenza: `spr` diventa N
+ * piccole finestre reali (ritagliate dall'animazione originale,
+ * tools/26_lights.py), ognuna con la propria `_lightAt` — il momento
+ * (0..1) in cui si accende, letto da `stepLights()` invece dell'alpha
+ * continua. I decori senza voce in `lightWindows` (industria, il lampione
+ * di parco, i pezzi extra di chies livello 3) restano sulla dissolvenza
+ * uniforme di prima: non avevano un'animazione a finestre nel decompilato,
+ * STUDIO.md. */
 function addDecor(building, spawns) {
   for (const { spr, dx, dy, lit = true } of spawns) {
+    const windows = lit ? lightWindows[spr] : null;
+    if (windows?.length) {
+      // Il depth resta quello dell'intera sagoma (building.y + dy, come il
+      // singolo bagliore che sostituisce — [C] cddvd/Create.gml: depth =
+      // -y - 1, dove "y" e' la posizione dell'ISTANZA cddvd, creata alla
+      // stessa posizione dell'edificio, non quella del singolo pixel che
+      // finisce per disegnare). Usare la y VERA della finestra (spesso
+      // lontana dall'ancora, es. una finestra vicino alla cima di un
+      // campanile) la farebbe ordinare come un oggetto "di mondo" separato
+      // — dietro l'edificio invece che sopra la sua facciata.
+      const anchorDepth = -(building.y + dy) - 1;
+      for (const w of windows) {
+        decorEntities.push({
+          obj: "decor", buildingId: building.id,
+          x: building.x + dx + w.dx, y: building.y + dy + w.dy, depth: anchorDepth,
+          spr: w.spr, _f: frameFor(w.spr),
+          _selfLit: true, _lightT: 0, _lightAt: w.t,
+        });
+      }
+      continue;
+    }
     const y = building.y + dy;
     decorEntities.push({
       obj: "decor", buildingId: building.id,
@@ -314,6 +388,14 @@ function spawnParcoScatter(building) {
 
 function placeAt(placeholder, type) {
   const def = BUILDING_TYPES[type];
+  // [C] placeholder/Mouse_LeftReleased.gml, selec==3: il piazzamento vero e
+  // proprio richiede anche `close==0` (nessun'altra torretta troppo vicina,
+  // STUDIO.md "le mongolfiere" -> tooCloseToTurret()) — controllato PRIMA
+  // del costo, come nel decompilato (il blocco intero e' innestato dentro
+  // quel controllo, non dopo aver gia' scalato i mon).
+  if (def.turret && tooCloseToTurret(buildings, placeholder.x, placeholder.y)) {
+    return "troppo vicino a un'altra torretta di difesa";
+  }
   if (!canAfford(r12, def.placeCost)) {
     return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
   }
@@ -328,6 +410,13 @@ function placeAt(placeholder, type) {
   const b = placeBuilding(type, placeholder.x, placeholder.y, 0);
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
+  // [C] placeholder/Mouse_LeftReleased.gml: selec==1 (casa), selec==2
+  // (industria) e selec==3 (missile) creano `mon_bil` — gli unici tre tipi
+  // piazzabili dal giocatore che lo fanno finora (`parco`, selec==7, non
+  // crea nessun pallone nel decompilato — game/src/balloons.js, in cima al file).
+  if (type === "casa" || type === "industria" || type === "missile") {
+    constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
+  }
   return null;
 }
 
@@ -474,7 +563,16 @@ function stepLights(entities, dt, night, r12) {
   for (const d of entities) {
     if (!d._selfLit) continue;
     d._lightT = Math.max(0, Math.min(LIGHT_FADE, d._lightT + (lit ? dt : -dt)));
-    d._alpha = d._lightT / LIGHT_FADE;
+    const progress = d._lightT / LIGHT_FADE;
+    // Finestre singole (STUDIO.md "le luci delle case"): niente dissolvenza,
+    // uno scatto secco quando la transizione raggiunge il momento in cui
+    // QUELLA finestra si accende — esattamente come nel decompilato
+    // (sprite_index che avanza di frame in frame, non un alpha continuo).
+    // La stessa soglia funziona identica in entrambe le direzioni: spegnersi
+    // e' la stessa sequenza letta al contrario, quindi l'ultima finestra
+    // accesa e' la prima a spegnersi non appena `progress` scende sotto la
+    // sua `_lightAt`.
+    d._alpha = d._lightAt != null ? (progress >= d._lightAt ? 1 : 0) : progress;
   }
 }
 
@@ -582,15 +680,21 @@ input.onTap = (sx, sy) => {
   // frameList e' ricostruita ad ogni frame di disegno: e' la stessa lista,
   // gia' ordinata top-most-last, che serve per il picking. Due passate: la
   // prima considera solo cio' che e' davvero interattivo (placeholder,
-  // edifici — inclusa chies, ora che vive li' anche lei), a prescindere
-  // dal depth; la seconda, di fallback, e' il vecchio picking "per z-order"
-  // usato solo per ispezionare la scena nell'HUD di debug. Senza la prima
-  // passata `air2` (il terreno/strade sull'intera mappa, depth -1,
-  // `mask_sprite: null` nel decompilato: non ha MAI ricevuto click
-  // nell'originale) coprirebbe chies (depth 0, per y) e la renderebbe
-  // intoccabile.
+  // edifici — inclusa chies, ora che vive li' anche lei — e le casse di
+  // risorse lasciate cadere dalle mongolfiere), a prescindere dal depth; la
+  // seconda, di fallback, e' il vecchio picking "per z-order" usato solo
+  // per ispezionare la scena nell'HUD di debug. Senza la prima passata
+  // `air2` (il terreno/strade sull'intera mappa, depth -1, `mask_sprite:
+  // null` nel decompilato: non ha MAI ricevuto click nell'originale)
+  // coprirebbe chies (depth 0, per y) e la renderebbe intoccabile.
+  //
+  // Le casse (obj: "loot") sono qui invece che nel fallback perche'
+  // nell'originale si raccolgono al passaggio del mouse (bar*/Mouse_
+  // MouseEnter.gml), non con un click — un tap va quindi trattato come il
+  // gesto piu' "sicuro" possibile, non come l'ultima risorsa dopo aver
+  // controllato tutto il resto per z-order.
   for (const it of frameList) {
-    if (it.obj !== "placeholder" && it.obj !== "building") continue;
+    if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot") continue;
     const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
     if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
       if (!picked || it.depth < picked.depth) picked = it;
@@ -632,6 +736,12 @@ input.onTap = (sx, sy) => {
     const err = tryStartUpgrade(picked.ref, r12);
     message = err ?? "cantiere avviato";
     messageT = 3;
+  } else if (picked.obj === "loot") {
+    const item = picked.ref;
+    collectLoot(loot, item, r12);
+    message = `+${item.amount} ${item.key}`;
+    messageT = 3;
+    picked = null;   // raccolta, non c'e' piu' niente da tenere selezionato
   }
 };
 
@@ -678,7 +788,12 @@ function resize() {
 let frameList = staticWorld;   // lista dell'ultimo frame disegnato, usata anche dal picking
 let last = performance.now();
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  // Math.max(0, ...): il timestamp di requestAnimationFrame puo' precedere
+  // di poco l'ultimo `last` (performance.now() catturato prima di registrare
+  // il callback) — soprattutto al primissimo frame, o con WebGL software —
+  // un dt negativo qui si propagherebbe a tutti i timer (c.frame incluso,
+  // rendendo frameFor() con un indice negativo e un array out-of-bounds).
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
   last = now;
   phaseT += dt;
   resize();
@@ -692,7 +807,6 @@ function frame(now) {
   stepConsumption(buildings, dt, r12, night);
   stepWeather(r12, dt);
   stepStormDamage(buildings, dt, r12);
-  for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
   tickR12(r12, dt, buildings);
   stepCars(cars, dt, r12, night);
   carmakerT += dt;
@@ -704,6 +818,37 @@ function frame(now) {
   stepSemaphores(semaphores, dt);
   stepAtmosphere(atmo, dt, !!r12.storm);
   stepPedestrians(pedestrians, dt);
+  // Mongolfiere (game/src/balloons.js): risorse/spia a intervalli regolari
+  // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
+  // cantiere che casa/industria si porta dietro (spawnato da placeAt(),
+  // solo avanzato qui).
+  stepBalloonSpawner(r12, balloons, dt, buildings);
+  stepBalloons(balloons, loot, dt, r12);
+  stepLoot(loot, dt);
+  stepConstructionBalloons(constructionBalloons, constructionBoxes, dt);
+  stepConstructionBoxes(constructionBoxes, dt);
+  // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
+  // bombardieri/zeppelin man mano che le spie ignorate si accumulano
+  // (contatori alzati in stepBalloons() sopra), poi ognuno vola, bombarda,
+  // e sparisce da solo.
+  stepThreatSpawner(r12, threats, dt);
+  stepThreats(threats, bombs, explosions, dt, r12);
+  stepBombs(bombs, explosions, buildings, dt, r12);
+  stepExplosions(explosions, dt);
+  // Unico controllo per tutte le fonti di danno di questo frame (fulmini,
+  // STUDIO.md "le tempeste diventano reali" + bombe appena sganciate sopra).
+  for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
+  if (r12.alertT > 0) r12.alertT -= dt;
+  // Torrette (game/src/buildings.js, stepTurretAim): inseguono il "veicolo"
+  // piu' vicino — [C] rocket_launcher/Step.gml usa la famiglia
+  // `veicoli_target`, che nel motore sono le auto decorative e le
+  // mongolfiere di risorse/spia (non il pacco di cantiere, `notte_target`
+  // nel decompilato, e non le casse/gli avanzi di cantiere).
+  stepTurretAim(buildings, cars.concat(balloons));
+  // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
+  // gia' nella direzione appena calcolata (b.aimAngle).
+  stepTurretFire(buildings, threats, dt, projectiles, explosions);
+  stepProjectiles(projectiles, balloons, threats, loot, explosions, dt);
   if (messageT > 0) messageT -= dt;
 
   // --- lista di disegno di questo frame: mondo statico (placeholder consumati
@@ -719,11 +864,12 @@ function frame(now) {
     if (b.capSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.capSpr) });
   }
   for (const d of decorEntities) dynamic.push(d);
-  // Auto decorative (game/src/cars.js): x/y/sprite gia' avanzati da
-  // stepCars() sopra, il frame va solo riletto ogni volta perche' lo
-  // sprite cambia in corsa (accelerazioni/svolte).
+  // Auto decorative (game/src/cars.js): x/y/sprite/frame gia' avanzati da
+  // stepCars() sopra — `c.frame` anima per davvero le svolte (STUDIO.md
+  // "le auto sterzano davvero"), frameFor() lo ritaglia da solo sull'ultimo
+  // frame disponibile per gli sprite a posa singola.
   for (const c of cars) {
-    dynamic.push({ obj: "car", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr), _tint: c.tint });
+    dynamic.push({ obj: "car", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr, Math.floor(c.frame)), _tint: c.tint });
   }
   // Semafori (game/src/semaphores.js): il palo ("se") e' gia' in
   // staticWorld, qui va solo il tappo colorato quando e' acceso — `spr`
@@ -745,6 +891,24 @@ function frame(now) {
   // Pedoni (game/src/pedestrians.js): x/y/depth gia' avanzati da
   // stepPedestrians() sopra.
   for (const p of pedestrians) dynamic.push({ obj: "pedestrian", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
+  // Mongolfiere (game/src/balloons.js): risorse/spia + le casse che
+  // lasciano cadere (obj: "loot", l'unica cliccabile — vedi picking sotto)
+  // + il pacco di cantiere di casa/industria.
+  for (const b of balloons) dynamic.push({ obj: "balloon", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
+  for (const l of loot) dynamic.push({ obj: "loot", ref: l, x: l.x, y: l.y, depth: l.depth, _f: frameFor(l.spr) });
+  for (const m of constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
+  for (const bx of constructionBoxes) dynamic.push({ obj: "decor", x: bx.x, y: bx.y, depth: bx.depth, _f: frameFor(bx.spr) });
+  // Minacce vere (game/src/threats.js): nessuna e' cliccabile (nessun
+  // evento Mouse nel decompilato), quindi "decor" come il pacco di
+  // cantiere — non devono "rubare" il tap. `_scale` (solo per i caccia
+  // "di sfondo", STUDIO.md "le minacce vere") e' la stessa `scale` gia'
+  // supportata dal renderer per la GUI, qui riusata per la prima volta nel
+  // mondo.
+  for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale });
+  for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y, _f: frameFor(bm.spr) });
+  for (const ex of explosions) dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr), _scale: ex.scale });
+  // Il fuoco vero (game/src/projectiles.js): i razzi del lanciarazzi.
+  for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr) });
   // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
   // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
   // (`_alpha`, 0 di giorno) che il ciclo di disegno rispetta da solo — a
@@ -793,7 +957,7 @@ function frame(now) {
       if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < t) continue;
       const base = isPicked(it) ? 0xbfe0ff : (it._tint ?? 0xffffff);
       const tint = it._selfLit ? base : mulTint(base, amb.rgb);
-      r.draw(f, it.x, it.y, 1, tint, it._alpha ?? 1);
+      r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
     } else {
       // istanze senza sprite: controller invisibili, li mostro come marcatori
       const s = 24;
@@ -915,6 +1079,23 @@ function frame(now) {
     uiButtons.push({ x: rx, y: baseY - f.h, w: f.w, h: f.h, ...b });
     rx += f.w + GAP;
   }
+
+  // Avviso "ATTACK INCOMING" (src/objects/aincom, game/src/balloons.js): una
+  // mongolfiera spia ha completato il suo giro. [C] aincom/Create.gml +
+  // Alarm_1/2.gml: lampeggia (mostra/nasconde ogni 30 tick = 0.5s) per 240
+  // tick (4s) al centro della view — qui al centro dello schermo, coerente
+  // col resto della GUI in spazio schermo (STUDIO.md §7.3 "L'interfaccia va
+  // in uno spazio schermo separato").
+  if (r12.alertT > 0) {
+    const ainco = frameFor("ainco");
+    // r.draw ancora sull'origine dello sprite (data/sprites.json: "ainco" ha
+    // origin ~(w/2, h/2), gia' centrato — a differenza di "icone_oriz" sopra,
+    // che ha origine in alto a sinistra), quindi il centro schermo e' gia'
+    // il punto giusto da passare, non il suo angolo in alto a sinistra.
+    if (ainco && Math.floor((ALERT_DURATION - r12.alertT) / 0.5) % 2 === 0) {
+      r.draw(ainco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
+    }
+  }
   r.flush();
 
   // --- HUD testuale di debug: numeri e stato dettagliato per lo sviluppo,
@@ -970,6 +1151,10 @@ window.__nimbus = {
   get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
   get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
   atmo, get pedestrians() { return pedestrians; },
+  get balloons() { return balloons; }, get loot() { return loot; },
+  get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
+  get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
+  get projectiles() { return projectiles; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,

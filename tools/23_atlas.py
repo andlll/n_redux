@@ -81,6 +81,17 @@ GAMEPLAY_SPRITES = {
         # match_easy (nessuna istanza sua nella room, STUDIO.md).
         "par1", "par2", "par3", "par4", "par5", "par6", "par7", "par8",
         "l1", "l1l",
+        # missile: primo edificio DIFENSIVO (src/objects/rocket_launcher,
+        # cantiere impamissr/impamissf — game/src/buildings.js). Il cantiere
+        # riusa ir1x/ir2x/if1x/if2x gia' presenti sopra (nessuno sprite di
+        # cantiere in piu' da aggiungere). "toppers" e' il topper di gru
+        # transitorio (impamissf/Alarm_0.gml tic==5, oggetto "tops2");
+        # "lrn1".."lrn16" sono i 16 sprite di mira del cannone
+        # (rocket_launcher/Step.gml, `sprite_index` risolti per indice —
+        # non nomi scelti qui, letti da data/sprites.json).
+        "rl_as", "toppers",
+        "lrn1", "lrn2", "lrn3", "lrn4", "lrn5", "lrn6", "lrn7", "lrn8",
+        "lrn9", "lrn10", "lrn11", "lrn12", "lrn13", "lrn14", "lrn15", "lrn16",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/
@@ -181,6 +192,37 @@ GAMEPLAY_SPRITES = {
     # mai piazzato nella room. "q8"/"q9" non esistono nella tavola a dado
     # dell'originale (salta da q7 a q10): non e' un refuso qui, e' fedele.
     "pedestrians": ["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q10"],
+    # Mongolfiere (src/objects/monvo|monvo_giga|monbo|mongo|monviolo|monspi,
+    # mon_bil|mon_box, src/objects/aincom — game/src/balloons.js). Nessuna
+    # istanza nella room: nascono a intervalli (risorse/spia) o quando un
+    # edificio viene piazzato (pacco di cantiere), stesso schema di
+    # atmosphere.js/pedestrians.js sopra.
+    "balloons": [
+        "monv", "monv_bar",                 # monvo: verde, petrolio
+        "monv_giga", "monv_giga_bar",       # monvo_giga: verde gigante
+        "monss", "monss_bar",               # monbo: blu, denaro
+        "mong", "mong_bar",                 # mongo: giallo/oliva, energia
+        "monviola", "monviola_bar",         # monviolo: viola, cristalli
+        "monr",                             # monspi: rossa, spia (nessun loot)
+        "mon_bild", "mon_bild_empty", "mon_bild_box",   # pacco di cantiere (casa/industria)
+        "ainco",                            # avviso "ATTACK INCOMING" (spia riuscita)
+    ],
+    # Le minacce vere (src/objects/air|bombar|dirig, bomba1/bomba2, esplo —
+    # game/src/threats.js). Nessuna istanza nella room: nascono quando le
+    # mongolfiere spia vengono ignorate abbastanza a lungo da "riuscire"
+    # (STUDIO.md "le minacce vere"). "figros"/"figgg"/"figb" sono le
+    # varianti a dado di "air" (fighterspr e' il default, gia' incluso).
+    "threats": [
+        "fighterspr", "figros", "figgg", "figb",   # air
+        "bomberspr",                                # bombar
+        "dirspr",                                    # dirig
+        "bomb", "fica",                              # bomba1/bomba2, esplo
+    ],
+    # Il fuoco vero del lanciarazzi (src/objects/red_ball, rol_avant/
+    # rol_diet — game/src/projectiles.js). "fica" (il lampo di sparo, scala
+    # 0.4) e' gia' in "threats" sopra, nessuno sprite in piu' da aggiungere
+    # per quello.
+    "projectiles": ["redb"],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
@@ -202,6 +244,25 @@ for name in used:
             "ox": s["origin_x"] - fr["render_x"],
             "oy": s["origin_y"] - fr["render_y"],
         })
+
+# Luci di finestra come sprite a se' stanti (tools/26_lights.py, data/
+# lights.json): non frame di uno sprite "sprites.json" esistente, ritagli
+# sintetizzati confrontando i frame dell'animazione originale — un piccolo
+# quadrato per finestra invece dell'intera sagoma dell'edificio ripetuta
+# decine di volte (STUDIO.md "le luci delle case"). Centrati sul proprio
+# ritaglio (ox=w/2, oy=h/2): a runtime si posizionano con l'offset dx/dy
+# gia' calcolato da 26_lights.py, non con l'origine dello sprite base.
+lights_path = os.path.join(ROOT, "data", "lights.json")
+if os.path.exists(lights_path):
+    lights = json.load(open(lights_path, encoding="utf-8"))
+    for base, windows in lights.items():
+        for win in windows:
+            rects.append({
+                "spr": win["spr"], "frame": 0,
+                "src": win["tex"], "sx": win["sx"], "sy": win["sy"],
+                "w": win["sw"], "h": win["sh"],
+                "ox": win["sw"] / 2, "oy": win["sh"] / 2,
+            })
 
 if not rects:
     sys.exit("nessun frame da impacchettare per %s" % room_name)

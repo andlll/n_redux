@@ -64,10 +64,11 @@ export const CAR_TYPES = {
   // gia', non sono quelle scritte a mano in Alarm_*.gml/carmaker.
   //
   // Sprite multi-frame (es. "g_bs_as", 38 frame) durante le fasi di
-  // svolta/accelerazione: qui si usa sempre il primo frame, come per ogni
-  // altro sprite del motore (nessun sistema di image_speed) — [I] una
-  // posa fissa invece dell'animazione, coerente con com'e' trattato il
-  // resto (varianti di costruzione, sprite degli edifici, ...).
+  // svolta/accelerazione: animati per davvero, vedi stepCars() piu' sotto
+  // (`c.frame`) — l'unico posto nel motore che lo fa, perche' e' l'unico
+  // caso in cui l'originale stesso anima davvero uno sprite invece di
+  // sceglierne uno fisso (varianti di costruzione, sprite degli edifici,
+  // ... restano tutte pose singole, fedeli).
   honda3: {
     spawn: { x: 1863, y: 604 },            // [C] carmaker/Alarm_0.gml (1842,630) + il nudge (+21,-26)
     life: 713,                              // [C] 633 + 80 (Alarm_5 arma alarm(80,6))
@@ -242,6 +243,7 @@ function makeCar(type, night, pos) {
     dir: def.initial.dir, spd: def.initial.spd, spr: def.spr,
     t: 0, schedIdx: 0, depth: -p.y - def.depthOffset,
     tint: night ? NIGHT_TINT : 0xffffff,
+    frame: 0,   // tick trascorsi da quando `spr` e' stato scelto l'ultima volta
   };
 }
 
@@ -262,17 +264,38 @@ export function spawnCar(type, night) {
  * vita la ricrea da capo se c'e' ancora olio (altrimenti sparisce per
  * sempre — [C] `with (r12) { oil > 0 }` prima di ricreare, poi
  * `action_kill_object()` comunque).
+ *
+ * [C] Le svolte animano per davvero: `honda_facile_2/Alarm_0.gml` non si
+ * limita a `action_sprite_set(c_ad_as, 0, 1)` — quell'ultimo `1` e'
+ * `image_speed`, un frame in avanti ad ogni Step, ed e' per questo che
+ * l'alarm successivo (che passa allo sprite fisso `c_as`) e' armato esattamente
+ * al numero di frame dello sprite di svolta (38 per `c_ad_as`, STUDIO.md):
+ * l'animazione finisce da sola proprio quando arriva il momento di cambiare
+ * sprite. Un dettaglio non ovvio, verificato nel decompilato: un secondo
+ * alarm (Alarm_1) puo' scattare A META' di quell'animazione e cambiare
+ * SOLO la direzione (`action_set_motion`, senza `action_sprite_set`) — la
+ * svolta continua ad animarsi senza interruzioni, la nuova direzione si
+ * applica alla posa che sta gia' scorrendo. Qui e' lo stesso: `c.frame` conta
+ * i tick da quando `spr` e' stato scelto l'ultima volta (non da quando e'
+ * iniziata la fase corrente di `schedule` — le due cose non coincidono
+ * quando una fase cambia solo `dir`), azzerato solo quando una fase
+ * successiva porta un `spr` nuovo. `frameFor()` in main.js poi ritaglia
+ * l'indice sull'ultimo frame disponibile: per gli sprite fissi (una posa
+ * sola) equivale a restare sempre al frame 0, nessun caso speciale da
+ * gestire qui.
  */
 export function stepCars(cars, dt, r12, night) {
   for (let i = cars.length - 1; i >= 0; i--) {
     const c = cars[i];
     const def = CAR_TYPES[c.type];
     c.t += dt;
+    let spriteChanged = false;
     while (c.schedIdx < def.schedule.length && c.t >= def.schedule[c.schedIdx].at * TICK) {
       const step = def.schedule[c.schedIdx++];
       c.dir = step.dir; c.spd = step.spd;
-      if (step.spr) c.spr = step.spr;
+      if (step.spr) { c.spr = step.spr; spriteChanged = true; }
     }
+    c.frame = spriteChanged ? 0 : c.frame + dt / TICK;
     const rad = (c.dir * Math.PI) / 180;
     const pxPerSec = c.spd * 60;   // "speed" e' px/tick a room_speed 60
     c.x += Math.cos(rad) * pxPerSec * dt;

@@ -959,3 +959,356 @@ paragrafo 8.
   senza portare la mappa dei collider. Agganciato in `main.js` dentro
   `spawnDecor()`, per il solo tipo `casa`, allo stesso punto in cui gia'
   intercettava `parco`.
+
+- **Le mongolfiere.** Non sono `cargo1..4`/`cargomaker` (i camion colorati
+  gia' scartati piu' sopra come codice morto): sono una famiglia distinta,
+  mai letta finora, trovata risalendo dagli sprite (`monv`/`monss`/`mong`/
+  `monviola`/`monr`, tutte hot-air-balloon veri, verificato visivamente
+  ritagliando gli atlas, non solo dal nome) agli oggetti che li usano. Tre
+  gruppi, `game/src/balloons.js`:
+  1. **Risorse**: `monvo` (verde, petrolio), `monvo_giga` (verde gigante),
+     `monbo` (blu/petrolio, sprite `monss`, denaro), `mongo` (giallo/oliva,
+     energia), `monviolo` (viola, cristalli) — **[C]** nessun evento Mouse
+     nel decompilato: non cliccabili in volo. Volano 3600 tic (60s, stessa
+     diagonale di 30° di nuvole/uccelli) e alla fine — o se un fulmine le
+     colpisce durante una tempesta vera (STUDIO.md sopra "le tempeste
+     diventano reali", stesso schema di `stepStormDamage`) — lasciano
+     cadere una cassa (bar-us/-us_giga/-bluss/-gia/-viola, quella si'
+     cliccabile: nell'originale al passaggio del mouse, `Mouse_
+     MouseEnter.gml`, qui un tap, coerente con l'input touch-first del
+     resto del motore, STUDIO.md §7). Importi reali: 700 petrolio/denaro,
+     1100 energia, 2300 petrolio (gigante), 1-3 cristalli (`irandom_range`).
+  2. **Spia**: `monspi` (rossa). Stessa diagonale, nessun loot: dopo 750
+     tic "riferisce" — alza `r12.onda`/`ondan` e fa comparire l'avviso
+     ATTACK INCOMING (`aincom`, un banner che lampeggia ogni 0.5s per 4s,
+     **[C]** `aincom/Create.gml` + `Alarm_1|2.gml`) — invece di limitarsi a
+     sparire. Sbloccata solo dopo **[C]** ~8 minuti di partita
+     (`r12/Create.gml`: `action_set_alarm(29000, 8)` arma `r12.spy`). Un
+     fulmine prima di allora la cancella senza conseguenze (nessun
+     `Destroy.gml` nel decompilato, a differenza delle risorse). `recogn` —
+     stesso ruolo ma un aereo da ricognizione, non una mongolfiera (sprite
+     `reconspr`, verificato visivamente) — resta fuori: non e' una
+     mongolfiera, gap dichiarato.
+  3. **Pacco di cantiere**: `mon_bil`/`mon_bbil` (**[C]** `placeholder/
+     Mouse_LeftReleased.gml`, creato insieme a ogni `impa*` alla posizione
+     relativa `(-1559, +680)` dal placeholder appena occupato). Vola 225
+     tic portando una cassa (`mon_box`, che cade e sparisce), la sgancia,
+     poi **[C]** una vera `action_set_gravity(90, 0.1)` la fa "alleggerire"
+     e accelerare verso l'alto per altri 1000 tic prima di sparire — non un
+     placeholder, la gravita' vera dell'originale. Solo `mon_bil` e'
+     cablata: e' quella che l'originale usa per `casa` (`selec==1`) e
+     `industria` (`selec==2`), gli unici due tipi piazzabili dal giocatore
+     che la creano — **[C]** `parco` (`selec==7`) non crea nessun pallone
+     nel decompilato, `mon_bbil` serve solo a tipi non ancora ricostruiti
+     (banca, laser).
+  Il regista (`stepBalloonSpawner`, equivalente di `r12/Alarm_1.gml`, ogni
+  300 tic/5s) riproduce le probabilita' reali: verde sempre, giallo 1/10,
+  blu 1/13, viola e verde-gigante 1/15-1/18 solo se `chies.level>=2`, verde
+  extra 1/2 se `chies.level>=3`, spia 1/2 (o 1/17 se `r12.hap==r12.pop` —
+  **[I]** mai vero in pratica, `hap` non e' aggiornato da nessuna parte del
+  motore, stesso gap gia' dichiarato per casa/industria: l'originale stesso
+  finisce quindi per usare sempre il dado 1/2). **[I]** Un'intera "ondata"
+  (`r12.ondan`) sospende tutte le nuove nascite finche' non decade (-0.5/s):
+  riprodotto senza la cerimonia di armamento originale (`r12.arma` che arma
+  gli alarm 4/5/6 di `r12` al prossimo Step) perche' pilota anche
+  un'ondata di bombardieri non ancora ricostruita — qui decade
+  incondizionatamente appena `ondan>0`, stesso risultato pratico. **[I]** Il
+  gate `action_if_number(160, 0, 0)` che nel decompilato precede
+  `monviolo` (un flag globale non identificato) non e' riprodotto: dipende
+  solo dal livello di chies, come `monvo_giga` nello stesso `Alarm_1` che
+  non ha un gate simile. **[I]** Il range di nascita e' quello che
+  l'originale stesso usa per il ramo "mappa facile" di `monspi`/`recogn`
+  (`380..1620`, **[C]** `action_if_number(162, 0, 0)`), esteso per analogia
+  anche alle risorse: l'altro range scritto a mano nel decompilato
+  (`380..3120`) e' tarato per `match` (2090px di altezza), troppo per
+  `match_easy` (1086px). Fumo/esplosioni decorative del fulmine e della
+  cassa a terra (`smoko`) non riprodotte — stesso gap gia' dichiarato per
+  il fumo di `industria`.
+
+- **Primo edificio difensivo: `missile`.** L'inizio di una famiglia (in
+  arrivo: gatling, laser) diversa dai primi quattro edifici su un asse
+  nuovo — non produce ne' consuma risorse, insegue bersagli col cannone.
+  **[C]** Cantiere `impamissr`/`impamissf` (coppia r/f, stesso schema gia'
+  noto — STUDIO.md sopra "secondo edificio giocabile: industria"): riusa
+  gli stessi sprite `ir1x`/`ir2x`/`if1x`/`if2x` di industria/casa/parco,
+  nessuno sprite di cantiere in piu' da aggiungere all'atlas. **[C]** UN
+  solo livello: `impamissr` non ha `upgrades`, a differenza di chies/
+  industria/casa. `impamissilir`/`impamissilif` — stessa forma, sprite
+  identici, facile scambiarli per un potenziamento — sono in realta'
+  create SOLO da `demobasia/Collision_rocket_launcher.gml`: il "rifai in
+  loco" a pagamento (20000 mon, `rocket_launcher/Mouse_LeftPressed.gml`
+  selec==11) che nel decompilato finisce in un `placeholder` vuoto invece
+  che in un rocket_launcher nuovo — stesso gap gia' dichiarato per
+  industria/casa (STUDIO.md "cosa manca"), non riletto qui. **[C]** costo
+  di piazzamento 5000 mon, e crea `mon_bil` come casa/industria (STUDIO.md
+  "le mongolfiere" aggiornato di conseguenza). **[C]** vita 600, danno da
+  fulmine 1/130 ogni 57 tick -50 vita, stesso schema di industria/casa
+  (`stepStormDamage`, nessun codice nuovo).
+  **La mira del cannone e' vera**, non solo un edificio statico: **[C]**
+  `rocket_launcher/Step.gml` insegue col cannone il veicolo piu' vicino
+  entro 400px (famiglia `veicoli_target` — mongolfiere di risorse/spia e
+  le auto decorative, non le minacce vere), un sedicesimo di giro alla
+  volta (16 sprite `lrn1..lrn16`, risolti per indice-sprite da `data/
+  sprites.json`, non per nome scelto qui — `sprite_index = 242` eccetera
+  nel decompilato). Se nessun veicolo e' in portata lo sprite non torna
+  alla posa di riposo: resta congelato all'ultima direzione puntata,
+  esattamente come nel decompilato (l'aggiornamento e' innestato dentro il
+  controllo di portata, nessun ramo `else`) — verificato spostando un
+  veicolo dentro e fuori portata. **Il fuoco vero non e' riprodotto**: il
+  bersaglio che l'originale colpisce per davvero e' `nemici_target` (entro
+  250px, non `veicoli_target`) — la famiglia delle minacce vere (dirig e
+  le altre, STUDIO.md "cosa manca": "da dove arrivano davvero le
+  minacce... dipendono da contatori che nessun oggetto incrementa") non
+  esiste ancora in questo motore, quindi il ramo che crea `red_ball`/
+  `rol_avant`/`rol_diet` (i proiettili) non ha mai un bersaglio valido da
+  colpire — non e' un buco silenzioso, e' la stessa condizione che
+  varrebbe anche nell'originale senza minacce nei paraggi.
+  **[I] Il vincolo di distanza fra torrette** (`placeholder.close`,
+  impostato da vera collisione fisica fra la maschera di missile/gatling/
+  laser e i placeholder vicini — `placeholder/Collision_impamissr|
+  rocket_launcher|gatlinggun|lasergun.gml`, STUDIO.md "pepazzittecollider"
+  mai ricostruito) diventa una distanza minima fra torrette (200px,
+  `tooCloseToTurret()`), tarata sulla maschera vera di rocket_launcher
+  ("auton", 297x172px) contro il passo della griglia dei placeholder in
+  `match_easy` (~116px fra vicini diretti) — abbastanza da bloccare i
+  vicini immediati senza un sistema di collisione vero. Verificato: due
+  torrette a ~116px si respingono ("troppo vicino a un'altra torretta di
+  difesa", nessun mon scalato), la stessa coppia a >200px si piazza.
+  Il campo `turret: true` in `BUILDING_TYPES.missile` e la generalita' di
+  `tooCloseToTurret()`/`stepTurretAim()` sono pensate per gatling/laser,
+  non ancora aggiunte.
+
+- **Le minacce vere.** Il pezzo mancante che STUDIO.md segnalava da tempo
+  ("da dove arrivano davvero le minacce vere... dipendono da contatori che
+  nessun oggetto incrementa"): quel "nessun oggetto" era `monspi`, letto
+  solo con le mongolfiere (STUDIO.md "le mongolfiere") — non incrementava
+  niente perche' non esisteva ancora. `game/src/threats.js`.
+  **[C]** Tre ondate indipendenti, tutte innescate dalla stessa fonte (una
+  mongolfiera spia che porta a termine il suo giro, ignorata — oggi non
+  esiste ancora un modo per fermarla prima): `monspi/Alarm_0.gml` +
+  `r12/Step.gml` (i due punti in cui l'originale spalma questa contabilita',
+  riuniti in uno solo dentro `stepBalloons()` di balloons.js) alzano
+  `onda`/`ondan` **sempre**, `bombolo`→`bombus`/`bombn` **ogni 4a** spia
+  riuscita, `dirox`→`diro`/`diron` **ogni 10a**. Tre timer indipendenti
+  (`stepThreatSpawner`, equivalenti di `r12/Alarm_4|5|6.gml`) decadono
+  quei contatori "attivi" mentre fanno nascere un nemico alla volta:
+  - `ondan` (ogni 60 tick, -0.5) → `air`: un caccia, comune, veloce
+    (velocita' 13 o 16 a dado, vita naturale 50s). Meta' delle volte nasce
+    "in prima fila" e bombarda per davvero (`desto`), l'altra meta' e'
+    traffico aereo decorativo piu' piccolo (scala 0.75) che non bombarda
+    mai — **[C]** entrambi letti, non inventati.
+  - `bombn` (ogni 200 tick, -0.5) → `bombar`: un bombardiere piu' lento e
+    piu' resistente, bombarda piu' spesso (ogni 25 tick contro i 40 di
+    `air`), vita naturale 100s.
+  - `diron` (ogni 600 tick, -1) → `dirig`: uno zeppelin, il piu' raro e il
+    piu' lento (velocita' 2), vita naturale 166s, due bombe indipendenti
+    per ciclo (offset fissi, non una sola come gli altri due).
+  Piu' spie vengono ignorate, piu' le ondate SUCCESSIVE sono lunghe (onda/
+  bombus/diro non decadono mai a ritroso) — la progressione richiesta:
+  ignorare la sesta spia non "riattiva" solo un'ondata di `air`, ne fa
+  nascere una lunga il doppio della prima, e sblocca anche la prima
+  ondata di `bombar`.
+  **[I]** Gli alarm 4/5/6 nell'originale restano spenti finche' `r12.arma`
+  non diventa 1 la prima volta (`r12/Step.gml`): qui girano fin
+  dall'inizio senza quella cerimonia — prima della prima spia riuscita i
+  tre contatori sono comunque zero, quindi non cambia niente di
+  osservabile (`arma` resta dichiarato in state.js solo per fedelta' alla
+  forma di `r12`). Stessa semplificazione gia' scelta per `ondan` in
+  balloons.js, spostata qui perche' decadere e "far nascere un `air`" sono
+  la stessa cosa nel decompilato: prima erano due punti diversi che
+  leggevano la stessa variabile con effetti diversi (uno la decadeva senza
+  far nascere niente), ora e' un solo punto — un bug introdotto e corretto
+  nella stessa sessione, non ereditato.
+  **Le bombe fanno davvero danno**: **[C]** `bomba1` cade per conto suo
+  (direzione/velocita' fisse, non segue chi l'ha sganciata) per mezzo
+  secondo, poi crea un lampo (`bomba2`, 2 tick) che toglie 100 vita a
+  QUALUNQUE edificio tocchi — lo stesso importo per ogni tipo nel
+  decompilato (chies/casaN/industriaN/club1/villa1/monum/banca1/... hanno
+  ciascuno il proprio `Collision_*` ma il numero e' identico ovunque), mai
+  agli edifici in cantiere (nessun `Collision_impa*` per le bombe). **[I]**
+  Vera collisione fisica sostituita da un raggio minimo (150px, colpisce
+  l'edificio finito piu' vicino entro quel raggio) — stessa scelta gia'
+  fatta per `tooCloseToTurret()` (STUDIO.md "il lanciarazzi"), nessun
+  sistema di collisione vero in questo motore.
+  **Non riprodotto**: `piro` (lo stato "colpito, sto precipitando" di
+  ciascun nemico) — richiede vita/danno su un nemico, che a sua volta
+  richiede il fuoco vero del lanciarazzi (STUDIO.md "il lanciarazzi": la
+  mira e' vera, il fuoco resta un gap dichiarato) — finche' niente puo'
+  abbattere un aereo, quel ramo del decompilato non scatterebbe comunque;
+  il fumo di scia (`smoko_aer`), puramente cosmetico, stesso gap gia'
+  dichiarato per il fumo di `industria`/la cassa di cantiere.
+  Verificato in browser: 10 spie riuscite di fila producono la contabilita'
+  esatta (`onda`=10, `bombus`=2, `diro`=1); le tre ondate nascono nei tempi
+  giusti e si vedono (caccia verde/giallo/zeppelin grigio in volo sopra la
+  mappa); una bomba forzata a esplodere accanto a chies le toglie esattamente
+  100 vita; un aereo "di sfondo" (`desto=0`) non sgancia mai bombe; la
+  scadenza naturale distrugge `air`/`dirig` con l'asimmetria giusta (solo
+  `air` lascia un'esplosione).
+
+- **Il lanciarazzi spara per davvero.** Chiudeva il cerchio aperto insieme
+  alle minacce vere: prima non c'era ancora modo di fermare una
+  mongolfiera spia prima che "riuscisse" (STUDIO.md sopra), ne' di
+  abbattere le ondate che ne conseguono. `game/src/projectiles.js`.
+  **[C]** `rocket_launcher/Step.gml`: quando una minaccia vera
+  (`nemici_target`) entra entro 250px e il cannone non e' in ricarica (40
+  tick fra uno sparo e l'altro), parte un razzo (`red_ball`) dalla punta
+  del cannone. Il dettaglio piu' facile da leggere male, verificato con un
+  test dedicato: **il razzo non punta alla minaccia che ha innescato lo
+  sparo** — punta a `instance_nearest(veicoli_target)`, lo stesso bersaglio
+  gia' inseguito dal cannone (`b.aimAngle`/`b.aimTarget`, salvati da
+  `stepTurretAim` in buildings.js). Se una mongolfiera innocua e' piu'
+  vicina della minaccia vera che ha fatto scattare lo sparo, il razzo vola
+  verso QUELLA — fedele all'originale (`red_ball/Create.gml` non menziona
+  affatto `nemici_target`), confermato con un test che mette entrambe in
+  portata e osserva quale muore.
+  **Bug trovato e corretto prima di pubblicare**: il primo tentativo
+  faceva volare il razzo lungo `b.aimAngle` cosi' com'e' — ma
+  `red_ball/Create.gml` ricalcola la propria direzione con
+  `action_move_point` dalla propria posizione di nascita (la punta del
+  cannone, spostata anche di ~100px dal centro edificio), non eredita
+  l'angolo del cannone. A distanza ravvicinata la differenza e' abbastanza
+  grande da far mancare bersagli fermi proprio davanti al cannone — un
+  test con un aereo statico a distanza fissa l'ha reso ovvio (il razzo
+  volava a vuoto lungo un binario spostato di ~125px). Corretto salvando
+  anche `b.aimTarget` (non solo l'angolo) e ricalcolando la direzione vera
+  dalla posizione della punta del cannone in `stepTurretFire`.
+  **[I] Un solo colpo distrugge sempre il bersaglio**: `monvo_giga`/
+  `monviolo`/`air`/`bombar`/`dirig` hanno tutti un contatore `life` che
+  sembrerebbe richiedere piu' colpi (`red_ball/Collision_*.gml` lo
+  decrementa), ma il controllo che lo legge e' `life != 0`, non `== 0` —
+  dopo il primo colpo `life` e' quasi sempre ancora diverso da zero, quindi
+  il bersaglio muore comunque al primo colpo. Non e' una nostra
+  semplificazione che "arrotonda" una meccanica a piu' colpi: e' un
+  contatore di fatto morto nel gioco originale stesso, letto ma mai
+  davvero capace di salvare un bersaglio da un secondo colpo che non
+  arriva mai (muore sempre al primo). Colpire una mongolfiera di risorse
+  fa comunque cadere la sua cassa ([C] Destroy.gml scatta a prescindere
+  da come muore, stessa logica gia' vista per il fulmine — `spawnLoot`
+  ora esportata da balloons.js apposta); colpire una spia la fa sparire
+  in silenzio, senza che riferisca mai (nessun Destroy.gml su `monspi`) —
+  la vera contromossa alle ondate progressive.
+  **Non riprodotto**: il fuoco manuale al tap sul lanciarazzi
+  (`rocket_launcher/Mouse_LeftPressed.gml`, che spara con una tabella di
+  offset a 4 vie piu' rozza, ridondante con quella automatica) — toccare
+  l'edificio oggi prova solo un potenziamento (che non esiste, "livello
+  massimo"). `esplo` a 5 raffiche invece di una sola per `dirig`
+  (`Destroy.gml`, un solo zeppelin e' grande) riprodotto ovunque muoia
+  (fulmine, colpo diretto), tranne il doppio conteggio dell'esplosione
+  singola che `Alarm_5.gml` crea anche lui prima del `Destroy.gml` in
+  caso di fulmine — un dettaglio sotto la soglia di quanto vale
+  inseguire.
+  Verificato in browser: un razzo lanciato contro un aereo fermo e vicino
+  lo abbatte (dopo aver corretto il bug di mira sopra); senza nessun
+  veicolo da inseguire il cannone non ha una direzione e non spara anche
+  con una minaccia vera in portata (fedele: il razzo stesso dipende da
+  quel bersaglio); colpire una mongolfiera di risorse fa cadere la cassa
+  giusta; una minaccia e una mongolfiera nello stesso punto muoiono una
+  sola alla volta, mai entrambe dallo stesso colpo.
+
+- **Le luci delle case si accendono una finestra alla volta.** Una nota
+  precedente di questo stesso file (sopra, sull'animazione `crclx`)
+  affermava che l'accensione notturna fosse "una semplice dissolvenza in
+  alpha... non un effetto diverso frame per frame" — **sbagliata**,
+  segnalato dall'autore e verificato ritagliando i frame veri: `crclx`/
+  `cNNNx` (58-200 frame, uno per decoro di luce: `crcl`/`crc2l`/`crc3l`/
+  `i11l`, e tutte le 60 varianti `cLVLab l` delle case) letti al contrario
+  (dal piu' buio al piu' acceso, come nell'originale — `image_speed`
+  negativo) mostrano finestre SINGOLE che compaiono una alla volta, non
+  un'unica sagoma che sfuma. Riprodurlo senza impacchettare gli sprite
+  animati per intero (a piena risoluzione centinaia di MB decompressi,
+  vedi sotto sul font) richiedeva sapere DOVE e QUANDO si accende ogni
+  finestra: `tools/26_lights.py` (nuovo, fuori dalla pipeline atlas
+  normale — stesso schema di `tools/25_font.py`) lo scopre confrontando
+  ogni coppia di frame consecutivi (numpy + `scipy.ndimage.label`) e
+  isolando i blob di pixel appena diventati opachi. Per ogni finestra
+  cosi' trovata salva: la posizione relativa all'origine dello sprite
+  statico (`dx`,`dy`), il momento normalizzato (0..1) in cui si accende
+  (`t`, dall'ordine dei frame), e — solo per la pipeline atlas, non per il
+  motore — il ritaglio in coordinate della texture page originale (nessun
+  pixel nuovo disegnato, solo un rettangolo piu' piccolo della stessa
+  immagine, preso dal frame finale dove tutte le finestre sono gia'
+  accese). Output: `data/lights.json` (con i ritagli, letto da
+  `tools/23_atlas.py` per impacchettare 1345 piccoli sprite — +4MB VRAM in
+  tutto, contro le ~300MB temute impacchettando gli sprite animati
+  interi) e `game/data/lights.json` (copia di sola runtime, senza pixel,
+  letta da `main.js`). `addDecor()` in `main.js` divide un decoro "...l"
+  in tante entita' quante sono le sue finestre quando `lightWindows[spr]`
+  esiste; `stepLights()` accende ciascuna di scatto (non in dissolvenza)
+  quando il progresso della dissolvenza complessiva supera la sua soglia
+  `t` — l'illusione di finestre indipendenti da un unico timer condiviso,
+  fedele a come si accendono realmente nell'originale (tutte insieme
+  quando `night && ele>3`, STUDIO.md §5.2, ma non nello stesso istante
+  visivo).
+  **Bug di depth trovato e corretto prima di pubblicare**: la prima
+  versione calcolava il depth di ogni finestra dalla SUA posizione nel
+  mondo (`-( building.y + dy ) - 1`, con `dy` anche di -200px rispetto al
+  centro edificio) — ma l'edificio stesso viene disegnato DOPO le sue
+  entita' di decoro nella lista di disegno, con un depth meno negativo:
+  finiva sopra le finestre, coprendole quasi tutte (su `chies` si vedevano
+  accendersi solo 2 finestre su ~105 attese). Corretto calcolando il
+  depth UNA sola volta per spawn dall'ancora propria dell'edificio (non
+  da quella della singola finestra) e riusandolo per tutte le finestre
+  divise — lo stesso valore che avrebbe usato il vecchio decoro-bagliore
+  unico non diviso. Verificato in browser confrontando il numero di
+  entita' "disegnate" con luci attive prima/dopo la correzione, e con
+  screenshot su `chies` e su una `casa` di livello 3.
+  **[I]** Nessun'altra famiglia di edifici con animazione di luce diversa
+  da queste quattro e' stata trovata nel dump degli sprite (`crclx`/
+  `cNNNx` coprono chies+industria+tutte le case); se ne esistono altre non
+  ancora piazzabili in questo motore, resteranno con la vecchia
+  dissolvenza finche' non verranno lette.
+
+- **Le auto sterzano davvero, non restano fisse sulla posa finale.** Una
+  nota precedente di questo file (STUDIO.md §7, sulle auto) diceva "nessun
+  sistema di `image_speed`" — anche questa **sbagliata** in parte:
+  `action_sprite_set(c_ad_as, 0, 1)` in `honda_facile_2/Alarm_0.gml` (e
+  l'equivalente nelle altre honda) passa un `image_speed` di 1, non 0 — lo
+  sprite di svolta (`c_ad_as`, 38 frame; `c_as_ad`, altrettanti; uno per
+  ogni coppia di direzioni) avanza per davvero un frame a Step invece di
+  restare fermo al primo. **[C]** Non serviva nessun asset nuovo:
+  `tools/23_atlas.py` gia' impacchettava tutti i frame di ogni sprite
+  multi-frame (itera `s["frames"]` per intero), semplicemente
+  `frameFor()` in `main.js` non ne leggeva mai altri oltre il primo — la
+  correzione e' tutta logica, non pipeline. `frameFor(sprName, frameIdx)`
+  accetta ora un indice di frame (0 per gli sprite fermi, come prima);
+  `cars.js` traccia `c.frame` (tick trascorsi dall'ultima volta che lo
+  sprite e' cambiato) e lo azzera solo quando una fase di `schedule` porta
+  un `spr` nuovo.
+  **Un dettaglio non ovvio, verificato leggendo il decompilato con
+  attenzione**: l'alarm che arma lo sprite di svolta (275) e quello
+  successivo che lo ferma (313 = 275+38, esattamente la durata
+  dell'animazione) sono sincronizzati apposta — ma in mezzo puo' scattare
+  un TERZO alarm (`Alarm_1`, a 294) che cambia SOLO la direzione
+  (`action_set_motion`, senza `action_sprite_set`): la svolta continua ad
+  animarsi senza interruzioni, la nuova direzione si applica alla posa che
+  sta gia' scorrendo a meta'. Se `c.frame` fosse stato azzerato ad ogni
+  fase di `schedule` (non solo quando cambia `spr`) l'animazione
+  ripartirebbe da capo a meta' svolta, un artefatto visibile assente
+  nell'originale. Verificato in browser forzando `honda_facile_2` a
+  passare per la sua svolta (schedule reale: 275→`c_ad_as`, 294→solo
+  `dir`, 313→`c_as`, 314→`c_as_ad`, 333→solo `dir`, 352→`c_ad`) e
+  campionando `c.frame`/`c.spr` ad ogni fase: il frame avanza con
+  continuita' (mai un salto a 0) attraverso il cambio di direzione a 294,
+  e si azzera solo ai cambi di sprite (313, 314, 352) — confermato anche
+  via screenshot, due frame diversi della stessa svolta mostrano
+  effettivamente due pose diverse dell'auto.
+  **Bug trovato mentre si testava questa modifica, non causato da essa ma
+  scoperto grazie ad essa (corretto prima di pubblicare)**: il ciclo di
+  gioco calcolava `dt` come `Math.min(0.05, (now - last) / 1000)` senza
+  mai escludere valori negativi — al primissimo frame (e in generale con
+  WebGL software, piu' lento), il timestamp passato da
+  `requestAnimationFrame` puo' precedere di poco il `performance.now()`
+  con cui e' stato inizializzato `last`, producendo un `dt` leggermente
+  negativo. Con le auto ferme (senza frame multi-pose) l'effetto era
+  innocuo (`c.t` leggermente negativo, invisibile); con `c.frame` ora
+  passato a `frameFor()` come indice di array, un singolo frame con `dt`
+  negativo bastava a produrre un indice negativo e un `frames[-1]`
+  `undefined` — **bloccando l'intero ciclo di gioco al primissimo frame**
+  (l'eccezione, non gestita, interrompeva `frame()` prima della riga che
+  pianifica il proprio richiamo). Corretto in due punti: `Math.max(0, ...)`
+  sul calcolo di `dt` in `main.js` (la causa vera, previene anche derive
+  simili su qualunque altro timer del motore) e, per difesa, lo stesso
+  clamp sull'indice dentro `frameFor()`. Verificato: senza la correzione
+  il gioco non disegnava nulla e uno script di test lo confermava con un
+  `pageerror`; con la correzione 300+ frame consecutivi osservati senza
+  errori, e la simulazione (edifici/luci/auto/minacce) avanza normalmente.

@@ -353,6 +353,63 @@ export const BUILDING_TYPES = {
     ],
   },
 
+  // Primo edificio DIFENSIVO: `missile` (src/objects/rocket_launcher, coppia
+  // di cantiere impamissr/impamissf — STUDIO.md "le mongolfiere",
+  // `mon_bil` e' creato anche da questo selec). Stesso schema r/f gia' noto
+  // (industria/casa/parco sopra): "r" guida costi/durate/sprite finale, "f"
+  // e' l'impalcatura in sovraimpressione, derivata automaticamente da
+  // `frontSprFor()` visto che riusa gli stessi sprite ir1x/ir2x (nessuna
+  // catena "if1x" propria da aggiungere all'atlas). **[C]** `impamissr` non
+  // ha `upgrades`: a differenza di chies/industria/casa e' un edificio a UN
+  // solo livello — `impamissilir`/`impamissilif` (stessa forma, sprite
+  // identici) non sono un potenziamento: sono create SOLO da `demobasia/
+  // Collision_rocket_launcher.gml`, il "rifai in loco" a pagamento (20000
+  // mon, `rocket_launcher/Mouse_LeftPressed.gml` selec==11) che upgrade
+  // finivano in un `placeholder` vuoto invece che in un rocket_launcher
+  // nuovo — stesso gap gia' dichiarato per industria/casa (STUDIO.md
+  // "cosa manca"), non riletto qui.
+  missile: {
+    label: "Lanciamissili",
+    placeCost: { mon: 5000 },    // [C] placeholder/Mouse_LeftReleased.gml, selec==3
+    // [I] `close` nell'originale e' vera collisione fisica fra la maschera
+    // di missile/gatling/laser (`placeholder/Collision_impamissr|
+    // rocket_launcher|gatlinggun|lasergun.gml`, tutte impostano lo stesso
+    // flag) e i placeholder vicini — senza un sistema di collisione vero
+    // (STUDIO.md, "pepazzittecollider" mai ricostruito) qui e' una distanza
+    // minima fra torrette, vedi `tooCloseToTurret()` sotto.
+    turret: true,
+    // [C] rocket_launcher/Step.gml: insegue il veicolo piu' vicino
+    // (famiglia `veicoli_target` — mongolfiere di risorse/spia e le auto
+    // decorative) entro 400px, un sedicesimo di giro alla volta
+    // (`turretSprFor()` sotto). Il fuoco vero (game/src/projectiles.js,
+    // stepTurretFire — STUDIO.md "le minacce vere" era il pezzo che
+    // mancava) scatta separatamente quando una minaccia vera
+    // (`nemici_target`: air/bombar/dirig) entra entro 250px, ma il razzo
+    // punta comunque al veicolo piu' vicino gia' calcolato qui sopra — non
+    // necessariamente alla minaccia che ha innescato lo sparo: [C] fedele,
+    // `red_ball/Create.gml` punta a `instance_nearest(veicoli_target)`,
+    // non a chi ha fatto scattare l'Alarm.
+    aim: { range: 400 },
+    storm: [{ dice: 130, loss: 50 }],   // [C] rocket_launcher/Alarm_5.gml
+    construct: {                  // livello 0 -> 1, impamissr (src/objects/impamissr)
+      drain: { mon: 1, every: 20 },              // [C] impamissr/Alarm_10.gml
+      finalSprite: "rl_as", life: 600,            // [C] rocket_launcher/Create.gml
+      decor: [],                                   // [C] rocket_launcher/Create.gml non crea nessun cddvd
+      steps: [                                    // [C] impamissr/Create.gml + Alarm_0.gml, tic 0..10
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 361 },   // sprite iniziale di Create.gml, dura fino al primo Alarm_0
+        { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
+        { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+        { spr: "ir22", dur: 40 },
+        { spr: "ir21", dur: 640, spawn: [                 // tic==4 (durata 600) + tic==5 (durata 40, nessun
+          { spr: "toppers", dx: 0, dy: -86 },              // cambio sprite nel decompilato): fuse in un solo
+        ] },                                                // passo — [C] impamissf/Alarm_0.gml tic==5 crea "tops2"
+        { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+        { spr: "ir11", dur: 40 }, { spr: "ir12", dur: 40 },
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 40 },
+      ],
+    },
+  },
+
   // Quarto edificio: `parco` (STUDIO.md §9 "GUI vera", `pu7`/`selec==7`,
   // gia' nel menu ma segnaposto). E' l'unico dei quattro senza potenziamenti
   // (nessun `upXXX` lo referenzia nel decompilato: resta cosi' com'e' una
@@ -680,5 +737,82 @@ export function stepStormDamage(buildings, dt, r12) {
       b.stormT -= STORM_CHECK;
       if (r12.storm && Math.random() < 1 / sd.dice) b.life = Math.max(0, b.life - sd.loss);
     }
+  }
+}
+
+// [I] Distanza minima fra torrette (`missile`, e in futuro `gatling`/
+// `laser`, tutte con `turret: true`): sostituisce la vera collisione fisica
+// dell'originale fra la maschera del cantiere/edificio e i placeholder
+// vicini (`placeholder/Collision_impamissr|rocket_launcher|gatlinggun|
+// lasergun.gml`, STUDIO.md "pepazzittecollider" mai ricostruito) — tarata
+// sulla maschera vera di rocket_launcher ("auton", 297x172px) contro il
+// passo della griglia dei placeholder in `match_easy` (~116px fra vicini
+// diretti): abbastanza da bloccare i vicini immediati, non i vicini di
+// vicini.
+const TURRET_MIN_DIST = 200;
+
+/** true se (x,y) e' troppo vicino a una torretta gia' piazzata (in cantiere o finita). */
+export function tooCloseToTurret(buildings, x, y) {
+  for (const b of buildings) {
+    if (!BUILDING_TYPES[b.type]?.turret) continue;
+    const dx = b.x - x, dy = b.y - y;
+    if (dx * dx + dy * dy < TURRET_MIN_DIST * TURRET_MIN_DIST) return true;
+  }
+  return false;
+}
+
+// [C] rocket_launcher/Step.gml: point_direction (0°=est, cresce in senso
+// antiorario) diviso in 16 archi di 22.5°, ognuno con il proprio sprite
+// (`sprite_index = 240..255`, risolti per indice in data/sprites.json:
+// "lrn1".."lrn16" — non un nome scelto qui, letto dall'asset originale).
+const TURRET_DIRECTIONS = [
+  { max: 22.5, spr: "lrn3" }, { max: 45, spr: "lrn4" }, { max: 67.5, spr: "lrn5" },
+  { max: 90, spr: "lrn6" }, { max: 112.5, spr: "lrn7" }, { max: 135, spr: "lrn8" },
+  { max: 157.5, spr: "lrn9" }, { max: 180, spr: "lrn10" }, { max: 202.5, spr: "lrn11" },
+  { max: 225, spr: "lrn12" }, { max: 247.5, spr: "lrn13" }, { max: 270, spr: "lrn14" },
+  { max: 292.5, spr: "lrn15" }, { max: 315, spr: "lrn16" }, { max: 337.5, spr: "lrn1" },
+  { max: 360, spr: "lrn2" },
+];
+function turretSprFor(angleDeg) {
+  const a = ((angleDeg % 360) + 360) % 360;
+  for (const bucket of TURRET_DIRECTIONS) if (a <= bucket.max) return bucket.spr;
+  return TURRET_DIRECTIONS[TURRET_DIRECTIONS.length - 1].spr;
+}
+
+/**
+ * Le torrette (oggi solo `missile`) inseguono col cannone il veicolo piu'
+ * vicino entro `def.aim.range` — `targets` e' una lista di `{x,y}` gia'
+ * assemblata da chi chiama (in main.js: mongolfiere + auto decorative,
+ * l'equivalente di `veicoli_target`). [C] rocket_launcher/Step.gml: se
+ * NESSUN veicolo e' in portata lo sprite non cambia — resta all'ultima
+ * direzione puntata invece di tornare alla posa di riposo, esattamente come
+ * nel decompilato (l'`if` che aggiorna `sprite_index` e' innestato dentro
+ * il controllo di portata, niente ramo `else`).
+ */
+export function stepTurretAim(buildings, targets) {
+  for (const b of buildings) {
+    if (b.construction) continue;
+    const def = BUILDING_TYPES[b.type];
+    if (!def.aim) continue;
+    let nearest = null, nearestD2 = def.aim.range * def.aim.range;
+    for (const t of targets) {
+      const d2 = (t.x - b.x) ** 2 + (t.y - b.y) ** 2;
+      if (d2 < nearestD2) { nearestD2 = d2; nearest = t; }
+    }
+    if (!nearest) continue;
+    const angle = (Math.atan2(-(nearest.y - b.y), nearest.x - b.x) * 180) / Math.PI;
+    b.spr = turretSprFor(angle);
+    // [C] rocket_launcher/Step.gml: `direttorio` (l'angolo verso il
+    // veicolo piu' vicino) sceglie anche da quale punta del cannone
+    // sparerebbe il razzo (game/src/projectiles.js, MUZZLE_OFFSETS) — ma
+    // il razzo stesso, una volta nato li', ripunta per conto suo al
+    // bersaglio con `action_move_point` (`red_ball/Create.gml`): la
+    // direzione di volo vera si ricalcola dalla punta del cannone, non
+    // e' `aimAngle` letto cosi' com'e' (differenza notabile quando il
+    // bersaglio e' vicino, l'offset del cannone e' ~100px). Salvati
+    // entrambi sull'istanza — `aimAngle` per lo sprite e la scelta della
+    // punta, `aimTarget` per il vero ricalcolo in stepTurretFire.
+    b.aimAngle = angle;
+    b.aimTarget = { x: nearest.x, y: nearest.y };
   }
 }

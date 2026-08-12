@@ -22,6 +22,18 @@ export function createR12() {
     hap: 600,           // [C] 400 base + 200 del ramo match_easy
     crys: 0, storm: 0, stormT: 0, stormeasy: 0, biotech: 0, autocore: 0,
     allerta: 0, selec: 0,
+    // [C] r12/Create.gml: onda/ondan/arma partono a 0, spy a 0 (si sblocca
+    // dopo 29000 tick, r12/Alarm_8.gml) — usati dalle mongolfiere di
+    // risorse/spia, game/src/balloons.js. `arma` resta dichiarato per
+    // fedelta' alla forma di r12 ma non e' piu' letto/scritto da niente:
+    // nell'originale arma solo la PRIMA volta gli alarm 4/5/6 (le ondate di
+    // minacce, game/src/threats.js), che qui girano fin dall'inizio senza
+    // quella cerimonia (STUDIO.md "le minacce vere").
+    onda: 0, ondan: 0, arma: 0, spy: 0,
+    // [C] r12/Create.gml: bombolo/bombus/bombn (-> bombardiere ogni 4a
+    // spia riuscita) e dirox/diro/diron (-> zeppelin ogni 10a) partono
+    // tutti a 0 — game/src/threats.js "le minacce vere".
+    bombolo: 0, bombus: 0, bombn: 0, dirox: 0, diro: 0, diron: 0,
   };
 }
 
