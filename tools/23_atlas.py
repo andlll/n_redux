@@ -207,6 +207,17 @@ GAMEPLAY_SPRITES = {
         "mon_bild", "mon_bild_empty", "mon_bild_box",   # pacco di cantiere (casa/industria)
         "ainco",                            # avviso "ATTACK INCOMING" (spia riuscita)
     ],
+    # Le minacce vere (src/objects/air|bombar|dirig, bomba1/bomba2, esplo —
+    # game/src/threats.js). Nessuna istanza nella room: nascono quando le
+    # mongolfiere spia vengono ignorate abbastanza a lungo da "riuscire"
+    # (STUDIO.md "le minacce vere"). "figros"/"figgg"/"figb" sono le
+    # varianti a dado di "air" (fighterspr e' il default, gia' incluso).
+    "threats": [
+        "fighterspr", "figros", "figgg", "figb",   # air
+        "bomberspr",                                # bombar
+        "dirspr",                                    # dirig
+        "bomb", "fica",                              # bomba1/bomba2, esplo
+    ],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})

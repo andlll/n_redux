@@ -1077,3 +1077,70 @@ paragrafo 8.
   Il campo `turret: true` in `BUILDING_TYPES.missile` e la generalita' di
   `tooCloseToTurret()`/`stepTurretAim()` sono pensate per gatling/laser,
   non ancora aggiunte.
+
+- **Le minacce vere.** Il pezzo mancante che STUDIO.md segnalava da tempo
+  ("da dove arrivano davvero le minacce vere... dipendono da contatori che
+  nessun oggetto incrementa"): quel "nessun oggetto" era `monspi`, letto
+  solo con le mongolfiere (STUDIO.md "le mongolfiere") — non incrementava
+  niente perche' non esisteva ancora. `game/src/threats.js`.
+  **[C]** Tre ondate indipendenti, tutte innescate dalla stessa fonte (una
+  mongolfiera spia che porta a termine il suo giro, ignorata — oggi non
+  esiste ancora un modo per fermarla prima): `monspi/Alarm_0.gml` +
+  `r12/Step.gml` (i due punti in cui l'originale spalma questa contabilita',
+  riuniti in uno solo dentro `stepBalloons()` di balloons.js) alzano
+  `onda`/`ondan` **sempre**, `bombolo`→`bombus`/`bombn` **ogni 4a** spia
+  riuscita, `dirox`→`diro`/`diron` **ogni 10a**. Tre timer indipendenti
+  (`stepThreatSpawner`, equivalenti di `r12/Alarm_4|5|6.gml`) decadono
+  quei contatori "attivi" mentre fanno nascere un nemico alla volta:
+  - `ondan` (ogni 60 tick, -0.5) → `air`: un caccia, comune, veloce
+    (velocita' 13 o 16 a dado, vita naturale 50s). Meta' delle volte nasce
+    "in prima fila" e bombarda per davvero (`desto`), l'altra meta' e'
+    traffico aereo decorativo piu' piccolo (scala 0.75) che non bombarda
+    mai — **[C]** entrambi letti, non inventati.
+  - `bombn` (ogni 200 tick, -0.5) → `bombar`: un bombardiere piu' lento e
+    piu' resistente, bombarda piu' spesso (ogni 25 tick contro i 40 di
+    `air`), vita naturale 100s.
+  - `diron` (ogni 600 tick, -1) → `dirig`: uno zeppelin, il piu' raro e il
+    piu' lento (velocita' 2), vita naturale 166s, due bombe indipendenti
+    per ciclo (offset fissi, non una sola come gli altri due).
+  Piu' spie vengono ignorate, piu' le ondate SUCCESSIVE sono lunghe (onda/
+  bombus/diro non decadono mai a ritroso) — la progressione richiesta:
+  ignorare la sesta spia non "riattiva" solo un'ondata di `air`, ne fa
+  nascere una lunga il doppio della prima, e sblocca anche la prima
+  ondata di `bombar`.
+  **[I]** Gli alarm 4/5/6 nell'originale restano spenti finche' `r12.arma`
+  non diventa 1 la prima volta (`r12/Step.gml`): qui girano fin
+  dall'inizio senza quella cerimonia — prima della prima spia riuscita i
+  tre contatori sono comunque zero, quindi non cambia niente di
+  osservabile (`arma` resta dichiarato in state.js solo per fedelta' alla
+  forma di `r12`). Stessa semplificazione gia' scelta per `ondan` in
+  balloons.js, spostata qui perche' decadere e "far nascere un `air`" sono
+  la stessa cosa nel decompilato: prima erano due punti diversi che
+  leggevano la stessa variabile con effetti diversi (uno la decadeva senza
+  far nascere niente), ora e' un solo punto — un bug introdotto e corretto
+  nella stessa sessione, non ereditato.
+  **Le bombe fanno davvero danno**: **[C]** `bomba1` cade per conto suo
+  (direzione/velocita' fisse, non segue chi l'ha sganciata) per mezzo
+  secondo, poi crea un lampo (`bomba2`, 2 tick) che toglie 100 vita a
+  QUALUNQUE edificio tocchi — lo stesso importo per ogni tipo nel
+  decompilato (chies/casaN/industriaN/club1/villa1/monum/banca1/... hanno
+  ciascuno il proprio `Collision_*` ma il numero e' identico ovunque), mai
+  agli edifici in cantiere (nessun `Collision_impa*` per le bombe). **[I]**
+  Vera collisione fisica sostituita da un raggio minimo (150px, colpisce
+  l'edificio finito piu' vicino entro quel raggio) — stessa scelta gia'
+  fatta per `tooCloseToTurret()` (STUDIO.md "il lanciarazzi"), nessun
+  sistema di collisione vero in questo motore.
+  **Non riprodotto**: `piro` (lo stato "colpito, sto precipitando" di
+  ciascun nemico) — richiede vita/danno su un nemico, che a sua volta
+  richiede il fuoco vero del lanciarazzi (STUDIO.md "il lanciarazzi": la
+  mira e' vera, il fuoco resta un gap dichiarato) — finche' niente puo'
+  abbattere un aereo, quel ramo del decompilato non scatterebbe comunque;
+  il fumo di scia (`smoko_aer`), puramente cosmetico, stesso gap gia'
+  dichiarato per il fumo di `industria`/la cassa di cantiere.
+  Verificato in browser: 10 spie riuscite di fila producono la contabilita'
+  esatta (`onda`=10, `bombus`=2, `diro`=1); le tre ondate nascono nei tempi
+  giusti e si vedono (caccia verde/giallo/zeppelin grigio in volo sopra la
+  mappa); una bomba forzata a esplodere accanto a chies le toglie esattamente
+  100 vita; un aereo "di sfondo" (`desto=0`) non sgancia mai bombe; la
+  scadenza naturale distrugge `air`/`dirig` con l'asimmetria giusta (solo
+  `air` lascia un'esplosione).

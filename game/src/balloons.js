@@ -88,8 +88,6 @@ export const ALERT_DURATION = 4;               // [C] aincom/Create.gml: action_
 
 const SPAWN_PERIOD = 300 * TICK;               // [C] r12/Alarm_1.gml: action_set_alarm(300, 1)
 const SPY_UNLOCK_T = 29000 * TICK;             // [C] r12/Create.gml: action_set_alarm(29000, 8) -> spy = 1
-const ONDAN_DECAY_PERIOD = 60 * TICK;          // [C] r12/Alarm_4.gml: action_set_alarm(60, 4)
-const ONDAN_DECAY = 0.5;                       // [C] ondan = ondan + -0.5
 
 function maxChiesLevel(buildings) {
   let lvl = 0;
@@ -113,16 +111,11 @@ function spawnLoot(lootDef, x, y) {
 /**
  * Il "regista" delle mongolfiere di risorse/spia — equivalente di
  * `r12/Alarm_1.gml` (ogni 300 tick) + il timer che sblocca `r12.spy` dopo
- * 29000 tick (`r12/Create.gml` Alarm_8) + il decadimento di `r12.ondan`
- * (`r12/Alarm_4.gml`, -0.5 ogni 60 tick finche' resta positivo).
- *
- * [I] L'originale arma il decadimento solo dopo la prima "arma = 1" (la
- * prima mongolfiera spia che completa la sua missione, src/objects/r12/
- * Step.gml + Alarm_4.gml): qui decade incondizionatamente ogni volta che
- * ondan > 0, saltando la cerimonia di armamento — stesso risultato,
- * `ondan` scende comunque a 0 non appena l'ultima "ondata" e' abbastanza
- * vecchia, senza bisogno di simulare gli alarm 4/5/6 di r12 (5/6 pilotano
- * un'ondata di bombardieri non ancora ricostruita, STUDIO.md).
+ * 29000 tick (`r12/Create.gml` Alarm_8). Il decadimento di `r12.ondan` (e
+ * la nascita degli `air` che rappresenta) vive in game/src/threats.js
+ * (`stepThreatSpawner`) — qui `ondan` viene solo letto, per sospendere le
+ * nuove mongolfiere mentre un'ondata di minacce vere e' attiva ([C]
+ * r12/Alarm_1.gml: `if (!(ondan > 0))`).
  *
  * [I] Il gate `action_if_number(160, 0, 0)` che nel decompilato precede
  * `monviolo` non e' riprodotto (un flag globale non identificato, STUDIO.md
@@ -139,14 +132,12 @@ export function stepBalloonSpawner(r12, balloons, dt, buildings) {
   r12.spyT = (r12.spyT ?? 0) + dt;
   if (!r12.spy && r12.spyT >= SPY_UNLOCK_T) r12.spy = 1;   // [C]
 
-  if ((r12.ondan ?? 0) > 0) {
-    r12.ondanDecayT = (r12.ondanDecayT ?? 0) + dt;
-    while (r12.ondanDecayT >= ONDAN_DECAY_PERIOD) {
-      r12.ondanDecayT -= ONDAN_DECAY_PERIOD;
-      r12.ondan = Math.max(0, r12.ondan - ONDAN_DECAY);   // [C]
-    }
-  }
-
+  // ondan decade e fa nascere le minacce vere in game/src/threats.js
+  // (stepThreatSpawner) — non qui: decadere e "far nascere un air" sono
+  // la stessa cosa nel decompilato (r12/Alarm_4.gml), leggerlo/scriverlo
+  // in due punti diversi con effetti diversi avrebbe voluto dire duplicare
+  // quella logica o disallinearla. Qui `ondan` viene solo LETTO, per
+  // sospendere le nuove nascite di mongolfiere mentre un'ondata e' attiva.
   r12.balloonSpawnT = (r12.balloonSpawnT ?? 0) + dt;
   while (r12.balloonSpawnT >= SPAWN_PERIOD) {
     r12.balloonSpawnT -= SPAWN_PERIOD;
@@ -208,8 +199,20 @@ export function stepBalloons(balloons, loot, dt, r12) {
     if (b.t >= def.life * TICK) {
       balloons.splice(i, 1);
       if (def.isSpy) {
-        r12.onda = (r12.onda ?? 0) + 1;         // [C] monspi/Alarm_0.gml
-        r12.ondan = r12.onda;                    // [C]
+        // [C] monspi/Alarm_0.gml + r12/Step.gml (i due punti in cui
+        // l'originale spalma questa stessa contabilita', qui riuniti in
+        // uno solo — STUDIO.md "le minacce vere"): ogni spia riuscita alza
+        // sempre `onda`/`ondan` (-> `air`, game/src/threats.js), e ogni 4a
+        // e ogni 10a volta fa scattare anche `bombn` (-> `bombar`) e
+        // `diron` (-> `dirig`) — le ondate piu' pesanti, piu' rare.
+        r12.onda = (r12.onda ?? 0) + 1;
+        r12.ondan = r12.onda;
+        r12.bombolo = (r12.bombolo ?? 0) + 1;
+        if (r12.bombolo === 4) { r12.bombolo = 0; r12.bombus = (r12.bombus ?? 0) + 1; }
+        r12.bombn = r12.bombus ?? 0;
+        r12.dirox = (r12.dirox ?? 0) + 1;
+        if (r12.dirox === 10) { r12.dirox = 0; r12.diro = (r12.diro ?? 0) + 1; }
+        r12.diron = r12.diro ?? 0;
         r12.alertT = ALERT_DURATION;             // [C] action_create_object(aincom, ...)
       } else if (def.loot) {
         loot.push(spawnLoot(def.loot, b.x, b.y));   // [C] Alarm_6.gml -> kill -> Destroy.gml

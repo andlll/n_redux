@@ -11,6 +11,7 @@ import {
   stepBalloonSpawner, stepBalloons, stepLoot, collectLoot,
   spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
 } from "./balloons.js";
+import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions } from "./threats.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -236,6 +237,14 @@ let balloons = [];
 let loot = [];
 let constructionBalloons = [];
 let constructionBoxes = [];
+// Minacce vere (game/src/threats.js): `threats` sono aerei/bombardieri/
+// zeppelin, fatti nascere da stepThreatSpawner (r12/Alarm_4|5|6.gml) ogni
+// volta che una mongolfiera spia viene ignorata abbastanza a lungo da
+// "riuscire" (balloons.js). `bombs`/`explosions` sono quello che lasciano
+// cadere in volo.
+let threats = [];
+let bombs = [];
+let explosions = [];
 let r12 = createR12();
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
@@ -732,7 +741,6 @@ function frame(now) {
   stepConsumption(buildings, dt, r12, night);
   stepWeather(r12, dt);
   stepStormDamage(buildings, dt, r12);
-  for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
   tickR12(r12, dt, buildings);
   stepCars(cars, dt, r12, night);
   carmakerT += dt;
@@ -753,6 +761,17 @@ function frame(now) {
   stepLoot(loot, dt);
   stepConstructionBalloons(constructionBalloons, constructionBoxes, dt);
   stepConstructionBoxes(constructionBoxes, dt);
+  // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
+  // bombardieri/zeppelin man mano che le spie ignorate si accumulano
+  // (contatori alzati in stepBalloons() sopra), poi ognuno vola, bombarda,
+  // e sparisce da solo.
+  stepThreatSpawner(r12, threats, dt);
+  stepThreats(threats, bombs, explosions, dt, r12);
+  stepBombs(bombs, explosions, buildings, dt, r12);
+  stepExplosions(explosions, dt);
+  // Unico controllo per tutte le fonti di danno di questo frame (fulmini,
+  // STUDIO.md "le tempeste diventano reali" + bombe appena sganciate sopra).
+  for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
   if (r12.alertT > 0) r12.alertT -= dt;
   // Torrette (game/src/buildings.js, stepTurretAim): inseguono il "veicolo"
   // piu' vicino — [C] rocket_launcher/Step.gml usa la famiglia
@@ -808,6 +827,15 @@ function frame(now) {
   for (const l of loot) dynamic.push({ obj: "loot", ref: l, x: l.x, y: l.y, depth: l.depth, _f: frameFor(l.spr) });
   for (const m of constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
   for (const bx of constructionBoxes) dynamic.push({ obj: "decor", x: bx.x, y: bx.y, depth: bx.depth, _f: frameFor(bx.spr) });
+  // Minacce vere (game/src/threats.js): nessuna e' cliccabile (nessun
+  // evento Mouse nel decompilato), quindi "decor" come il pacco di
+  // cantiere — non devono "rubare" il tap. `_scale` (solo per i caccia
+  // "di sfondo", STUDIO.md "le minacce vere") e' la stessa `scale` gia'
+  // supportata dal renderer per la GUI, qui riusata per la prima volta nel
+  // mondo.
+  for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale });
+  for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y, _f: frameFor(bm.spr) });
+  for (const ex of explosions) dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr) });
   // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
   // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
   // (`_alpha`, 0 di giorno) che il ciclo di disegno rispetta da solo — a
@@ -856,7 +884,7 @@ function frame(now) {
       if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < t) continue;
       const base = isPicked(it) ? 0xbfe0ff : (it._tint ?? 0xffffff);
       const tint = it._selfLit ? base : mulTint(base, amb.rgb);
-      r.draw(f, it.x, it.y, 1, tint, it._alpha ?? 1);
+      r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
     } else {
       // istanze senza sprite: controller invisibili, li mostro come marcatori
       const s = 24;
@@ -1052,6 +1080,7 @@ window.__nimbus = {
   atmo, get pedestrians() { return pedestrians; },
   get balloons() { return balloons; }, get loot() { return loot; },
   get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
+  get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,
