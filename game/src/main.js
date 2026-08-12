@@ -284,7 +284,11 @@ function spawnDecor(building, decorSprites) {
   // posizione della casa — un abitante per ogni salto di livello, non uno
   // per casa: una casa a livello 3 ne ha lasciati indietro due, mai
   // rimossi (nemmeno casaN/Destroy.gml li tocca — sopravvivono alla casa).
-  if (building.type === "casa") pedestrians.push(spawnPedestrian(building.x, building.y));
+  // [C] villa1/Create.gml: stesso `action_create_object(pplo, 0, 0)` di
+  // casa, ma una volta sola (villa e' un solo livello, questo "salto" e'
+  // anche l'unico) — altri se ne aggiungono poi durante la crescita
+  // (`g.pedestrianDice`, stepGrowth() in buildings.js).
+  if (building.type === "casa" || building.type === "villa") pedestrians.push(spawnPedestrian(building.x, building.y));
 }
 
 /** Decoro transitorio (gru/macerie durante un cantiere): si aggiunge senza
@@ -375,11 +379,11 @@ function placeAt(placeholder, type) {
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
   // [C] placeholder/Mouse_LeftReleased.gml: selec==1 (casa), selec==2
-  // (industria), selec==3 (missile), selec==60 (club) e selec==61 (solare)
-  // creano `mon_bil` — i cinque tipi piazzabili dal giocatore che lo fanno
-  // finora (`parco`, selec==7, non crea nessun pallone nel decompilato —
-  // game/src/balloons.js, in cima al file).
-  if (type === "casa" || type === "industria" || type === "missile" || type === "solare" || type === "club") {
+  // (industria), selec==3 (missile), selec==60 (club), selec==61 (solare)
+  // e selec==63 (villa) creano `mon_bil` — i sei tipi piazzabili dal
+  // giocatore che lo fanno finora (`parco`, selec==7, non crea nessun
+  // pallone nel decompilato — game/src/balloons.js, in cima al file).
+  if (type === "casa" || type === "industria" || type === "missile" || type === "solare" || type === "club" || type === "villa") {
     constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
   }
   return null;
@@ -736,7 +740,7 @@ input.onTap = (sx, sy) => {
   } else if (picked.obj === "coin") {
     const item = picked.ref;
     collectCoin(coins, item, r12);
-    message = `+${item.amount} mon`;
+    message = `+${item.amount} ${item.kind ?? "mon"}`;
     messageT = 3;
     picked = null;
   } else if (picked.obj === "upsign") {
@@ -811,7 +815,7 @@ function frame(now) {
   stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
   stepProduction(buildings, dt, r12);
   stepSolarProduction(buildings, dt, r12, night, dawn);
-  stepGrowth(buildings, dt, r12);
+  stepGrowth(buildings, dt, r12, (b) => pedestrians.push(spawnPedestrian(b.x, b.y)));
   stepConsumption(buildings, dt, r12, night);
   stepWeather(r12, dt);
   stepStormDamage(buildings, dt, r12);

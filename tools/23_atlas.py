@@ -106,6 +106,16 @@ GAMEPLAY_SPRITES = {
         # clublite1..4) sono le uniche otto nuove.
         "club11", "club12", "club13", "club14",
         "club11i", "club12i", "club13i", "club14i",
+        # villa: ottavo edificio, un solo livello (impavil_r/impavil_f, che
+        # riusano gli stessi ir1x/if1x/"toppers" di sopra). Come club, 12
+        # varianti a dado (villa1/Create.gml — non equiprobabili, vedi
+        # game/src/buildings.js pickVariant()) col proprio decoro abbinato:
+        # "vil1".."vil12" (sprite finale) e "vil1l".."vil12l" (decoro,
+        # oggetti originali dvil1..12) sono le 24 nuove.
+        "vil1", "vil2", "vil3", "vil4", "vil5", "vil6",
+        "vil7", "vil8", "vil9", "vil10", "vil11", "vil12",
+        "vil1l", "vil2l", "vil3l", "vil4l", "vil5l", "vil6l",
+        "vil7l", "vil8l", "vil9l", "vil10l", "vil11l", "vil12l",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/

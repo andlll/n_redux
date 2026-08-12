@@ -1504,3 +1504,89 @@ paragrafo 8.
   (`club14`↔`club14i` osservato in una run, schermata a corredo);
   forzando `life = 0` l'edificio sparisce e `r12.hap` sale esattamente
   di 50 — non prima, solo alla distruzione.
+
+- **Ottavo edificio giocabile: `villa`** (src/objects/villa1 — "Villa" nel
+  menu, `pvilla`/`selec==63`). E' il secondo edificio, dopo `casa`, con
+  crescita/consumo veri nel tempo — non solo costruzione+fine — ma un solo
+  livello: nessun `upXXX` lo referenzia nel decompilato. Il cantiere
+  (`impavil_r`/`impavil_f`) non usa la macchina a contatore "tic 0..N" di
+  industria/missile/club: e' la stessa forma "base" a 5 passi/790 tic gia'
+  letta per `casa.construct` (390+30+310+30+30) — **[C]** verificato passo
+  per passo su `impavil_r/Create.gml` + `Alarm_0/1/2/3` (due alarm armati
+  insieme da `Alarm_0`, 30 e 340 tic dopo: quello piu' corto vince e lascia
+  l'altro pendente, lo stesso schema gia' letto per `casa` la prima volta).
+  Placement cost **[C]** 7500 mon (`placeholder/Mouse_LeftReleased.gml`,
+  `selec==63`), che rivela anche che villa e' il sesto tipo a creare
+  `mon_bil`.
+  **La distribuzione delle 12 varianti NON e' uniforme.** `villa1/
+  Create.gml` sceglie fra `vil1`..`vil12` con una cascata di `dice(2)`
+  annidati che SEMBRA lo stesso schema a due meta' simmetriche gia' visto
+  per `casa` (STUDIO.md sopra) — ma le due meta' non sono identiche
+  (profondita' diversa in punti diversi dell'albero), quindi non producono
+  probabilita' uguali. Calcolato ramo per ramo dal decompilato (non
+  supposto): `vil6`/`vil7`/`vil8` hanno il doppio delle probabilita' di
+  `vil2`/`vil3`/`vil9`/`vil10`/`vil11`, `vil1`/`vil4`/`vil5` stanno a meta'
+  strada, e `vil12` ha la META' della probabilita' "normale" — pesi 3/2/2/
+  3/3/4/4/4/2/2/2/1 su un totale di 32. Il pick uniforme gia' generalizzato
+  per casa/parco/club non bastava: nuova `pickVariant()` in buildings.js
+  (peso opzionale per riga, default 1 — casa/parco/club restano uniformi
+  senza cambiare una riga) usata ora ovunque al posto del pick diretto.
+  Verificato con 20.000 campioni via `stepConstructions()` vero (non una
+  reimplementazione a parte dell'algoritmo): frequenze osservate entro
+  ±0.4 punti percentuali dai pesi teorici per tutte e 12 le varianti.
+  **[C]** `growth`: stessi 4 intervalli (`[3500, 5796, 11565, 14656]`) e lo
+  stesso primo intervallo fisso (2000) gia' letti per `casa1` — quasi
+  certamente lo stesso codice riusato dagli sviluppatori originali per due
+  edifici diversi, non una coincidenza (`villa1/Alarm_2.gml`). A differenza
+  di casa pero' OGNI stadio (non solo la costruzione) ha 1 probabilita' su
+  4 di creare un altro pedone (`pplo`) — `growth[].pedestrianDice`, nuovo
+  parametro opzionale di `stepGrowth()` (STUDIO.md era gia' silenziosa su
+  questo per casa: la sua crescita non ne crea mai). L'aggancio vero
+  (`pedestrians.push`) resta fuori da buildings.js con lo stesso confine
+  gia' scelto per decoro/monete (`onPedestrian`, chiamato da main.js).
+  **[C]** `consumption`: tabella propria per stadio `ava` (non per livello:
+  villa ne ha uno solo), letta da `villa1/Alarm_3.gml` — con un'asimmetria
+  degna di nota: il consumo diurno di `ava==3` (12) e' PIU' BASSO di quello
+  di `ava==2` (14), letto cosi' come sta nel decompilato, non raddrizzato.
+  **Il pulsante blu della moneta esiste anche per villa, ma non e' lo
+  stesso di casa.** `villa1/Alarm_4.gml` condivide la struttura (hap/ele,
+  poi un premio in base ad `ava`, stesso periodo 3000 tic/primo controllo a
+  600) ma **[C]** la soglia e' `hap >= pop + 100` (non `hap >= pop` come
+  casa — un offset in piu', letto cosi' com'e'), e soprattutto ad `ava==0`
+  il premio non e' una moneta: `action_create_object(soldbio, 0, 0)` — un
+  oggetto della stessa famiglia "sold*" (stesso depth, stessa raccolta a
+  tap) ma il cui `Mouse_MouseEnter.gml` assegna `r12.biotech += 1`, non
+  `mon`. `biotech` era dichiarato in `state.js` fin dall'inizio (STUDIO.md
+  §6 "cosa non so ancora") ma MAI scritto da nessuna regola: e' la prima
+  volta che diventa un numero vero. **[C]** `soldbio` non ha ne'
+  `Create.gml` ne' `Alarm_0.gml` propri nel decompilato — a differenza di
+  `sold1..5` (che LO diventano "soldfade" e si autoriscuotono con una
+  chies di livello 3) resta sempre "soldico", ferma, finche' non viene
+  toccata. Agli stadi successivi (`ava` 1..4) villa riusa GLI STESSI
+  oggetti gia' letti per casa1 (`sold2`.."sold5", 40/60/80/100 mon — non
+  una coincidenza, gli oggetti sono condivisi) ma **[C]** a `ava>=5`
+  (crescita completa) crea `sold1` (20 mon) — la PIU' BASSA delle sei, non
+  la continuazione naturale della progressione (`sold6`, 120 mon, quello
+  che la formula di casa userebbe): letto cosi' come sta, non
+  "raddrizzato". `game/src/coins.js`: `stepCoinSpawner()` resta invariato
+  per casa (nessun rischio di regressione su codice gia' verificato) e
+  guadagna un secondo ramo esplicito per villa; `stepCoins()`/
+  `collectCoin()` ora assegnano `r12[item.kind]` invece di `r12.mon` fisso
+  — `kind` default assente sulle monete di casa (`"mon"` implicito nel
+  nuovo codice, comportamento identico).
+  Non riprodotto, stesso principio gia' scelto per club/altri: il ramo
+  "ruspa"/`demobasia` (riparazione a pagamento, `selec==11`) e il ciclo
+  colore/sprite di `Alarm_0` che (come club1, vedi sopra) ri-sceglie a
+  dado lo sprite dell'istanza usando i nomi delle varianti di CASA
+  (`c112`..`c144`) — stesso identico blocco di codice, stessa conclusione
+  gia' argomentata per club (quasi certamente condiviso/copiato fra
+  oggetti diversi nel progetto originale, non voluto).
+  Verificato in browser: piazzata una villa (-7500 mon esatti, pacco di
+  cantiere), cantiere completo con `vil3`/`vil3l` in una run (sprite+decoro
+  abbinati); un pedone in piu' (`pedestrians.length` 0→1) esattamente alla
+  fine del cantiere, prima ancora di qualunque stadio di crescita; forzando
+  `hap`/`ele` alti con `ava==0` compare una moneta `kind:"biotech"`
+  (`spr:"soldico"`, `auto:false`) che al tap porta `r12.biotech` da 0 a 1;
+  con `ava` forzato a 1 la stessa condizione produce invece `kind:"mon"`,
+  `amount:40` — la biforcazione fra le due famiglie di ricompensa si
+  comporta esattamente come letto.

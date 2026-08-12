@@ -574,12 +574,109 @@ export const BUILDING_TYPES = {
       ],
     },
   },
+
+  // Ottavo edificio: `villa` (src/objects/villa1 — "Villa" nel menu,
+  // `pvilla`/`selec==63`). E' il secondo edificio (dopo `casa`) con una
+  // crescita/consumo vera nel tempo, non solo costruzione+fine — ma un solo
+  // livello: `growth`/`consumption` qui sotto sono array di UN elemento
+  // (indicizzati comunque per `b.level-1`, stesso schema di casa, cosi'
+  // stepGrowth()/stepConsumption() non hanno bisogno di sapere che villa
+  // non ha upgrade). Il cantiere (`impavil_r`/`impavil_f`) e' invece la
+  // stessa forma "base" a 5 passi/790 tic gia' letta per `casa.construct`
+  // (nessun contatore "tic" con rami per ogni valore, a differenza di
+  // industria/missile/club) — stessi numeri, verificato passo per passo su
+  // impavil_r/Create.gml + Alarm_0/1/2/3.
+  villa: {
+    label: "Villa",
+    placeCost: { mon: 7500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==63
+    storm: [{ dice: 180, loss: 20 }],   // [C] villa1/Alarm_5.gml — dado/danno diversi da club (200/50)
+    // [C] villa1/Alarm_2.gml: stessi 4 intervalli di casa1 (STUDIO.md sopra,
+    // stesso schema "primo intervallo fisso, poi dado uniforme fra 4") —
+    // quasi certamente lo stesso codice riusato dagli sviluppatori
+    // originali, non una coincidenza. `pedestrianDice: 4`: [C] a ogni
+    // stadio (non solo alla nascita) 1 probabilita' su 4 di un altro "pplo"
+    // (stepGrowth() in buildings.js, onPedestrian).
+    growth: [
+      { firstInterval: 2000, intervals: [3500, 5796, 11565, 14656], popPerStage: 2, maxAva: 5, pedestrianDice: 4 },
+    ],
+    // [C] villa1/Alarm_3.gml: ogni 120 tic (stesso periodo di casa), consumo
+    // per stadio `ava` — [giorno, notte] 0..5. A differenza di casa il
+    // giorno di ava3 (12) e' PIU' BASSO di quello di ava2 (14): letto cosi'
+    // com'e', non "raddrizzato" — lo stesso genere di asimmetria gia' visto
+    // altrove nel decompilato (es. hap industria/club), non un refuso di
+    // trascrizione.
+    consumption: [
+      [ { day: 4, night: 6 }, { day: 8, night: 12 }, { day: 14, night: 18 },
+        { day: 12, night: 24 }, { day: 16, night: 30 }, { day: 18, night: 34 } ],
+    ],
+    construct: {                 // livello 0 -> 1, impavil_r (src/objects/impavil_r)
+      drain: { mon: 2, every: 20 },              // [C] impavil_r/Alarm_10.gml
+      life: 100,                                   // [C] villa1/Create.gml
+      grantPop: 2,                                 // [C] villa1/Create.gml: r12.pop += 2 alla nascita
+      deathPop: -10,                                // [C] villa1/Destroy.gml
+      // [C] villa1/Create.gml: 5 livelli di action_if_dice(2) annidati, MA
+      // l'albero non e' bilanciato come quello di casa (STUDIO.md §9) — due
+      // meta' quasi identiche ma non uguali producono pesi diversi: vil6/7/8
+      // doppi (4/32 ciascuno), vil1/4/5 intermedi (3/32), vil2/3/9/10/11
+      // normali (2/32), vil12 dimezzato (1/32) — calcolato a mano ramo per
+      // ramo dal decompilato, non un'approssimazione. pickVariant() sopra
+      // e' la generalizzazione che lo rende possibile senza duplicare
+      // stepConstructions() solo per questo caso.
+      variants: [
+        { spr: "vil1", decor: "vil1l", weight: 3 },
+        { spr: "vil2", decor: "vil2l", weight: 2 },
+        { spr: "vil3", decor: "vil3l", weight: 2 },
+        { spr: "vil4", decor: "vil4l", weight: 3 },
+        { spr: "vil5", decor: "vil5l", weight: 3 },
+        { spr: "vil6", decor: "vil6l", weight: 4 },
+        { spr: "vil7", decor: "vil7l", weight: 4 },
+        { spr: "vil8", decor: "vil8l", weight: 4 },
+        { spr: "vil9", decor: "vil9l", weight: 2 },
+        { spr: "vil10", decor: "vil10l", weight: 2 },
+        { spr: "vil11", decor: "vil11l", weight: 2 },
+        { spr: "vil12", decor: "vil12l", weight: 1 },
+      ],
+      // [C] impavil_r/Create.gml + Alarm_0/1/2/3, 790 tic totali — stessa
+      // forma "base" di casa.construct sopra (390+30+310+30+30), non i
+      // rami "tic 0..N" di industria/missile/club. Lo spawn del topper
+      // (tops1, offset -42 come solare, NON tops2/-86 come missile/club —
+      // verificato leggendo l'oggetto giusto) e' in impavil_f/Alarm_4, che
+      // fedelmente cade a meta' della fase "ir11": attaccato li'.
+      steps: [
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
+        { spr: "ir12", dur: 30 },
+        { spr: "ir11", dur: 310, spawn: [
+          { spr: "toppers", dx: 0, dy: -42 },
+        ] },
+        { spr: "ir12", dur: 30 },
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
+      ],
+    },
+  },
 };
 
 let nextId = 1;
 
 function pickSpr(spr) {
   return Array.isArray(spr) ? spr[(Math.random() * spr.length) | 0] : spr;
+}
+
+/**
+ * Sceglie una `variants[i]` con peso opzionale (`weight`, default 1 —
+ * casa/parco/club non lo dichiarano: restano un pick uniforme com'erano).
+ * Serve per `villa` (STUDIO.md sotto): il dado a dice(2) annidati di
+ * villa1/Create.gml NON e' un albero bilanciato — alcune varianti (vil6/7/8)
+ * hanno probabilita' doppia di altre (vil2/3/9/10/11), e vil12 la meta' —
+ * un pick uniforme fra 12 sarebbe infedele, non solo impreciso.
+ */
+function pickVariant(variants) {
+  const total = variants.reduce((s, v) => s + (v.weight ?? 1), 0);
+  let r = Math.random() * total;
+  for (const v of variants) {
+    r -= v.weight ?? 1;
+    if (r < 0) return v;
+  }
+  return variants[variants.length - 1];
 }
 
 /** Lo sprite "f" (impalcatura in sovraimpressione) che corrisponde allo
@@ -754,9 +851,10 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
       b.life = up.life ?? (b.life + (up.lifeBonus ?? 0));
       if (up.grantPop) r12.pop += up.grantPop;   // [C] casa1|2|3/Create.gml: pop += N alla nascita del livello
       if (up.variants) {
-        // Edifici a variante casuale (casa: STUDIO.md §9) — [C] casa1|2|3/Create.gml,
-        // dado uniforme fra sprite+decoro, scelto una volta e persistito sull'istanza.
-        const v = up.variants[(Math.random() * up.variants.length) | 0];
+        // Edifici a variante casuale (casa/parco/club: uniforme; villa: pesato
+        // — vedi pickVariant() sopra) — sprite+decoro scelti una volta e
+        // persistiti sull'istanza.
+        const v = pickVariant(up.variants);
         b.spr = v.spr;
         b.decorSpr = v.decor;
         onDecor?.(b, [v.decor]);
@@ -837,14 +935,23 @@ export function stepSolarProduction(buildings, dt, r12, isNight, isDawn) {
 
 /**
  * Avanza la crescita di popolazione degli edifici finiti che dichiarano
- * `growth` per livello (oggi solo `casa`, un valore per casa1/2/3). [C]
- * casa1|2|3/Alarm_2.gml: ogni avanzamento di stadio (`b.ava`, 0..`maxAva`)
- * aggiunge `popPerStage` a r12.pop e riarma con un intervallo scelto a dado
- * uniforme fra `intervals` — tranne il primo, che nell'originale e' un
- * valore fisso (`firstInterval`, `action_set_alarm(2000,2)` in Create.gml,
- * uguale per tutti e tre i livelli). Si ferma da solo a `maxAva`.
+ * `growth` per livello (casa, un valore per casa1/2/3; villa, un solo
+ * livello). [C] casa1|2|3/Alarm_2.gml: ogni avanzamento di stadio (`b.ava`,
+ * 0..`maxAva`) aggiunge `popPerStage` a r12.pop e riarma con un intervallo
+ * scelto a dado uniforme fra `intervals` — tranne il primo, che
+ * nell'originale e' un valore fisso (`firstInterval`,
+ * `action_set_alarm(2000,2)` in Create.gml, uguale per tutti e tre i
+ * livelli DI CASA e anche per villa — [C] stesso valore letto in
+ * villa1/Create.gml). Si ferma da solo a `maxAva`.
+ *
+ * `g.pedestrianDice` (solo villa: STUDIO.md sotto) — [C] villa1/Alarm_2.gml,
+ * 1 probabilita' su 4 ad OGNI stadio (non solo alla nascita come per casa,
+ * vedi `onPedestrian` sotto e la chiamata in main.js) crea un altro "pplo".
+ * `onPedestrian(b)` e' chiamato invece di importare pedestrians.js qui:
+ * buildings.js non sa niente di pedoni, stesso confine gia' scelto per
+ * `onDecor`/`onSpawn` in stepConstructions().
  */
-export function stepGrowth(buildings, dt, r12) {
+export function stepGrowth(buildings, dt, r12, onPedestrian) {
   for (const b of buildings) {
     if (b.construction) continue;
     const def = BUILDING_TYPES[b.type];
@@ -856,6 +963,7 @@ export function stepGrowth(buildings, dt, r12) {
       b.growthT -= b.growthNext;
       b.ava = (b.ava ?? 0) + 1;
       r12.pop += g.popPerStage;
+      if (g.pedestrianDice && Math.random() < 1 / g.pedestrianDice) onPedestrian?.(b);
       b.growthNext = g.intervals[(Math.random() * g.intervals.length) | 0] * TICK;
     }
   }

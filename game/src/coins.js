@@ -1,4 +1,5 @@
-// I pulsanti blu delle monete — src/objects/sold1..18 (casa1|2|3/Alarm_4.gml).
+// I pulsanti blu delle monete — src/objects/sold1..18 (casa1|2|3/Alarm_4.gml,
+// villa1/Alarm_4.gml — vedi la seconda meta' di stepCoinSpawner() sotto).
 //
 // Una nota precedente in buildings.js liquidava questa regola come "una
 // sommossa che non capiamo ancora bene": leggeva `action_if_variable(hap,
@@ -44,52 +45,86 @@ function maxChiesLevel(buildings) {
 }
 
 /**
- * Il "regista" delle monete — [C] casa1|2|3/Alarm_4.gml. `b.coinT`/
- * `b.coinNext` vivono sull'istanza (azzerati da stepConstructions() in
- * buildings.js a ogni salto di livello, come `b.ava`/`b.makee`): qui si
- * avanzano e, ogni volta che il timer scatta, si valuta la condizione —
- * il riarmo a `COIN_PERIOD` e' incondizionato, esattamente come
- * `action_set_alarm(3000, 4)` in cima all'Alarm_4 originale, PRIMA dei
- * controlli che decidono se generare la moneta.
+ * Il "regista" delle monete — [C] casa1|2|3/Alarm_4.gml + villa1/Alarm_4.gml.
+ * `b.coinT`/`b.coinNext` vivono sull'istanza (azzerati da
+ * stepConstructions() in buildings.js a ogni salto di livello, come
+ * `b.ava`/`b.makee`): qui si avanzano e, ogni volta che il timer scatta, si
+ * valuta la condizione — il riarmo a `COIN_PERIOD` e' incondizionato,
+ * esattamente come `action_set_alarm(3000, 4)` in cima a entrambi gli Alarm_4
+ * originali, PRIMA dei controlli che decidono se generare la moneta.
  */
 export function stepCoinSpawner(buildings, coins, dt, r12) {
   const chiesLv3 = maxChiesLevel(buildings) >= 3;
   for (const b of buildings) {
-    if (b.type !== "casa" || b.level < 1) continue;
+    if (b.level < 1 || (b.type !== "casa" && b.type !== "villa")) continue;
     b.coinT = (b.coinT ?? 0) + dt;
     while (b.coinT >= (b.coinNext ?? COIN_PERIOD)) {
       b.coinT -= b.coinNext ?? COIN_PERIOD;
       b.coinNext = COIN_PERIOD;
-      if (r12.hap < r12.pop) continue;    // [C] action_if_variable(hap, pop, 4): "hap >= pop"
-      if (r12.ele <= 0) continue;         // [C] action_if_variable(ele, 0, 2): "ele > 0"
-      const amount = 20 * ((b.level - 1) * 6 + (b.ava ?? 0) + 1);
-      coins.push({
-        buildingId: b.id, x: b.x, y: b.y, depth: COIN_DEPTH, amount, t: 0,
-        spr: chiesLv3 ? "soldfade" : "soldico", auto: chiesLv3,
-      });
+      if (b.type === "casa") {
+        if (r12.hap < r12.pop) continue;    // [C] action_if_variable(hap, pop, 4): "hap >= pop"
+        if (r12.ele <= 0) continue;         // [C] action_if_variable(ele, 0, 2): "ele > 0"
+        const amount = 20 * ((b.level - 1) * 6 + (b.ava ?? 0) + 1);
+        coins.push({
+          buildingId: b.id, x: b.x, y: b.y, depth: COIN_DEPTH, amount, kind: "mon", t: 0,
+          spr: chiesLv3 ? "soldfade" : "soldico", auto: chiesLv3,
+        });
+        continue;
+      }
+      // villa: STESSA forma (hap/ele, poi un premio in base ad `ava`), ma
+      // [C] villa1/Alarm_4.gml legge `action_if_variable(hap, pop + 100, 4)`
+      // — una soglia PIU' ALTA di casa (hap >= pop, senza offset), non lo
+      // stesso controllo riusato.
+      if (r12.hap < r12.pop + 100) continue;
+      if (r12.ele <= 0) continue;
+      const ava = b.ava ?? 0;
+      if (ava === 0) {
+        // [C] villa1/Alarm_4.gml, ava==0: crea "soldbio" — stessa famiglia
+        // "sold*" (depth/hitbox/raccolta) ma NON assegna mon: incrementa
+        // r12.biotech (mai scritto altrove nel motore finora — [?] il suo
+        // scopo reale resta ignoto, STUDIO.md). `soldbio` non ha ne'
+        // Create.gml ne' Alarm_0.gml propri nel decompilato: a differenza
+        // di sold1..5 non diventa mai "soldfade" e non si autoriscuote mai,
+        // nemmeno con chies di livello 3 — resta "soldico" finche' non
+        // viene toccata, sempre `auto: false`.
+        coins.push({ buildingId: b.id, x: b.x, y: b.y, depth: COIN_DEPTH, amount: 1,
+          kind: "biotech", t: 0, spr: "soldico", auto: false });
+        continue;
+      }
+      // [C] villa1/Alarm_4.gml, ava 1..4 -> sold2..sold5 (40/60/80/100 mon,
+      // le stesse istanze condivise con casa sopra, stesso valore fisso);
+      // ava>=5 (crescita completa) -> sold1 (20 mon), la PIU' BASSA delle
+      // sei — non la continuazione della progressione (sold6, 120 mon,
+      // come farebbe la formula di casa): letto cosi' come sta nel
+      // decompilato, non "raddrizzato".
+      const amount = ava >= 5 ? 20 : [40, 60, 80, 100][ava - 1];
+      coins.push({ buildingId: b.id, x: b.x, y: b.y, depth: COIN_DEPTH, amount, kind: "mon",
+        t: 0, spr: chiesLv3 ? "soldfade" : "soldico", auto: chiesLv3 });
     }
   }
 }
 
-/** Solo le monete "auto" (chies a livello 3) si riscuotono da sole a fine
- * dissolvenza — le altre restano finche' non vengono toccate (vedi sopra). */
+/** Solo le monete "auto" (chies a livello 3, mai per villa/ava==0 — vedi
+ * sopra) si riscuotono da sole a fine dissolvenza — le altre restano finche'
+ * non vengono toccate. */
 export function stepCoins(coins, dt, r12) {
   for (let i = coins.length - 1; i >= 0; i--) {
     const c = coins[i];
     if (!c.auto) continue;
     c.t += dt;
     if (c.t >= COIN_AUTO_LIFE) {
-      r12.mon += c.amount;   // [C] sold*/Alarm_0.gml
+      r12[c.kind] += c.amount;   // [C] sold*/Alarm_0.gml (sempre "mon" qui: solo i casi "auto" arrivano)
       coins.splice(i, 1);
     }
   }
 }
 
-/** [C] sold1..18/Mouse_MouseEnter.gml: assegna i mon e rimuove la moneta —
- * stesso schema di collectLoot() in balloons.js (un tap la riscuote, non un
- * hover: STUDIO.md §7 "input touch-first"). */
+/** [C] sold1..18|soldbio/Mouse_MouseEnter.gml: assegna la risorsa giusta
+ * (`kind`: "mon" per sold1..18, "biotech" per soldbio — vedi sopra) e
+ * rimuove la moneta — stesso schema di collectLoot() in balloons.js (un tap
+ * la riscuote, non un hover: STUDIO.md §7 "input touch-first"). */
 export function collectCoin(coins, item, r12) {
-  r12.mon += item.amount;
+  r12[item.kind] += item.amount;
   const idx = coins.indexOf(item);
   if (idx >= 0) coins.splice(idx, 1);
 }
