@@ -223,6 +223,13 @@ GAMEPLAY_SPRITES = {
     # 0.4) e' gia' in "threats" sopra, nessuno sprite in piu' da aggiungere
     # per quello.
     "projectiles": ["redb"],
+    # I pulsanti blu delle monete (src/objects/sold1..18, game/src/coins.js)
+    # e il segnale verde di potenziamento (src/objects/upsign12|23|upcrc12|
+    # 23|upind12|23 — tutti la stessa icona "upico", game/src/main.js
+    # renderUpgradeSign()). "soldico" e' il pin statico (nessun chies di
+    # livello 3), "soldfade" la stessa icona con la dissolvenza a 20 frame
+    # usata quando invece si autoriscuote.
+    "coins": ["soldico", "soldfade", "upico"],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})

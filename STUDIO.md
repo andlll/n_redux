@@ -1293,3 +1293,48 @@ paragrafo 8.
   il gioco non disegnava nulla e uno script di test lo confermava con un
   `pageerror`; con la correzione 300+ frame consecutivi osservati senza
   errori, e la simulazione (edifici/luci/auto/minacce) avanza normalmente.
+
+- **I pulsanti blu delle monete di `casa`, e il segnale verde di
+  potenziamento come icona vera invece del tap-ovunque sull'edificio**
+  (chiesto dall'autore). Nuovo `game/src/coins.js` (`stepCoinSpawner`/
+  `stepCoins`/`collectCoin`) porta `casa1|2|3/Alarm_4.gml` — vedi il
+  commento in cima al file e quello aggiornato su `BUILDING_TYPES.casa` in
+  buildings.js per la lettura completa (`hap>=pop && ele>0`, non la
+  "sommossa" di una nota precedente). Questo sbloccava `r12.hap`, mai
+  scritto da nessuna parte del motore: ora lo e' (industria -50/-100/-150
+  alla nascita di ogni livello, +50/+150/+400 alla morte — numeri non
+  simmetrici, letti cosi' come sono dal decompilato; parco +200/-210),
+  applicato negli stessi punti dove gia' viveva `pop`
+  (`stepConstructions()`/`destroyBuilding()`) invece che con un sistema a
+  parte.
+  Il segnale verde (`upsign12|23`/`upcrc12|23`/`upind12|23`, tutti la
+  stessa icona "upico") era finora invisibile: il tap funzionava (tap
+  ovunque sull'edificio, `tryStartUpgrade()` gia' controllava soglia e
+  costo) ma non c'era niente da vedere finche' non si sbloccava — niente
+  che dicesse "questo e' pronto". Ora e' un'entita' vera nel mondo
+  (`obj: "upsign"`), pushata insieme all'edificio quando
+  `upgradeUnlocked()` e' vera e nessun cantiere e' gia' in corso, con
+  picking prioritario (depth -9001, sempre in primo piano) — tap-la o
+  tap-l'edificio-sotto fanno la stessa cosa (`tryStartUpgrade()`), la
+  seconda via resta per compatibilita' col comportamento gia' testato.
+  **Bug trovato e corretto prima di pubblicare, non legato alla logica ma
+  a un commento**: `/** [C] sold*/Mouse_MouseEnter.gml: ... */` in
+  `coins.js` chiudeva il blocco JSDoc in anticipo — `*/` dentro "sold*/"
+  (riferimento a `sold1..18`, con la barra del path subito dopo
+  l'asterisco del wildcard) e' letto dal parser come la chiusura vera del
+  commento, lasciando il resto della riga come codice: `SyntaxError:
+  Unexpected token ':'` al caricamento, silenzioso su `node --check`
+  (verifica solo sintassi CommonJS, non ha notato il problema) ma reale
+  su un `import()` vero, sia in Node che nel browser. Trovato bisecando il
+  file a meta' con `import()` finche' l'errore non spariva. Corretto
+  scrivendo per esteso `sold1..18/Mouse_MouseEnter.gml` invece del
+  wildcard.
+  Verificato in browser: una `casa` piazzata e lasciata correre ~28s (fine
+  cantiere + primo controllo a 600 tick) fa comparire una moneta da 20 mon
+  (livello 1, `ava` 0) esattamente all'ancora dell'edificio; il tap la
+  riscuote e la fa sparire. Forzando `b.ava = 5` via `window.__nimbus` (la
+  crescita reale richiederebbe diversi minuti) fa comparire il segnale
+  verde nella stessa posizione; il tap avvia il cantiere (-500 mon,
+  `b.construction` valorizzato). Piazzando un'`industria` e aspettando che
+  finisca il primo livello, `r12.hap` scende di 50 esattamente al
+  completamento — non prima, durante il cantiere.

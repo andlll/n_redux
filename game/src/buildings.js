@@ -15,6 +15,10 @@
 // valore esplicito (vedi commenti puntuali sotto).
 
 const TICK = 1 / 60; // le durate degli alarm nell'originale sono in tick a room_speed=60
+// [C] casa1|2|3/Create.gml: action_set_alarm(600, 4) — il primo controllo del
+// pulsante blu della moneta (game/src/coins.js) arriva prima del successivo
+// riarmo regolare a 3000 tick (COIN_PERIOD in coins.js).
+const COIN_FIRST_DELAY = 600 * TICK;
 
 export const BUILDING_TYPES = {
   chies: {
@@ -120,6 +124,13 @@ export const BUILDING_TYPES = {
       drain: { mon: 1, every: 20 },              // [C] impaind0to1r/Alarm_10.gml
       finalSprite: "i11", life: 50,               // [C] industria1/Create.gml (life=50)
       decor: ["i11l", "i11ll"],                   // [I] variante 1 delle 4 di industria1/Create.gml (dado non riletto)
+      // [C] industria1/Create.gml: hap -50 alla nascita; industria1/Destroy.gml:
+      // hap +50 quando smette di esistere A QUESTO livello (sia per morte vera
+      // che per potenziamento — l'originale distrugge e ricrea un'istanza per
+      // livello, STUDIO.md sotto su stepConstructions()). Letto da nessuno fino
+      // a ora: sbloccava i pulsanti blu delle monete di `casa` (vedi sotto),
+      // rimasto fuori finche' `r12.hap` non serviva a niente.
+      hap: { create: -50, destroy: 50 },
       steps: [                                    // [C] impaind0to1r/Create.gml + Alarm_0/1/2/3
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
         { spr: "ir12", dur: 30 },
@@ -135,6 +146,7 @@ export const BUILDING_TYPES = {
         finalSprite: "i21", life: 100,             // [C] industria2/Create.gml
         decor: ["i21l", "i21b", "i21c"],           // [I] variante 1 delle 2 di industria2/Create.gml
         drain: { mon: 3, every: 20 },              // [C] impaind1to2r/Alarm_10.gml
+        hap: { create: -100, destroy: 150 },       // [C] industria2/Create.gml + Destroy.gml (vedi livello 1 sopra)
         cap: "im2f",   // [C] impaind1to2f/Alarm_1.gml: sprite_set(im2f) — il "coperchio" a gru che
                         // chiude la traccia f (impalcatura in sovraimpressione, mai ricostruita finora,
                         // vedi `front` sotto) man mano che l'edificio sale di livello
@@ -160,6 +172,11 @@ export const BUILDING_TYPES = {
         finalSprite: "i31", life: 200,             // [C] industria3/Create.gml
         decor: ["i31a1", "i31a2", "i31a3", "i31l1l"],  // [C] i31aa1/2/3 sempre creati + [I] variante 1 di di311/di312
         drain: { mon: 3, every: 20 },              // [C] impaind2to3r/Alarm_10.gml
+        // [C] industria3/Create.gml + Destroy.gml: gli stessi numeri del
+        // decompilato, non "corretti" — il +400 alla morte non e' l'opposto
+        // esatto del -150 alla nascita (ne' del -100/-150 accumulati salendo
+        // dai livelli precedenti): l'originale stesso non torna in pareggio.
+        hap: { create: -150, destroy: 400 },
         cap: "im4f",   // [C] impaind2to3f/Alarm_1.gml, stesso ruolo di im2f sopra ma all'altezza massima
         steps: [                                    // [C] impaind2to3r/Create.gml + Alarm_0.gml, tic 0..10
           { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
@@ -198,13 +215,25 @@ export const BUILDING_TYPES = {
   //
   // Non portati, letti ma lasciati fuori (come le scelte gia' fatte per
   // industria): il danno da fulmine (Alarm_5, stessa regola letta/non
-  // cablata di industria — nessun sistema vita/morte esiste ancora); la
-  // sommossa (Alarm_4: se `r12.hap == r12.pop` e `r12.ele <= 0` compaiono
-  // `sold1..6` — condizione che non capiamo ancora bene, meglio non
-  // cablarla a caso); il "rifai in loco" a pagamento (`demobasia`,
-  // cosmetico, stesso schema di industria). `hap`/`wewe` non sono
-  // aggiornati: le regole sono lette ma inerti, non serve a niente
-  // scriverle finche' niente le legge.
+  // cablata di industria — nessun sistema vita/morte esiste ancora); il
+  // "rifai in loco" a pagamento (`demobasia`, cosmetico, stesso schema di
+  // industria). `wewe` resta inerte: letto ma scritto da nessuna regola
+  // implementata.
+  //
+  // **I pulsanti blu delle monete** (casa1|2|3/Alarm_4.gml — `sold1..18`,
+  // game/src/coins.js): una nota precedente qui diceva "condizione che non
+  // capiamo ancora bene" e la lasciava fuori, leggendo `action_if_variable
+  // (hap, pop, 4)` come "hap == pop" (una sommossa). Sbagliato: l'operatore
+  // 4 e' ">=" (stessa lettura di `chies/Step.gml: pop>=500`, gia' portata
+  // sopra), e la condizione VERA e' la congiunzione di due controlli
+  // annidati — hap>=pop **e** ele>0 (operatore 2, verificato su
+  // `industria3/Alarm_2.gml: oil>0` — stessa forma, stesso operatore, gia'
+  // portato come `production` sopra) — non una sommossa ma una RICOMPENSA:
+  // casa felice (hap ha raggiunto la pop) e con corrente, ogni 3000 tick
+  // (600 la primissima volta) fa comparire una moneta da riscuotere. Questo
+  // sbloccava `r12.hap`, mai aggiornato da nessuna parte del motore: ora lo
+  // e' (vedi `hap` su industria/parco sopra, l'unico effetto reale letto
+  // nel decompilato).
   casa: {
     label: "Casa",
     placeCost: { mon: 100 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==1
@@ -430,6 +459,7 @@ export const BUILDING_TYPES = {
       drain: { mon: 1, every: 20 },              // [C] imparcr/Alarm_10.gml
       life: 9999,                                 // [I] nessun danno da fulmine ne' vita nel decompilato
       decor: [],                                   // vedi sopra: il vero decoro passa da spawnParcoScatter()
+      hap: { create: 200, destroy: -210 },   // [C] parco/Create.gml + Destroy.gml (non simmetrico, letto cosi' com'e')
       // [C] imparcr/Create.gml + Alarm_0/1/2/3: 150 tic totali (30+30+30+30+30) —
       // molto piu' breve di industria/casa, un parco e' un cantiere veloce.
       // Riusa "ir1x"/"ir11"/"ir12" (gli stessi sprite fondamenta di
@@ -513,6 +543,16 @@ export function currentDeathPop(b) {
   if (b.level < 1) return 0;
   const cur = b.level === 1 ? def.construct : def.upgrades?.[b.level - 2];
   return cur?.deathPop ?? 0;
+}
+
+/** hap da applicare se l'edificio muore ora, al suo livello attuale — stesso
+ * schema di currentDeathPop() sopra, per i tipi che dichiarano `hap`
+ * (industria/parco; 0 per chies/casa/missile, che non ne hanno). */
+export function currentDeathHap(b) {
+  const def = BUILDING_TYPES[b.type];
+  if (b.level < 1) return 0;
+  const cur = b.level === 1 ? def.construct : def.upgrades?.[b.level - 2];
+  return cur?.hap?.destroy ?? 0;
 }
 
 /** Il potenziamento che l'edificio potrebbe iniziare ora, se lo tocchi (null se il tipo non ne ha). */
@@ -607,7 +647,19 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
       c.curSpr = pickSpr(cur.spr);
       if (cur.spawn) onSpawn?.(b, cur.spawn);
     } else {
+      // hap (industria/parco, `up.hap`/`oldDef.hap` in BUILDING_TYPES sopra):
+      // l'originale distrugge l'istanza del livello vecchio e ne crea una
+      // nuova per il livello nuovo, ognuna con il proprio Create.gml/
+      // Destroy.gml — qui e' la STESSA istanza che continua, quindi il
+      // "destroy" del livello che si sta lasciando va applicato esplicitamente
+      // insieme al "create" di quello nuovo: i due non si annullano a vicenda
+      // (i numeri del decompilato non sono simmetrici, vedi industria sopra).
+      // Nessun effetto per i tipi che non dichiarano `hap` (casa, chies).
+      const oldDef = c.upgradeIndex === -1 ? null
+        : c.upgradeIndex === 0 ? def.construct : def.upgrades[c.upgradeIndex - 1];
+      if (oldDef?.hap?.destroy) r12.hap += oldDef.hap.destroy;
       if (c.upgradeIndex === -1) b.level = 1; else b.level++;
+      if (up.hap?.create) r12.hap += up.hap.create;
       b.life = up.life ?? (b.life + (up.lifeBonus ?? 0));
       if (up.grantPop) r12.pop += up.grantPop;   // [C] casa1|2|3/Create.gml: pop += N alla nascita del livello
       if (up.variants) {
@@ -631,6 +683,10 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
       // con un resto lasciato dal livello precedente).
       b.makee = 0; b.prodT = 0;
       b.ava = 0; b.growthT = 0; b.growthNext = null; b.consT = 0;
+      // [C] casa1|2|3/Create.gml: `action_set_alarm(600, 4)`, riarmato a ogni
+      // livello — il pulsante blu della moneta (game/src/coins.js) riparte
+      // da zero ad ogni salto, stessa ragione dei contatori sopra.
+      b.coinT = 0; b.coinNext = COIN_FIRST_DELAY;
     }
   }
 }

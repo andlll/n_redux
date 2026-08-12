@@ -2,7 +2,7 @@ import { Renderer, makeSolidTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, tryStartUpgrade, stepConstructions, stepProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, tryStartUpgrade, stepConstructions, stepProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -11,6 +11,7 @@ import {
   stepBalloonSpawner, stepBalloons, stepLoot, collectLoot,
   spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
 } from "./balloons.js";
+import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions } from "./threats.js";
 import { stepTurretFire, stepProjectiles } from "./projectiles.js";
 import { save, load } from "./save.js";
@@ -245,6 +246,9 @@ let balloons = [];
 let loot = [];
 let constructionBalloons = [];
 let constructionBoxes = [];
+// I pulsanti blu delle monete (game/src/coins.js): una per `casa` felice e
+// con corrente, ogni 3000 tick — vedi stepCoinSpawner() piu' sotto.
+let coins = [];
 // Minacce vere (game/src/threats.js): `threats` sono aerei/bombardieri/
 // zeppelin, fatti nascere da stepThreatSpawner (r12/Alarm_4|5|6.gml) ogni
 // volta che una mongolfiera spia viene ignorata abbastanza a lungo da
@@ -396,17 +400,19 @@ function seedChies() {
  * ruspa/bulldozer (`selec==11`, mai ricostruito, STUDIO.md §9 "GUI vera") —
  * un vicolo cieco per chi gioca senza quello strumento. Qui la rimozione e'
  * immediata e il placeholder torna libero: una semplificazione dichiarata,
- * non il comportamento vero. Applica il bilancio pop del livello a cui e'
- * morto (`currentDeathPop`, letto da chiesX/industriaX/casaX/Destroy.gml —
- * industria tocca `hap`, non ancora tracciato in nessun'altra parte del
- * gioco: per coerenza resta fuori anche qui, vedi STUDIO.md).
+ * non il comportamento vero. Applica il bilancio pop (`currentDeathPop`) e
+ * hap (`currentDeathHap`, industria/parco — STUDIO.md "i pulsanti blu delle
+ * monete") del livello a cui e' morto, letti da chiesX/industriaX/casaX/
+ * parco/Destroy.gml.
  */
 function destroyBuilding(b) {
   r12.pop += currentDeathPop(b);
+  r12.hap += currentDeathHap(b);
   decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
   const ph = placeholders.find((p) => p.x === b.x && p.y === b.y);
   if (ph) ph.consumed = false;
   buildings = buildings.filter((x) => x !== b);
+  coins = coins.filter((c) => c.buildingId !== b.id);
   if (picked?.obj === "building" && picked.ref === b) picked = null;
 }
 
@@ -514,6 +520,7 @@ function isNight(t) {
 //     (200 tick, cddvd/Step.gml — la piu' comune fra i vari decori).
 const TICK = 1 / 60;              // room_speed dell'originale, stessa unita' di buildings.js
 const LIGHT_FADE = 200 * TICK;
+const UPSIGN_DEPTH = -9001;        // [C] upsign12/_object.json: depth = -9001
 function stepLights(entities, dt, night, r12) {
   // [C] cddvd/Step.gml: sotto questa soglia di elettricita' la luce non si
   // accende (o si spegne di colpo se lo era gia', "bout" nel decompilato —
@@ -639,13 +646,19 @@ input.onTap = (sx, sy) => {
   // null` nel decompilato: non ha MAI ricevuto click nell'originale)
   // coprirebbe chies (depth 0, per y) e la renderebbe intoccabile.
   //
-  // Le casse (obj: "loot") sono qui invece che nel fallback perche'
-  // nell'originale si raccolgono al passaggio del mouse (bar*/Mouse_
-  // MouseEnter.gml), non con un click — un tap va quindi trattato come il
-  // gesto piu' "sicuro" possibile, non come l'ultima risorsa dopo aver
-  // controllato tutto il resto per z-order.
+  // Le casse (obj: "loot") e le monete (obj: "coin") sono qui invece che nel
+  // fallback perche' nell'originale si raccolgono al passaggio del mouse
+  // (bar*/sold*/Mouse_MouseEnter.gml), non con un click — un tap va quindi
+  // trattato come il gesto piu' "sicuro" possibile, non come l'ultima
+  // risorsa dopo aver controllato tutto il resto per z-order. "upsign" (il
+  // segnale verde di potenziamento, pushato piu' sotto insieme agli altri
+  // edifici) e' qui per lo stesso motivo di "building": va intercettato a
+  // prescindere dal depth, non solo per z-order — e vince comunque contro
+  // l'edificio sotto di lui perche' il suo depth (UPSIGN_DEPTH, sempre in
+  // primo piano) e' piu' negativo.
   for (const it of frameList) {
-    if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot") continue;
+    if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
+      && it.obj !== "coin" && it.obj !== "upsign") continue;
     const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
     if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
       if (!picked || it.depth < picked.depth) picked = it;
@@ -693,6 +706,21 @@ input.onTap = (sx, sy) => {
     message = `+${item.amount} ${item.key}`;
     messageT = 3;
     picked = null;   // raccolta, non c'e' piu' niente da tenere selezionato
+  } else if (picked.obj === "coin") {
+    const item = picked.ref;
+    collectCoin(coins, item, r12);
+    message = `+${item.amount} mon`;
+    messageT = 3;
+    picked = null;
+  } else if (picked.obj === "upsign") {
+    // [C] upsign12|23/Mouse_LeftPressed.gml: la stessa cosa che "building"
+    // gia' fa tap-ovunque-sull'edificio (tryStartUpgrade gia' controlla
+    // soglia e costo) — qui e' solo il bersaglio VISIBILE e prioritario
+    // quando il potenziamento e' davvero pronto.
+    const err = tryStartUpgrade(picked.ref, r12);
+    message = err ?? "cantiere avviato";
+    messageT = 3;
+    picked = null;
   }
 };
 
@@ -776,6 +804,10 @@ function frame(now) {
   stepBalloonSpawner(r12, balloons, dt, buildings);
   stepBalloons(balloons, loot, dt, r12);
   stepLoot(loot, dt);
+  // I pulsanti blu delle monete (game/src/coins.js): casa1|2|3/Alarm_4.gml,
+  // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
+  stepCoinSpawner(buildings, coins, dt, r12);
+  stepCoins(coins, dt, r12);
   stepConstructionBalloons(constructionBalloons, constructionBoxes, dt);
   stepConstructionBoxes(constructionBoxes, dt);
   // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
@@ -813,6 +845,15 @@ function frame(now) {
     // l'ordine con cui e' stato costruito, STUDIO.md sopra su sortWorld).
     if (b.frontSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.frontSpr) });
     if (b.capSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.capSpr) });
+    // Il segnale verde di potenziamento (obj: "upsign") — [C] upsign12|23/
+    // upcrc12|23/upind12|23, tutti la stessa icona "upico" (un pin verde
+    // con una freccia in su): compare quando il potenziamento e' davvero
+    // sbloccato (stessa soglia gia' letta da tryStartUpgrade()) e nessun
+    // cantiere e' gia' in corso. Depth -9001, un filo piu' avanti delle
+    // monete blu (-9000): [C] upsign12/_object.json, sempre in primo piano.
+    if (!b.construction && upgradeUnlocked(b, r12)) {
+      dynamic.push({ obj: "upsign", ref: b, x: b.x, y: b.y, depth: UPSIGN_DEPTH, _f: frameFor("upico") });
+    }
   }
   for (const d of decorEntities) dynamic.push(d);
   // Auto decorative (game/src/cars.js): x/y/sprite/frame gia' avanzati da
@@ -847,6 +888,13 @@ function frame(now) {
   // + il pacco di cantiere di casa/industria.
   for (const b of balloons) dynamic.push({ obj: "balloon", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
   for (const l of loot) dynamic.push({ obj: "loot", ref: l, x: l.x, y: l.y, depth: l.depth, _f: frameFor(l.spr) });
+  // Le monete (game/src/coins.js): "soldfade" anima per davvero (20 frame,
+  // stesso schema delle svolte delle auto — frameFor legge il frame vero
+  // invece di restare fermo al primo), "soldico" e' statica (un solo frame).
+  for (const c of coins) {
+    const frameIdx = c.auto ? Math.min(19, Math.floor(c.t / TICK)) : 0;
+    dynamic.push({ obj: "coin", ref: c, x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr, frameIdx) });
+  }
   for (const m of constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
   for (const bx of constructionBoxes) dynamic.push({ obj: "decor", x: bx.x, y: bx.y, depth: bx.depth, _f: frameFor(bx.spr) });
   // Minacce vere (game/src/threats.js): nessuna e' cliccabile (nessun
@@ -1102,7 +1150,7 @@ window.__nimbus = {
   get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
   get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
   atmo, get pedestrians() { return pedestrians; },
-  get balloons() { return balloons; }, get loot() { return loot; },
+  get balloons() { return balloons; }, get loot() { return loot; }, get coins() { return coins; },
   get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
   get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
   get projectiles() { return projectiles; },
