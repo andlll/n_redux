@@ -2,7 +2,7 @@ import { Renderer, makeSolidTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, tryStartUpgrade, stepConstructions, stepProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, tryStartUpgrade, stepConstructions, stepProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -327,6 +327,14 @@ function spawnParcoScatter(building) {
 
 function placeAt(placeholder, type) {
   const def = BUILDING_TYPES[type];
+  // [C] placeholder/Mouse_LeftReleased.gml, selec==3: il piazzamento vero e
+  // proprio richiede anche `close==0` (nessun'altra torretta troppo vicina,
+  // STUDIO.md "le mongolfiere" -> tooCloseToTurret()) — controllato PRIMA
+  // del costo, come nel decompilato (il blocco intero e' innestato dentro
+  // quel controllo, non dopo aver gia' scalato i mon).
+  if (def.turret && tooCloseToTurret(buildings, placeholder.x, placeholder.y)) {
+    return "troppo vicino a un'altra torretta di difesa";
+  }
   if (!canAfford(r12, def.placeCost)) {
     return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
   }
@@ -341,11 +349,11 @@ function placeAt(placeholder, type) {
   const b = placeBuilding(type, placeholder.x, placeholder.y, 0);
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
-  // [C] placeholder/Mouse_LeftReleased.gml: solo selec==1 (casa) e selec==2
-  // (industria) creano `mon_bil` — gli unici due tipi piazzabili dal
-  // giocatore che lo fanno (`parco`, selec==7, non crea nessun pallone nel
-  // decompilato — game/src/balloons.js, in cima al file).
-  if (type === "casa" || type === "industria") {
+  // [C] placeholder/Mouse_LeftReleased.gml: selec==1 (casa), selec==2
+  // (industria) e selec==3 (missile) creano `mon_bil` — gli unici tre tipi
+  // piazzabili dal giocatore che lo fanno finora (`parco`, selec==7, non
+  // crea nessun pallone nel decompilato — game/src/balloons.js, in cima al file).
+  if (type === "casa" || type === "industria" || type === "missile") {
     constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
   }
   return null;
@@ -746,6 +754,12 @@ function frame(now) {
   stepConstructionBalloons(constructionBalloons, constructionBoxes, dt);
   stepConstructionBoxes(constructionBoxes, dt);
   if (r12.alertT > 0) r12.alertT -= dt;
+  // Torrette (game/src/buildings.js, stepTurretAim): inseguono il "veicolo"
+  // piu' vicino — [C] rocket_launcher/Step.gml usa la famiglia
+  // `veicoli_target`, che nel motore sono le auto decorative e le
+  // mongolfiere di risorse/spia (non il pacco di cantiere, `notte_target`
+  // nel decompilato, e non le casse/gli avanzi di cantiere).
+  stepTurretAim(buildings, cars.concat(balloons));
   if (messageT > 0) messageT -= dt;
 
   // --- lista di disegno di questo frame: mondo statico (placeholder consumati

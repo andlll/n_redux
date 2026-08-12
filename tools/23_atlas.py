@@ -81,6 +81,17 @@ GAMEPLAY_SPRITES = {
         # match_easy (nessuna istanza sua nella room, STUDIO.md).
         "par1", "par2", "par3", "par4", "par5", "par6", "par7", "par8",
         "l1", "l1l",
+        # missile: primo edificio DIFENSIVO (src/objects/rocket_launcher,
+        # cantiere impamissr/impamissf — game/src/buildings.js). Il cantiere
+        # riusa ir1x/ir2x/if1x/if2x gia' presenti sopra (nessuno sprite di
+        # cantiere in piu' da aggiungere). "toppers" e' il topper di gru
+        # transitorio (impamissf/Alarm_0.gml tic==5, oggetto "tops2");
+        # "lrn1".."lrn16" sono i 16 sprite di mira del cannone
+        # (rocket_launcher/Step.gml, `sprite_index` risolti per indice —
+        # non nomi scelti qui, letti da data/sprites.json).
+        "rl_as", "toppers",
+        "lrn1", "lrn2", "lrn3", "lrn4", "lrn5", "lrn6", "lrn7", "lrn8",
+        "lrn9", "lrn10", "lrn11", "lrn12", "lrn13", "lrn14", "lrn15", "lrn16",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/

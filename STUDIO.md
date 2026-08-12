@@ -1024,3 +1024,56 @@ paragrafo 8.
   `match_easy` (1086px). Fumo/esplosioni decorative del fulmine e della
   cassa a terra (`smoko`) non riprodotte — stesso gap gia' dichiarato per
   il fumo di `industria`.
+
+- **Primo edificio difensivo: `missile`.** L'inizio di una famiglia (in
+  arrivo: gatling, laser) diversa dai primi quattro edifici su un asse
+  nuovo — non produce ne' consuma risorse, insegue bersagli col cannone.
+  **[C]** Cantiere `impamissr`/`impamissf` (coppia r/f, stesso schema gia'
+  noto — STUDIO.md sopra "secondo edificio giocabile: industria"): riusa
+  gli stessi sprite `ir1x`/`ir2x`/`if1x`/`if2x` di industria/casa/parco,
+  nessuno sprite di cantiere in piu' da aggiungere all'atlas. **[C]** UN
+  solo livello: `impamissr` non ha `upgrades`, a differenza di chies/
+  industria/casa. `impamissilir`/`impamissilif` — stessa forma, sprite
+  identici, facile scambiarli per un potenziamento — sono in realta'
+  create SOLO da `demobasia/Collision_rocket_launcher.gml`: il "rifai in
+  loco" a pagamento (20000 mon, `rocket_launcher/Mouse_LeftPressed.gml`
+  selec==11) che nel decompilato finisce in un `placeholder` vuoto invece
+  che in un rocket_launcher nuovo — stesso gap gia' dichiarato per
+  industria/casa (STUDIO.md "cosa manca"), non riletto qui. **[C]** costo
+  di piazzamento 5000 mon, e crea `mon_bil` come casa/industria (STUDIO.md
+  "le mongolfiere" aggiornato di conseguenza). **[C]** vita 600, danno da
+  fulmine 1/130 ogni 57 tick -50 vita, stesso schema di industria/casa
+  (`stepStormDamage`, nessun codice nuovo).
+  **La mira del cannone e' vera**, non solo un edificio statico: **[C]**
+  `rocket_launcher/Step.gml` insegue col cannone il veicolo piu' vicino
+  entro 400px (famiglia `veicoli_target` — mongolfiere di risorse/spia e
+  le auto decorative, non le minacce vere), un sedicesimo di giro alla
+  volta (16 sprite `lrn1..lrn16`, risolti per indice-sprite da `data/
+  sprites.json`, non per nome scelto qui — `sprite_index = 242` eccetera
+  nel decompilato). Se nessun veicolo e' in portata lo sprite non torna
+  alla posa di riposo: resta congelato all'ultima direzione puntata,
+  esattamente come nel decompilato (l'aggiornamento e' innestato dentro il
+  controllo di portata, nessun ramo `else`) — verificato spostando un
+  veicolo dentro e fuori portata. **Il fuoco vero non e' riprodotto**: il
+  bersaglio che l'originale colpisce per davvero e' `nemici_target` (entro
+  250px, non `veicoli_target`) — la famiglia delle minacce vere (dirig e
+  le altre, STUDIO.md "cosa manca": "da dove arrivano davvero le
+  minacce... dipendono da contatori che nessun oggetto incrementa") non
+  esiste ancora in questo motore, quindi il ramo che crea `red_ball`/
+  `rol_avant`/`rol_diet` (i proiettili) non ha mai un bersaglio valido da
+  colpire — non e' un buco silenzioso, e' la stessa condizione che
+  varrebbe anche nell'originale senza minacce nei paraggi.
+  **[I] Il vincolo di distanza fra torrette** (`placeholder.close`,
+  impostato da vera collisione fisica fra la maschera di missile/gatling/
+  laser e i placeholder vicini — `placeholder/Collision_impamissr|
+  rocket_launcher|gatlinggun|lasergun.gml`, STUDIO.md "pepazzittecollider"
+  mai ricostruito) diventa una distanza minima fra torrette (200px,
+  `tooCloseToTurret()`), tarata sulla maschera vera di rocket_launcher
+  ("auton", 297x172px) contro il passo della griglia dei placeholder in
+  `match_easy` (~116px fra vicini diretti) — abbastanza da bloccare i
+  vicini immediati senza un sistema di collisione vero. Verificato: due
+  torrette a ~116px si respingono ("troppo vicino a un'altra torretta di
+  difesa", nessun mon scalato), la stessa coppia a >200px si piazza.
+  Il campo `turret: true` in `BUILDING_TYPES.missile` e la generalita' di
+  `tooCloseToTurret()`/`stepTurretAim()` sono pensate per gatling/laser,
+  non ancora aggiunte.
