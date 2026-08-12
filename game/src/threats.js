@@ -118,9 +118,25 @@ const BLAST_DAMAGE = 100;              // [C] bomba2/Collision_*.gml: life += -1
 const BLAST_RADIUS = 150;
 
 const EXPLOSION_LIFE = 60 * TICK;      // [C] esplo/Create.gml: action_set_alarm(60, 0)
+const EXPLOSION_SCALE = 1.4;           // [C] esplo/Create.gml: action_sprite_transform(1.4, 1.4, 0, 0)
 
-function spawnExplosion(x, y) {
-  return { x, y, t: 0, spr: "fica" };
+/** [C] esplo/Create.gml. `scale` di default 1.4 (l'esplosione vera); i
+ * lampi di sparo del lanciarazzi (game/src/projectiles.js) passano 0.4
+ * (rol_avant/rol_diet/Create.gml: action_sprite_transform(0.4, 0.4, 0, 0)) —
+ * stesso sprite "fica", solo piu' piccolo. */
+export function spawnExplosion(x, y, scale = EXPLOSION_SCALE) {
+  return { x, y, t: 0, spr: "fica", scale };
+}
+
+/** [C] dirig/Destroy.gml: 5 esplosioni a raggiera invece di una sola (uno
+ * zeppelin e' grande) — air/bombar/monspi/le mongolfiere non hanno un
+ * Destroy.gml proprio, quella singola esplosione che il colpo diretto
+ * crea comunque (red_ball/Collision_*.gml, game/src/projectiles.js) gia'
+ * gli basta. */
+export function spawnDeathEffect(type, x, y) {
+  if (type !== "dirig") return [spawnExplosion(x, y)];
+  return [[0, 0], [90, -30], [-90, 30], [-120, 40], [120, -40]]
+    .map(([dx, dy]) => spawnExplosion(x + dx, y + dy));
 }
 
 /**
@@ -158,7 +174,7 @@ export function stepThreats(threats, bombs, explosions, dt, r12) {
     }
     if (struck) {
       threats.splice(i, 1);
-      explosions.push(spawnExplosion(th.x, th.y));   // [C] Alarm_5.gml crea sempre "esplo" prima di uccidersi
+      explosions.push(...spawnDeathEffect(th.type, th.x, th.y));   // [C] Alarm_5.gml crea sempre "esplo" prima di uccidersi
       continue;
     }
 

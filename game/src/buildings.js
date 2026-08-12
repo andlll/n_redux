@@ -380,12 +380,15 @@ export const BUILDING_TYPES = {
     turret: true,
     // [C] rocket_launcher/Step.gml: insegue il veicolo piu' vicino
     // (famiglia `veicoli_target` — mongolfiere di risorse/spia e le auto
-    // decorative, non le minacce vere) entro 400px, un sedicesimo di
-    // giro alla volta (`turretSprFor()` sotto). Il bersaglio VERO da
-    // colpire sarebbe `nemici_target` (entro 250px) — ma quella famiglia
-    // (dirig e le altre minacce, STUDIO.md "cosa manca") non esiste ancora
-    // in questo motore: l'inseguimento si vede, il fuoco vero resta un gap
-    // dichiarato, non un colpo a vuoto inventato.
+    // decorative) entro 400px, un sedicesimo di giro alla volta
+    // (`turretSprFor()` sotto). Il fuoco vero (game/src/projectiles.js,
+    // stepTurretFire — STUDIO.md "le minacce vere" era il pezzo che
+    // mancava) scatta separatamente quando una minaccia vera
+    // (`nemici_target`: air/bombar/dirig) entra entro 250px, ma il razzo
+    // punta comunque al veicolo piu' vicino gia' calcolato qui sopra — non
+    // necessariamente alla minaccia che ha innescato lo sparo: [C] fedele,
+    // `red_ball/Create.gml` punta a `instance_nearest(veicoli_target)`,
+    // non a chi ha fatto scattare l'Alarm.
     aim: { range: 400 },
     storm: [{ dice: 130, loss: 50 }],   // [C] rocket_launcher/Alarm_5.gml
     construct: {                  // livello 0 -> 1, impamissr (src/objects/impamissr)
@@ -799,5 +802,17 @@ export function stepTurretAim(buildings, targets) {
     if (!nearest) continue;
     const angle = (Math.atan2(-(nearest.y - b.y), nearest.x - b.x) * 180) / Math.PI;
     b.spr = turretSprFor(angle);
+    // [C] rocket_launcher/Step.gml: `direttorio` (l'angolo verso il
+    // veicolo piu' vicino) sceglie anche da quale punta del cannone
+    // sparerebbe il razzo (game/src/projectiles.js, MUZZLE_OFFSETS) — ma
+    // il razzo stesso, una volta nato li', ripunta per conto suo al
+    // bersaglio con `action_move_point` (`red_ball/Create.gml`): la
+    // direzione di volo vera si ricalcola dalla punta del cannone, non
+    // e' `aimAngle` letto cosi' com'e' (differenza notabile quando il
+    // bersaglio e' vicino, l'offset del cannone e' ~100px). Salvati
+    // entrambi sull'istanza — `aimAngle` per lo sprite e la scelta della
+    // punta, `aimTarget` per il vero ricalcolo in stepTurretFire.
+    b.aimAngle = angle;
+    b.aimTarget = { x: nearest.x, y: nearest.y };
   }
 }

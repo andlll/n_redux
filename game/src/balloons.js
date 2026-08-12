@@ -104,7 +104,11 @@ export function spawnBalloon(type) {
   };
 }
 
-function spawnLoot(lootDef, x, y) {
+// Esportata: game/src/projectiles.js la riusa per far cadere la cassa
+// anche quando una mongolfiera viene colpita da un razzo invece di
+// scadere/fulminata (STUDIO.md "il lanciarazzi": monvo|monvo_giga|monbo|
+// mongo|monviolo/Destroy.gml crea la cassa a prescindere da come muore).
+export function spawnLoot(lootDef, x, y) {
   return { spr: lootDef.spr, key: lootDef.key, amount: lootDef.amount(), x, y, t: 0, depth: -4000 };
 }
 

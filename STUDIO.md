@@ -1144,3 +1144,63 @@ paragrafo 8.
   100 vita; un aereo "di sfondo" (`desto=0`) non sgancia mai bombe; la
   scadenza naturale distrugge `air`/`dirig` con l'asimmetria giusta (solo
   `air` lascia un'esplosione).
+
+- **Il lanciarazzi spara per davvero.** Chiudeva il cerchio aperto insieme
+  alle minacce vere: prima non c'era ancora modo di fermare una
+  mongolfiera spia prima che "riuscisse" (STUDIO.md sopra), ne' di
+  abbattere le ondate che ne conseguono. `game/src/projectiles.js`.
+  **[C]** `rocket_launcher/Step.gml`: quando una minaccia vera
+  (`nemici_target`) entra entro 250px e il cannone non e' in ricarica (40
+  tick fra uno sparo e l'altro), parte un razzo (`red_ball`) dalla punta
+  del cannone. Il dettaglio piu' facile da leggere male, verificato con un
+  test dedicato: **il razzo non punta alla minaccia che ha innescato lo
+  sparo** — punta a `instance_nearest(veicoli_target)`, lo stesso bersaglio
+  gia' inseguito dal cannone (`b.aimAngle`/`b.aimTarget`, salvati da
+  `stepTurretAim` in buildings.js). Se una mongolfiera innocua e' piu'
+  vicina della minaccia vera che ha fatto scattare lo sparo, il razzo vola
+  verso QUELLA — fedele all'originale (`red_ball/Create.gml` non menziona
+  affatto `nemici_target`), confermato con un test che mette entrambe in
+  portata e osserva quale muore.
+  **Bug trovato e corretto prima di pubblicare**: il primo tentativo
+  faceva volare il razzo lungo `b.aimAngle` cosi' com'e' — ma
+  `red_ball/Create.gml` ricalcola la propria direzione con
+  `action_move_point` dalla propria posizione di nascita (la punta del
+  cannone, spostata anche di ~100px dal centro edificio), non eredita
+  l'angolo del cannone. A distanza ravvicinata la differenza e' abbastanza
+  grande da far mancare bersagli fermi proprio davanti al cannone — un
+  test con un aereo statico a distanza fissa l'ha reso ovvio (il razzo
+  volava a vuoto lungo un binario spostato di ~125px). Corretto salvando
+  anche `b.aimTarget` (non solo l'angolo) e ricalcolando la direzione vera
+  dalla posizione della punta del cannone in `stepTurretFire`.
+  **[I] Un solo colpo distrugge sempre il bersaglio**: `monvo_giga`/
+  `monviolo`/`air`/`bombar`/`dirig` hanno tutti un contatore `life` che
+  sembrerebbe richiedere piu' colpi (`red_ball/Collision_*.gml` lo
+  decrementa), ma il controllo che lo legge e' `life != 0`, non `== 0` —
+  dopo il primo colpo `life` e' quasi sempre ancora diverso da zero, quindi
+  il bersaglio muore comunque al primo colpo. Non e' una nostra
+  semplificazione che "arrotonda" una meccanica a piu' colpi: e' un
+  contatore di fatto morto nel gioco originale stesso, letto ma mai
+  davvero capace di salvare un bersaglio da un secondo colpo che non
+  arriva mai (muore sempre al primo). Colpire una mongolfiera di risorse
+  fa comunque cadere la sua cassa ([C] Destroy.gml scatta a prescindere
+  da come muore, stessa logica gia' vista per il fulmine — `spawnLoot`
+  ora esportata da balloons.js apposta); colpire una spia la fa sparire
+  in silenzio, senza che riferisca mai (nessun Destroy.gml su `monspi`) —
+  la vera contromossa alle ondate progressive.
+  **Non riprodotto**: il fuoco manuale al tap sul lanciarazzi
+  (`rocket_launcher/Mouse_LeftPressed.gml`, che spara con una tabella di
+  offset a 4 vie piu' rozza, ridondante con quella automatica) — toccare
+  l'edificio oggi prova solo un potenziamento (che non esiste, "livello
+  massimo"). `esplo` a 5 raffiche invece di una sola per `dirig`
+  (`Destroy.gml`, un solo zeppelin e' grande) riprodotto ovunque muoia
+  (fulmine, colpo diretto), tranne il doppio conteggio dell'esplosione
+  singola che `Alarm_5.gml` crea anche lui prima del `Destroy.gml` in
+  caso di fulmine — un dettaglio sotto la soglia di quanto vale
+  inseguire.
+  Verificato in browser: un razzo lanciato contro un aereo fermo e vicino
+  lo abbatte (dopo aver corretto il bug di mira sopra); senza nessun
+  veicolo da inseguire il cannone non ha una direzione e non spara anche
+  con una minaccia vera in portata (fedele: il razzo stesso dipende da
+  quel bersaglio); colpire una mongolfiera di risorse fa cadere la cassa
+  giusta; una minaccia e una mongolfiera nello stesso punto muoiono una
+  sola alla volta, mai entrambe dallo stesso colpo.

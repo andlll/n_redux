@@ -12,6 +12,7 @@ import {
   spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
 } from "./balloons.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions } from "./threats.js";
+import { stepTurretFire, stepProjectiles } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -245,6 +246,10 @@ let constructionBoxes = [];
 let threats = [];
 let bombs = [];
 let explosions = [];
+// Il fuoco vero del lanciarazzi (game/src/projectiles.js): stepTurretFire
+// crea i razzi (dalla punta del cannone, quando una minaccia vera e' entro
+// 250px), stepProjectiles li fa volare e colpire.
+let projectiles = [];
 let r12 = createR12();
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
@@ -779,6 +784,10 @@ function frame(now) {
   // mongolfiere di risorse/spia (non il pacco di cantiere, `notte_target`
   // nel decompilato, e non le casse/gli avanzi di cantiere).
   stepTurretAim(buildings, cars.concat(balloons));
+  // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
+  // gia' nella direzione appena calcolata (b.aimAngle).
+  stepTurretFire(buildings, threats, dt, projectiles, explosions);
+  stepProjectiles(projectiles, balloons, threats, loot, explosions, dt);
   if (messageT > 0) messageT -= dt;
 
   // --- lista di disegno di questo frame: mondo statico (placeholder consumati
@@ -835,7 +844,9 @@ function frame(now) {
   // mondo.
   for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale });
   for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y, _f: frameFor(bm.spr) });
-  for (const ex of explosions) dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr) });
+  for (const ex of explosions) dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr), _scale: ex.scale });
+  // Il fuoco vero (game/src/projectiles.js): i razzi del lanciarazzi.
+  for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr) });
   // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
   // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
   // (`_alpha`, 0 di giorno) che il ciclo di disegno rispetta da solo — a
@@ -1081,6 +1092,7 @@ window.__nimbus = {
   get balloons() { return balloons; }, get loot() { return loot; },
   get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
   get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
+  get projectiles() { return projectiles; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,

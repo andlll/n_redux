@@ -218,6 +218,11 @@ GAMEPLAY_SPRITES = {
         "dirspr",                                    # dirig
         "bomb", "fica",                              # bomba1/bomba2, esplo
     ],
+    # Il fuoco vero del lanciarazzi (src/objects/red_ball, rol_avant/
+    # rol_diet — game/src/projectiles.js). "fica" (il lampo di sparo, scala
+    # 0.4) e' gia' in "threats" sopra, nessuno sprite in piu' da aggiungere
+    # per quello.
+    "projectiles": ["redb"],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
