@@ -2279,3 +2279,83 @@ paragrafo 8.
   (-20000 mon, cantiere condiviso "ir1x" visibile), e il bottone sparisce di
   nuovo; forzando `chies.level=2`/`pop=3000` la banca compare, l'hover
   mostra "It's free!", si piazza senza scalare mon.
+
+- **Correzione: la terza stella non e' eolico, e' un edificio nuovo —
+  `grattacielo`.** La nota sopra ("monumento e banca") liquidava
+  `stella3`/`selec==82` come "un secondo modo di sbloccare eolico, zero
+  lavoro" dopo aver letto solo la riga che `placeholder/Mouse_LeftReleased.gml`
+  condivide fra selec==4 e selec==82 (entrambi creano `eoliplacer`), senza
+  scendere fino in fondo a `eoliplacer/Alarm_1.gml`. Segnalato dall'autore
+  ("dovrebbe essere un enorme grattacielo tipo Burj Khalifa, indaga bene").
+  **[C]** Quella funzione ha in realta' due rami indipendenti DOPO il punto
+  in comune: selec==4 (costo 50000, crea `impavent` — eolico, gia' letto)
+  e selec==82 (costo 200000, crea `m3cant` — un oggetto mai letto prima
+  d'ora). `m3cant` non condivide NIENTE con eolico oltre al meccanismo di
+  piazzamento (stessa maschera fissa `eoliplacer`/"phold", 4 lotti): **[C]**
+  `data/sprites.json`, `m3x1`..`m3x14`, sono 588px di larghezza per
+  un'altezza che cresce da 1085 a 1527px — una torre stretta e altissima,
+  non l'810x865 quasi quadrato di `eol`.
+  **[C] Crescita** (`m3cant/Create.gml` + `Alarm_0.gml`): a differenza di
+  OGNI altro edificio del motore, non c'e' una fondamenta generica "ir1x"
+  che poi si smaterializza in un `finalSprite` diverso — e' lo STESSO
+  oggetto che cambia `sprite_index` 14 volte (440 tick sul primo sprite,
+  poi 540-640 tick per passo), e l'ultimo sprite mostrato e' gia' l'edificio
+  finito. Cantiere totale 7560 tick (~126s), il piu' lungo del motore,
+  coerente con 200000 mon — nessun altro edificio piazzabile costa di piu'.
+  **[C] Sblocco**: `banca1_light/Create.gml` (il decoro-luce che
+  `BUILDING_TYPES.banca.construct.decor` gia' crea a fine cantiere) arma
+  `stella3` alla PRIMA banca costruita (dietro due flag "run once", stesso
+  idioma di `distrutti` per il monumento) — non una soglia a parte come le
+  prime due stelle.
+  **[C] Consumo**: riletti gli operatori di `m3cant/Step.gml` con la tabella
+  gia' stabilita altrove in questo file (4=">=", non "!="` come una prima
+  lettura del ramo `phase!=14` aveva capito — corretto a `phase>=14` prima
+  di fidarsene): PRIMA di finire il cantiere non consuma niente di suo
+  (l'unico drenaggio e' un "acceleratore" opzionale legato a `playbuttoner`,
+  un bottone play/pausa mai ricostruito — stesso gap dichiarato dei prestiti
+  di banca); UNA VOLTA FINITO consuma elettricita' OGNI TICK, non ogni 120
+  come il resto del motore — -1/-2 ele di giorno/notte, riprodotto
+  moltiplicando per 120 dentro il periodo fisso gia' cablato in
+  `stepConsumption()` invece di toccare il motore per un solo edificio.
+  Lo stesso blocco azzera anche `r12.spy` (mongolfiere spia, STUDIO.md
+  "le mongolfiere") ogni tick a costruzione ultimata — un possibile effetto
+  "il grattacielo blocca lo spionaggio" **non riprodotto**: la sua semantica
+  esatta dipende dall'ordine di esecuzione fra oggetti nello stesso tick
+  dell'originale, non verificabile con sicurezza da qui.
+  **[C] Nessuna vita**: `m3cant` non ha ne' un `Destroy.gml` ne' una
+  variabile `life` in nessun evento — indistruttibile per davvero, non solo
+  "senza fulmine" come `parco`. Stesso trucco [I] gia' scelto per
+  `BUILDING_TYPES.parco`: `life: 99999` invece di un caso speciale nel
+  motore.
+  **[C] Finestre notturne**: a fine cantiere l'originale crea 10 oggetti
+  sovrapposti nello stesso punto (`m3lux1`..`m3lux9` + `m3lux_red`, ognuno
+  una sagoma PIENA della torre — 588x1527 come `m3x14` stesso), ognuno con
+  la propria velocita' di dissolvenza (`image_alpha += 0.003..0.023` al
+  tick, diversa per ognuno — un vero "sfarfallio" di finestre a velocita'
+  diverse, non un'unica luce). La dissolvenza condivisa (`LIGHT_FADE`,
+  200 tick fissi per ogni altro decoro "luce" del motore) e' stata
+  generalizzata (`addDecor()`/`stepLights()`, game/src/main.js) per accettare
+  una durata per-decoro invece di estendere il motore con un caso speciale
+  solo per questo edificio — compatibile all'indietro, tutti gli altri
+  decori restano sulla stessa `LIGHT_FADE` di prima. `m3rd` (il fanale
+  rosso in cima) non si dissolve mai nel decompilato: `fadeTicks: 0`, un
+  caso a parte (nessun'altra luce del motore scatta di colpo).
+  **[I] Gap dichiarato — cantiere/gru non ricostruiti**: l'originale
+  affianca a `m3cant` un secondo oggetto (`impa31f`) che genera `impa31r` e
+  un'intera catena `impa31/32/33r|f` + tre gru rotanti dedicate
+  (`impa3gru`/`impa3gru1`/`impa3gru2`, ognuna con la propria macchina a
+  stati a oscillazione) — impalcatura/scenografia allo stesso titolo delle
+  code "f" gia' semplificate per industria/casa/palazzo (STUDIO.md sopra,
+  "due semplificazioni"), qui pero' un intero sotto-sistema invece di un
+  singolo passo troncato: nessun costo o tempo in piu' (letti entrambi
+  direttamente da `m3cant`), quindi un gap dichiarato invece di una
+  ricostruzione parziale rischiosa.
+  Sprite nuovi in `GAMEPLAY_SPRITES`: `m3x1`..`m3x14`, `m3l1`..`m3l9`,
+  `m3rd`, `sta3`/`sta3s` (icone bottone), `c200000` (cartellino di prezzo,
+  generico via `costTagSprite()`) — atlas e blitplan rigenerati.
+  Verificato in browser (Playwright, stato forzato via `window.__nimbus`):
+  a inizio cantiere si vede `m3x1`, una base bassa; saltando all'ultimo
+  passo cresce nella torre alta e stretta prevista dagli sprite; forzando
+  notte + energia le finestre si accendono gradualmente a colori/velocita'
+  diverse invece che tutte insieme, esattamente l'effetto "sfarfallio"
+  letto nel decompilato.

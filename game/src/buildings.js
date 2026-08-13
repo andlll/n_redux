@@ -1205,6 +1205,123 @@ export const BUILDING_TYPES = {
     consumption: [[{ day: 18, night: 27 }]],   // [C] banca1/Alarm_3.gml, ogni 120 tic — costante, nessun `ava` (banca non cresce)
     storm: [{ dice: 160, loss: 50 }],           // [C] banca1/Alarm_5.gml
   },
+
+  // Sedicesimo edificio, il terzo "a stella": `m3cant` ("Grattacielo").
+  // **Correzione di un errore**: la nota precedente su STUDIO.md (§9,
+  // "monumento e banca") liquidava `stella3`/`selec==82` come "un secondo
+  // modo di sbloccare eolico, zero lavoro" — letta la sola RIGA che le due
+  // ramificazioni condividono in `eoliplacer/Alarm_1.gml` (la creazione di
+  // `eoliplacer` da `placeholder/Mouse_LeftReleased.gml`, identica per
+  // selec==4 e selec==82) senza scendere fino in fondo a quella funzione.
+  // **[C]** In realta' `eoliplacer/Alarm_1.gml` ha due rami INDIPENDENTI
+  // dopo quel punto comune: selec==4 (costo 50000, crea `impavent`, gia'
+  // letto — `BUILDING_TYPES.eolico` sopra) e selec==82 (costo 200000, crea
+  // `m3cant`, un oggetto MAI letto prima d'ora). Stesso meccanismo di
+  // piazzamento (il placeholder toccato + 3 vicini liberi entro un raggio,
+  // `multiTile` sotto), edificio finale completamente diverso: non una pala
+  // eolica, una torre — **[C]** `m3x1`..`m3x14` (data/sprites.json) sono
+  // 588px di larghezza per un'altezza che cresce da 1085 a 1527px, contro
+  // l'810x865 quasi quadrato di `eol`. Il nome scelto qui ("Grattacielo")
+  // non e' mai scritto nel decompilato (nessun `draw_text`/`show_message`
+  // in `m3cant`/`stella3`): stessa scelta gia' fatta per "Monumento"/
+  // "Banca", un'etichetta leggibile invece del nome tecnico dell'oggetto.
+  // **[C] Sblocco**: `banca1_light/Create.gml` (il decoro-luce che
+  // `BUILDING_TYPES.banca.construct.decor` gia' crea a fine cantiere)
+  // chiama `instance_create(pu1.x, pu1.y, stella3)` dietro due flag
+  // "run once" (`action_if_number(159/161,...)`, stesso idioma di
+  // `distrutti`/monumento) — la terza stella si sblocca alla PRIMA banca
+  // costruita, non a una soglia separata: `unlocked()` in main.js legge
+  // `buildings.some(b => b.type === "banca")`.
+  // **[C] Piazzamento** (`eoliplacer/Alarm_1.gml`, ramo selec==82): costo
+  // 200000 mon, stesso `places>=4` di eolico — `multiTile` sotto riusa
+  // esattamente `count`/`radius` di `BUILDING_TYPES.eolico` (stessa maschera
+  // fissa "phold" di `eoliplacer`, STUDIO.md, indipendente dal tipo che
+  // finira' per nascere).
+  // **[C] Crescita** (`m3cant/Create.gml` + `Alarm_0.gml`, letti riga per
+  // riga): a differenza di OGNI altro edificio, non c'e' una fondamenta
+  // generica "ir1x" che poi si smaterializza in un `finalSprite` diverso —
+  // e' lo stesso oggetto che cambia `sprite_index` 14 volte (`m3x1` per i
+  // primi 440 tick, poi `m3x2`..`m3x14` ogni 540-640 tick), e l'ultimo
+  // sprite mostrato E' gia' l'edificio finito (`finalSprite` sotto coincide
+  // col l'ultimo passo, non e' un errore di battitura). Cantiere totale
+  // 7560 tick (~126s) — il piu' lungo del motore, coerente con 200000 mon.
+  // **[I] Gap dichiarato — cantiere/gru non ricostruiti**: l'originale
+  // affianca a `m3cant` un secondo oggetto (`impa31f`, creato dal suo
+  // stesso `Create.gml`) che a sua volta genera `impa31r` e un'intera
+  // catena `impa31/32/33r|f` + tre gru rotanti dedicate (`impa3gru`/
+  // `impa3gru1`/`impa3gru2`, ognuna con la propria macchina a stati a
+  // oscillazione) — impalcatura/scenografia allo stesso titolo delle code
+  // "f" gia' semplificate per industria/casa/palazzo (STUDIO.md §9, "due
+  // semplificazioni"), qui pero' un intero sotto-sistema invece di un
+  // singolo passo troncato: non porta nessun costo o tempo in piu' (letti
+  // entrambi direttamente da `m3cant`), quindi un gap dichiarato invece di
+  // una ricostruzione parziale rischiosa.
+  // **[C] Consumo** (`m3cant/Step.gml`, letto con gli operatori confermati
+  // altrove in questo progetto — 4=">=", non "!="` come una prima lettura
+  // aveva capito): PRIMA di finire (`phase<14`) il cantiere non consuma
+  // niente di suo — l'unico drenaggio e' un "acceleratore" opzionale
+  // (-5 mon/-5 ele PER TICK, legato a `playbuttoner`, un bottone
+  // play/pausa mai ricostruito qui, stesso gap dichiarato del sistema
+  // prestiti di banca) che il giocatore puo' attivare per pagare la
+  // costruzione piu' in fretta — non implementato, il cantiere avanza
+  // sempre alla velocita' base. UNA VOLTA FINITO (`phase>=14`) consuma
+  // invece elettricita' OGNI TICK, non ogni 120 come ogni altro edificio:
+  // -1 ele/tick di giorno, -2/tick di notte — `consumption` sotto riusa il
+  // periodo fisso di 120 tick gia' cablato in `stepConsumption()`
+  // moltiplicando per 120 (120/240), stesso risultato aggregato senza
+  // toccare il motore per un singolo edificio.
+  // **[I]** Lo stesso blocco azzera anche `r12.spy` (il flag che sblocca le
+  // mongolfiere spia dopo ~8 minuti, game/src/balloons.js) ogni tick a
+  // costruzione ultimata — un possibile effetto "il grattacielo blocca lo
+  // spionaggio" la cui semantica esatta (ordine di esecuzione fra oggetti
+  // nello stesso tick) non e' verificabile con sicurezza da qui: gap
+  // dichiarato, non riprodotto.
+  // **[C] Nessuna vita**: a differenza di OGNI altro edificio, `m3cant` non
+  // ha ne' un `Destroy.gml` ne' una variabile `life` in nessun evento —
+  // indistruttibile per davvero, non solo "senza fulmine" come `parco`.
+  // `life: 99999` sotto e' lo stesso trucco [I] gia' scelto per
+  // `BUILDING_TYPES.parco` (nessun ramo `life<=0` da riprodurre, un numero
+  // irraggiungibile tiene il motore generico invece di un caso speciale).
+  // **[C] Finestre notturne**: a fine cantiere l'originale crea 10 oggetti
+  // sovrapposti nello stesso punto (`m3lux1`..`m3lux9` + `m3lux_red`,
+  // ognuno una sagoma PIENA della torre — 588x1527 come `m3x14` stesso, non
+  // un dettaglio in un angolo), ognuno con la propria soglia di dissolvenza
+  // (`image_alpha += 0.003..0.023` al tick, diverso per ognuno — un vero
+  // "sfarfallio" di finestre che si accendono a velocita' diverse, non
+  // un'unica luce). `fadeTicks` sotto (game/src/main.js, addDecor()/
+  // stepLights() generalizzati per questo) converte ogni incremento nel
+  // numero di tick equivalente (1/incremento). `m3rd` (il fanale rosso in
+  // cima) non si dissolve mai nel decompilato — scatta di colpo — quindi
+  // `fadeTicks: 0`.
+  grattacielo: {
+    label: "Grattacielo",
+    placeCost: { mon: 200000 },   // [C] eoliplacer/Alarm_1.gml, ramo selec==82
+    multiTile: { count: 4, radius: 130 },   // stessa maschera "phold" di eolico, STUDIO.md
+    construct: {
+      finalSprite: "m3x14", life: 99999,   // [C] m3cant/Alarm_0.gml fase 13; [I] indistruttibile, vedi sopra
+      decor: [
+        { spr: "m3l1", fadeTicks: 50 }, { spr: "m3l2", fadeTicks: 100 },
+        { spr: "m3l3", fadeTicks: 200 }, { spr: "m3l4", fadeTicks: 50 },
+        { spr: "m3l5", fadeTicks: 100 }, { spr: "m3l6", fadeTicks: 67 },
+        { spr: "m3l7", fadeTicks: 77 }, { spr: "m3l8", fadeTicks: 43 },
+        { spr: "m3l9", fadeTicks: 333 }, { spr: "m3rd", fadeTicks: 0 },
+      ],
+      steps: [
+        { spr: "m3x1", dur: 440 },
+        { spr: "m3x2", dur: 540 }, { spr: "m3x3", dur: 540 }, { spr: "m3x4", dur: 540 },
+        { spr: "m3x5", dur: 640 }, { spr: "m3x6", dur: 640 }, { spr: "m3x7", dur: 640 }, { spr: "m3x8", dur: 640 },
+        { spr: "m3x9", dur: 540 }, { spr: "m3x10", dur: 540 }, { spr: "m3x11", dur: 540 }, { spr: "m3x12", dur: 540 },
+        { spr: "m3x13", dur: 540 },
+        { spr: "m3x14", dur: 240 },
+      ],
+    },
+    // [C] m3cant/Step.gml, ramo `phase>=14`: -1 ele/tick di giorno, -2/tick
+    // di notte, applicati OGNI tick (non ogni 120 come il resto del
+    // motore) — moltiplicato per 120 cosi' stepConsumption() (periodo fisso
+    // 120 tick) applica lo stesso totale aggregato.
+    consumption: [[{ day: 120, night: 240 }]],
+    // nessun `storm`: m3cant non arma nessun Alarm di fulmine (vedi sopra, "Nessuna vita").
+  },
 };
 
 let nextId = 1;

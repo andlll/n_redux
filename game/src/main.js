@@ -336,7 +336,12 @@ function spawnDecor(building, decorSprites) {
   // finito", invece che dentro buildings.js che non sa niente di alberi o
   // lampioni.
   if (building.type === "parco") { spawnParcoScatter(building); return; }
-  addDecor(building, decorSprites.map((spr) => ({ spr, dx: 0, dy: 0 })));
+  // Un decoro e' di solito solo un nome di sprite (dx/dy/lit di default
+  // vanno bene per tutti); `grattacielo` (buildings.js) passa invece
+  // `{spr, fadeTicks}` per le finestre notturne, ognuna con la propria
+  // velocita' di dissolvenza (vedi addDecor()/stepLights() sotto).
+  addDecor(building, decorSprites.map((d) =>
+    typeof d === "string" ? { spr: d, dx: 0, dy: 0 } : { spr: d.spr, dx: 0, dy: 0, fadeTicks: d.fadeTicks }));
   // [C] casa1|2|3/Create.gml: l'ultima riga crea un "pplo" (STUDIO.md) alla
   // posizione della casa — un abitante per ogni salto di livello, non uno
   // per casa: una casa a livello 3 ne ha lasciati indietro due, mai
@@ -366,13 +371,15 @@ function spawnDecor(building, decorSprites) {
  * fermo alla y del suo edificio come un albero vero, tinto dal ciclo
  * giorno/notte come qualunque altro oggetto di mondo. */
 function addDecor(building, spawns) {
-  for (const { spr, dx, dy, lit = true } of spawns) {
+  for (const { spr, dx, dy, lit = true, fadeTicks } of spawns) {
     const y = building.y + dy;
     decorEntities.push({
       obj: "decor", buildingId: building.id,
       x: building.x + dx, y, depth: lit ? -y - 1 : -y,
       spr, _f: frameFor(spr),
-      ...(lit ? { _selfLit: true, _lightT: 0 } : {}),   // parte spento, come "empty" in originale (Create.gml)
+      // `fadeTicks` (grattacielo, buildings.js): dissolvenza propria invece
+      // della LIGHT_FADE condivisa da tutti gli altri decori — vedi stepLights().
+      ...(lit ? { _selfLit: true, _lightT: 0, _fadeTicks: fadeTicks } : {}),   // parte spento, come "empty" in originale (Create.gml)
     });
   }
 }
@@ -806,8 +813,16 @@ function stepLights(entities, dt, night, r12) {
   const lit = night && r12.ele > 3;
   for (const d of entities) {
     if (!d._selfLit) continue;
-    d._lightT = Math.max(0, Math.min(LIGHT_FADE, d._lightT + (lit ? dt : -dt)));
-    d._alpha = d._lightT / LIGHT_FADE;
+    // `_fadeTicks` (grattacielo, buildings.js/addDecor()): `0` e' il fanale
+    // rosso in cima ("m3rd"), che nel decompilato scatta di colpo invece di
+    // dissolversi — nessun'altra luce del motore lo fa, quindi resta un
+    // caso a parte invece di una LIGHT_FADE di durata zero (divisione per
+    // zero). Le altre finestre (m3l1..9) hanno ognuna la propria durata;
+    // tutto il resto del motore lascia `_fadeTicks` undefined e riusa LIGHT_FADE.
+    if (d._fadeTicks === 0) { d._alpha = lit ? 1 : 0; continue; }
+    const fade = d._fadeTicks != null ? d._fadeTicks * TICK : LIGHT_FADE;
+    d._lightT = Math.max(0, Math.min(fade, d._lightT + (lit ? dt : -dt)));
+    d._alpha = d._lightT / fade;
   }
 }
 
@@ -969,6 +984,10 @@ const OTHER_BUILDINGS = [
   // sbloccato" agganciato a `pu6/Mouse_MouseEnter.gml`, stesso schema di
   // level2club/level2gatling/level2sol per club/gatling/solare) chiama
   // l'edificio "palazz[o]" — vedi il commento su BUILDING_TYPES.palazzo.
+  // Il nome "Grattacielo" e' finito altrove: e' l'etichetta scelta ora per
+  // `BUILDING_TYPES.grattacielo` (STAR_BUILDINGS sotto, la terza stella),
+  // un edificio completamente diverso da questo — nessuna relazione se non
+  // l'omonimia mai risolta a suo tempo.
   { type: "palazzo", selec: 6, spr: "p6", sprSel: "p6ss", label: "Palazzo", cost: 6000 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
   { type: "club", selec: 60, spr: "pdj", sprSel: "pdjss", label: "Club", cost: 3500 },   // ora vero, BUILDING_TYPES.club
   { type: "solare", selec: 61, spr: "psolare", sprSel: "psolaress", label: "Pannelli solari", cost: 1000 },
@@ -1011,6 +1030,17 @@ const STAR_BUILDINGS = [
       const chies = buildings.find((b) => b.type === "chies");
       return !!chies && chies.level > 1 && r12.pop >= 3000 && !buildings.some((b) => b.type === "banca");
     },
+  },
+  // Terza stella: `grattacielo` (buildings.js — corregge la conclusione
+  // precedente che la scambiava per un secondo sblocco di eolico, vedi il
+  // commento su BUILDING_TYPES.grattacielo). **[C]** `banca1_light/
+  // Create.gml` arma `stella3` alla PRIMA banca costruita (dietro due flag
+  // "run once", stesso idioma di `distrutti` per il monumento) — non una
+  // soglia a parte come le prime due stelle: `unlocked()` qui legge
+  // semplicemente "esiste gia' una banca".
+  {
+    type: "grattacielo", selec: 82, spr: "sta3", sprSel: "sta3s", label: "Grattacielo", cost: 200000,
+    unlocked: () => buildings.some((b) => b.type === "banca") && !buildings.some((b) => b.type === "grattacielo"),
   },
 ];
 for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; BUILDING_LABEL[b.type] = b.label; }
