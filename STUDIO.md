@@ -1380,3 +1380,213 @@ paragrafo 8.
   cantiere completo in ~14s (sprite finale `sool`), `ele`/`mon` che si
   muovono nella direzione giusta nei secondi successivi, `r12.hap` +50
   esatto forzando `life = 0` da console.
+
+- **Selettore edificio scorrevole su mobile** (segnalato dall'autore: in
+  portrait i bottoni a destra finivano fuori schermo, senza modo di
+  toccarli). Non e' un problema del gioco originale da riprodurre — la sua
+  UI si riposizionava scalando per `global.sca` (STUDIO.md §2, `Scala UI`
+  0.89 su Android) su un layout che qui non esiste ancora — e' un limite
+  del nostro selettore "a riga" (STUDIO.md §9 "Selettore edificio"), che
+  accoda i bottoni da sinistra per la larghezza vera dello sprite senza mai
+  chiedersi se la riga sta nello schermo: con 13 bottoni nel menu "edifici"
+  (`casa`+`industria`+i 10 `OTHER_BUILDINGS`+indietro) la riga e' larga
+  ~1150px, piu' di qualunque telefono in verticale — gli ultimi bottoni
+  (compreso "Indietro", l'unico modo di uscire dal menu) erano disegnati
+  fuori dal canvas: ne' visibili ne' toccabili, nessuna via per raggiungerli.
+  Due modifiche in `game/src/main.js`, solo su mobile (`isMobile`, gia'
+  usato per la scelta zoom rotella/bottoni): bottoni rimpiccioliti
+  (`UI_SCALE` 0.6, sopra i ~44px minimi comuni per un tocco) e riga
+  scorrevole (`uiScrollX`, bloccato ad ogni frame in `[0, maxScroll]` della
+  riga corrente — una riga corta come "casa" a menoo 0 non eredita mai lo
+  scroll di una vista precedente piu' lunga). Il calcolo e' a due passate:
+  la prima misura solo le larghezze (serve `maxScroll` prima di sapere da
+  dove disegnare), la seconda disegna e registra le hitbox, saltando i
+  bottoni scrollati fuori da entrambi i lati (stesso culling gia' usato
+  altrove, evita anche hitbox "fantasma" che intercetterebbero un tap
+  sulla mappa sotto).
+  Il gesto di scroll doveva restare distinto dal trascinamento mappa
+  esistente (`input.onDrag` in main.js pana la camera incondizionatamente,
+  da sempre) senza duplicare la logica di touch/mouse gia' unificata in
+  `game/src/input.js` (STUDIO.md §7 "un solo percorso di input"): nuovo
+  hook `input.uiHitTest(sx, sy)`, valutato una sola volta al pointerdown e
+  memorizzato sul puntatore (`st.ui`), che sceglie se le mosse successive
+  di quel dito vanno a `onUIDrag` (scorre `uiScrollX`) invece che a
+  `onDrag` (pana la camera) — deciso all'inizio del gesto, non ad ogni
+  move, cosi' un dito che scorre la riga verso l'alto/basso non "sfugge"
+  a meta' gesto verso il pan sotto. La zona toccabile (`uiRowBounds`,
+  ricalcolata ad ogni frame insieme al disegno) e' larga quanto lo schermo
+  — non solo i pixel dei bottoni — cosi' anche un dito che parte fra due
+  bottoni o oltre l'ultimo scorre comunque la riga; esiste solo quando
+  `maxScroll > 0` (una riga che sta gia' tutta a schermo, come menoo 0 e
+  spesso menoo 2, non intercetta niente: il pan mappa sotto resta
+  invariato li'). Su desktop nessuna delle due modifiche si attiva
+  (`UI_SCALE` resta 1, `uiHitTest`/`onUIDrag` restano `null` come prima di
+  questa modifica): la riga ci stava gia' per intero, STUDIO.md "zero
+  zoom" vale anche qui.
+  Verificato in browser (viewport 390×844, touch emulato): con la riga
+  "edifici" aperta su schermo stretto, solo 6 dei 13 bottoni entravano a
+  schermo (`casa`..`laser`) e `uiButtons` non conteneva gli altri 7 — la
+  stessa assenza di hitbox segnalata dall'autore, confermata prima di
+  correggere. Uno swipe orizzontale sopra la riga sposta `uiScrollX` senza
+  spostare la camera (`cam.x/y` invariati durante il trascinamento, a
+  differenza di un trascinamento sulla mappa); swipe ripetuti arrivano
+  fino in fondo (`uiScrollX` si ferma da solo al bordo, non scorre oltre
+  l'ultimo bottone) e rendono visibile e toccabile "Indietro", che lo
+  riporta correttamente al menu "casa" (`menoo` 1→0) — il bottone che
+  prima era irraggiungibile.
+
+- **Settimo edificio giocabile: `club`** (`club1`, src/objects/club1 —
+  "Club" nel menu, gia' un bottone segnaposto `pudj`/`selec==60`). Come
+  `missile`/`solare`, un solo livello (nessun `upXXX` lo referenzia nel
+  decompilato). Il cantiere e' la stessa coppia "r"/"f" gia' nota
+  (`impaclubr`/`impaclubf`, `game/src/buildings.js`), che riusa gli
+  stessi sprite `ir1x`/`if1x`/"toppers" gia' in atlas per industria/
+  missile/solare — nessuno sprite di cantiere in piu' da aggiungere,
+  solo lo sprite finale (in realta' quattro: vedi sotto). Placement cost
+  **[C]** 3500 mon, letto nello stesso punto degli altri costi
+  (`placeholder/Mouse_LeftReleased.gml`, `selec==60`) — la stessa
+  funzione conferma che `club` e' anche il quinto tipo (dopo casa/
+  industria/missile/solare) a creare `mon_bil`, il pacco di cantiere
+  raccoglibile: `game/src/main.js` aveva quel controllo hard-coded a
+  quattro tipi, ora cinque.
+  A differenza di missile/solare l'edificio finito non e' un solo sprite
+  fisso: come `casa` (STUDIO.md sopra), `club1/Create.gml` sceglie a
+  dado uniforme una fra 4 varianti (`club11`..`club14`), ciascuna col
+  proprio decoro luce abbinato — gli sprite reali sono `club11i`..
+  `club14i` (gli OGGETTI originali si chiamano `clublite1..4`, ma
+  `decor` nella tabella vuole nomi di sprite, non di oggetto, verificato
+  in `data/sprites.json`/`data/objects.json` prima di scrivere la
+  tabella: usare i nomi oggetto per sbaglio avrebbe fatto fallire
+  silenziosamente `frameFor()`). Stessa macchina generica
+  (`up.variants`) gia' letta per casa/parco, nessun codice nuovo in
+  `stepConstructions()`.
+  **[C]** `club1/Destroy.gml`: hap +50 alla morte, nessun costo
+  corrispondente alla nascita — stessa asimmetria gia' letta per solare/
+  parco. **[C]** `club1/Create.gml` scrive anche `wewe = wewe + 20`:
+  come gia' notato per industria (STUDIO.md sopra), `wewe` resta
+  inerte — letto nel decompilato ma non cablato a nessuna regola
+  implementata, il suo significato reale [?] non e' ancora chiaro.
+  **[C]** danno da fulmine durante la tempesta: `storm: [{dice: 200,
+  loss: 50}]` (`club1/Alarm_5.gml`, stessa tabella gia' generalizzata da
+  `stepStormDamage()` per casa/industria/missile/solare).
+  **Non riprodotto, con motivazione**: `club1/Alarm_0.gml` (armato ogni
+  10-150 tic) cicla un tint casuale e RI-sceglie lo sprite dell'istanza
+  fra `c112`..`c144` — non `club11`..`club14` come ci si aspetterebbe,
+  ma gli stessi nomi sprite usati dalle VARIANTI DI CASA (STUDIO.md
+  sopra, `BUILDING_TYPES.casa.construct.variants`). Lo stesso identico
+  blocco di codice (byte per byte, stessi nomi sprite "casa") compare
+  anche in `villa1/Alarm_0.gml`: quasi certamente codice condiviso/
+  copiato fra oggetti diversi nel progetto originale (un pattern
+  "scintillio colore + variante a dado" riusato senza aggiornare i nomi
+  sprite per ogni copia) piuttosto che un comportamento voluto — non
+  c'e' modo plausibile che i progettisti intendessero un nightclub che
+  si trasforma periodicamente in una casetta a due piani. Riprodurlo
+  fedelmente vorrebbe dire far scomparire un club a caso ogni 2-2.5s per
+  mostrare al suo posto uno sprite di `casa` scelto anch'esso a caso: un
+  bug quasi certo del gioco originale, sotto la soglia di quanto vale
+  riprodurre fedelmente (nessuna conseguenza di gameplay, e nessuna
+  certezza che sia mai stato visibile in pratica — richiederebbe capire
+  quale delle due `action_sprite_color`/`action_sprite_set` per tic
+  arrivi davvero a schermo prima del prossimo Step). Lo `Alarm_1`
+  gemello (tint bianco fisso) e il ramo "ruspa"/`demobasia` (riparazione
+  a pagamento, selec==11) restano fuori per lo stesso motivo gia'
+  dichiarato altrove: nessuno strumento ruspa ricostruito.
+  `tools/23_atlas.py`: aggiunte le 8 sprite nuove (`club11..14`,
+  `club11i..14i`) al manifest `GAMEPLAY_SPRITES["buildings"]`; nessuna
+  delle due ha un'istanza statica in `match_easy`, quindi senza
+  elencarle esplicitamente l'atlas non le avrebbe mai impacchettate
+  (stesso motivo gia' documentato per `sool`/`rl_as` sopra).
+  Verificato in browser: piazzato un `club` (dote forzata da console),
+  `r12.mon` -3500 esatto e un pacco di cantiere compare nel punto giusto
+  (`constructionBalloons.length` 0→1); portando il cantiere all'ultimo
+  passo da console e aspettando che finisca, l'edificio compare con uno
+  sprite fra `club11`..`club14` e il `decorSpr` abbinato corretto
+  (`club14`↔`club14i` osservato in una run, schermata a corredo);
+  forzando `life = 0` l'edificio sparisce e `r12.hap` sale esattamente
+  di 50 — non prima, solo alla distruzione.
+
+- **Ottavo edificio giocabile: `villa`** (src/objects/villa1 — "Villa" nel
+  menu, `pvilla`/`selec==63`). E' il secondo edificio, dopo `casa`, con
+  crescita/consumo veri nel tempo — non solo costruzione+fine — ma un solo
+  livello: nessun `upXXX` lo referenzia nel decompilato. Il cantiere
+  (`impavil_r`/`impavil_f`) non usa la macchina a contatore "tic 0..N" di
+  industria/missile/club: e' la stessa forma "base" a 5 passi/790 tic gia'
+  letta per `casa.construct` (390+30+310+30+30) — **[C]** verificato passo
+  per passo su `impavil_r/Create.gml` + `Alarm_0/1/2/3` (due alarm armati
+  insieme da `Alarm_0`, 30 e 340 tic dopo: quello piu' corto vince e lascia
+  l'altro pendente, lo stesso schema gia' letto per `casa` la prima volta).
+  Placement cost **[C]** 7500 mon (`placeholder/Mouse_LeftReleased.gml`,
+  `selec==63`), che rivela anche che villa e' il sesto tipo a creare
+  `mon_bil`.
+  **La distribuzione delle 12 varianti NON e' uniforme.** `villa1/
+  Create.gml` sceglie fra `vil1`..`vil12` con una cascata di `dice(2)`
+  annidati che SEMBRA lo stesso schema a due meta' simmetriche gia' visto
+  per `casa` (STUDIO.md sopra) — ma le due meta' non sono identiche
+  (profondita' diversa in punti diversi dell'albero), quindi non producono
+  probabilita' uguali. Calcolato ramo per ramo dal decompilato (non
+  supposto): `vil6`/`vil7`/`vil8` hanno il doppio delle probabilita' di
+  `vil2`/`vil3`/`vil9`/`vil10`/`vil11`, `vil1`/`vil4`/`vil5` stanno a meta'
+  strada, e `vil12` ha la META' della probabilita' "normale" — pesi 3/2/2/
+  3/3/4/4/4/2/2/2/1 su un totale di 32. Il pick uniforme gia' generalizzato
+  per casa/parco/club non bastava: nuova `pickVariant()` in buildings.js
+  (peso opzionale per riga, default 1 — casa/parco/club restano uniformi
+  senza cambiare una riga) usata ora ovunque al posto del pick diretto.
+  Verificato con 20.000 campioni via `stepConstructions()` vero (non una
+  reimplementazione a parte dell'algoritmo): frequenze osservate entro
+  ±0.4 punti percentuali dai pesi teorici per tutte e 12 le varianti.
+  **[C]** `growth`: stessi 4 intervalli (`[3500, 5796, 11565, 14656]`) e lo
+  stesso primo intervallo fisso (2000) gia' letti per `casa1` — quasi
+  certamente lo stesso codice riusato dagli sviluppatori originali per due
+  edifici diversi, non una coincidenza (`villa1/Alarm_2.gml`). A differenza
+  di casa pero' OGNI stadio (non solo la costruzione) ha 1 probabilita' su
+  4 di creare un altro pedone (`pplo`) — `growth[].pedestrianDice`, nuovo
+  parametro opzionale di `stepGrowth()` (STUDIO.md era gia' silenziosa su
+  questo per casa: la sua crescita non ne crea mai). L'aggancio vero
+  (`pedestrians.push`) resta fuori da buildings.js con lo stesso confine
+  gia' scelto per decoro/monete (`onPedestrian`, chiamato da main.js).
+  **[C]** `consumption`: tabella propria per stadio `ava` (non per livello:
+  villa ne ha uno solo), letta da `villa1/Alarm_3.gml` — con un'asimmetria
+  degna di nota: il consumo diurno di `ava==3` (12) e' PIU' BASSO di quello
+  di `ava==2` (14), letto cosi' come sta nel decompilato, non raddrizzato.
+  **Il pulsante blu della moneta esiste anche per villa, ma non e' lo
+  stesso di casa.** `villa1/Alarm_4.gml` condivide la struttura (hap/ele,
+  poi un premio in base ad `ava`, stesso periodo 3000 tic/primo controllo a
+  600) ma **[C]** la soglia e' `hap >= pop + 100` (non `hap >= pop` come
+  casa — un offset in piu', letto cosi' com'e'), e soprattutto ad `ava==0`
+  il premio non e' una moneta: `action_create_object(soldbio, 0, 0)` — un
+  oggetto della stessa famiglia "sold*" (stesso depth, stessa raccolta a
+  tap) ma il cui `Mouse_MouseEnter.gml` assegna `r12.biotech += 1`, non
+  `mon`. `biotech` era dichiarato in `state.js` fin dall'inizio (STUDIO.md
+  §6 "cosa non so ancora") ma MAI scritto da nessuna regola: e' la prima
+  volta che diventa un numero vero. **[C]** `soldbio` non ha ne'
+  `Create.gml` ne' `Alarm_0.gml` propri nel decompilato — a differenza di
+  `sold1..5` (che LO diventano "soldfade" e si autoriscuotono con una
+  chies di livello 3) resta sempre "soldico", ferma, finche' non viene
+  toccata. Agli stadi successivi (`ava` 1..4) villa riusa GLI STESSI
+  oggetti gia' letti per casa1 (`sold2`.."sold5", 40/60/80/100 mon — non
+  una coincidenza, gli oggetti sono condivisi) ma **[C]** a `ava>=5`
+  (crescita completa) crea `sold1` (20 mon) — la PIU' BASSA delle sei, non
+  la continuazione naturale della progressione (`sold6`, 120 mon, quello
+  che la formula di casa userebbe): letto cosi' come sta, non
+  "raddrizzato". `game/src/coins.js`: `stepCoinSpawner()` resta invariato
+  per casa (nessun rischio di regressione su codice gia' verificato) e
+  guadagna un secondo ramo esplicito per villa; `stepCoins()`/
+  `collectCoin()` ora assegnano `r12[item.kind]` invece di `r12.mon` fisso
+  — `kind` default assente sulle monete di casa (`"mon"` implicito nel
+  nuovo codice, comportamento identico).
+  Non riprodotto, stesso principio gia' scelto per club/altri: il ramo
+  "ruspa"/`demobasia` (riparazione a pagamento, `selec==11`) e il ciclo
+  colore/sprite di `Alarm_0` che (come club1, vedi sopra) ri-sceglie a
+  dado lo sprite dell'istanza usando i nomi delle varianti di CASA
+  (`c112`..`c144`) — stesso identico blocco di codice, stessa conclusione
+  gia' argomentata per club (quasi certamente condiviso/copiato fra
+  oggetti diversi nel progetto originale, non voluto).
+  Verificato in browser: piazzata una villa (-7500 mon esatti, pacco di
+  cantiere), cantiere completo con `vil3`/`vil3l` in una run (sprite+decoro
+  abbinati); un pedone in piu' (`pedestrians.length` 0→1) esattamente alla
+  fine del cantiere, prima ancora di qualunque stadio di crescita; forzando
+  `hap`/`ele` alti con `ava==0` compare una moneta `kind:"biotech"`
+  (`spr:"soldico"`, `auto:false`) che al tap porta `r12.biotech` da 0 a 1;
+  con `ava` forzato a 1 la stessa condizione produce invece `kind:"mon"`,
+  `amount:40` — la biforcazione fra le due famiglie di ricompensa si
+  comporta esattamente come letto.

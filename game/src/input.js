@@ -17,6 +17,13 @@ export class Input {
     this.onDrag = null;              // (dxScreen, dyScreen)
     this.onTap = null;               // (sx, sy)
     this.onZoom = null;              // (factor, anchorSx, anchorSy)
+    // Un gesto che comincia sopra la UI (es. la barra di selettore edifici,
+    // su mobile in scroll orizzontale) non deve muovere la camera sotto di
+    // essa: `uiHitTest(sx, sy)` decide, al pointerdown, se questo puntatore
+    // appartiene alla UI per tutta la durata del gesto — `onUIDrag` prende
+    // il posto di `onDrag` finche' il dito resta giu'.
+    this.uiHitTest = null;           // (sx, sy) => bool
+    this.onUIDrag = null;            // (dxScreen, dyScreen)
 
     // Posizione del puntatore in spazio schermo, aggiornata ad ogni
     // pointermove indipendentemente da drag/pinch in corso — a differenza
@@ -47,6 +54,7 @@ export class Input {
     const p = this._pos(e);
     this.pointers.set(e.pointerId, {
       x: p.x, y: p.y, sx: p.x, sy: p.y, t: performance.now(), moved: false,
+      ui: this.uiHitTest?.(p.x, p.y) ?? false,
     });
     if (this.pointers.size === 2) this.pinchDist = this._dist();
   }
@@ -70,7 +78,7 @@ export class Input {
       this.pinchDist = d;
       return;
     }
-    if (st.moved) this.onDrag?.(dx, dy);
+    if (st.moved) (st.ui ? this.onUIDrag : this.onDrag)?.(dx, dy);
   }
 
   _up(e) {
