@@ -261,8 +261,12 @@ GAMEPLAY_SPRITES = {
     # game/src/projectiles.js — il laser non ha un proiettile vero, e' un
     # colpo istantaneo). "fica" (il lampo di sparo per tutte e tre, scala
     # 0.4) e' gia' in "threats" sopra, nessuno sprite in piu' da aggiungere
-    # per quello.
-    "projectiles": ["redb", "gatmissse"],
+    # per quello. "c1"/"c2"/"c3" sono il fumo di scia (src/objects/smoko,
+    # spawnSmoko() in projectiles.js) — NON gli stessi "cc1"/"cc2"/"cc3"
+    # del fumo delle centrali qui sotto (sprite diversi, per coincidenza
+    # nomi quasi uguali: verificato in data/sprites.json, dimensioni
+    # diverse, 96x96 contro 38x35).
+    "projectiles": ["redb", "gatmissse", "c1", "c2", "c3"],
     # I pulsanti blu delle monete (src/objects/sold1..18, game/src/coins.js)
     # e il segnale verde di potenziamento (src/objects/upsign12|23|upcrc12|
     # 23|upind12|23 — tutti la stessa icona "upico", game/src/main.js

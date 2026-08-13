@@ -102,6 +102,11 @@ const WEAPONS = {
     kind: "projectile", muzzle: MISSILE_MUZZLE,
     cooldown: 40 * TICK,                 // [C] action_set_alarm(40, 6) -> Alarm_6 rimette launching = 1
     speed: 50, life: 120 * TICK, spr: "redb",
+    // [C] red_ball/Alarm_0.gml: action_create_object(smoko, 0, 0), poi si
+    // riarma da solo ogni 2 tick per tutta la vita del razzo (~120 tick) —
+    // una vera scia di fumo, non un singolo sbuffo alla bocca (quello e'
+    // gatling, `muzzleSmoke` sopra/sotto). Vedi spawnSmoko()/stepSmoko().
+    trailPeriod: 2 * TICK,
     // [I] Nessuna maschera vera (STUDIO.md, "pepazzittecollider" mai
     // ricostruito — stessa scelta di BLAST_RADIUS/TURRET_MIN_DIST altrove):
     // un raggio fisso, abbastanza piccolo da sembrare un colpo mirato invece
@@ -115,7 +120,10 @@ const WEAPONS = {
   // `r12.mon -= 3` incondizionato, senza controllo `canAfford` prima (a
   // differenza di ogni acquisto/potenziamento nel motore): il fuoco
   // automatico puo' davvero portare `mon` sotto zero con abbastanza minacce
-  // vicine, esattamente come nel decompilato.
+  // vicine, esattamente come nel decompilato. Ogni proiettile nasce anche
+  // con un fumo (`smoko`, un solo sbuffo alla bocca — non una scia, vedi
+  // `muzzleSmoke` sotto: [C] `yellow_pro/Create.gml` lo crea una volta
+  // sola, a differenza del razzo che lo riarma di continuo in volo).
   gatling: {
     kind: "projectile", twin: true, muzzle: GATLING_MUZZLE,
     cooldown: 50 * TICK,                 // [I] vedi buildings.js: il vero riarmo di `launching` e' un piccolo stato
@@ -125,6 +133,7 @@ const WEAPONS = {
     speed: 60, life: 50 * TICK, spr: "gatmissse",
     hitRadius: 70,                       // [I] proiettile piccolo, stessa logica di missile.hitRadius sopra
     ammoCost: { mon: 3 },                // per proiettile, non per scarica
+    muzzleSmoke: true,                    // [C] yellow_pro/Create.gml: action_create_object(smoko, 0, 0)
   },
   // [C] lasergun/Step.gml: costa energia, non denaro, e QUESTA sì e'
   // gated (`with(r12) if (ele>=200) break`) — a differenza di gatling non
@@ -136,10 +145,15 @@ const WEAPONS = {
   // finora: ogni sprite direzionale del motore e' gia' un fotogramma
   // separato per direzione, non uno ruotato a runtime), quindi il fascio
   // vero e proprio non si disegna. [I] Sostituito con un colpo secco e
-  // istantaneo (hitscan): se una minaccia vera e' entro `aim.fireRange` il
-  // laser la distrugge sul colpo, con un lampo alla bocca del cannone e
-  // un'esplosione vera sul bersaglio — stesso risultato del beam originale
-  // (la minaccia sparisce), solo senza il fascio disegnato in mezzo.
+  // istantaneo (hitscan): se una o piu' minacce vere sono entro
+  // `aim.fireRange` il laser le distrugge TUTTE sul colpo (vedi fireFrom
+  // sotto — [C] fedele: nessuno dei Collision_* di `laserone`/
+  // `laserone_retro` uccide mai se stesso, solo l'altro oggetto colpito —
+  // il fascio non si consuma al primo bersaglio, trafigge chiunque tocchi
+  // finche' resta acceso), con un lampo alla bocca del cannone e
+  // un'esplosione vera su ciascun bersaglio — stesso risultato del beam
+  // originale (le minacce spariscono), solo senza il fascio disegnato in
+  // mezzo.
   laser: {
     kind: "beam", muzzle: LASER_MUZZLE,
     cooldown: 85 * TICK,                  // [C] launching=2, action_set_alarm(85, 1) -> Alarm_1 rimette launching = 0
@@ -147,11 +161,43 @@ const WEAPONS = {
   },
 };
 
+// [C] smoko/Create.gml: nessun moto, nessuna crescita (a differenza di
+// smoke_ind/smoke.js) — nasce, aspetta 36 tick (Alarm_0: action_kill_
+// object), sparisce di scatto. Sprite a dado tra c1 (25%, il default
+// dell'oggetto)/c2 (25%)/c3 (50%, l'ultimo dei due `action_if_dice(2)`
+// vince sempre perche' sovrascrive il primo) — proporzioni diverse da
+// quelle di smoke_ind (50/25/25) nonostante siano gli stessi tre sprite,
+// letto cosi' come sta. Depth **[C]** -9000 fisso (data/objects.json:
+// `smoko`, stessa quota dei pulsanti blu delle monete, coins.js) — sempre
+// in primo piano, ma senza `_selfLit`: e' un residuo di sparo/scia, non un
+// simbolo dell'interfaccia come le monete, quindi si scurisce di notte
+// come qualunque altro decoro (STUDIO.md, coins/upsign).
+const SMOKO_LIFE = 36 * TICK;
+const SMOKO_DEPTH = -9000;
+function spawnSmoko(x, y) {
+  const d = Math.random();
+  const spr = d < 0.5 ? "c3" : d < 0.75 ? "c2" : "c1";
+  return { x, y, t: 0, spr, depth: SMOKO_DEPTH };
+}
+
+/** Avanza/scarta gli sbuffi di fumo di scia (missile/gatling — vedi
+ * spawnSmoko sopra). Array separato da quello del fumo delle centrali
+ * (game/src/smoke.js): stesso principio, meccanica diversa (statico,
+ * niente moto ne' crescita), condividerlo avrebbe voluto dire rendere
+ * quella funzione piu' complicata per un caso che non le appartiene. */
+export function stepSmoko(trails, dt) {
+  for (let i = trails.length - 1; i >= 0; i--) {
+    trails[i].t += dt;
+    if (trails[i].t >= SMOKO_LIFE) trails.splice(i, 1);
+  }
+}
+
 function spawnProjectile(x, y, angleDeg, weapon) {
   const rad = (angleDeg * Math.PI) / 180;
   return {
     x, y, vx: Math.cos(rad) * weapon.speed, vy: -Math.sin(rad) * weapon.speed,
     t: 0, spr: weapon.spr, life: weapon.life, hitRadius: weapon.hitRadius,
+    trailT: 0, trailPeriod: weapon.trailPeriod,
   };
 }
 
@@ -165,34 +211,31 @@ function payAmmo(weapon, r12) {
   for (const k in weapon.ammoCost) r12[k] -= weapon.ammoCost[k];
 }
 
-/** La minaccia vera piu' vicina entro `range` da `b`, o null. */
-function nearestThreat(b, threats, range) {
-  let nearest = null, nearestD2 = range * range;
-  for (const th of threats) {
-    const dx = th.x - b.x, dy = th.y - b.y, d2 = dx * dx + dy * dy;
-    if (d2 < nearestD2) { nearestD2 = d2; nearest = th; }
-  }
-  return nearest;
-}
-
 /** Fa davvero partire un colpo dalla punta del cannone (scelta da
  * `b.aimAngle`, `weapon.muzzle`) — il nucleo comune a fuoco automatico
  * (stepTurretFire, sotto) e fuoco manuale al tap (fireTurretManual,
  * sotto). Non tocca `b.fireT` ne' verifica munizioni/portata: quello resta
  * a carico di chi chiama, cosi' i due percorsi possono applicare le
  * proprie regole (stepTurretFire gia' sa che una minaccia vera e' in
- * portata, fireTurretManual no). */
-function fireFrom(b, weapon, projectiles, explosions, r12, threats) {
+ * portata, fireTurretManual no). `trails` riceve gli sbuffi di fumo di
+ * scia (spawnSmoko sopra) quando l'arma ne crea uno alla bocca. */
+function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails) {
   if (weapon.kind === "beam") {
     const off = bucketFor(weapon.muzzle, b.aimAngle);
     const mx = b.x + off.dx, my = b.y + off.dy;
     payAmmo(weapon, r12);
     explosions.push(spawnExplosion(mx, my, MUZZLE_FLASH_SCALE));
+    // [C] il fascio non si ferma al primo bersaglio (vedi il commento su
+    // WEAPONS.laser sopra): TUTTE le minacce vere entro `aim.fireRange`
+    // vengono distrutte, non solo la piu' vicina.
     const fireRange = BUILDING_TYPES[b.type].aim.fireRange;
-    const target = nearestThreat(b, threats, fireRange);
-    if (target) {
-      threats.splice(threats.indexOf(target), 1);
-      explosions.push(...spawnDeathEffect(target.type, target.x, target.y));
+    const r2 = fireRange * fireRange;
+    for (let i = threats.length - 1; i >= 0; i--) {
+      const th = threats[i];
+      const dx = th.x - b.x, dy = th.y - b.y;
+      if (dx * dx + dy * dy > r2) continue;
+      threats.splice(i, 1);
+      explosions.push(...spawnDeathEffect(th.type, th.x, th.y));
     }
     return;
   }
@@ -204,6 +247,7 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats) {
     const fireAngle = (Math.atan2(-(target.y - my), target.x - mx) * 180) / Math.PI;
     projectiles.push(spawnProjectile(mx, my, fireAngle, weapon));
     explosions.push(spawnExplosion(mx, my, MUZZLE_FLASH_SCALE));
+    if (weapon.muzzleSmoke) trails.push(spawnSmoko(mx, my));
     payAmmo(weapon, r12);
   }
 }
@@ -214,7 +258,7 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats) {
  * cannone non e' in ricarica (ne' — solo per laser — a corto di energia)
  * fa partire un colpo verso il bersaglio gia' inseguito (fireFrom sopra).
  */
-export function stepTurretFire(buildings, threats, dt, projectiles, explosions, r12) {
+export function stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails) {
   for (const b of buildings) {
     const weapon = WEAPONS[b.type];
     if (b.construction || !weapon) continue;
@@ -230,7 +274,7 @@ export function stepTurretFire(buildings, threats, dt, projectiles, explosions, 
     }
     if (!inRange || !canFireAmmo(weapon, r12)) continue;
     b.fireT = 0;
-    fireFrom(b, weapon, projectiles, explosions, r12, threats);
+    fireFrom(b, weapon, projectiles, explosions, r12, threats, trails);
   }
 }
 
@@ -264,7 +308,7 @@ export function stepTurretFire(buildings, threats, dt, projectiles, explosions, 
  * manualFire`), e' in ricarica, non ha nessun bersaglio in portata adesso,
  * o (solo laser) l'energia non basta.
  */
-export function fireTurretManual(b, projectiles, explosions, r12, threats) {
+export function fireTurretManual(b, projectiles, explosions, r12, threats, trails) {
   const weapon = WEAPONS[b.type];
   if (!weapon || !BUILDING_TYPES[b.type]?.manualFire) return false;
   if (b.aimAngle == null || !b.aimTarget) return false;
@@ -275,7 +319,7 @@ export function fireTurretManual(b, projectiles, explosions, r12, threats) {
   }
   if ((b.fireT ?? 0) < weapon.cooldown || !canFireAmmo(weapon, r12)) return false;
   b.fireT = 0;
-  fireFrom(b, weapon, projectiles, explosions, r12, threats);
+  fireFrom(b, weapon, projectiles, explosions, r12, threats, trails);
   return true;
 }
 
@@ -306,13 +350,24 @@ export function fireTurretManual(b, projectiles, explosions, r12, threats) {
  * balloons.js/stepBalloons()); colpire una spia la fa sparire senza che
  * riferisca mai (nessun Destroy.gml su monspi) — il modo per fermarla
  * prima che "riesca", chiesto insieme alle minacce vere.
+ *
+ * `trails` riceve la scia di fumo del razzo in volo (`p.trailPeriod`,
+ * missile soltanto — vedi WEAPONS.missile/spawnSmoko sopra): un puff ogni
+ * 2 tick per tutta la vita del proiettile, come [C] `red_ball/Alarm_0.gml`
+ * si riarma da solo. Il gatling non ha `trailPeriod` (un solo sbuffo alla
+ * bocca, gia' creato una volta in fireFrom), quindi qui non fa nulla per
+ * lui.
  */
-export function stepProjectiles(projectiles, balloons, threats, loot, explosions, dt) {
+export function stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt) {
   for (let i = projectiles.length - 1; i >= 0; i--) {
     const p = projectiles[i];
     p.t += dt;
     p.x += p.vx * 60 * dt;
     p.y += p.vy * 60 * dt;
+    if (p.trailPeriod) {
+      p.trailT += dt;
+      while (p.trailT >= p.trailPeriod) { p.trailT -= p.trailPeriod; trails.push(spawnSmoko(p.x, p.y)); }
+    }
 
     let hit = null, hitList = null, hitIdx = -1, hd2 = p.hitRadius * p.hitRadius;
     for (let j = 0; j < balloons.length; j++) {

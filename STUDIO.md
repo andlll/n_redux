@@ -1663,16 +1663,16 @@ paragrafo 8.
   (game/src/gl.js) non supporta rotazione (mai servita finora: ogni
   sprite direzionale e' gia' un fotogramma separato per direzione, non uno
   ruotato a runtime), quindi il fascio vero non si disegna: sostituito da
-  un colpo istantaneo (hitscan) che distrugge sul colpo la minaccia vera
-  piu' vicina entro `aim.fireRange`, con un lampo alla bocca del cannone e
-  un'esplosione vera sul bersaglio — stesso risultato (la minaccia
-  sparisce), niente fascio disegnato in mezzo. **[C]** `lasergun/
+  un colpo istantaneo (hitscan) che distrugge sul colpo TUTTE le minacce
+  vere entro `aim.fireRange` — non solo la piu' vicina, vedi la correzione
+  piu' sotto — con un lampo alla bocca del cannone e un'esplosione vera su
+  ciascun bersaglio — stesso risultato (le minacce spariscono), niente
+  fascio disegnato in mezzo. **[C]** `lasergun/
   Mouse_LeftPressed.gml` spara per davvero al tocco (stessa forma
   dell'automatico, `manualFire: true`): a differenza di missile pero'
   l'originale non richiede affatto una minaccia vera per sparare
   manualmente, solo un veicolo entro 800px — il colpo puo' partire (lampo
-  + costo + ricarica) anche senza colpire nulla, e distrugge la minaccia
-  vera piu' vicina solo se ce n'e' gia' una entro 200px in quell'istante.
+  + costo + ricarica) anche senza colpire nulla.
   Verificato in browser (con l'atlas rigenerato in locale, non solo a
   occhio sul codice): entrambe piazzabili dal menu con il costo giusto
   scalato, `tooCloseToTurret()` le blocca l'una vicino all'altra come le
@@ -1682,5 +1682,38 @@ paragrafo 8.
   correttamente seguendo il traffico decorativo, e forzando una minaccia
   vera in portata di entrambe: gatling crea due proiettili (`gatmissse`)
   che volano verso il veicolo inseguito (non verso la minaccia, fedele),
-  scala `mon` di 3 a testa; laser distrugge sul colpo la minaccia piu'
-  vicina, scala `ele` di 200, nessun proiettile creato.
+  scala `mon` di 3 a testa; laser distrugge sul colpo la minaccia in
+  portata, scala `ele` di 200, nessun proiettile creato.
+  **Corretto dopo la prima verifica, segnalato dall'autore**: la prima
+  versione faceva colpire al laser solo la minaccia vera piu' vicina
+  (`nearestThreat()`), un colpo mirato come missile/gatling. Rileggendo
+  `laserone`/`laserone_retro/Collision_*.gml` (tutti e dieci gli handler,
+  uno per famiglia di minaccia) nessuno dei due chiama mai
+  `action_kill_object()` su se stesso — solo su `other.id`, il bersaglio
+  colpito: il fascio non si consuma al primo impatto, resta acceso e
+  trafigge chiunque tocchi. `fireFrom()` in projectiles.js ora scorre TUTTE
+  le minacce entro `aim.fireRange` e le distrugge una per una, invece di
+  cercarne solo la piu' vicina — verificato con quattro minacce, tre entro
+  200px e una fuori: il laser ne distrugge esattamente tre in un colpo
+  solo, la quarta sopravvive.
+  **Il fumo di scia dei proiettili, mancante alla prima verifica,
+  segnalato dallo stesso giro di note**: **[C]** `red_ball/Alarm_0.gml`
+  (missile) crea un `smoko` alla nascita e si riarma da solo ogni 2 tick
+  per tutta la vita del razzo (~120 tick) — una scia vera, non un lampo
+  isolato; `yellow_pro/Create.gml` (gatling) ne crea uno solo, alla bocca,
+  senza riarmo. `smoko` **[C]** e' piu' semplice di `smoke_ind` (il fumo
+  delle centrali, smoke.js): nessun moto ne' crescita, solo un dado fra tre
+  sprite (**[C]** proporzioni 25/25/50% fra c1/c2/c3 — diverse da quelle di
+  `smoke_ind`, 50/25/25, nonostante siano nomi quasi identici: **[C]**
+  `c1`/`c2`/`c3` per `smoko` non sono gli stessi sprite di `cc1`/`cc2`/
+  `cc3` per `smoke_ind`, verificato in `data/sprites.json` — 96x96 contro
+  38x35, una coincidenza di nomenclatura nel progetto originale, non un
+  refuso qui) e depth **[C]** -9000 fisso, la stessa quota delle monete blu
+  ma senza `_selfLit`: un residuo di sparo si scurisce di notte come
+  qualunque altro decoro, non e' un simbolo dell'interfaccia. Nuova
+  `spawnSmoko()`/`stepSmoko()` in projectiles.js, un array `trails`
+  separato da quello del fumo delle centrali (meccanica troppo diversa —
+  statico invece che animato/in crescita — per condividere lo stesso
+  step). Verificato in browser: un razzo lanciato lontano lascia una scia
+  visibile di sbuffi grigi lungo tutta la traiettoria, non un singolo
+  fotogramma fermo.

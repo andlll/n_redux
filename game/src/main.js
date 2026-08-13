@@ -14,7 +14,7 @@ import {
 import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT } from "./smoke.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT } from "./threats.js";
-import { stepTurretFire, stepProjectiles, fireTurretManual } from "./projectiles.js";
+import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -281,10 +281,14 @@ let smoke = [];
 let threats = [];
 let bombs = [];
 let explosions = [];
-// Il fuoco vero del lanciarazzi (game/src/projectiles.js): stepTurretFire
-// crea i razzi (dalla punta del cannone, quando una minaccia vera e' entro
-// 250px), stepProjectiles li fa volare e colpire.
+// Il fuoco vero delle torrette (game/src/projectiles.js): stepTurretFire
+// crea i colpi (dalla punta del cannone, quando una minaccia vera e' entro
+// portata), stepProjectiles li fa volare e colpire.
 let projectiles = [];
+// Sbuffi di fumo di scia (game/src/projectiles.js, spawnSmoko/stepSmoko):
+// la scia del razzo in volo + il singolo sbuffo alla bocca del gatling —
+// non il fumo delle centrali (quello e' `smoke`, game/src/smoke.js).
+let trails = [];
 let r12 = createR12();
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
@@ -811,7 +815,7 @@ input.onTap = (sx, sy) => {
     // cantiere invece resta tryStartUpgrade come per qualunque edificio
     // (che gia' risponderebbe da solo "cantiere gia' in corso").
     if (!b.construction && BUILDING_TYPES[b.type]?.manualFire) {
-      const fired = fireTurretManual(b, projectiles, explosions, r12, threats);
+      const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails);
       message = fired ? "fuoco!"
         : !b.aimTarget ? "nessun bersaglio in portata"
         : b.type === "laser" && r12.ele < 200 ? "energia insufficiente"
@@ -978,8 +982,9 @@ function frame(now) {
   stepTurretAim(buildings, cars.concat(balloons));
   // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
   // gia' nella direzione appena calcolata (b.aimAngle).
-  stepTurretFire(buildings, threats, dt, projectiles, explosions, r12);
-  stepProjectiles(projectiles, balloons, threats, loot, explosions, dt);
+  stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails);
+  stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt);
+  stepSmoko(trails, dt);
   if (messageT > 0) messageT -= dt;
 
   // --- lista di disegno di questo frame: mondo statico (placeholder consumati
@@ -1077,6 +1082,11 @@ function frame(now) {
   }
   // Il fuoco vero (game/src/projectiles.js): i razzi del lanciarazzi.
   for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr) });
+  // Fumo di scia (game/src/projectiles.js, spawnSmoko): depth -9000 fisso
+  // come le monete blu ([C] smoko/_object.json), ma senza `_selfLit` — un
+  // residuo di sparo, non un simbolo dell'interfaccia, si scurisce di
+  // notte come qualunque altro decoro.
+  for (const p of trails) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
   // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
   // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
   // (`_alpha`, 0 di giorno) che il ciclo di disegno rispetta da solo — a
@@ -1376,7 +1386,7 @@ window.__nimbus = {
   get coinPops() { return coinPops; },
   get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
   get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
-  get projectiles() { return projectiles; }, get smoke() { return smoke; },
+  get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,
