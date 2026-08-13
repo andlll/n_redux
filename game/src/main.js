@@ -92,20 +92,6 @@ function effDepth(it) {
 const sortWorld = (a, b) => effDepth(b) - effDepth(a);
 const staticWorld = scene.instances.slice().sort(sortWorld);
 
-// colore stabile per nome oggetto, finche' non abbiamo gli atlas veri
-function colorFor(name) {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  const hue = ((h % 360) + 360) % 360;
-  const f = (n) => {
-    const k = (n + hue / 30) % 12;
-    const c = 0.55 - 0.35 * Math.max(-1, Math.min(Math.min(k - 3, 9 - k), 1));
-    return Math.round(c * 255);
-  };
-  return (f(0) << 16) | (f(8) << 8) | f(4);
-}
-for (const it of staticWorld) it._c = colorFor(it.obj);
-
 // ---------------------------------------------------------------- atlas
 // Le pagine sono reimpacchettate per room da tools/23_atlas.py + 24_blit.py:
 // quelle originali di GameMaker sparpagliavano 13 sprite su 12 pagine.
@@ -1425,18 +1411,24 @@ function frame(now) {
   for (const it of frameList) {
     if (it.obj === "placeholder" && !it._hovered && !it._armed) continue;
     const f = it._f;
-    if (f) {
-      const x0 = it.x - f.ox, y0 = it.y - f.oy;
-      if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < t) continue;
-      const base = (it.obj === "placeholder" && it._armed) ? ARMED_TINT : (it._tint ?? 0xffffff);
-      const tint = it._selfLit ? base : mulTint(base, amb.rgb);
-      r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
-    } else {
-      // istanze senza sprite: controller invisibili, li mostro come marcatori
-      const s = 24;
-      if (it.x > rr + s || it.y > bb + s || it.x < l - s || it.y < t - s) continue;
-      r.draw(solidFrame(white, s, s), it.x - s / 2, it.y - s / 2, 1, mulTint(it._c, amb.rgb), 0.35);
-    }
+    // Istanze senza sprite (`missingArt` sopra): nel decompilato sono
+    // esattamente questo, non "arte persa" — controller/collisori invisibili
+    // by design (`pepazzittecollider`: sprite:null, visible:0, STUDIO.md "27
+    // istanze in match_easy, mai piu' ricostruite: fanno rimbalzare i
+    // pedoni"; `scroller`/`scroller2`/`scriptfucker`: idem). Un tempo
+    // disegnate come quadratino colorato semitrasparente per "vederle" in
+    // sviluppo — ma quel marcatore restava visibile a QUALUNQUE giocatore,
+    // sparsi per la mappa come se fossero un edificio/zona segnaposto
+    // (segnalato dall'autore: "i rettangolini rossi intorno alla citta'").
+    // `missingArt` in HUD resta il modo giusto per uno sviluppatore di sapere
+    // quanti sono — un conteggio testuale, non qualcosa che finisce davanti
+    // agli occhi di chi gioca soltanto.
+    if (!f) continue;
+    const x0 = it.x - f.ox, y0 = it.y - f.oy;
+    if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < t) continue;
+    const base = (it.obj === "placeholder" && it._armed) ? ARMED_TINT : (it._tint ?? 0xffffff);
+    const tint = it._selfLit ? base : mulTint(base, amb.rgb);
+    r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
     drawn++;
   }
   // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che

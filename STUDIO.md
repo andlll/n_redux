@@ -2110,3 +2110,43 @@ paragrafo 8.
   bersagli oltre `aim.range` restano ignorati. Verificato anche in browser
   (Playwright) che piazzare e far vivere un lanciarazzi per qualche secondo
   di gioco normale non introduce errori in console.
+
+- **Rettangolini rosa/rossi semitrasparenti sparsi intorno alla citta'.**
+  Segnalato dall'autore. `main.js` (ciclo di disegno, prima riga 1434-1439)
+  disegnava un quadrato colorato semitrasparente (`colorFor(it.obj)`, un
+  hash del nome oggetto — commento originale: "colore stabile per nome
+  oggetto, finche' non abbiamo gli atlas veri") per QUALUNQUE istanza della
+  room priva di sprite, invece di ometterla. Nella scena `match_easy` sono
+  31 istanze, 27 delle quali `pepazzittecollider` — **[C]**
+  `src/objects/pepazzittecollider/_object.json`: `sprite: null, visible: 0`
+  nel decompilato, un collisore invisibile by design (fa rimbalzare i
+  pedoni, `pplo/Collision_pepazzittecollider.gml`; STUDIO.md piu' sopra,
+  "l'autore stesso non ricorda a cosa delimitino esattamente"), non uno
+  sprite perso. Le altre 4 (`scroller`/`scroller2`/`scriptfucker`/`iconic`)
+  sono lo stesso genere di controller/collisore invisibile. Il quadratino
+  era pensato come aiuto per chi sviluppa ("dov'e' quello che non ho ancora
+  disegnato") ma restava visibile a QUALUNQUE giocatore, sparso per la
+  mappa come se fosse un segnaposto di qualcosa — **[I]** tolto: le
+  istanze senza `_f` ora vengono semplicemente saltate nel disegno, fedeli
+  all'originale (che non le ha mai disegnate nemmeno lui). Il conteggio
+  `missingArt`/"senza sprite N" nell'HUD di debug resta, e' gia' il modo
+  giusto per uno sviluppatore di sapere quanti sono senza che finiscano
+  davanti agli occhi di chi gioca soltanto. `colorFor()`/`it._c` (usati solo
+  per quel quadratino) rimossi, codice morto dopo la modifica.
+  Nella stessa occasione, individuata (ma non ancora ricostruita — non
+  richiesto) la sagoma nera a forma di mano/pollice che compare vicino
+  all'acqua in basso a destra sulla mappa: **[C]** e' `src/objects/reversi`
+  (sprite `tut_ok`, poi `action_sprite_set(tut_exit,...)` al Create — mai
+  riprodotto qui), il vero bottone SALVA-ED-ESCI del decompilato
+  (`Mouse_LeftPressed.gml`: `action_save_game(...)` + `r12.exiting = 1`),
+  non un placeholder generico ne' il bottone "mano" (`handbutton`/`handee`,
+  gia' vero, in basso a SINISTRA — coppia diversa, non va confusa).
+  Nell'originale segue la camera e si piazza in basso a destra SOLO nel
+  menu principale (`reversi/Step.gml`: `with (pu1) { if (menoo==0) ...
+  action_move_to(...) else action_move_to(-1000,-1000) }`) — qui invece
+  `reversi` non e' mai stato tolto da `staticWorld` (stesso trattamento gia'
+  dato a `pu1`/`chies`/`honda_facile_1|2`, mai esteso a questo), quindi resta
+  un oggetto di mondo fermo nella posizione della room con lo sprite
+  `tut_ok` "di riposo" mai sostituito da `tut_exit`. Segnalato all'autore,
+  non implementato: comporterebbe decidere cosa significhi "esci" in una
+  ricostruzione senza un vero menu principale a cui tornare.
