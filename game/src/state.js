@@ -41,6 +41,17 @@ export function createR12() {
     // spia riuscita) e dirox/diro/diron (-> zeppelin ogni 10a) partono
     // tutti a 0 — game/src/threats.js "le minacce vere".
     bombolo: 0, bombus: 0, bombn: 0, dirox: 0, diro: 0, diron: 0,
+    // [C] r12/Create.gml: `wewe` — non "inquinamento" come ipotizzato in un
+    // primo momento (STUDIO.md), e' il PESO della piattaforma volante su
+    // `match` (l'autore: "più la piattaforma pesa più consuma petrolio").
+    // Parte gia' a 100 (il peso della piattaforma vuota), sale di un valore
+    // fisso alla nascita di ogni edificio che lo scrive (BUILDING_TYPES,
+    // campo `wewe` per livello — non tutti i tipi lo fanno: chies/parco/
+    // monum/grattacielo non pesano nulla nel decompilato), non scende mai
+    // (nessun Destroy.gml lo tocca). Letto da stepWeather() sotto, SOLO
+    // quando si gioca su `match` (non `match_easy`, dove la base e' a terra
+    // — vedi il commento su wewOilDrain()).
+    wewe: 100,
   };
 }
 
@@ -104,19 +115,64 @@ const STORM_CHECK = 1;                  // [C] 60 tick
 const STORM_DICE = 800;                  // [C]
 const STORM_DURATIONS = [30, 35];        // [C] 1800/2100 tick, dado 50/50
 
-export function stepWeather(r12, dt) {
+/**
+ * [C] r12/Alarm_2.gml: il drenaggio di `oil` dovuto al peso (`wewe`) della
+ * piattaforma — letto cosi' com'e', comprese due soglie che si SOVRAPPONGONO
+ * invece di essere fasce pulite: `wewe<=100` (-2) e `wewe<=200` (-3) sono
+ * due controlli INDIPENDENTI, non un else-if — a `wewe===100` (il valore di
+ * partenza, prima che qualunque edificio sia mai stato costruito) scattano
+ * ENTRAMBI, per un totale di -5, uguale al totale della fascia 201-300. Da
+ * 101 a 200 invece scatta solo il secondo (-3): il peso "vuoto" della sola
+ * piattaforma drena piu' del peso subito dopo. Non e' un refuso di questa
+ * porting: e' quello che il decompilato dice, verificato riga per riga con
+ * gli operatori (3="<=", 2=">") gia' confermati altrove in questo progetto.
+ */
+function wewOilDrain(wewe) {
+  let loss = 0;
+  if (wewe <= 100) loss += 2;
+  if (wewe <= 200) loss += 3;
+  if (wewe > 200 && wewe <= 300) loss += 5;
+  if (wewe > 300 && wewe <= 400) loss += 7;
+  if (wewe > 400 && wewe <= 500) loss += 9;
+  if (wewe > 500 && wewe <= 700) loss += 12;
+  if (wewe > 700 && wewe <= 1000) loss += 15;
+  if (wewe > 1000 && wewe <= 1500) loss += 23;
+  if (wewe > 1500 && wewe <= 2000) loss += 30;
+  if (wewe > 2000 && wewe <= 3000) loss += 50;
+  if (wewe > 3000) loss += 80;
+  return loss;
+}
+
+/**
+ * `isMatch`: **[C]** `r12/Alarm_2.gml` legge sia il drenaggio da `wewe` sia
+ * l'innesco della tempesta VERA dietro lo stesso flag (`action_if_number(
+ * 736,0,0)` — 0 su `match`, diverso da 0 su `match_easy`, dove scatta invece
+ * il ramo cosmetico `stormeasy`, mai letto qui). L'autore: il peso vale solo
+ * per la piattaforma volante di `match` — su `match_easy` la base e' a
+ * terra, una citta' "normale" che non deve reggersi in volo. A differenza
+ * della tempesta (gia' simulata "vera" anche su `match_easy` per una scelta
+ * dichiarata altrove, STUDIO.md: costava poco tenerla pronta per `match`),
+ * qui la distinzione per room e' voluta: `main.js` passa `scene.name ===
+ * "match"`, oggi sempre `false` (il motore carica solo `match_easy`) — il
+ * codice resta comunque corretto e pronto per quando quella room esistera'.
+ */
+export function stepWeather(r12, dt, isMatch) {
   if (r12.storm) {
     r12.stormT -= dt;
     if (r12.stormT <= 0) { r12.storm = 0; r12.stormT = 0; }
-    return;
   }
   r12.stormCheckT = (r12.stormCheckT ?? 0) + dt;
   while (r12.stormCheckT >= STORM_CHECK) {
     r12.stormCheckT -= STORM_CHECK;
-    if (Math.random() < 1 / STORM_DICE) {
+    // [C] nel decompilato il drenaggio da `wewe` e' incondizionato ad ogni
+    // scatto dell'alarm, tempesta attiva o no (non e' innestato dentro il
+    // ramo `storm==0` che segue) — applicato qui fuori dal ramo storm,
+    // niente `return` anticipato come prima (quello fermava anche questo
+    // conteggio mentre una tempesta era attiva, un bug di questa porting).
+    if (isMatch) r12.oil -= wewOilDrain(r12.wewe ?? 0);
+    if (!r12.storm && Math.random() < 1 / STORM_DICE) {
       r12.storm = 1;
       r12.stormT = STORM_DURATIONS[(Math.random() * STORM_DURATIONS.length) | 0];
-      break;
     }
   }
 }

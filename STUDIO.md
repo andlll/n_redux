@@ -2359,3 +2359,60 @@ paragrafo 8.
   notte + energia le finestre si accendono gradualmente a colori/velocita'
   diverse invece che tutte insieme, esattamente l'effetto "sfarfallio"
   letto nel decompilato.
+
+- **`wewe` e' il peso della piattaforma, non l'inquinamento — e la
+  profondita' del parco.** Due segnalazioni dell'autore, indipendenti ma
+  risolte insieme.
+  **[C] `wewe`** (`r12/Create.gml`: parte a 100): quasi ogni edificio lo
+  scrive alla nascita (mai un `Destroy.gml` lo riduce) ed `r12/Alarm_2.gml`
+  lo rilegge ogni 60 tick per drenare `oil` a soglie crescenti — letto qui
+  come "inquinamento" in una nota precedente (STUDIO.md sopra, "cosa
+  manca"), corretto dall'autore: e' il peso della piattaforma volante,
+  "più la piattaforma pesa più consuma petrolio". Confermato dal codice
+  stesso: lo stesso flag (`action_if_number(736,0,0)`) che guarda il
+  drenaggio guarda anche l'innesco della tempesta VERA (non `stormeasy`,
+  STUDIO.md sopra "le tempeste diventano reali") — entrambi gia' noti per
+  essere il ramo `match`, mai `match_easy`, dove la base sta a terra ("una
+  citta' 'normale'", l'autore) e non deve reggersi in volo.
+  `state.js`: `wewOilDrain(wewe)` riproduce le 11 soglie lette riga per
+  riga — comprese le prime due, che NON sono fasce esclusive: a
+  `wewe===100` (il valore di partenza) scattano ENTRAMBE (-2 e -3, totale
+  -5, uguale alla fascia 201-300), mentre 101-200 fa scattare solo la
+  seconda (-3) — un edificio della piattaforma vuota drena piu' del primo
+  edificio costruito. Verificato con gli operatori (3="<=", 2=">") gia'
+  confermati altrove nel progetto, non "raddrizzato" a tiers puliti.
+  `stepWeather(r12, dt, isMatch)` applica il drenaggio SOLO se `isMatch`
+  (main.js passa `scene.name === "match"`, oggi sempre `false`: il motore
+  carica solo `match_easy`, quindi il codice e' corretto ma dormiente fino
+  a quella room) — a differenza della tempesta, gia' simulata "vera" anche
+  su `match_easy` per una scelta dichiarata (costava poco tenerla pronta).
+  Corretto anche un bug di questa porting scoperto rileggendo la funzione
+  per aggiungerci `wewe`: il `return` anticipato mentre una tempesta era
+  attiva fermava pure il conteggio dei 60 tick, che nel decompilato e'
+  incondizionato (non annidato dentro `storm==0`).
+  `BUILDING_TYPES`: campo `wewe` per livello su banca/casa(1-3)/club/
+  eolico/gatling/industria(1-3)/laser/missile/museo/museoRd/palazzo/
+  palazzoRd/solare/villa (14 tipi, 18 livelli — palazzo/museo hanno un
+  secondo livello nel decompilato, `casa5ss|dd`, mai portato: STUDIO.md
+  sopra, "un secondo livello fuori scopo"), applicato da
+  `stepConstructions()` a fine cantiere insieme a `hap`. `chies`/`parco`/
+  `monum`/`grattacielo` non pesano nulla nel decompilato: nessun campo.
+  Verificato (Playwright, `window.__nimbus` + `import('./src/buildings.js')`
+  per leggere gli esatti valori attesi): piazzate finte istanze a fine
+  cantiere per tutti e 14 i tipi, `r12.wewe` passa da 100 a 1110 (100 + la
+  somma esatta dei 14 delta); con `wewe` cosi' alto l'`oil` non crolla nei
+  secondi successivi (il piccolo calo osservato e' la formula placeholder
+  generica di `tickR12()`, non il drenaggio da peso — fedele, il motore
+  gira sempre su `match_easy`).
+  **[I] Profondita' del parco**: segnalato dall'autore — un parco e'
+  scenografia bassa e piatta (lo scatter di alberi/lampioni di
+  `spawnParcoScatter()`, non un edificio solido), ma nasceva con lo stesso
+  `depth` dinamico di ogni altro edificio (`effDepth()`, main.js:
+  `depth===0` -> `-y`), finendo davanti a pali/auto vicini che dovrebbero
+  invece coprirlo. `BUILDING_TYPES.parco.fixedDepth = -5` (fuori dalla
+  gamma tipica di `-y` su questa mappa, poche centinaia/migliaia negativi)
+  letto da `placeAt()` (main.js) al posto del solito 0 — lo stesso
+  `effDepth()` lo tratta gia' come "fisso" per qualunque valore diverso da
+  zero, nessuna modifica al motore serviva oltre a leggere il campo.
+  Verificato in browser: un parco piazzato vicino a un lampione mostra
+  l'asta del lampione sopra il prato invece di sparire sotto.

@@ -479,8 +479,11 @@ function placeAt(placeholder, type) {
   // sempre sopra il terreno), non un depth di mondo da ereditare. Un
   // edificio vero e' un oggetto "di mondo" come chies o gli alberi: deve
   // ordinarsi per la propria y (vedi effDepth() sopra), non restare per
-  // sempre incollato davanti a tutto il resto della mappa.
-  const b = placeBuilding(type, placeholder.x, placeholder.y, 0);
+  // sempre incollato davanti a tutto il resto della mappa. `def.fixedDepth`
+  // (parco, buildings.js — [I] segnalato dall'autore) e' l'eccezione: bassa
+  // scenografia piatta, non un edificio solido, resta sempre "in fondo"
+  // invece di competere per -y con cio' che le passa sopra.
+  const b = placeBuilding(type, placeholder.x, placeholder.y, def.fixedDepth ?? 0);
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
   // [C] placeholder/Mouse_LeftReleased.gml: selec==1 (casa), selec==2
@@ -1267,7 +1270,7 @@ function frame(now) {
   stepSmoke(smoke, dt);
   stepGrowth(buildings, dt, r12, (b) => pedestrians.push(spawnPedestrian(b.x, b.y)));
   stepConsumption(buildings, dt, r12, night);
-  stepWeather(r12, dt);
+  stepWeather(r12, dt, scene.name === "match");
   stepStormDamage(buildings, dt, r12);
   tickR12(r12, dt, buildings);
   stepCars(cars, dt, r12, night);

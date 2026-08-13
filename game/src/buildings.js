@@ -134,6 +134,7 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impaind0to1r (src/objects/impaind0to1r)
       drain: { mon: 1, every: 20 },              // [C] impaind0to1r/Alarm_10.gml
       finalSprite: "i11", life: 50,               // [C] industria1/Create.gml (life=50)
+      wewe: 20,                                    // [C] industria1/Create.gml: wewe += 20 — peso su `match`, state.js
       // [C] industria1/Step.gml, ramo `life<=0`: `action_create_object(ruin1, 0, 0)`
       // — un rudere a parte (a differenza di chies), scelto a dado uniforme
       // fra 4 varianti equiprobabili (ruin1/Create.gml, due dice(2) annidati
@@ -162,6 +163,7 @@ export const BUILDING_TYPES = {
         atMakee: 667,              // [C] industria1/Step.gml: upo==0 && makee>=667 -> crea upind12
         cost: { mon: 5000 },      // [C] upind12/Mouse_LeftPressed.gml
         finalSprite: "i21", life: 100,             // [C] industria2/Create.gml
+        wewe: 60,                                   // [C] industria2/Create.gml: wewe += 60
         ruin: ["ru21", "ru22", "ru23", "ru24"],   // [C] industria2/Step.gml: create_object(ruin2) — "taglia 2"
         decor: ["i21l", "i21b", "i21c"],           // [I] variante 1 delle 2 di industria2/Create.gml
         drain: { mon: 3, every: 20 },              // [C] impaind1to2r/Alarm_10.gml
@@ -189,6 +191,7 @@ export const BUILDING_TYPES = {
         atMakee: 1000,             // [C] industria2/Step.gml: upo==0 && makee>=1000 -> crea upind23
         cost: { mon: 10000 },     // [C] upind23/Mouse_LeftPressed.gml
         finalSprite: "i31", life: 200,             // [C] industria3/Create.gml
+        wewe: 180,                                  // [C] industria3/Create.gml: wewe += 180
         ruin: ["ru31", "ru32", "ru33", "ru34"],   // [C] industria3/Step.gml: create_object(ruin3) — "taglia 3"
         decor: ["i31a1", "i31a2", "i31a3", "i31l1l"],  // [C] i31aa1/2/3 sempre creati + [I] variante 1 di di311/di312
         drain: { mon: 3, every: 20 },              // [C] impaind2to3r/Alarm_10.gml
@@ -237,8 +240,9 @@ export const BUILDING_TYPES = {
   // industria): il danno da fulmine (Alarm_5, stessa regola letta/non
   // cablata di industria — nessun sistema vita/morte esiste ancora); il
   // "rifai in loco" a pagamento (`demobasia`, cosmetico, stesso schema di
-  // industria). `wewe` resta inerte: letto ma scritto da nessuna regola
-  // implementata.
+  // industria). `wewe` (peso su `match`, state.js — non "inquinamento" come
+  // ipotizzato qui in un primo momento) e' scritto da ogni livello, vedi
+  // `construct`/`upgrades` sotto.
   //
   // **I pulsanti blu delle monete** (casa1|2|3/Alarm_4.gml — `sold1..18`,
   // game/src/coins.js): una nota precedente qui diceva "condizione che non
@@ -298,6 +302,7 @@ export const BUILDING_TYPES = {
     ],
     construct: {                 // livello 0 -> 1, impa0to1r (src/objects/impa0to1r)
       life: 100,                  // [C] casa1/Create.gml
+      wewe: 10,                   // [C] casa1/Create.gml: wewe += 10 — peso su `match`, state.js
       grantPop: 2,                // [C] casa1/Create.gml: r12.pop += 2 alla nascita, prima della crescita
       // [C] casa1/Destroy.gml: r12.pop += -10 quando muore (non l'esatto
       // opposto dei +12 accumulati in vita — 2 alla nascita + 2 per ognuno
@@ -336,6 +341,7 @@ export const BUILDING_TYPES = {
         atAva: 5,                   // [C] casa1/Alarm_2.gml: ava==5 crea upsign12
         cost: { mon: 500 },        // [C] upsign12/Mouse_LeftPressed.gml
         life: 200,                  // [C] casa2/Create.gml
+        wewe: 25,                    // [C] casa2/Create.gml: wewe += 25
         grantPop: 14,                // [C] casa2/Create.gml: r12.pop += 14 alla nascita
         deathPop: -34,                // [C] casa2/Destroy.gml
         ruin: ["ru21", "ru22", "ru23", "ru24"],   // [C] casa2/Step.gml: create_object(ruin2)
@@ -369,6 +375,7 @@ export const BUILDING_TYPES = {
         atAva: 5,                   // [C] casa2/Alarm_2.gml: ava==5 crea upsign23
         cost: { mon: 2000 },       // [C] upsign23/Mouse_LeftPressed.gml
         life: 300,                  // [C] casa3/Create.gml
+        wewe: 40,                    // [C] casa3/Create.gml: wewe += 40
         grantPop: 40,                // [C] casa3/Create.gml: r12.pop += 40 alla nascita
         deathPop: -60,                // [C] casa3/Destroy.gml
         ruin: ["ru31", "ru32", "ru33", "ru34"],   // [C] casa3/Step.gml: create_object(ruin3)
@@ -452,6 +459,7 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impamissr (src/objects/impamissr)
       drain: { mon: 1, every: 20 },              // [C] impamissr/Alarm_10.gml
       finalSprite: "rl_as", life: 600,            // [C] rocket_launcher/Create.gml
+      wewe: 40,                                    // [C] rocket_launcher/Create.gml: wewe += 40 — peso su `match`, state.js
       ruin: ["ru21", "ru22", "ru23", "ru24"],   // [C] rocket_launcher/Step.gml: create_object(ruin2) — "taglia 2"
       decor: [],                                   // [C] rocket_launcher/Create.gml non crea nessun cddvd
       steps: [                                    // [C] impamissr/Create.gml + Alarm_0.gml, tic 0..10
@@ -490,6 +498,7 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impasolr (src/objects/impasolr)
       drain: { mon: 2, every: 20 },              // [C] impasolr/Alarm_10.gml
       finalSprite: "sool", life: 50,              // [C] sooool/Create.gml
+      wewe: 10,                                    // [C] sooool/Create.gml: wewe += 10 — peso su `match`, state.js
       // [C] sooool/Step.gml: create_object(ruinsol) — proprio rudere, un
       // solo dado a due vie (ruinsol/Create.gml: default "soolr1", 50% di
       // ribaltare a "soolr2"), non il pool a 4 vie di ruin1/2/3.
@@ -524,6 +533,15 @@ export const BUILDING_TYPES = {
   parco: {
     label: "Parco",
     placeCost: { mon: 500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==7
+    // [I] Segnalato dall'autore: un parco e' scenografia bassa e piatta (lo
+    // scatter di alberi/lampioni di spawnParcoScatter(), non un edificio
+    // solido), ma con `depth` dinamico (`effDepth()`, main.js: `depth===0` ->
+    // `-y` come ogni altro edificio) finiva davanti a pali/auto/altri oggetti
+    // di mondo vicini che dovrebbero invece coprirlo. Un `fixedDepth` fuori
+    // dalla gamma tipica di `-y` (poche centinaia/migliaia negativi su
+    // questa mappa) lo tiene sempre "in fondo", dietro a tutto cio' che si
+    // muove sopra — placeAt() (main.js) lo legge invece del solito 0.
+    fixedDepth: -5,
     construct: {                 // livello 0 -> 1, imparcr (src/objects/imparcr)
       drain: { mon: 1, every: 20 },              // [C] imparcr/Alarm_10.gml
       life: 9999,                                 // [I] nessun danno da fulmine ne' vita nel decompilato
@@ -577,14 +595,12 @@ export const BUILDING_TYPES = {
     label: "Club",
     placeCost: { mon: 3500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==60
     storm: [{ dice: 200, loss: 50 }],   // [C] club1/Alarm_5.gml
-    // [C] club1/Destroy.gml: hap +50 alla morte, nessun costo alla nascita
-    // (Create.gml scrive solo `wewe` — resta inerte, stesso principio gia'
-    // scelto per industria sopra: letto ma non cablato da nessuna regola,
-    // il suo significato reale [?] non e' ancora chiaro) — non simmetrico,
-    // stesso schema gia' letto per solare/parco.
+    // [C] club1/Destroy.gml: hap +50 alla morte, nessun costo alla nascita —
+    // non simmetrico, stesso schema gia' letto per solare/parco.
     construct: {                  // livello 0 -> 1, impaclubr (src/objects/impaclubr)
       drain: { mon: 2, every: 10 },              // [C] impaclubr/Alarm_10.gml
       life: 50,                                    // [C] club1/Create.gml
+      wewe: 20,                                    // [C] club1/Create.gml: wewe += 20 — peso su `match`, state.js
       ruin: ["ru11", "ru12", "ru13", "ru14"],   // [C] club1/Step.gml: create_object(ruin1) — "taglia 1"
       hap: { destroy: 50 },
       variants: [                                  // [C] club1/Create.gml, dado uniforme fra 4
@@ -652,6 +668,7 @@ export const BUILDING_TYPES = {
     construct: {                 // livello 0 -> 1, impavil_r (src/objects/impavil_r)
       drain: { mon: 2, every: 20 },              // [C] impavil_r/Alarm_10.gml
       life: 100,                                   // [C] villa1/Create.gml
+      wewe: 10,                                     // [C] villa1/Create.gml: wewe += 10 — peso su `match`, state.js
       grantPop: 2,                                 // [C] villa1/Create.gml: r12.pop += 2 alla nascita
       deathPop: -10,                                // [C] villa1/Destroy.gml
       ruin: ["ru11", "ru12", "ru13", "ru14"],   // [C] villa1/Step.gml: create_object(ruin1) — "taglia 1"
@@ -723,6 +740,7 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impagatlingr (src/objects/impagatlingr)
       drain: { mon: 1, every: 20 },              // [C] impagatlingr/Alarm_10.gml
       finalSprite: "nm1a", life: 800,             // [C] gatlinggun/Create.gml
+      wewe: 40,                                    // [C] gatlinggun/Create.gml: wewe += 40 — peso su `match`, state.js
       ruin: ["ru21", "ru22", "ru23", "ru24"],   // [C] gatlinggun/Step.gml: create_object(ruin2) — "taglia 2"
       decor: [],                                   // [C] gatlinggun/Create.gml non crea nessun cddvd
       // [C] impagatlingr/Create.gml + Alarm_0.gml, tic 0..10 — stessa
@@ -763,6 +781,7 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impalaser_r (src/objects/impalaser_r)
       drain: { mon: 3, every: 20 },              // [C] impalaser_r/Alarm_10.gml
       finalSprite: "lan1", life: 1000,            // [C] lasergun/Create.gml
+      wewe: 90,                                    // [C] lasergun/Create.gml: wewe += 90 — peso su `match`, state.js
       ruin: ["ru31", "ru32", "ru33", "ru34"],   // [C] lasergun/Step.gml: create_object(ruin3) — "taglia 3"
       decor: [],                                   // [C] lasergun/Create.gml non crea nessun cddvd
       // [C] impalaser_r/Create.gml + Alarm_0.gml: 23 tic in tutto (0..22),
@@ -827,6 +846,12 @@ export const BUILDING_TYPES = {
       // e' lo stesso `{mon, every}`, qui `every:1` lo riproduce esatto.
       drain: { mon: 1, every: 1 },
       finalSprite: "eol", life: 800,             // [C] eoli/Create.gml
+      // [C] eoli/Create.gml: wewe += 200 — di gran lunga il piu' pesante fra
+      // tutti gli edifici (il secondo, media1s/d, si ferma a 150): una pala
+      // eolica intera sulla piattaforma volante, fedele al nome "wewe"
+      // (peso, non "inquinamento" come ipotizzato in un primo momento —
+      // vedi state.js). Applicato solo su `match`, mai su `match_easy`.
+      wewe: 200,
       ruin: ["rovent1", "rovent2"],   // [C] eoli/Step.gml: create_object(ruinventola) — dado a due vie, ruinventola/Create.gml
       decor: [],                                   // [C] eoli/Create.gml non crea nessun cddvd
       hap: { create: -20, destroy: 20 },   // [C] eoli/Create.gml + Destroy.gml — l'unico simmetrico fra tutti i tipi con `hap`
@@ -915,6 +940,7 @@ export const BUILDING_TYPES = {
     construct: {                 // livello 0 -> 1, impa4r/impa4f -> casa4s (asse "r", dir1/dir3)
       drain: { mon: 3, every: 20 },                // [C] impa4r/Alarm_10.gml
       life: 400, deathPop: -160,                    // [C] casa4s/Create.gml + Destroy.gml
+      wewe: 100,                                      // [C] casa4s/Create.gml: wewe += 100 — peso su `match`, state.js
       grantPop: 37,                                  // [C] casa4s/Create.gml: r12.pop += 37 alla nascita
       ruin: ["ru41"],                                // [C] casa4s/Step.gml: create_object(ruin4s)
       // [C] casa4s/Create.gml: 5 livelli di dice(2) annidati, albero
@@ -974,6 +1000,7 @@ export const BUILDING_TYPES = {
     construct: {
       drain: { mon: 3, every: 20 },
       life: 400, deathPop: -160,
+      wewe: 100,                                      // [C] casa4d/Create.gml: wewe += 100 — peso su `match`, state.js
       grantPop: 37,
       ruin: ["ru41d"],
       variants: [
@@ -1028,6 +1055,7 @@ export const BUILDING_TYPES = {
     construct: {                 // media1s (asse "r", dir1/dir3) — [C] impamediaR/impamediaF: stessa sequenza sr*/sf* di palazzo, solo il drain cambia
       drain: { mon: 5, every: 20 },                 // [C] impamediaR/Alarm_10.gml
       life: 350,                                      // [C] media1s/Create.gml
+      wewe: 150,                                       // [C] media1s/Create.gml: wewe += 150 — peso su `match`, state.js
       hap: { create: 1200, destroy: -1220 },          // [C] media1s/Create.gml + Destroy.gml
       ruin: ["ru41"],                                 // [C] media1s/Step.gml: create_object(ruin4s) — stesso rudere di palazzo
       variants: [                                     // [C] media1s/Create.gml: dado 50/50, non un dado a piu' vie
@@ -1075,6 +1103,7 @@ export const BUILDING_TYPES = {
     construct: {
       drain: { mon: 5, every: 20 },
       life: 350,
+      wewe: 150,                                       // [C] media1d/Create.gml: wewe += 150 — peso su `match`, state.js
       hap: { create: 1200, destroy: -1220 },
       ruin: ["ru41"],
       variants: [
@@ -1184,6 +1213,7 @@ export const BUILDING_TYPES = {
     construct: {
       drain: { mon: 3, every: 20 },               // [C] impaBANKr/Alarm_10.gml
       finalSprite: "banca_img", life: 1300,         // [C] banca1/Create.gml
+      wewe: 70,                                       // [C] banca1/Create.gml: wewe += 70 — peso su `match`, state.js
       ruin: ["ru31", "ru32", "ru33", "ru34"],       // [C] ruin3/Create.gml: dado uniforme fra 4, stesso oggetto di industria3/casa3/lasergun
       decor: ["banca_l"],                           // [C] banca1/Create.gml: create_object(banca1_light)
       steps: [
@@ -1580,6 +1610,11 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
       if (oldDef?.hap?.destroy) r12.hap += oldDef.hap.destroy;
       if (c.upgradeIndex === -1) b.level = 1; else b.level++;
       if (up.hap?.create) r12.hap += up.hap.create;
+      // [C] `wewe` (peso della piattaforma su `match`, state.js): scritto
+      // alla nascita di ogni livello che lo dichiara, mai sottratto (nessun
+      // Destroy.gml del decompilato lo tocca — un edificio distrutto non
+      // "alleggerisce" la piattaforma, fedele com'e').
+      if (up.wewe) r12.wewe = (r12.wewe ?? 0) + up.wewe;
       b.life = up.life ?? (b.life + (up.lifeBonus ?? 0));
       if (up.grantPop) r12.pop += up.grantPop;   // [C] casa1|2|3/Create.gml: pop += N alla nascita del livello
       if (up.variants) {
