@@ -2,7 +2,7 @@ import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture 
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -12,9 +12,9 @@ import {
   spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
-import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT } from "./smoke.js";
-import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, stepDebris } from "./threats.js";
-import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko } from "./projectiles.js";
+import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
+import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
+import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, SMOKO_LIFE } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -235,6 +235,25 @@ const semaphores = staticWorld.filter((it) => it.obj === "object8").map((it) => 
 /** @type {ReturnType<typeof placeBuilding>[]} */
 let buildings = [];
 let decorEntities = [];      // ornamenti (permanenti a fine cantiere, o transitori durante)
+// I ruderi (game/src/buildings.js, ruinSpriteFor()): quando la vita di un
+// edificio finito arriva a 0, l'originale non lo rimuove — lo sostituisce
+// con un oggetto "ruin*" permanente (STUDIO.md, "il rudere") che nessuno
+// strumento nel motore puo' rimuovere (la ruspa/`selec==11` non e' mai stata
+// ricostruita). Array a parte invece che dentro `buildings`: un rudere non
+// simula piu' niente (nessuna produzione/crescita/mira/fulmine), e' decoro
+// inerte come `decorEntities` — vedi destroyBuilding() sotto.
+let ruins = [];
+// I lotti "extra" occupati da un edificio multi-tile (oggi solo `eolico`,
+// buildings.js `def.multiTile`) — [C] `impavent` uccide ogni placeholder che
+// la sua maschera copre, non solo quello toccato (vedi placeAt() sotto): qui
+// non c'e' niente da disegnare li' (nessun edificio/rudere), solo un
+// placeholder che deve restare bloccato per sempre. Nessun array a parte
+// servirebbe se il salvataggio potesse derivarli da `buildings`/`ruins`, ma
+// per definizione questi lotti non hanno nessuna delle due cose sopra —
+// persistito a parte in save.js, altrimenti un ciclo salva/carica li
+// libererebbe di nuovo (STUDIO.md non lo segnalava perche' e' un problema
+// nuovo, nato con questo edificio).
+let blockedSlots = [];
 // Auto decorative gia' in marcia da subito, come nella room originale
 // (phaseT parte da 0 = fase "giorno" in PHASES piu' sotto, quindi mai
 // notte alla nascita: nessun tint fanali sulle due iniziali).
@@ -388,6 +407,24 @@ function spawnParcoScatter(building) {
   }
 }
 
+/**
+ * `eolico` (buildings.js, `def.multiTile`) e' l'unico edificio che occupa
+ * PIU' di un placeholder — vedi il commento su `BUILDING_TYPES.eolico` in
+ * buildings.js per il perche'. Cerca fra i placeholder ancora liberi quelli
+ * entro `radius` da quello toccato (il piu' vicino per primo) e ne
+ * restituisce `count` in tutto (quello toccato incluso) — `null` se non ce
+ * ne sono abbastanza vicini. [I] Approssimazione dichiarata di una vera
+ * maschera di collisione (STUDIO.md, "pepazzittecollider" mai ricostruito).
+ */
+function findPlacementCluster(tapped, count, radius) {
+  const r2 = radius * radius;
+  const near = placeholders
+    .filter((p) => p !== tapped && !p.consumed && (p.x - tapped.x) ** 2 + (p.y - tapped.y) ** 2 <= r2)
+    .sort((a, b) => ((a.x - tapped.x) ** 2 + (a.y - tapped.y) ** 2) - ((b.x - tapped.x) ** 2 + (b.y - tapped.y) ** 2));
+  if (near.length < count - 1) return null;
+  return [tapped, ...near.slice(0, count - 1)];
+}
+
 function placeAt(placeholder, type) {
   const def = BUILDING_TYPES[type];
   // [C] placeholder/Mouse_LeftReleased.gml, selec==3: il piazzamento vero e
@@ -401,8 +438,26 @@ function placeAt(placeholder, type) {
   if (!canAfford(r12, def.placeCost)) {
     return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
   }
+  // [C] eoliplacer/Alarm_1.gml controlla `places>=4` DOPO aver gia' verificato
+  // i mon (stesso ordine qui) — a differenza dell'originale (fallisce in
+  // silenzio, vedi buildings.js) restituisce sempre un messaggio chiaro.
+  let cluster = [placeholder];
+  if (def.multiTile) {
+    cluster = findPlacementCluster(placeholder, def.multiTile.count, def.multiTile.radius);
+    if (!cluster) return `serve un'area libera di almeno ${def.multiTile.count} lotti vicini`;
+  }
   for (const k in def.placeCost) r12[k] -= def.placeCost[k];
-  placeholder.consumed = true;
+  // [C] `impavent`, una volta nato, uccide con la propria maschera ogni
+  // placeholder che copre (Collision_placeholder.gml) — qui equivale a
+  // consumare TUTTI i lotti del cluster, non solo quello toccato: gli altri
+  // restano bloccati per sempre (nessun edificio/rudere li occupa, spariscono
+  // e basta, fedele all'originale). Registrati in `blockedSlots` (solo quelli
+  // EXTRA, non il placeholder toccato: quello lo rioccupa gia' `buildings`)
+  // cosi' un salvataggio/caricamento non li libera di nuovo — vedi doLoad().
+  for (const ph of cluster) {
+    ph.consumed = true;
+    if (ph !== placeholder) blockedSlots.push({ x: ph.x, y: ph.y });
+  }
   // depth 0, NON placeholder.depth (-5000): quel numero e' il livello fisso
   // "sempre in primo piano" del segnaposto vuoto (STUDIO.md, cosi' si vede
   // sempre sopra il terreno), non un depth di mondo da ereditare. Un
@@ -421,9 +476,10 @@ function placeAt(placeholder, type) {
   // piu' grande mai cablata (STUDIO.md/balloons.js: "serve solo a tipi non
   // ancora ricostruiti") — riusa `mon_bil` come gli altri, stesso pallone
   // piu' piccolo del dovuto invece di un secondo sprite/oggetto solo per
-  // questo.
+  // questo. `eolico` (selec==4) crea `mon_bil` anche lui — [C]
+  // eoliplacer/Alarm_1.gml, ramo selec==4.
   if (type === "casa" || type === "industria" || type === "missile" || type === "solare"
-    || type === "club" || type === "villa" || type === "gatling" || type === "laser") {
+    || type === "club" || type === "villa" || type === "gatling" || type === "laser" || type === "eolico") {
     constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
   }
   return null;
@@ -439,26 +495,35 @@ function seedChies() {
 }
 
 /**
- * Un edificio la cui vita e' scesa a 0 (oggi solo per fulmine, STUDIO.md
- * §9 "le tempeste non sono cosmetiche in match"). Nell'originale resterebbe
- * un rudere (`ruin1`/`ruin2`/`ruin3`) riparabile solo con lo strumento
- * ruspa/bulldozer (`selec==11`, mai ricostruito, STUDIO.md §9 "GUI vera") —
- * un vicolo cieco per chi gioca senza quello strumento. Qui la rimozione e'
- * immediata e il placeholder torna libero: una semplificazione dichiarata,
- * non il comportamento vero. Applica il bilancio pop (`currentDeathPop`) e
+ * Un edificio la cui vita e' scesa a 0 (fulmine in tempesta, o una bomba
+ * sganciata da una minaccia vera — game/src/threats.js, stepBombs). [C]
+ * l'originale non lo rimuove: lo sostituisce con un rudere permanente
+ * (`ruinSpriteFor()`, game/src/buildings.js — sceglie fra `ruin1`/`ruin2`/
+ * `ruin3`/`ruinsol`/`ruinc1..3` in base a tipo e livello, con lo stesso dado
+ * uniforme del decompilato dove ne ha piu' di uno) che nessuno strumento nel
+ * motore puo' rimuovere: la ruspa/bulldozer (`selec==11`, l'unico modo per
+ * ripararlo nell'originale, pagando) non e' mai stata ricostruita — un
+ * vicolo cieco fedele, non piu' la rimozione immediata con placeholder
+ * libero di una versione precedente di questo motore. `parco` e' l'unica
+ * eccezione: **[C]** `parco/Step.gml` non legge mai `life`, quindi non fa
+ * NIENTE quando (nella pratica, quasi mai: `life: 9999`) succede —
+ * `ruinSpriteFor()` torna `null` e questa funzione si ferma subito, prima di
+ * toccare pop/hap/`buildings`, esattamente come l'originale non farebbe
+ * niente. Per tutti gli altri applica il bilancio pop (`currentDeathPop`) e
  * hap (`currentDeathHap`, industria/parco — STUDIO.md "i pulsanti blu delle
  * monete") del livello a cui e' morto, letti da chiesX/industriaX/casaX/
  * parco/Destroy.gml.
  */
 function destroyBuilding(b) {
+  const spr = ruinSpriteFor(b);
+  if (!spr) return;
   r12.pop += currentDeathPop(b);
   r12.hap += currentDeathHap(b);
   decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
-  const ph = placeholders.find((p) => p.x === b.x && p.y === b.y);
-  if (ph) ph.consumed = false;
   buildings = buildings.filter((x) => x !== b);
   coins = coins.filter((c) => c.buildingId !== b.id);
   if (picked?.obj === "building" && picked.ref === b) picked = null;
+  ruins.push({ obj: "decor", x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr) });
 }
 
 // -------------------------------------------------------------- salvataggio
@@ -475,7 +540,7 @@ function destroyBuilding(b) {
 // pagina e' quindi una partita nuova, come il primissimo avvio. S/L restano
 // per salvare/ricaricare a mano DENTRO la stessa sessione di test, se
 // serve, ma non sopravvivono piu' da soli a un refresh.
-function doSave() { save(scene.name, r12, buildings); }
+function doSave() { save(scene.name, r12, buildings, ruins, blockedSlots); }
 function doLoad() {
   const data = load(scene.name);
   if (!data) return false;
@@ -488,6 +553,24 @@ function doLoad() {
     const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === b.x && p.y === b.y);
     if (ph) { ph.consumed = true; usedIds.add(ph.id); }
     if (b.level >= 1) spawnDecor(b, currentDecor(b));
+  }
+  // Ruderi (destroyBuilding() sopra): `_f`/`obj` non sono salvati (derivati,
+  // save.js), vanno ricalcolati qui — stesso principio di `_f` sugli edifici
+  // caricati. Occupano un placeholder anche loro (nessuna ruspa per
+  // liberarli): stesso ciclo `usedIds` di sopra, cosi' un edificio e un
+  // rudere non litigano mai per lo stesso slot.
+  ruins = (data.ruins ?? []).map((ru) => ({ obj: "decor", x: ru.x, y: ru.y, depth: -ru.y, spr: ru.spr, _f: frameFor(ru.spr) }));
+  for (const ru of ruins) {
+    const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === ru.x && p.y === ru.y);
+    if (ph) { ph.consumed = true; usedIds.add(ph.id); }
+  }
+  // Lotti "extra" di un edificio multi-tile (placeAt() sopra, oggi solo
+  // `eolico`): niente da disegnare, solo un placeholder che deve restare
+  // bloccato — stesso ciclo `usedIds` di sopra.
+  blockedSlots = (data.blockedSlots ?? []).map((s) => ({ x: s.x, y: s.y }));
+  for (const s of blockedSlots) {
+    const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === s.x && p.y === s.y);
+    if (ph) { ph.consumed = true; usedIds.add(ph.id); }
   }
   return true;
 }
@@ -584,6 +667,19 @@ function stepLights(entities, dt, night, r12) {
   }
 }
 
+// [I] I tre tipi di fumo (centrali/smoke.js, scia missile-gatling/
+// projectiles.js, scia aerei/threats.js) muoiono tutti di scatto
+// nell'originale (`action_kill_object` a fine vita) — qui invece si
+// dissolvono: alpha piena fino a SMOKE_FADE_FRAC di vita rimasta, poi un
+// fade lineare fino a 0 esattamente quando l'oggetto verrebbe comunque
+// scartato (stepSmoke()/stepSmoko()/stepAerSmoke()), cosi' non serve
+// allungarne la vita per vedere la dissolvenza.
+const SMOKE_FADE_FRAC = 0.35;
+function fadeAlpha(t, life) {
+  const remaining = (life - t) / life;
+  return Math.max(0, Math.min(1, remaining / SMOKE_FADE_FRAC));
+}
+
 /** Moltiplica una tinta 0xRRGGBB per una tinta ambientale [r,g,b] in 0..1. */
 function mulTint(base, rgb) {
   const r = Math.round(((base >> 16) & 255) * rgb[0]);
@@ -676,8 +772,9 @@ let menoo = 0;
 // ciascuno riconosce di essere quello scelto) incrociati con
 // src/objects/placeholder/Mouse_LeftReleased.gml per i costi reali, dove
 // quel file li dichiara esplicitamente (`cost: null` altrove — non un
-// valore a caso, proprio "non letto"). Alcuni (parco/missile/solare/club,
-// via BUILDING_TYPES in buildings.js) sono ormai piazzabili per davvero;
+// valore a caso, proprio "non letto"). Alcuni (parco/missile/solare/club/
+// villa/gatling/laser/eolico, via BUILDING_TYPES in buildings.js) sono
+// ormai piazzabili per davvero;
 // gli altri restano un segnaposto statico — selezionabili ed evidenziati
 // come qualunque tipo vero, ma toccare un placeholder con uno di questi
 // ancora senza `BUILDING_TYPES[type]` mostra un messaggio invece di
@@ -691,7 +788,7 @@ let menoo = 0;
 const OTHER_BUILDINGS = [
   { type: "parco", selec: 7, spr: "p7", sprSel: "p7ss", label: "Parco", cost: 500 },
   { type: "missile", selec: 3, spr: "p3", sprSel: "p3ss", label: "Lanciamissili", cost: 5000 },
-  { type: "eolico", selec: 4, spr: "p4", sprSel: "p4ss", label: "Pala eolica", cost: null },
+  { type: "eolico", selec: 4, spr: "p4", sprSel: "p4ss", label: "Pala eolica", cost: 50000 },   // ora vero, BUILDING_TYPES.eolico
   { type: "laser", selec: 5, spr: "p5", sprSel: "p5ss", label: "Laser", cost: 20000 },
   { type: "grattacielo", selec: 6, spr: "p6", sprSel: "p6ss", label: "Grattacielo", cost: null },
   { type: "club", selec: 60, spr: "pdj", sprSel: "pdjss", label: "Club", cost: 3500 },   // ora vero, BUILDING_TYPES.club
@@ -855,15 +952,6 @@ input.onTap = (sx, sy) => {
   }
 };
 
-/** Confronta per identita' logica: gli edifici sono incapsulati in un
- * wrapper nuovo ad ogni frame (lo sprite cambia durante il cantiere),
- * quindi il confronto va fatto sull'entita' vera (`ref`), non sul wrapper. */
-function isPicked(it) {
-  if (!picked) return false;
-  if (it === picked) return true;
-  return it.obj === "building" && picked.obj === "building" && it.ref === picked.ref;
-}
-
 // ---------------------------------------------------------------- loop
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -915,6 +1003,7 @@ function frame(now) {
   stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
   stepProduction(buildings, dt, r12);
   stepSolarProduction(buildings, dt, r12, night, dawn);
+  stepWindProduction(buildings, dt, r12);
   // Fumo delle centrali (game/src/smoke.js): dopo stepProduction(), cosi'
   // "oil>0" gia' rispecchia il consumo di questo frame, come per le monete
   // blu sotto (stesso ordine gia' scelto per stepCoinSpawner()).
@@ -986,8 +1075,11 @@ function frame(now) {
   // piu' vicino — [C] rocket_launcher/Step.gml usa la famiglia
   // `veicoli_target`, che nel motore sono le auto decorative e le
   // mongolfiere di risorse/spia (non il pacco di cantiere, `notte_target`
-  // nel decompilato, e non le casse/gli avanzi di cantiere).
-  stepTurretAim(buildings, cars.concat(balloons));
+  // nel decompilato, e non le casse/gli avanzi di cantiere). [I] Le minacce
+  // vere (`threats`) hanno pero' la priorita' quando sono a tiro, cosi' il
+  // cannone punta davvero cio' che sta per colpire — vedi il commento su
+  // stepTurretAim() in buildings.js.
+  stepTurretAim(buildings, cars.concat(balloons), threats);
   // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
   // gia' nella direzione appena calcolata (b.aimAngle).
   stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails);
@@ -1020,6 +1112,10 @@ function frame(now) {
     }
   }
   for (const d of decorEntities) dynamic.push(d);
+  // Ruderi (destroyBuilding() sopra): niente da avanzare ogni frame (non si
+  // muovono, non cambiano sprite) — solo da disegnare, come il resto del
+  // decoro permanente.
+  for (const ru of ruins) dynamic.push(ru);
   // Auto decorative (game/src/cars.js): x/y/sprite/frame gia' avanzati da
   // stepCars() sopra — `c.frame` anima per davvero le svolte (STUDIO.md
   // "le auto sterzano davvero"), frameFor() lo ritaglia da solo sull'ultimo
@@ -1050,7 +1146,7 @@ function frame(now) {
   // dell'ingrandimento uniforme (_scale) — vedi smoke.js.
   for (const p of smoke) {
     const frameIdx = Math.min(SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
-    dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale });
+    dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, SMOKE_LIFE) });
   }
   for (const c of atmo.clouds) dynamic.push({ obj: "cloud", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr) });
   for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
@@ -1097,13 +1193,13 @@ function frame(now) {
   // come le monete blu ([C] smoko/_object.json), ma senza `_selfLit` — un
   // residuo di sparo, non un simbolo dell'interfaccia, si scurisce di
   // notte come qualunque altro decoro.
-  for (const p of trails) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
+  for (const p of trails) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr), _alpha: fadeAlpha(p.t, SMOKO_LIFE) });
   // Scia di fumo degli aerei (game/src/threats.js, spawnAerSmoke): stessa
   // animazione a 70 frame vera di smoke.js (cc2/cc3), ferma sul posto e in
   // crescita (_scale) — a differenza della scia dei proiettili sopra.
   for (const p of aerSmoke) {
     const frameIdx = Math.min(AER_SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
-    dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale });
+    dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, AER_SMOKE_LIFE) });
   }
   // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
   // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
@@ -1150,7 +1246,7 @@ function frame(now) {
     if (f) {
       const x0 = it.x - f.ox, y0 = it.y - f.oy;
       if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < t) continue;
-      const base = isPicked(it) ? 0xbfe0ff : (it._tint ?? 0xffffff);
+      const base = it._tint ?? 0xffffff;
       const tint = it._selfLit ? base : mulTint(base, amb.rgb);
       r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
     } else {
@@ -1409,7 +1505,8 @@ window.__nimbus = {
   get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
   get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
   get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
-  get aerSmoke() { return aerSmoke; }, get debris() { return debris; },
+  get aerSmoke() { return aerSmoke; }, get debris() { return debris; }, get ruins() { return ruins; },
+  get blockedSlots() { return blockedSlots; }, get placeholders() { return placeholders; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,

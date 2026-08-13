@@ -175,7 +175,10 @@ export function stepDebris(debris, explosions, dt) {
 // famiglia di oggetto nel decompilato, diversa quota.
 export const AER_SMOKE_FRAME_COUNT = 70;
 const AER_SMOKE_PERIOD = 8 * TICK;    // [C] air|bombar/Alarm_6.gml: si riarma ogni 8 tick
-const AER_SMOKE_LIFE = 36 * TICK;     // [C] smoko_aer/Create.gml: action_set_alarm(36, 0)
+export const AER_SMOKE_LIFE = 36 * TICK; // [C] smoko_aer/Create.gml: action_set_alarm(36, 0). Esportata per la
+// dissolvenza in alpha calcolata da main.js — [I] fade out invece di
+// sparire di scatto ad `action_kill_object`, stesso trattamento di
+// smoke.js/SMOKE_LIFE e projectiles.js/SMOKO_LIFE.
 const AER_SMOKE_GROWTH = 12;          // [C] Step.gml: xsca += 0.2/tick = 12/s a 60fps
 function spawnAerSmoke(x, y) {
   return { x, y, t: 0, spr: Math.random() < 0.5 ? "cc2" : "cc3", scale: 2, depth: -4000 };

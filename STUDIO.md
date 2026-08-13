@@ -638,15 +638,14 @@ paragrafo 8.
   (`destroyBuilding()` in `main.js`) si applica il bilancio popolazione del
   livello a cui è morto (**[C]** `casaX/Destroy.gml`: -10/-34/-60 — non
   l'esatto opposto di quanto guadagnato in vita, l'originale stesso non
-  torna) e il placeholder torna libero. **Semplificazione dichiarata**:
-  nell'originale l'edificio distrutto resterebbe un rudere (`ruin1/2/3`)
-  riparabile solo con lo strumento ruspa/bulldozer (`selec==11`,
-  `puruspa`, mai ricostruito — vedi sotto) pagando per rifarlo con la
-  stessa catena "rifai in loco" di `demobasia`: un vicolo cieco per chi
-  gioca senza quello strumento. `industria` tocca `hap` in `Destroy.gml`
-  invece di `pop`, ma `hap` non è tracciato da nessun'altra parte del
-  gioco (STUDIO.md, deciso già per `industria`/`casa`): per coerenza resta
-  fuori anche qui, non solo per industria.
+  torna). **Semplificazione dichiarata all'epoca, chiusa dopo** (vedi "I
+  ruderi" molto più sotto): a questo punto il placeholder tornava
+  semplicemente libero invece di restare occupato da un rudere permanente
+  come nell'originale — un gap dichiarato esplicitamente, non dimenticato.
+  `industria` tocca `hap` in `Destroy.gml` invece di `pop`, ma `hap` non è
+  tracciato da nessun'altra parte del gioco (STUDIO.md, deciso già per
+  `industria`/`casa`): per coerenza resta fuori anche qui, non solo per
+  industria.
 - **Zoom fluido, con limiti sensati, e nero fuori dai confini della mappa.**
   Tre correzioni distinte alla camera:
   1. Lo zoom da rotella applicava l'intero salto in un frame solo
@@ -683,9 +682,12 @@ paragrafo 8.
   `hap`/`wewe` (felicità/inquinamento visivo) e la sommossa che ne
   dipende; i "rifai in loco" cosmetici (`demobasia` + `impacasa*`/
   `impaind*` "rifatti") e il vero strumento di demolizione/riparazione
-  (`puruspa`, `selec==11` — oggi la distruzione libera subito il
-  placeholder invece di lasciare un rudere riparabile solo con
-  quello strumento); gli altri ~17 bottoni della barra (zoom, occhio,
+  (`puruspa`, `selec==11` — **[nota successiva]** i ruderi stessi sono stati
+  portati dopo, "I ruderi" molto più sotto: un edificio distrutto lascia ora
+  un rudere permanente e il placeholder resta bloccato, esattamente come
+  senza questo strumento nell'originale; resta soltanto la riparazione a
+  pagamento di `puruspa` stesso, MAI ricostruita); gli altri ~17 bottoni
+  della barra (zoom, occhio,
   reset — non più `puruspa`, appena discusso); le altre ~85 famiglie
   `impa*` (armi, minacce, altri edifici) non ancora lette; da dove
   arrivano davvero le minacce vere (bombe/aerei/zeppelin: dipendono da
@@ -1839,3 +1841,123 @@ paragrafo 8.
   volo/esplosione dei singoli pezzi avviene comunque). Una simulazione di
   due minuti con le tre torrette attive, minacce miste e una tempesta a
   meta' strada non ha prodotto eccezioni ne' posizioni NaN.
+- **I ruderi: la morte di un edificio lascia davvero un rudere, non piu' un
+  posto libero.** Chiudeva la "semplificazione dichiarata" della sezione
+  precedente ("Primo sistema vita/morte reale") — segnalato dall'autore
+  ("nel gioco originale c'erano delle rovine al posto degli edifici").
+  Decompilato letto da zero: ogni `casaX`/`industriaX`/`club1`/`villa1`/
+  `sooool`/`rocket_launcher`/`gatlinggun`/`lasergun`/`banca1`/`monum`/Step.gml
+  ha lo stesso ramo `life<=0` (letto con "<=", non "!=" — stesso operatore 3
+  gia' corretto per `threats.js`, "lo stato piro"): **[C]** crea un oggetto
+  `ruinN` a parte (mai la stessa istanza) e si distrugge. Non e' un rudere
+  per TIPO ma per "taglia": `ruin1`/`ruin2`/`ruin3` sono condivisi da piu'
+  edifici diversi allo stesso "livello di importanza" (es. `ruin1` =
+  industria1 **e** casa1 **e** club1 **e** villa1), ognuno scelto a dado
+  uniforme fra 4 varianti equiprobabili (`ruinN/Create.gml`: due
+  `action_if_dice(2)` annidati, stesso schema di pick gia' letto per gli
+  step di cantiere ad array — `pickSpr()`, riusato). `sooool` ha il proprio
+  (`ruinsol`, un solo dado a due vie fra `soolr1`/`soolr2`). **`chies` e'
+  l'eccezione**: non crea un oggetto a parte, cambia sprite a SE STESSA
+  (`ruinc1`/`ruinc2`/`ruinc3` in base a `level`, nessun dado) e resta
+  piazzata — l'unico `Step.gml` che non passa da `action_kill_object()` in
+  questo ramo. `parco` e' un'eccezione diversa: **[C]** il suo `Step.gml`
+  non legge mai `life` — nessun ramo `life<=0`, quindi nessun rudere: se mai
+  la sua vita toccasse 0 (in pratica quasi impossibile, `life: 9999` gia'
+  la scelta [I] fatta per questo) l'originale non farebbe letteralmente
+  niente, e cosi' anche `destroyBuilding()` ora.
+  Portato **fedele** a un dettaglio che prima era dichiarato "troppo": il
+  rudere e' un vicolo cieco vero, non un placeholder libero — senza lo
+  strumento ruspa/bulldozer (`selec==11`, `puruspa`, la sola cosa che
+  nell'originale rimuove un rudere per ricostruirci sopra pagando, ancora
+  MAI ricostruita: resta un gap dichiarato) il posto resta bloccato per
+  sempre. `ruinSpriteFor()` (buildings.js, stesso schema per-livello di
+  `currentDecor()`/`currentDeathPop()`: `construct`/`upgrades[level-2]`, con
+  `baseRuin` come fallback di `chies`) decide lo sprite; `destroyBuilding()`
+  (main.js) lo consulta PRIMA di toccare qualunque stato — se torna `null`
+  (solo `parco`) esce subito senza rimuovere l'edificio ne' applicare
+  pop/hap, altrimenti applica il bilancio come prima ma sposta l'istanza in
+  un array `ruins` a parte invece di rimetterla fra i `buildings` (un
+  rudere non produce, non cresce, non spara, non prende piu' danno da
+  fulmine: e' decoro inerte, stessa famiglia di `decorEntities`) e NON
+  libera piu' il placeholder trovato alla sua posizione. `ruins` e'
+  disegnato come `decorEntities` (non ruba il tap: nessun evento Mouse reale
+  sui `ruinN` a parte del ramo ruspa, non riprodotto) e ora e' anche
+  salvato/caricato (save.js: `x`/`y`/`spr` bastano, `_f`/`depth` derivati al
+  volo come per `buildings`) — senza, un rudere spariva a un ricaricamento
+  manuale e il suo placeholder tornava (erroneamente) libero.
+  Sprite nuovi in `GAMEPLAY_SPRITES` (tools/23_atlas.py): `ru11..ru14`/
+  `ru21..ru24`/`ru31..ru34` (le tre "taglie" condivise), `soolr1`/`soolr2`
+  (`sooool`), `ruinc1..ruinc3` (`chies`) — atlas e blitplan rigenerati e
+  verificati in browser (Playwright): una `casa` piazzata e poi forzata a
+  `life: 0` sparisce dai `buildings` e compare come rudere (`ru1N` scelto a
+  dado) esattamente alla sua posizione, il placeholder sotto resta bloccato
+  a un secondo tap (nessuna ricostruzione), `chies` forzata a morire diventa
+  `ruinc1` e sopravvive a un ciclo salva/carica, e un `parco` sintetico a
+  `life: 0` resta un edificio normale, invariato.
+  **[C]** = comportamento letto nel decompilato. **[I]** = la sola scelta
+  non fedele resta la stessa gia' dichiarata per la ruspa: nessuna
+  ricostruzione a pagamento, il rudere e' permanente invece che riparabile.
+- **Undicesimo edificio, primo multi-tile: `eolico`.** Segnalato dall'autore
+  insieme ai ruderi ("partiamo dall'eolico"): a differenza di tutti i dieci
+  edifici gia' portati, `eoli` (src/objects/eoli, "Pala eolica" nel menu,
+  `pu4prov`/`selec==4`) non si piazza su un solo `placeholder`. **[C]** letto
+  da zero: `placeholder/Mouse_LeftReleased.gml` (selec==4) non crea
+  l'edificio direttamente — crea `eoliplacer` (offset +98px dal tocco), che
+  arma un timer a 3 tick. Nel frattempo `placeholder/Collision_445.gml`
+  (contro OGNI placeholder che la maschera FISSA "phold" di `eoliplacer`
+  tocca) fa salire `places` di 1 per ognuno — fino a un massimo implicito di
+  4, dato dalla geometria della maschera. Al timer, `eoliplacer/Alarm_1.gml`
+  guarda `places`: se e' gia' 4, crea `impavent` (il cantiere vero) e scala
+  50000 mon; altrimenti crea un `fantoccio` (sprite vuoto, nessun evento
+  utile, si autodistrugge da solo dopo 30 tick) e MUORE due tick dopo senza
+  mai piu' ricontrollare `places` — **sembra un meccanismo mai rifinito**
+  nell'originale stesso (fallisce in silenzio, nessun feedback al
+  giocatore, un solo controllo a tempo fisso). Una volta nato, `impavent`
+  (**[C]** `impavent/Collision_placeholder.gml`) uccide con la propria
+  maschera ("auton") ogni placeholder ancora sotto di lui — cosi' i 3 lotti
+  "vicini" spariscono per davvero, non solo quello toccato.
+  **[I] Approssimazione dichiarata** (stessa famiglia di `TURRET_MIN_DIST`/
+  `BLAST_RADIUS`: "pepazzittecollider" mai ricostruito): niente vera
+  maschera di collisione, `findPlacementCluster()` (main.js) cerca fra i
+  placeholder ancora liberi i 3 piu' vicini a quello toccato entro 130px —
+  la stessa spaziatura reale della griglia di `match_easy` gia' misurata per
+  `TURRET_MIN_DIST` (~116px fra vicini diretti, ~152px al vicino successivo:
+  130px prende esattamente i 4 vicini diagonali e nessun altro). A differenza
+  dell'originale (silenzioso) il giocatore riceve sempre un messaggio,
+  costruito o no — scelto per chiarezza, non per fedelta' a un dettaglio che
+  sembra un bug/gap dell'originale stesso. I 3 lotti extra, una volta
+  consumati, restano bloccati per sempre (nessun edificio/rudere li occupa
+  visibilmente, esattamente come nell'originale che li uccide senza lasciare
+  traccia) — persistiti in un nuovo array `blockedSlots` (main.js/save.js),
+  altrimenti un salvataggio/caricamento li avrebbe liberati di nuovo (un
+  problema che *non* esisteva prima di questo edificio: `buildings`/`ruins`
+  bastavano perche' ogni placeholder occupato aveva sempre qualcosa sopra).
+  Il resto di `eoli` e' invece un edificio ordinario, stessa infrastruttura
+  di dati di tutti gli altri: **[C]** produzione elettrica pura (`eoli/
+  Alarm_0.gml`, sempre +110 ele ogni 30 tick, nessun `oil` consumato — a
+  differenza di industria, un generatore vero, non una centrale) — nuovo
+  `windProduction`/`stepWindProduction()` invece di riusare `stepProduction()`
+  (industria-specifico: gated su `oil>0`, sottrae `prod.oil` incondizionato)
+  o `stepSolarProduction()` (dipende da giorno/notte, questo no); danno da
+  fulmine (`eoli/Alarm_5.gml`, dado 1/30, -50 vita — crea anche un oggetto
+  "thunder" cosmetico, non riprodotto, stessa scelta gia' fatta per laser);
+  `hap` -20/+20 alla nascita/morte (l'unico fra tutti i tipi con `hap` dove i
+  due numeri sono davvero l'opposto esatto); rudere `ruinventola`
+  (`rovent1`/`rovent2`, dado a due vie) quando la vita arriva a 0 — stessa
+  `ruinSpriteFor()`/array `ruins` gia' costruiti per gli altri dieci edifici,
+  nessuna modifica li' serviva. Cantiere (`impavent/Create.gml` +
+  `Alarm_0|1|2.gml`): tre sprite in sequenza (`impvent1`/`2`/`3`, 1740+600+
+  2200 = 4540 tick, ~76s — il piu' lungo del motore) e un drain di -1 mon
+  OGNI tick (non ogni N come altrove: stesso campo `{mon,every}`, qui
+  `every:1`), coerenti con un costo di piazzamento di 50000 mon.
+  Sprite nuovi in `GAMEPLAY_SPRITES` (tools/23_atlas.py): `impvent1/2/3`,
+  `eol`, `rovent1/2` — atlas e blitplan rigenerati.
+  Verificato in browser (Playwright): un tocco su un lotto con almeno 3
+  vicini liberi entro 130px avvia davvero il cantiere (spr "impvent1",
+  50000 mon scalati, i 3 vicini finiscono in `blockedSlots`); un tocco su un
+  lotto isolato (tutti i vicini gia' occupati) NON scala niente e mostra
+  "serve un'area libera di almeno 4 lotti vicini"; un `eoli` finito produce
+  110 ele ogni 30 tick, muore in un rudere `rovent*` fedele allo schema
+  gia' esistente, e un tentativo di costruire su uno dei 3 lotti bloccati
+  fallisce silenziosamente (restano bloccati) anche dopo la sua morte; un
+  ciclo salva/carica restituisce sia l'edificio che i 3 lotti bloccati.
