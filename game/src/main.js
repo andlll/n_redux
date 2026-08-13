@@ -13,7 +13,7 @@ import {
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT } from "./smoke.js";
-import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions } from "./threats.js";
+import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
@@ -1059,7 +1059,12 @@ function frame(now) {
   // mondo.
   for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale });
   for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y, _f: frameFor(bm.spr) });
-  for (const ex of explosions) dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr), _scale: ex.scale });
+  // Esplosioni (game/src/threats.js): "fica" ha 60 frame veri, uno stop-motion
+  // da animare con ex.t (EXPLOSION_FRAME_COUNT) invece del solo frame 0 statico.
+  for (const ex of explosions) {
+    const frameIdx = Math.min(EXPLOSION_FRAME_COUNT - 1, Math.floor(ex.t / TICK));
+    dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr, frameIdx), _scale: ex.scale });
+  }
   // Il fuoco vero (game/src/projectiles.js): i razzi del lanciarazzi.
   for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr) });
   // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")

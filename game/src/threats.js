@@ -119,11 +119,18 @@ const BLAST_RADIUS = 150;
 
 const EXPLOSION_LIFE = 60 * TICK;      // [C] esplo/Create.gml: action_set_alarm(60, 0)
 const EXPLOSION_SCALE = 1.4;           // [C] esplo/Create.gml: action_sprite_transform(1.4, 1.4, 0, 0)
+// [C] data/sprites.json: "fica" ha davvero 60 frame, uno a uno quanto dura
+// l'oggetto (image_speed di default = 1, mai toccato dal codice — stesso
+// schema gia' visto per "soldfade"/coins.js e cc1|cc2|cc3/smoke.js): uno
+// stop-motion vero dell'esplosione, non un fotogramma statico. Main.js lo
+// anima da `ex.t` allo stesso modo.
+export const EXPLOSION_FRAME_COUNT = 60;
 
 /** [C] esplo/Create.gml. `scale` di default 1.4 (l'esplosione vera); i
  * lampi di sparo del lanciarazzi (game/src/projectiles.js) passano 0.4
  * (rol_avant/rol_diet/Create.gml: action_sprite_transform(0.4, 0.4, 0, 0)) —
- * stesso sprite "fica", solo piu' piccolo. */
+ * stesso sprite "fica" (con la sua stessa animazione a 60 frame), solo
+ * piu' piccolo. */
 export function spawnExplosion(x, y, scale = EXPLOSION_SCALE) {
   return { x, y, t: 0, spr: "fica", scale };
 }
