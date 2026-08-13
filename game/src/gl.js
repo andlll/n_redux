@@ -170,6 +170,33 @@ export function solidFrame(tex, w, h) {
   return { tex, u0: 0, v0: 0, u1: 1, v1: 1, w, h, ox: 0, oy: 0 };
 }
 
+/** Texture radiale (bianco pieno al centro, sfumato a trasparente sul
+ * bordo): niente atlas/canvas 2D, solo un buffer di pixel calcolato a
+ * mano, come makeSolidTexture() sopra. Serve per l'animazione "bolla"
+ * delle monete raccolte (game/src/main.js) — l'unico posto nel motore
+ * dove serve davvero un cerchio morbido invece di un quad pieno. */
+export function makeCircleTexture(gl, size = 64) {
+  const data = new Uint8Array(size * size * 4);
+  const c = (size - 1) / 2;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = (x - c) / c, dy = (y - c) / c;
+      const d = Math.hypot(dx, dy);
+      const a = Math.max(0, Math.min(1, (1 - d) * 2.2));
+      const o = (y * size + x) * 4;
+      data[o] = 255; data[o + 1] = 255; data[o + 2] = 255; data[o + 3] = Math.round(a * 255);
+    }
+  }
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+
 export async function loadTexture(gl, url) {
   const img = await new Promise((res, rej) => {
     const i = new Image();

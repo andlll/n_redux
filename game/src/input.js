@@ -34,12 +34,18 @@ export class Input {
     // il touch non ha un vero "hover" prima del tocco, la stessa
     // limitazione che aveva l'originale su mobile).
     this.hover = null;
+    // Tipo del puntatore dietro `hover` ("mouse"/"touch"/"pen"): serve a chi
+    // consuma l'hover per distinguere un vero passaggio del mouse da un dito
+    // ancora giu' (che aggiorna `hover` anche lui, vedi _move sotto) — es. la
+    // raccolta automatica delle monete blu al passaggio, game/src/main.js,
+    // che deve scattare solo col mouse, mai trascinando col dito.
+    this.hoverPointerType = null;
 
     el.addEventListener("pointerdown", (e) => this._down(e));
     el.addEventListener("pointermove", (e) => this._move(e));
     el.addEventListener("pointerup", (e) => this._up(e));
     el.addEventListener("pointercancel", (e) => this._up(e));
-    el.addEventListener("pointerleave", () => { this.hover = null; });
+    el.addEventListener("pointerleave", () => { this.hover = null; this.hoverPointerType = null; });
     el.addEventListener("wheel", (e) => this._wheel(e), { passive: false });
     el.addEventListener("contextmenu", (e) => e.preventDefault());
   }
@@ -62,6 +68,7 @@ export class Input {
   _move(e) {
     const p = this._pos(e);
     this.hover = p;
+    this.hoverPointerType = e.pointerType;
     const st = this.pointers.get(e.pointerId);
     if (!st) return;
     const dx = p.x - st.x, dy = p.y - st.y;
@@ -90,7 +97,7 @@ export class Input {
     // resta "sopra" il canvas anche a tasto rilasciato): alzando il dito
     // l'evidenziazione del placeholder deve sparire subito, non restare
     // agganciata all'ultimo punto toccato.
-    if (e.pointerType !== "mouse") this.hover = null;
+    if (e.pointerType !== "mouse") { this.hover = null; this.hoverPointerType = null; }
     if (!st.moved && performance.now() - st.t < TAP_MS) this.onTap?.(st.x, st.y);
   }
 

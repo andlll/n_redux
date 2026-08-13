@@ -30,10 +30,15 @@
 //    l'originale la fa "alleggerire" e accelerare verso l'alto una volta
 //    consegnato il pacco) per altri 1000 tick prima di sparire. Solo
 //    `mon_bil` e' cablata qui: e' quella che l'originale usa per `casa`
-//    (selec==1) e `industria` (selec==2), gli unici due tipi piazzabili dal
-//    giocatore che la creano — `parco` (selec==7) non crea nessun pallone
-//    nel decompilato, `mon_bbil` serve solo a tipi non ancora ricostruiti
-//    (banca, laser — STUDIO.md).
+//    (selec==1), `industria` (selec==2), `missile` (selec==3), `club`
+//    (selec==60), `solare` (selec==61), `gatling` (selec==62) e `villa`
+//    (selec==63) — sette dei piazzabili dal giocatore, tutti tranne
+//    `parco` (selec==7, non crea nessun pallone nel decompilato) e
+//    `laser` (selec==5, crea `mon_bbil` — la variante piu' grande, mai
+//    cablata: game/src/main.js riusa `mon_bil` anche per lui, stesso
+//    pallone piu' piccolo del dovuto invece di un secondo sprite/oggetto
+//    solo per questo). `mon_bbil` altrimenti serve solo a tipi non ancora
+//    ricostruiti (banca — STUDIO.md).
 //
 // [C] = letto nel decompilato. [I] = semplificato deliberatamente (dettagliato
 // punto per punto sotto).

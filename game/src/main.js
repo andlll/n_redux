@@ -1,4 +1,4 @@
-import { Renderer, makeSolidTexture, solidFrame, loadTexture } from "./gl.js";
+import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
@@ -12,8 +12,9 @@ import {
   spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
-import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions } from "./threats.js";
-import { stepTurretFire, stepProjectiles } from "./projectiles.js";
+import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT } from "./smoke.js";
+import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, stepDebris } from "./threats.js";
+import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -22,6 +23,11 @@ const hud = document.getElementById("hud");
 const r = new Renderer(canvas);
 const gl = r.gl;
 const white = makeSolidTexture(gl);
+// Cerchio morbido per l'animazione "bolla" delle monete raccolte (vedi
+// coinPops/collectCoinAt() piu' sotto) — nessun asset dell'originale la
+// prevede (nessun sistema di particelle in questo motore, STUDIO.md), e'
+// puramente nostra.
+const bubbleTex = makeCircleTexture(gl, 64);
 const cam = new Camera();
 const input = new Input(canvas);
 
@@ -169,7 +175,16 @@ const fontMini = await loadFont(gl, "gotham_mini");
 // preesistente a centro mappa (STUDIO.md §9), non un tipo che il
 // giocatore piazza.
 const placeholders = staticWorld.filter((it) => it.obj === "placeholder");
-for (const p of placeholders) { p.id = `ph_${p.x}_${p.y}`; p.consumed = false; }
+// [I] depth: la room dichiara -5000 (data/objects.json: sempre in primissimo
+// piano, davanti persino agli edifici — cosi' com'era nell'originale, mai
+// letto/cambiato a runtime). Qui invece il rombo viola, quando appare sotto
+// hover, resta appena sopra il piano stradale (`air2`, depth -1, STUDIO.md
+// §5.2) e sotto a tutto il resto — alberi/auto/edifici sono depth 0 nella
+// room, quindi ordinati per `-y` da effDepth() sopra, e la y minima in
+// `match_easy` e' 17 (effDepth -17): -2 sta sempre fra i due, mai sopra un
+// edificio o un albero, ma sempre sopra la strada sotto di lui.
+const PLACEHOLDER_DEPTH = -2;
+for (const p of placeholders) { p.id = `ph_${p.x}_${p.y}`; p.consumed = false; p.depth = PLACEHOLDER_DEPTH; }
 const placeholderById = new Map(placeholders.map((p) => [p.id, p]));
 
 // `chies` e' gia' un'istanza vera nella room (src/rooms/match_easy.json:
@@ -249,6 +264,15 @@ let constructionBoxes = [];
 // I pulsanti blu delle monete (game/src/coins.js): una per `casa` felice e
 // con corrente, ogni 3000 tick — vedi stepCoinSpawner() piu' sotto.
 let coins = [];
+// Le "bolle" che animano la raccolta di una moneta (nostre, non
+// dell'originale — vedi bubbleTex sopra): { x, y, t }, spawnate da
+// collectCoinAt() piu' sotto e disegnate/scartate nel loop principale.
+let coinPops = [];
+const COIN_POP_LIFE = 0.4;
+// Il fumo decorativo delle centrali (game/src/smoke.js): una o due ciminiere
+// per `industria` in piedi, mai in cantiere — vedi stepSmokeSpawner() piu'
+// sotto.
+let smoke = [];
 // Minacce vere (game/src/threats.js): `threats` sono aerei/bombardieri/
 // zeppelin, fatti nascere da stepThreatSpawner (r12/Alarm_4|5|6.gml) ogni
 // volta che una mongolfiera spia viene ignorata abbastanza a lungo da
@@ -257,10 +281,20 @@ let coins = [];
 let threats = [];
 let bombs = [];
 let explosions = [];
-// Il fuoco vero del lanciarazzi (game/src/projectiles.js): stepTurretFire
-// crea i razzi (dalla punta del cannone, quando una minaccia vera e' entro
-// 250px), stepProjectiles li fa volare e colpire.
+// Scia di fumo di aerei/bombardieri (game/src/threats.js, spawnAerSmoke/
+// stepAerSmoke) — mai gli zeppelin, [C] nessun Alarm_6 su dirig.
+let aerSmoke = [];
+// Pezzi di fusoliera che bombar stacca entrando in stato piro
+// (game/src/threats.js, spawnDebris/stepDebris) — mai air/dirig.
+let debris = [];
+// Il fuoco vero delle torrette (game/src/projectiles.js): stepTurretFire
+// crea i colpi (dalla punta del cannone, quando una minaccia vera e' entro
+// portata), stepProjectiles li fa volare e colpire.
 let projectiles = [];
+// Sbuffi di fumo di scia (game/src/projectiles.js, spawnSmoko/stepSmoko):
+// la scia del razzo in volo + il singolo sbuffo alla bocca del gatling —
+// non il fumo delle centrali (quello e' `smoke`, game/src/smoke.js).
+let trails = [];
 let r12 = createR12();
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
@@ -379,11 +413,17 @@ function placeAt(placeholder, type) {
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
   // [C] placeholder/Mouse_LeftReleased.gml: selec==1 (casa), selec==2
-  // (industria), selec==3 (missile), selec==60 (club), selec==61 (solare)
-  // e selec==63 (villa) creano `mon_bil` — i sei tipi piazzabili dal
-  // giocatore che lo fanno finora (`parco`, selec==7, non crea nessun
-  // pallone nel decompilato — game/src/balloons.js, in cima al file).
-  if (type === "casa" || type === "industria" || type === "missile" || type === "solare" || type === "club" || type === "villa") {
+  // (industria), selec==3 (missile), selec==60 (club), selec==61 (solare),
+  // selec==62 (gatling) e selec==63 (villa) creano `mon_bil` — i sette
+  // tipi piazzabili dal giocatore che lo fanno finora (`parco`, selec==7,
+  // non crea nessun pallone nel decompilato — game/src/balloons.js, in
+  // cima al file). `laser` (selec==5) crea invece `mon_bbil`, la variante
+  // piu' grande mai cablata (STUDIO.md/balloons.js: "serve solo a tipi non
+  // ancora ricostruiti") — riusa `mon_bil` come gli altri, stesso pallone
+  // piu' piccolo del dovuto invece di un secondo sprite/oggetto solo per
+  // questo.
+  if (type === "casa" || type === "industria" || type === "missile" || type === "solare"
+    || type === "club" || type === "villa" || type === "gatling" || type === "laser") {
     constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
   }
   return null;
@@ -552,6 +592,29 @@ function mulTint(base, rgb) {
   return (r << 16) | (g << 8) | b;
 }
 
+/** Test punto-in-rettangolo sul bounding box di un frame (sprite/w/h/ox/oy)
+ * — l'hit test "leggero" usato per la maggior parte degli oggetti cliccabili. */
+function inFrameRect(wx, wy, x, y, f) {
+  const x0 = x - f.ox, y0 = y - f.oy;
+  return wx >= x0 && wx <= x0 + f.w && wy >= y0 && wy <= y0 + f.h;
+}
+
+/** Test punto-in-rombo, centrato sul bounding box di un frame: i placeholder
+ * sono disegnati come sprite romboidali ("phold", il rombo viola —
+ * Mouse_MouseEnter.gml originale), non rettangolari — un tocco/hover nei
+ * quattro angoli vuoti del bounding box (fuori dal rombo vero) non deve
+ * colpirli. Il decompilato usa la maschera di collisione precisa dello
+ * sprite (`mask_sprite`), non il suo bbox: qui approssimata con un rombo
+ * invece di un rettangolo pieno — molto piu' fedele alla sagoma vera per un
+ * costo quasi identico (un confronto in piu' rispetto all'AABB). */
+function inFrameDiamond(wx, wy, x, y, f) {
+  const x0 = x - f.ox, y0 = y - f.oy;
+  const cx = x0 + f.w / 2, cy = y0 + f.h / 2;
+  const hw = f.w / 2, hh = f.h / 2;
+  if (hw <= 0 || hh <= 0) return false;
+  return Math.abs(wx - cx) / hw + Math.abs(wy - cy) / hh <= 1;
+}
+
 // ---------------------------------------------------------------- input
 input.onDrag = (dx, dy) => { userMoved = true; cam.panByScreen(dx, dy); };
 // Il fattore si applica a `targetZoom`, non a `zoom` (che insegue con un
@@ -644,6 +707,16 @@ const OTHER_BUILDINGS = [
 for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
 const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
 
+/** Raccoglie una moneta e fa partire la sua "bolla" (coinPops sopra) —
+ * unico punto d'ingresso condiviso da input.onTap (tap/click, sotto) e
+ * dalla raccolta automatica al passaggio del mouse (stepCoinHover() nel
+ * loop principale), cosi' entrambi i gesti danno la stessa risposta
+ * visiva. */
+function collectCoinAt(item) {
+  coinPops.push({ x: item.x, y: item.y, t: 0 });
+  collectCoin(coins, item, r12);
+}
+
 input.onTap = (sx, sy) => {
   // il selettore edificio vive in spazio schermo, sopra la mappa: un tocco
   // che lo colpisce non deve raggiungere il mondo sotto.
@@ -690,10 +763,14 @@ input.onTap = (sx, sy) => {
   for (const it of frameList) {
     if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
       && it.obj !== "coin" && it.obj !== "upsign") continue;
-    const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
-    if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
-      if (!picked || it.depth < picked.depth) picked = it;
-    }
+    // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
+    // stessa ragione della raccolta hover piu' sotto. Tutto il resto
+    // (edifici, casse, monete, segnale di potenziamento) resta sul
+    // bounding box rettangolare, piu' leggero e gia' fedele alla loro sagoma.
+    const hit = it.obj === "placeholder"
+      ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
+      : inFrameRect(w.x, w.y, it.x, it.y, it._f);
+    if (hit && (!picked || it.depth < picked.depth)) picked = it;
   }
   if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
     const it = frameList[i];
@@ -704,8 +781,14 @@ input.onTap = (sx, sy) => {
     // qui non devono "rubare" il tocco.
     if (!it._f || it.obj === "decor" || it.obj === "scaffold" || it.obj === "car"
       || it.obj === "semaphore" || it.obj === "cloud" || it.obj === "bird" || it.obj === "pedestrian") continue;
-    const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
-    if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
+    // stessa distinzione rombo/rettangolo della prima passata sopra — un
+    // placeholder che arriva fin qui (nessun oggetto interattivo colpito
+    // nella prima passata) deve comunque rispettare la sua sagoma vera, non
+    // il bbox pieno.
+    const hit = it.obj === "placeholder"
+      ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
+      : inFrameRect(w.x, w.y, it.x, it.y, it._f);
+    if (hit) {
       picked = it;
       break;
     }
@@ -728,8 +811,25 @@ input.onTap = (sx, sy) => {
     }
     messageT = 3;
   } else if (picked.obj === "building") {
-    const err = tryStartUpgrade(picked.ref, r12);
-    message = err ?? "cantiere avviato";
+    const b = picked.ref;
+    // [C] rocket_launcher|lasergun/Mouse_LeftPressed.gml (`manualFire` in
+    // buildings.js — gatlinggun non ne ha uno vero): un tocco su una
+    // torretta finita non apre un cantiere (nessuna delle tre ha
+    // potenziamenti — tryStartUpgrade ci direbbe solo "livello massimo") —
+    // fa partire un colpo contro il bersaglio che il cannone sta gia'
+    // inseguendo (game/src/projectiles.js, fireTurretManual()). Sotto
+    // cantiere invece resta tryStartUpgrade come per qualunque edificio
+    // (che gia' risponderebbe da solo "cantiere gia' in corso").
+    if (!b.construction && BUILDING_TYPES[b.type]?.manualFire) {
+      const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails);
+      message = fired ? "fuoco!"
+        : !b.aimTarget ? "nessun bersaglio in portata"
+        : b.type === "laser" && r12.ele < 200 ? "energia insufficiente"
+        : "cannone in ricarica";
+    } else {
+      const err = tryStartUpgrade(b, r12);
+      message = err ?? "cantiere avviato";
+    }
     messageT = 3;
   } else if (picked.obj === "loot") {
     const item = picked.ref;
@@ -739,7 +839,7 @@ input.onTap = (sx, sy) => {
     picked = null;   // raccolta, non c'e' piu' niente da tenere selezionato
   } else if (picked.obj === "coin") {
     const item = picked.ref;
-    collectCoin(coins, item, r12);
+    collectCoinAt(item);
     message = `+${item.amount} ${item.kind ?? "mon"}`;
     messageT = 3;
     picked = null;
@@ -815,6 +915,11 @@ function frame(now) {
   stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
   stepProduction(buildings, dt, r12);
   stepSolarProduction(buildings, dt, r12, night, dawn);
+  // Fumo delle centrali (game/src/smoke.js): dopo stepProduction(), cosi'
+  // "oil>0" gia' rispecchia il consumo di questo frame, come per le monete
+  // blu sotto (stesso ordine gia' scelto per stepCoinSpawner()).
+  stepSmokeSpawner(buildings, smoke, dt, r12);
+  stepSmoke(smoke, dt);
   stepGrowth(buildings, dt, r12, (b) => pedestrians.push(spawnPedestrian(b.x, b.y)));
   stepConsumption(buildings, dt, r12, night);
   stepWeather(r12, dt);
@@ -841,6 +946,26 @@ function frame(now) {
   // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
   stepCoinSpawner(buildings, coins, dt, r12);
   stepCoins(coins, dt, r12);
+  // Raccolta al passaggio del mouse — [C] sold*/soldbio/Mouse_MouseEnter.gml
+  // usa davvero un hover, non un click (coins.js, collectCoin() sopra il tap
+  // esplicito per touch/desktop): un vero hover pero' esiste solo col mouse
+  // fermo, non trascinando col dito (`hoverPointerType`, game/src/input.js) —
+  // altrimenti panoramicare la mappa col dito raccoglierebbe monete di
+  // striscio, un gesto che l'originale non prevede su touch.
+  if (input.hover && input.hoverPointerType === "mouse") {
+    const hw = cam.screenToWorld(input.hover.x, input.hover.y);
+    for (let i = coins.length - 1; i >= 0; i--) {
+      const c = coins[i];
+      const f = frameFor(c.spr);
+      if (!f) continue;
+      const x0 = c.x - f.ox, y0 = c.y - f.oy;
+      if (hw.x >= x0 && hw.x <= x0 + f.w && hw.y >= y0 && hw.y <= y0 + f.h) collectCoinAt(c);
+    }
+  }
+  for (let i = coinPops.length - 1; i >= 0; i--) {
+    coinPops[i].t += dt;
+    if (coinPops[i].t >= COIN_POP_LIFE) coinPops.splice(i, 1);
+  }
   stepConstructionBalloons(constructionBalloons, constructionBoxes, dt);
   stepConstructionBoxes(constructionBoxes, dt);
   // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
@@ -848,7 +973,9 @@ function frame(now) {
   // (contatori alzati in stepBalloons() sopra), poi ognuno vola, bombarda,
   // e sparisce da solo.
   stepThreatSpawner(r12, threats, dt);
-  stepThreats(threats, bombs, explosions, dt, r12);
+  stepThreats(threats, bombs, explosions, dt, r12, aerSmoke, debris);
+  stepAerSmoke(aerSmoke, dt);
+  stepDebris(debris, explosions, dt);
   stepBombs(bombs, explosions, buildings, dt, r12);
   stepExplosions(explosions, dt);
   // Unico controllo per tutte le fonti di danno di questo frame (fulmini,
@@ -863,8 +990,9 @@ function frame(now) {
   stepTurretAim(buildings, cars.concat(balloons));
   // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
   // gia' nella direzione appena calcolata (b.aimAngle).
-  stepTurretFire(buildings, threats, dt, projectiles, explosions);
-  stepProjectiles(projectiles, balloons, threats, loot, explosions, dt);
+  stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails);
+  stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt);
+  stepSmoko(trails, dt);
   if (messageT > 0) messageT -= dt;
 
   // --- lista di disegno di questo frame: mondo statico (placeholder consumati
@@ -885,7 +1013,10 @@ function frame(now) {
     // cantiere e' gia' in corso. Depth -9001, un filo piu' avanti delle
     // monete blu (-9000): [C] upsign12/_object.json, sempre in primo piano.
     if (!b.construction && upgradeUnlocked(b, r12)) {
-      dynamic.push({ obj: "upsign", ref: b, x: b.x, y: b.y, depth: UPSIGN_DEPTH, _f: frameFor("upico") });
+      // `_selfLit`: come le luci delle finestre (stepLights() sopra), un
+      // segnale simbolico dell'interfaccia — deve restare leggibile anche di
+      // notte, non scurirsi con la tinta ambientale come un edificio vero.
+      dynamic.push({ obj: "upsign", ref: b, x: b.x, y: b.y, depth: UPSIGN_DEPTH, _f: frameFor("upico"), _selfLit: true });
     }
   }
   for (const d of decorEntities) dynamic.push(d);
@@ -911,6 +1042,16 @@ function frame(now) {
   // confini della room (nascono appena fuori mappa, gli uccelli molto piu'
   // sotto) — il filtro di frustum culling nel ciclo di disegno piu' sotto
   // li scarta gia' da solo quando non sono in vista, niente da fare qui.
+  // Fumo delle centrali (game/src/smoke.js): stessa formula di depth
+  // dell'originale (`depth = -y - 150/-200`, smoke_ind/smoke_ind_2 — vedi
+  // CHIMNEYS in smoke.js), ricalcolata qui perche' il fumo si sposta (a
+  // differenza di monete/segnali, fissi sul loro edificio). L'animazione a
+  // 70 frame di cc1/cc2/cc3 gira per davvero (frameIdx), oltre e non invece
+  // dell'ingrandimento uniforme (_scale) — vedi smoke.js.
+  for (const p of smoke) {
+    const frameIdx = Math.min(SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
+    dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale });
+  }
   for (const c of atmo.clouds) dynamic.push({ obj: "cloud", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr) });
   for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
   // Pedoni (game/src/pedestrians.js): x/y/depth gia' avanzati da
@@ -926,7 +1067,10 @@ function frame(now) {
   // invece di restare fermo al primo), "soldico" e' statica (un solo frame).
   for (const c of coins) {
     const frameIdx = c.auto ? Math.min(19, Math.floor(c.t / TICK)) : 0;
-    dynamic.push({ obj: "coin", ref: c, x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr, frameIdx) });
+    // `_selfLit`: stesso motivo di "upsign" sopra — un pulsante simbolico
+    // dell'interfaccia, non un oggetto di mondo, deve restare visibile
+    // anche di notte invece di scurirsi con la tinta ambientale.
+    dynamic.push({ obj: "coin", ref: c, x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr, frameIdx), _selfLit: true });
   }
   for (const m of constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
   for (const bx of constructionBoxes) dynamic.push({ obj: "decor", x: bx.x, y: bx.y, depth: bx.depth, _f: frameFor(bx.spr) });
@@ -938,9 +1082,29 @@ function frame(now) {
   // mondo.
   for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale });
   for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y, _f: frameFor(bm.spr) });
-  for (const ex of explosions) dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr), _scale: ex.scale });
+  // Pezzi di fusoliera del bombardiere abbattuto (game/src/threats.js,
+  // spawnDebris): puramente cosmetici come le bombe, stessa regola di depth.
+  for (const d of debris) dynamic.push({ obj: "decor", x: d.x, y: d.y, depth: -d.y, _f: frameFor(d.spr) });
+  // Esplosioni (game/src/threats.js): "fica" ha 60 frame veri, uno stop-motion
+  // da animare con ex.t (EXPLOSION_FRAME_COUNT) invece del solo frame 0 statico.
+  for (const ex of explosions) {
+    const frameIdx = Math.min(EXPLOSION_FRAME_COUNT - 1, Math.floor(ex.t / TICK));
+    dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr, frameIdx), _scale: ex.scale });
+  }
   // Il fuoco vero (game/src/projectiles.js): i razzi del lanciarazzi.
   for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr) });
+  // Fumo di scia (game/src/projectiles.js, spawnSmoko): depth -9000 fisso
+  // come le monete blu ([C] smoko/_object.json), ma senza `_selfLit` — un
+  // residuo di sparo, non un simbolo dell'interfaccia, si scurisce di
+  // notte come qualunque altro decoro.
+  for (const p of trails) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
+  // Scia di fumo degli aerei (game/src/threats.js, spawnAerSmoke): stessa
+  // animazione a 70 frame vera di smoke.js (cc2/cc3), ferma sul posto e in
+  // crescita (_scale) — a differenza della scia dei proiettili sopra.
+  for (const p of aerSmoke) {
+    const frameIdx = Math.min(AER_SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
+    dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale });
+  }
   // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
   // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
   // (`_alpha`, 0 di giorno) che il ciclo di disegno rispetta da solo — a
@@ -961,8 +1125,7 @@ function frame(now) {
     const w = cam.screenToWorld(input.hover.x, input.hover.y);
     for (const p of placeholders) {
       if (p.consumed) continue;
-      const x0 = p.x - p._f.ox, y0 = p.y - p._f.oy;
-      if (w.x >= x0 && w.x <= x0 + p._f.w && w.y >= y0 && w.y <= y0 + p._f.h) { hoveredPh = p; break; }
+      if (inFrameDiamond(w.x, w.y, p.x, p.y, p._f)) { hoveredPh = p; break; }
     }
   }
   for (const p of placeholders) p._hovered = p === hoveredPh;
@@ -997,6 +1160,15 @@ function frame(now) {
       r.draw(solidFrame(white, s, s), it.x - s / 2, it.y - s / 2, 1, mulTint(it._c, amb.rgb), 0.35);
     }
     drawn++;
+  }
+  // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che
+  // cresce e sfuma sul punto della moneta appena presa, in primo piano come
+  // le monete stesse — niente tinta ambientale, per lo stesso motivo di
+  // `_selfLit` qui sopra.
+  for (const p of coinPops) {
+    const k = p.t / COIN_POP_LIFE;
+    const size = 20 + k * 46;
+    r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, 0x4fc3f7, (1 - k) * 0.85);
   }
   r.flush();
 
@@ -1067,15 +1239,27 @@ function frame(now) {
   // (`action_move_to`/`N*global.sca`); qui si accodano da sinistra usando
   // la larghezza vera di ciascuno sprite (`GAP` px fra l'uno e l'altro).
   // `chies` non ha un bottone: non e' un tipo piazzabile (vedi sopra).
-  // UI_SCALE: solo su mobile i bottoni sono piu' piccoli (STUDIO.md
-  // scorrevolezza qui sotto) — su desktop restano alla dimensione vera
-  // dello sprite, non c'e' bisogno di comprimerli. 0.6 e' il punto in cui
-  // ~13 bottoni (il menu "edifici" al completo) stanno in 4-5 schermate di
-  // scroll su un telefono stretto (~360-430px) restando comunque sopra i
-  // ~44px minimi comunemente raccomandati per un tocco.
-  const UI_SCALE = isMobile ? 0.6 : 1;
+  // UI_SCALE: su mobile i bottoni sono piu' piccoli per far stare piu'
+  // scroll orizzontale a schermo (STUDIO.md scorrevolezza qui sotto) — 0.6
+  // e' il punto in cui ~13 bottoni (il menu "edifici" al completo) stanno
+  // in 4-5 schermate di scroll su un telefono stretto (~360-430px)
+  // restando comunque sopra i ~44px minimi comunemente raccomandati per un
+  // tocco. Su desktop niente vincolo di tocco/scroll, ma alla dimensione
+  // vera dello sprite (1) la barra risultava sproporzionata — [I] 0.7 a
+  // richiesta, un compromesso fra leggibilita' e ingombro, non letto da
+  // nessuna parte nel decompilato (`global.sca` scala l'intera UI
+  // originale in un modo che non abbiamo ricostruito, STUDIO.md).
+  const UI_SCALE = isMobile ? 0.6 : 0.7;
   const baseY = Math.round(canvas.clientHeight - UI_MARGIN);
-  const GAP = isMobile ? 3 : 4;
+  // I "tasti costruzione" (menoo 1: casa/industria/...) sono adiacenti,
+  // GAP 0 — ogni sprite porta gia' con se' la propria base rettangolare
+  // nera fino al bordo del proprio frame (bbox ritagliato sui pixel
+  // opachi, tools/23_atlas.py): un GAP positivo apriva una fessura
+  // trasparente fra una base e l'altra, spezzando quella che nell'originale
+  // e' una sola barra nera continua sotto tutti i bottoni. Le altre due
+  // righe (menoo 0/2: mano/gru/occhio, vista/zoom) non sono bottoni di
+  // costruzione e restano staccate come prima.
+  const GAP = menoo === 1 ? 0 : (isMobile ? 3 : 4);
   const row = menoo === 1
     // menoo 1 "edifici" ([C] pu1/Create.gml li crea tutti insieme): i due
     // veri (casa/industria) + il resto del menu, segnaposto (vedi sopra).
@@ -1221,9 +1405,11 @@ window.__nimbus = {
   get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
   atmo, get pedestrians() { return pedestrians; },
   get balloons() { return balloons; }, get loot() { return loot; }, get coins() { return coins; },
+  get coinPops() { return coinPops; },
   get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
   get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
-  get projectiles() { return projectiles; },
+  get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
+  get aerSmoke() { return aerSmoke; }, get debris() { return debris; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,

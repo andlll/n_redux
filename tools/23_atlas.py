@@ -116,6 +116,21 @@ GAMEPLAY_SPRITES = {
         "vil7", "vil8", "vil9", "vil10", "vil11", "vil12",
         "vil1l", "vil2l", "vil3l", "vil4l", "vil5l", "vil6l",
         "vil7l", "vil8l", "vil9l", "vil10l", "vil11l", "vil12l",
+        # gatling: nono edificio, seconda torretta (src/objects/gatlinggun,
+        # cantiere impagatlingr/impagatlingf — riusano gli stessi ir1x/if1x/
+        # "toppers" di sopra, nessuno sprite di cantiere in piu'). "nm1a"..
+        # "nm16a" sono i 16 sprite di mira del cannone (gatlinggun/Step.gml,
+        # sprite_index risolti per indice come "lrn1".."lrn16" sopra) — solo
+        # le pose "a": le "b" (nm1b..nm16b) sono la posa di rinculo dopo lo
+        # sparo, non riprodotta (game/src/buildings.js).
+        "nm1a", "nm2a", "nm3a", "nm4a", "nm5a", "nm6a", "nm7a", "nm8a",
+        "nm9a", "nm10a", "nm11a", "nm12a", "nm13a", "nm14a", "nm15a", "nm16a",
+        # laser: decimo edificio, terza torretta (src/objects/lasergun,
+        # cantiere impalaser_r/impalaser_f — riusano ir1x/if1x/"toppers"/
+        # "gr21" di sopra, nessuno sprite di cantiere in piu'). "lan1"..
+        # "lan16" sono i 16 sprite di mira, stesso schema di "lrn"/"nm".
+        "lan1", "lan2", "lan3", "lan4", "lan5", "lan6", "lan7", "lan8",
+        "lan9", "lan10", "lan11", "lan12", "lan13", "lan14", "lan15", "lan16",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/
@@ -241,12 +256,31 @@ GAMEPLAY_SPRITES = {
         "bomberspr",                                # bombar
         "dirspr",                                    # dirig
         "bomb", "fica",                              # bomba1/bomba2, esplo
+        # Lo stato piro (game/src/threats.js, STUDIO.md "lo stato piro"):
+        # gli sprite "in fiamme" mentre il velivolo precipita, prima di
+        # morire per davvero. "rosso_pic"/"blu_pic"/"giallo_pic"/
+        # "verde_pic" sono le quattro varianti colore di air (risolte per
+        # indice sprite come i 16 sprite di mira delle torrette, non nomi
+        # scelti qui); "bomb_p1"/"bomb_p2" i due bombardieri "spezzati" di
+        # bombar (dado 1/2, a seconda di quale set di detriti stacca);
+        # "dirspr_distrutto" il solo zeppelin in fiamme.
+        "rosso_pic", "blu_pic", "giallo_pic", "verde_pic",
+        "bomb_p1", "bomb_p2", "dirspr_distrutto",
+        # I pezzi di fusoliera che bombar stacca entrando in piro
+        # (src/objects/rot11|12|21|22|23|24 — game/src/threats.js,
+        # spawnDebris): sprite "bomb_rNN", stesso nome dell'oggetto.
+        "bomb_r11", "bomb_r12", "bomb_r21", "bomb_r22", "bomb_r23", "bomb_r24",
     ],
-    # Il fuoco vero del lanciarazzi (src/objects/red_ball, rol_avant/
-    # rol_diet — game/src/projectiles.js). "fica" (il lampo di sparo, scala
+    # Il fuoco vero delle torrette (src/objects/red_ball/yellow_pro,
+    # game/src/projectiles.js — il laser non ha un proiettile vero, e' un
+    # colpo istantaneo). "fica" (il lampo di sparo per tutte e tre, scala
     # 0.4) e' gia' in "threats" sopra, nessuno sprite in piu' da aggiungere
-    # per quello.
-    "projectiles": ["redb"],
+    # per quello. "c1"/"c2"/"c3" sono il fumo di scia (src/objects/smoko,
+    # spawnSmoko() in projectiles.js) — NON gli stessi "cc1"/"cc2"/"cc3"
+    # del fumo delle centrali qui sotto (sprite diversi, per coincidenza
+    # nomi quasi uguali: verificato in data/sprites.json, dimensioni
+    # diverse, 96x96 contro 38x35).
+    "projectiles": ["redb", "gatmissse", "c1", "c2", "c3"],
     # I pulsanti blu delle monete (src/objects/sold1..18, game/src/coins.js)
     # e il segnale verde di potenziamento (src/objects/upsign12|23|upcrc12|
     # 23|upind12|23 — tutti la stessa icona "upico", game/src/main.js
@@ -254,6 +288,11 @@ GAMEPLAY_SPRITES = {
     # livello 3), "soldfade" la stessa icona con la dissolvenza a 20 frame
     # usata quando invece si autoriscuote.
     "coins": ["soldico", "soldfade", "upico"],
+    # Il fumo decorativo delle centrali (src/objects/smoke_ind|smoke_ind_2,
+    # game/src/smoke.js): un solo sbuffo per famiglia ("cc1" il default,
+    # "cc2"/"cc3" le due varianti a dado di Create.gml — non serve
+    # distinguere smoke_ind da smoke_ind_2, condividono lo stesso sprite).
+    "smoke": ["cc1", "cc2", "cc3"],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})

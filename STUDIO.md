@@ -398,9 +398,24 @@ paragrafo 8.
   olio/crescita popolazione (**[I]**, STUDIO.md §6). Ora `tickR12()`
   esclude dalla formula generica i tipi che dichiarano `production`, per
   non contare due volte lo stesso olio.
-  **Non portato** (resta un gap esplicito, non finto): il fumo
-  decorativo (`smoke_ind*`, puramente visivo), il danno da fulmine in
-  tempesta (`Alarm_5`/`6`: **[C]** la regola è letta — dado 1/100..130,
+  **Il fumo decorativo ora è portato** (`game/src/smoke.js`,
+  `stepSmokeSpawner`/`stepSmoke`, chiamate da `main.js`): una o due
+  ciminiere per livello (**[C]** `industria1|2|3/Alarm_3|4.gml` +
+  `smoke_ind|smoke_ind_2/Create|Step|Alarm_0.gml`), attive solo con
+  `oil > 0`, con la stessa cadenza (20 tick), lo stesso moto (direzione
+  70°, velocità 1.3 px/tick), la stessa crescita (+0.05 di scala/tick) e
+  la stessa vita (69 tick, sparisce di scatto, nessuna dissolvenza — non
+  l'aveva nemmeno l'originale) del decompilato. **[I]**: l'originale
+  sceglie a dado, una volta a `Create`, QUALE delle 2-4 ciminiere
+  disponibili usare (`xi`); `buildings.js` non riproduce quel dado
+  (`finalSprite` è fisso per livello), quindi qui si usa sempre l'offset
+  della variante che l'originale assocerebbe a quello sprite fisso. Le
+  collisioni che nell'originale la interrompono prima contro la
+  scenografia (`smoke_ind/Collision_*.gml`) restano un gap esplicito:
+  nessun sistema di collisione generico per il decoro esiste ancora, e
+  sarebbe invisibile alla scala di un frame.
+  **Non portato** (resta un gap esplicito, non finto): il danno da fulmine
+  in tempesta (`Alarm_5`/`6`: **[C]** la regola è letta — dado 1/100..130,
   vita −50 — ma non è cablata perché `r12.storm` è sempre 0 e non esiste
   ancora nessun sistema che agisca su `life` arrivata a 0, quindi
   sarebbe codice morto se collegato ora) e `demobasia`
@@ -1025,9 +1040,10 @@ paragrafo 8.
   cassa a terra (`smoko`) non riprodotte — stesso gap gia' dichiarato per
   il fumo di `industria`.
 
-- **Primo edificio difensivo: `missile`.** L'inizio di una famiglia (in
-  arrivo: gatling, laser) diversa dai primi quattro edifici su un asse
-  nuovo — non produce ne' consuma risorse, insegue bersagli col cannone.
+- **Primo edificio difensivo: `missile`.** L'inizio di una famiglia (poi
+  raggiunta da gatling e laser, vedi in fondo al file) diversa dai primi
+  quattro edifici su un asse nuovo — non produce ne' consuma risorse,
+  insegue bersagli col cannone.
   **[C]** Cantiere `impamissr`/`impamissf` (coppia r/f, stesso schema gia'
   noto — STUDIO.md sopra "secondo edificio giocabile: industria"): riusa
   gli stessi sprite `ir1x`/`ir2x`/`if1x`/`if2x` di industria/casa/parco,
@@ -1075,8 +1091,9 @@ paragrafo 8.
   torrette a ~116px si respingono ("troppo vicino a un'altra torretta di
   difesa", nessun mon scalato), la stessa coppia a >200px si piazza.
   Il campo `turret: true` in `BUILDING_TYPES.missile` e la generalita' di
-  `tooCloseToTurret()`/`stepTurretAim()` sono pensate per gatling/laser,
-  non ancora aggiunte.
+  `tooCloseToTurret()`/`stepTurretAim()` erano gia' pensate per gatling/
+  laser: aggiunte in fondo al file, riusano entrambe le funzioni cosi'
+  come sono.
 
 - **Le minacce vere.** Il pezzo mancante che STUDIO.md segnalava da tempo
   ("da dove arrivano davvero le minacce vere... dipendono da contatori che
@@ -1131,12 +1148,13 @@ paragrafo 8.
   fatta per `tooCloseToTurret()` (STUDIO.md "il lanciarazzi"), nessun
   sistema di collisione vero in questo motore.
   **Non riprodotto**: `piro` (lo stato "colpito, sto precipitando" di
-  ciascun nemico) — richiede vita/danno su un nemico, che a sua volta
-  richiede il fuoco vero del lanciarazzi (STUDIO.md "il lanciarazzi": la
-  mira e' vera, il fuoco resta un gap dichiarato) — finche' niente puo'
-  abbattere un aereo, quel ramo del decompilato non scatterebbe comunque;
-  il fumo di scia (`smoko_aer`), puramente cosmetico, stesso gap gia'
-  dichiarato per il fumo di `industria`/la cassa di cantiere.
+  ciascun nemico) — il fuoco vero (aggiunto poi, STUDIO.md "il lanciarazzi
+  spara per davvero") uccide sempre al primo colpo, quindi quel ramo del
+  decompilato non scatterebbe comunque anche ora che il fuoco esiste.
+  **Il fumo di scia (`smoko_aer`) e' stato aggiunto in un giro successivo**
+  (vedi in fondo al file, insieme al fumo di scia dei proiettili): air/
+  bombar lo riarmano ogni 8 tick per tutta la loro vita (Alarm_6), mai
+  dirig.
   Verificato in browser: 10 spie riuscite di fila producono la contabilita'
   esatta (`onda`=10, `bombus`=2, `diro`=1); le tre ondate nascono nei tempi
   giusti e si vedono (caccia verde/giallo/zeppelin grigio in volo sopra la
@@ -1172,31 +1190,31 @@ paragrafo 8.
   volava a vuoto lungo un binario spostato di ~125px). Corretto salvando
   anche `b.aimTarget` (non solo l'angolo) e ricalcolando la direzione vera
   dalla posizione della punta del cannone in `stepTurretFire`.
-  **[I] Un solo colpo distrugge sempre il bersaglio**: `monvo_giga`/
-  `monviolo`/`air`/`bombar`/`dirig` hanno tutti un contatore `life` che
-  sembrerebbe richiedere piu' colpi (`red_ball/Collision_*.gml` lo
-  decrementa), ma il controllo che lo legge e' `life != 0`, non `== 0` —
-  dopo il primo colpo `life` e' quasi sempre ancora diverso da zero, quindi
-  il bersaglio muore comunque al primo colpo. Non e' una nostra
-  semplificazione che "arrotonda" una meccanica a piu' colpi: e' un
-  contatore di fatto morto nel gioco originale stesso, letto ma mai
-  davvero capace di salvare un bersaglio da un secondo colpo che non
-  arriva mai (muore sempre al primo). Colpire una mongolfiera di risorse
-  fa comunque cadere la sua cassa ([C] Destroy.gml scatta a prescindere
-  da come muore, stessa logica gia' vista per il fulmine — `spawnLoot`
-  ora esportata da balloons.js apposta); colpire una spia la fa sparire
-  in silenzio, senza che riferisca mai (nessun Destroy.gml su `monspi`) —
-  la vera contromossa alle ondate progressive.
-  **Non riprodotto**: il fuoco manuale al tap sul lanciarazzi
-  (`rocket_launcher/Mouse_LeftPressed.gml`, che spara con una tabella di
-  offset a 4 vie piu' rozza, ridondante con quella automatica) — toccare
-  l'edificio oggi prova solo un potenziamento (che non esiste, "livello
-  massimo"). `esplo` a 5 raffiche invece di una sola per `dirig`
-  (`Destroy.gml`, un solo zeppelin e' grande) riprodotto ovunque muoia
-  (fulmine, colpo diretto), tranne il doppio conteggio dell'esplosione
-  singola che `Alarm_5.gml` crea anche lui prima del `Destroy.gml` in
-  caso di fulmine — un dettaglio sotto la soglia di quanto vale
-  inseguire.
+  **[CORRETTO IN UN GIRO SUCCESSIVO — leggere "lo stato piro" in fondo al
+  file]**: qui sotto si concludeva che un solo colpo bastasse sempre a
+  distruggere qualunque bersaglio, `air`/`bombar`/`dirig` incluse, perche'
+  il controllo su `life` sembrava leggersi `life != 0`. Sbagliato:
+  l'operatore usato da `action_if_variable(life, 0, 3)` e' "<=", non "!=" —
+  la stessa famiglia di errore gia' presa e corretta altrove in questo
+  documento per l'operatore 4 (coins.js) — e su `air`/`bombar`/`dirig` la
+  vita e' vera e viene letta davvero per decidere fra esplosione sul colpo
+  e lo stato "piro" (colpito, precipita, muore poco dopo). Resta VERO per
+  le mongolfiere (`monvo_giga`/`monviolo`/...): quelle sì muoiono sempre al
+  primo colpo, i loro `Collision_*` controllano solo `desto`, non `life`.
+  Colpire una mongolfiera di risorse fa comunque cadere la sua cassa
+  ([C] Destroy.gml scatta a prescindere da come muore, stessa logica gia'
+  vista per il fulmine — `spawnLoot` ora esportata da balloons.js apposta);
+  colpire una spia la fa sparire in silenzio, senza che riferisca mai
+  (nessun Destroy.gml su `monspi`) — la vera contromossa alle ondate
+  progressive.
+  **Aggiornamento da un giro successivo**: sia il fuoco manuale al tap
+  (allora "non riprodotto", poi aggiunto — vedi "il lanciarazzi" piu' in
+  basso, e generalizzato a laser) sia il doppio conteggio dell'esplosione
+  di `dirig` per fulmine (`Alarm_5.gml` crea un "esplo" esplicito PRIMA di
+  uccidersi, poi `Destroy.gml` ci aggiunge la raggiera — allora liquidato
+  come "sotto la soglia di quanto vale inseguire") sono ora entrambi
+  implementati com'erano nel decompilato — vedi "lo stato piro" in fondo
+  al file.
   Verificato in browser: un razzo lanciato contro un aereo fermo e vicino
   lo abbatte (dopo aver corretto il bug di mira sopra); senza nessun
   veicolo da inseguire il cannone non ha una direzione e non spara anche
@@ -1590,3 +1608,234 @@ paragrafo 8.
   con `ava` forzato a 1 la stessa condizione produce invece `kind:"mon"`,
   `amount:40` — la biforcazione fra le due famiglie di ricompensa si
   comporta esattamente come letto.
+
+- **Nono e decimo edificio, seconda e terza torretta: `gatling` e
+  `laser`.** Completano la famiglia difensiva aperta da `missile`
+  (STUDIO.md "primo edificio difensivo" sopra): stesso `turret: true`,
+  stessa `stepTurretAim()` generica (buildings.js), ma armi diverse fra
+  loro — `game/src/projectiles.js` guadagna una tabella `WEAPONS` per
+  tipo invece di restare cablato su missile.
+  **[C]** Cantieri (`impagatlingr`/`f`, `impalaser_r`/`f`) riusano gli
+  stessi sprite `ir1x`/`ir2x`/`ir3x`/`ir4x`/`if1x`/"toppers"/"gr21" gia'
+  in atlas — nessuno sprite di cantiere in piu'. `impagatlingr/Alarm_0.gml`
+  e' riga per riga lo stesso codice di `impamissr/Alarm_0.gml` (stesse
+  durate, stesso offset del topper): copiato senza modifiche.
+  `impalaser_r` invece e' un cantiere a 4 fasi da 23 tic come quello di
+  `chies`/`industria` di livello 3, non i 10 tic "base" delle altre
+  torrette — **[I]** troncato a tic 0..10 (scartando 11..22, lo stesso
+  specchio "costruisci poi ripiega la gru" gia' troncato per
+  `impaind1to2r`/`2to3r`, STUDIO.md "secondo edificio giocabile:
+  industria"): a tic 6 pianta 4 "grubig" (sprite `gr21`, il rubble/gru gia'
+  usato altrove) ai quattro angoli invece di uno solo, l'unico edificio
+  a farlo. Costo di piazzamento **[C]** 10000 mon (gatling, `selec==62`)
+  e 20000 mon (laser, `selec==5`); entrambi creano un pacco di cantiere —
+  gatling `mon_bil` come le altre torrette, laser invece `mon_bbil` (la
+  variante grande, mai cablata: riusa `mon_bil` come le altre, stesso
+  pallone piu' piccolo del dovuto — game/src/balloons.js aggiornato di
+  conseguenza). Vita **[C]** 800/1000, danno da fulmine 1/130 e 1/90 ogni
+  57 tick -50 vita.
+  **`gatling` spara due colpi a canna** (`yellow_pro`, sprite
+  "gatmissse"): **[C]** `gatlinggun/Step.gml` insegue il veicolo piu'
+  vicino entro 550px, spara entro 450px da una vera minaccia (stessa
+  regola "punta al veicolo, non a chi ha innescato lo sparo" gia' letta
+  per missile), ogni proiettile costa **[C]** 3 mon a nascere —
+  incondizionato, senza `canAfford`, esattamente come nel decompilato: il
+  fuoco automatico puo' davvero portare `mon` sotto zero. **[I]** Non
+  riprodotta la posa di rinculo dopo lo sparo (`spra`/`amove`/Alarm_9|11,
+  un piccolo stato che fa lampeggiare il cannone per ~50 tick) — 50 tick
+  e' comunque il numero usato come ricarica effettiva (`WEAPONS.gatling.
+  cooldown`), la stima piu' difendibile di quando la mira/il prossimo
+  sparo tornano davvero possibili. **[C]** `gatlinggun/Mouse_LeftPressed.
+  gml` non spara affatto al tocco (imposta solo la posa di rinculo senza
+  crearne uno vero): nessun `manualFire` per gatling, un tocco su una
+  mitragliatrice finita non fa niente (`tryStartUpgrade` risponde "livello
+  massimo").
+  **`laser` e' un colpo istantaneo, non un proiettile**: **[C]**
+  `lasergun/Step.gml` insegue il veicolo piu' vicino entro 800px (il
+  raggio di mira piu' lungo dei tre) ma spara solo entro 200px da una
+  minaccia vera — un'arma a bruciapelo — costando **[C]** 200 energia,
+  stavolta DAVVERO gated (`if (ele>=200)`, a differenza del costo in
+  denaro di gatling): senza energia sufficiente non spara affatto, ne'
+  automaticamente ne' al tocco. **[I]** Nel decompilato il colpo
+  (`laserone`/`laserone_retro`, sprite unico "lasere") non si muove mai:
+  resta alla punta del cannone, ruotato (`image_angle`) verso il
+  bersaglio — e' lo sprite stesso, un fascio lungo gia' disegnato, a
+  raggiungere il bersaglio lontano. Il renderer di questo motore
+  (game/src/gl.js) non supporta rotazione (mai servita finora: ogni
+  sprite direzionale e' gia' un fotogramma separato per direzione, non uno
+  ruotato a runtime), quindi il fascio vero non si disegna: sostituito da
+  un colpo istantaneo (hitscan) che distrugge sul colpo TUTTE le minacce
+  vere entro `aim.fireRange` — non solo la piu' vicina, vedi la correzione
+  piu' sotto — con un lampo alla bocca del cannone e un'esplosione vera su
+  ciascun bersaglio — stesso risultato (le minacce spariscono), niente
+  fascio disegnato in mezzo. **[C]** `lasergun/
+  Mouse_LeftPressed.gml` spara per davvero al tocco (stessa forma
+  dell'automatico, `manualFire: true`): a differenza di missile pero'
+  l'originale non richiede affatto una minaccia vera per sparare
+  manualmente, solo un veicolo entro 800px — il colpo puo' partire (lampo
+  + costo + ricarica) anche senza colpire nulla.
+  Verificato in browser (con l'atlas rigenerato in locale, non solo a
+  occhio sul codice): entrambe piazzabili dal menu con il costo giusto
+  scalato, `tooCloseToTurret()` le blocca l'una vicino all'altra come le
+  altre torrette, i cantieri completano al tic e al livello giusti
+  (22.03s/1321 tick per gatling, 36.53s/2190 tick per laser — combaciano
+  con la somma delle durate lette sopra), la mira ruota lo sprite
+  correttamente seguendo il traffico decorativo, e forzando una minaccia
+  vera in portata di entrambe: gatling crea due proiettili (`gatmissse`)
+  che volano verso il veicolo inseguito (non verso la minaccia, fedele),
+  scala `mon` di 3 a testa; laser distrugge sul colpo la minaccia in
+  portata, scala `ele` di 200, nessun proiettile creato.
+  **Corretto dopo la prima verifica, segnalato dall'autore**: la prima
+  versione faceva colpire al laser solo la minaccia vera piu' vicina
+  (`nearestThreat()`), un colpo mirato come missile/gatling. Rileggendo
+  `laserone`/`laserone_retro/Collision_*.gml` (tutti e dieci gli handler,
+  uno per famiglia di minaccia) nessuno dei due chiama mai
+  `action_kill_object()` su se stesso — solo su `other.id`, il bersaglio
+  colpito: il fascio non si consuma al primo impatto, resta acceso e
+  trafigge chiunque tocchi. `fireFrom()` in projectiles.js ora scorre TUTTE
+  le minacce entro `aim.fireRange` e le distrugge una per una, invece di
+  cercarne solo la piu' vicina — verificato con quattro minacce, tre entro
+  200px e una fuori: il laser ne distrugge esattamente tre in un colpo
+  solo, la quarta sopravvive.
+  **Il fumo di scia dei proiettili, mancante alla prima verifica,
+  segnalato dallo stesso giro di note**: **[C]** `red_ball/Alarm_0.gml`
+  (missile) crea un `smoko` alla nascita e si riarma da solo ogni 2 tick
+  per tutta la vita del razzo (~120 tick) — una scia vera, non un lampo
+  isolato; `yellow_pro/Create.gml` (gatling) ne crea uno solo, alla bocca,
+  senza riarmo. `smoko` **[C]** e' piu' semplice di `smoke_ind` (il fumo
+  delle centrali, smoke.js): nessun moto ne' crescita, solo un dado fra tre
+  sprite (**[C]** proporzioni 25/25/50% fra c1/c2/c3 — diverse da quelle di
+  `smoke_ind`, 50/25/25, nonostante siano nomi quasi identici: **[C]**
+  `c1`/`c2`/`c3` per `smoko` non sono gli stessi sprite di `cc1`/`cc2`/
+  `cc3` per `smoke_ind`, verificato in `data/sprites.json` — 96x96 contro
+  38x35, una coincidenza di nomenclatura nel progetto originale, non un
+  refuso qui) e depth **[C]** -9000 fisso, la stessa quota delle monete blu
+  ma senza `_selfLit`: un residuo di sparo si scurisce di notte come
+  qualunque altro decoro, non e' un simbolo dell'interfaccia. Nuova
+  `spawnSmoko()`/`stepSmoko()` in projectiles.js, un array `trails`
+  separato da quello del fumo delle centrali (meccanica troppo diversa —
+  statico invece che animato/in crescita — per condividere lo stesso
+  step). Verificato in browser: un razzo lanciato lontano lascia una scia
+  visibile di sbuffi grigi lungo tutta la traiettoria, non un singolo
+  fotogramma fermo.
+
+- **La scia di fumo di aerei/bombardieri.** Ultimo gap dichiarato del
+  gruppo "minacce vere" (STUDIO.md sopra, "non riprodotto: piro... il
+  fumo di scia"), chiuso mentre gia' c'eravamo dentro per quello dei
+  proiettili. `game/src/threats.js`.
+  **[C]** `air/Alarm_6.gml`/`bombar/Alarm_6.gml`: un alarm indipendente
+  che si riarma da solo ogni 8 tick per tutta la vita del velivolo,
+  crea `smoko_aer` — MAI `dirig`, nessun `Alarm_6` sul suo oggetto: la
+  stessa asimmetria gia' letta per l'esplosione a fine vita naturale
+  (`explodeOnExpire`). **[C]** `smoko_aer/Create.gml` riusa gli sprite
+  "cc2"/"cc3" del fumo delle centrali (smoke.js) — mai "cc1" (qui il dado
+  e' un 50/50 secco fra i due, non i tre pesi 50/25/25 di `smoke_ind`) —
+  con la stessa animazione a 70 frame vera (`AER_SMOKE_FRAME_COUNT`), ma
+  **[C]** ferma sul posto (nessun moto: non insegue l'aereo, resta dov'e'
+  nata) e con una crescita diversa — scala iniziale 2 (il doppio del fumo
+  delle centrali), +0.2/tick invece di +0.05/tick, vita 36 tick. Depth
+  **[C]** -4000 fisso (`data/objects.json`), la stessa quota di esplosioni/
+  fuoco vero — diversa sia da quella del fumo delle centrali (dinamica,
+  `-y-150/-200`) sia da quella della scia dei proiettili (-9000 fisso):
+  tre famiglie di oggetti diverse nel decompilato, tre quote diverse,
+  lette cosi' come stanno invece di uniformarle. Nuovo array `aerSmoke` in
+  main.js, terzo tipo di fumo nel motore insieme a `smoke` (centrali) e
+  `trails` (proiettili) — nessuno dei tre condivide lo step con gli altri
+  due, le differenze (moto/crescita/animazione/quota) sono abbastanza
+  diverse da rendere un sistema di particelle unico piu' complicato dei
+  tre separati. Verificato in browser: un caccia forzato fermo lascia
+  dietro di se' una nuvola di sbuffi che crescono e si sovrappongono,
+  visibilmente diversi (piu' grandi, colore diverso, animati) dalla scia
+  puntiforme dei proiettili.
+
+- **Lo stato piro: le minacce vere hanno davvero una vita.** Corregge un
+  errore di lettura fatto (e documentato) fin dal primo giro sul fuoco
+  vero del lanciarazzi (STUDIO.md "il lanciarazzi spara per davvero" piu'
+  sopra): quel giro leggeva `action_if_variable(life, 0, 3)` come
+  "life != 0" e concludeva che `life` fosse un contatore di fatto morto —
+  un solo colpo bastava sempre. **L'operatore 3 e' invece "<="**, la stessa
+  famiglia di errore gia' presa e corretta per l'operatore 4 in coins.js:
+  `air`/`bombar`/`dirig` hanno davvero una vita (**[C]** `Create.gml`:
+  2/3.5/10) che il fuoco vero scala colpo per colpo, e quando arriva a 0 o
+  sotto **[C]** `Step.gml` decide — a dado per `air` (1/2), sempre per
+  `bombar`/`dirig` — se il velivolo esplode sul colpo o entra in stato
+  "piro": precipita per conto suo, smette di bombardare, cambia sprite, e
+  muore per davvero solo dopo un timer breve indipendente. `game/src/
+  threats.js` (`THREAT_TYPES[...].piro`, `stepThreats()`) +
+  `game/src/projectiles.js` (`DAMAGE`, un colpo scala vita invece di
+  uccidere sul colpo).
+  **Danno per colpo, per arma, contro air/bombar/dirig** — **[C]** letto
+  dai `Collision_*` di ciascun oggetto-colpo, mappati per indice tramite
+  `data/objects.json` (77=air, 78=bombar, 85=dirig): missile (`red_ball`)
+  -1 uniforme sui tre; gatling (`yellow_pro`) -0.07 uniforme, per
+  proiettile (due a scarica = -0.14 per raffica); laser (`laserone`)
+  -2/-3/-2, l'unico non uniforme. Risultato: un missile abbatte `air` in 2
+  colpi e `dirig` in 10; il laser (-2, ma con 85 tick di ricarica) abbatte
+  `air` in un colpo solo e `dirig` in 5; il gatling (-0.07 a proiettile,
+  -0.14 a raffica, ma ricarica cortissima) ne serve tantissimi contro
+  qualunque bersaglio vero — coerente col suo ruolo di arma a raffica
+  leggera piu' che di cecchino. Verificato con un test dedicato: missile
+  contro `air` fermo entra in piro esattamente al secondo colpo (vita
+  2 -> 1 -> 0); laser contro `dirig` fermo esattamente al quinto (vita
+  10 -> 0 in cinque colpi da -2); gatling contro `air` fermo dopo ~15
+  raffiche (~12.5s).
+  **I tre stati piro, uno per tipo** (**[C]** letti da `Step.gml` di
+  ciascuno):
+  - `air`: **[C]** 1/2 di probabilita' di entrare in piro (l'altra meta'
+    esplode sul colpo, come se non avesse questo stato) — picchiata quasi
+    verticale (direzione 300°, velocita' 12, molto piu' veloce del volo
+    normale 13-16), 30 tick (0.5s) prima di morire per davvero, un lampo
+    all'ingresso. Cambia sprite in una variante "in fiamme" — 4 colori
+    (`rosso_pic`/`blu_pic`/`giallo_pic`/`verde_pic`, risolti per indice
+    sprite) abbinati al colore scelto a dado alla nascita (`col`, salvato
+    sull'istanza apposta — prima non serviva a nient'altro).
+  - `bombar`: **[C]** SEMPRE piro (nessun dado, mai esplosione sul colpo)
+    — planata quasi orizzontale (direzione 10°, velocita' 7, molto piu'
+    lenta della picchiata di `air`), 20 tick prima di morire, un lampo
+    all'ingresso PIU' due o quattro pezzi di fusoliera che si staccano (a
+    dado, sprite finale `bomb_p1` o `bomb_p2`) — ognuno un piccolo oggetto
+    a parte nel decompilato (`rot11`/`rot12`/`rot21`.."rot24", sprite
+    `bomb_rNN`) con la propria direzione/velocita'/vita fissa (letta da
+    ciascun `Create.gml`, non un pattern riparametrizzato — verificato
+    voce per voce), che vola via e alla fine crea la propria esplosione.
+    Nuovo `debris`/`spawnDebris()`/`stepDebris()` in threats.js, un
+    quarto tipo di "cosa volante che poi esplode" insieme a bombe/
+    proiettili/fumo.
+  - `dirig`: **[C]** SEMPRE piro, ma **nessun lampo all'ingresso** (unico
+    dei tre) — deriva quasi fermo (direzione -18°, velocita' 1.5) per 85
+    tick, il piu' lungo, mentre **[C]** 5 dadi indipendenti (1/45 a testa,
+    OGNI frame) sparpagliano esplosioni ai suoi 5 offset fissi — lo stesso
+    schema a raggiera della sua morte vera (`Destroy.gml`, vedi sotto),
+    qui pero' distribuito nel tempo invece che tutto insieme. Cambia
+    sprite in `dirspr_distrutto`.
+  **La morte vera, qualunque sia la causa, passa sempre da
+  `spawnDeathEffect(type,...)`** (gia' esisteva, per il fulmine — ora
+  riletta con piu' attenzione): **[C]** `dirig/Destroy.gml` scatta in
+  automatico ad OGNI morte dell'istanza (fulmine, timer del piro, scadenza
+  naturale), creando la raggiera di 5 esplosioni IN AGGIUNTA a quello che
+  il codice che ha chiesto la morte crea gia' per conto suo — `air`/
+  `bombar` non hanno un `Destroy.gml` proprio, la singola esplosione che
+  Alarm_1/Alarm_5 creano esplicitamente gia' gli basta. Risultato per
+  morte-per-fulmine: `air`/`bombar` un'esplosione sola, `dirig` sei (una
+  esplicita di `Alarm_5` + la raggiera di `Destroy.gml`) — verificato che
+  non fosse un doppio conteggio ma un dettaglio vero del decompilato.
+  Risultato per scadenza naturale (nessuno l'ha mai colpito, muore di
+  "vecchiaia"): stessa `spawnDeathEffect()`, che per `dirig` produce la
+  raggiera anche qui — **corregge** una lettura precedente
+  (`explodeOnExpire: false` per dirig) che concludeva erroneamente "nessuna
+  esplosione", quando invece l'unica cosa assente per scadenza naturale e'
+  l'esplosione esplicita di `Alarm_1` (che per `air`/`bombar` c'e', per
+  `dirig` no) — non la raggiera di `Destroy.gml`, sempre presente.
+  **[I]** Non riprodotto: il contatore `pu1.distrutti` di `air/Destroy.gml`
+  (un totale "aerei abbattuti" mai letto da nessun'altra parte del
+  decompilato ricostruita finora — nessuna UI lo mostra).
+  Verificato in browser (dopo aver rigenerato l'atlas in locale, non solo
+  letto il codice): un caccia forzato in piro mostra davvero lo sprite "in
+  fiamme" del suo colore con la scia di fumo dietro; un bombardiere forzato
+  in piro mostra lo sprite "spezzato" con l'esplosione della sua stessa
+  distruzione visibile nello stesso fotogramma (i pezzi di fusoliera, con
+  vite di 3-50 tick, erano gia' esplosi entro i tempi di cattura dello
+  screenshot — cronometrato a parte con un log per confermare che il
+  volo/esplosione dei singoli pezzi avviene comunque). Una simulazione di
+  due minuti con le tre torrette attive, minacce miste e una tempesta a
+  meta' strada non ha prodotto eccezioni ne' posizioni NaN.
