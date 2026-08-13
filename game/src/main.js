@@ -2,7 +2,7 @@ import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture 
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -1440,6 +1440,28 @@ function frame(now) {
     const size = 20 + k * 46;
     r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, 0x4fc3f7, (1 - k) * 0.85);
   }
+  // Linguetta di prezzo sul segnale di potenziamento (upsign) al passaggio
+  // del mouse — [C] upsign12|23|45s|45d/Mouse_MouseEnter.gml, vedi
+  // costTagSprite() in buildings.js. Solo mouse (come la raccolta monete
+  // sopra): il touch non ha un vero hover senza contatto.
+  if (input.hover && input.hoverPointerType === "mouse") {
+    const hw = cam.screenToWorld(input.hover.x, input.hover.y);
+    const upicoFrame = frameFor("upico");
+    if (upicoFrame) for (const b of buildings) {
+      if (b.construction || !upgradeUnlocked(b, r12)) continue;
+      if (!inFrameRect(hw.x, hw.y, b.x, b.y, upicoFrame)) continue;
+      const tagFrame = frameFor(costTagSprite(b.type, b.level - 1));
+      if (tagFrame) {
+        const scale = 0.5;
+        // [C] upsign12/Mouse_MouseEnter.gml: offset -50 dal segnale — qui
+        // dal bordo superiore vero dell'icona "upico" (`upicoFrame.oy`,
+        // l'origine e' quasi in basso al centro), non da un numero fisso
+        // scollegato dalla sua altezza reale.
+        r.draw(tagFrame, b.x - (tagFrame.w * scale) / 2, b.y - upicoFrame.oy - 15, scale, 0xffffff, 1);
+      }
+      break;
+    }
+  }
   r.flush();
 
   // --- layer GUI: spazio schermo, dimensione costante, nessuna tinta
@@ -1601,6 +1623,21 @@ function frame(now) {
   uiRowBounds = (isMobile && maxScroll > 0)
     ? { x0: 0, y0: rowTop, x1: canvas.clientWidth, y1: canvas.clientHeight }
     : null;
+
+  // Linguetta di prezzo sui bottoni edificio al passaggio del mouse — [C]
+  // pu1..pumediat/Mouse_MouseEnter.gml, vedi costTagSprite() in
+  // buildings.js. Solo mouse (come la raccolta monete/il segnale di
+  // potenziamento sotto): il touch non ha un vero hover senza contatto,
+  // e qui coprirebbe comunque il bottone col dito.
+  if (input.hover && input.hoverPointerType === "mouse") {
+    const hb = uiButtons.find((btn) => btn.kind === "building"
+      && input.hover.x >= btn.x && input.hover.x <= btn.x + btn.w
+      && input.hover.y >= btn.y && input.hover.y <= btn.y + btn.h);
+    const tagFrame = hb && frameFor(costTagSprite(hb.type, null));
+    if (tagFrame) {
+      r.draw(tagFrame, hb.x + hb.w / 2 - (tagFrame.w * UI_SCALE) / 2, hb.y - 8, UI_SCALE, 0xffffff, 1);
+    }
+  }
 
   // Avviso "ATTACK INCOMING" (src/objects/aincom, game/src/balloons.js): una
   // mongolfiera spia ha completato il suo giro. [C] aincom/Create.gml +

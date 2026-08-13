@@ -201,6 +201,14 @@ GAMEPLAY_SPRITES = {
         # dedicato (asimmetria reale: l'acceso e' "med2x"/"med2dx" stesso).
         "med1", "med1l", "med2", "med2x",
         "med1d", "med1dl", "med2d", "med2dx",
+        # Linguette di prezzo all'hover (STUDIO.md §5.4, gia' documentate ma
+        # mai ricostruite — game/src/buildings.js, costTagSprite()): sprite
+        # pre-renderizzati col numero gia' dentro, un taglio per ogni costo
+        # reale di placeCost/upgrades[].cost in questo file. "c12aa"/"c23aa"
+        # sono i due banner dedicati di chies (mon+oil insieme, nessun taglio
+        # a valuta singola gli si addice).
+        "c100", "c500", "c1000", "c2000", "c3500", "c5000", "c6000", "c7500",
+        "c10000", "c20000", "c35000", "c50000", "c12aa", "c23aa",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/

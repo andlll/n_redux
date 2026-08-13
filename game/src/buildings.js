@@ -1227,6 +1227,36 @@ export function nextUpgrade(b) {
 }
 
 /**
+ * Lo sprite della "linguetta" di prezzo che compare all'hover su un
+ * bottone edificio (`upgradeIndex` null: `def.placeCost`) o su un segnale
+ * di potenziamento (`upgradeIndex`: indice in `def.upgrades`) — `null` se
+ * quel costo non ha una linguetta nota.
+ *
+ * **[C]** src/objects/pu1..pumediat/Mouse_MouseEnter|Leave.gml (bottoni) e
+ * upsign12|23|45s|45d/Mouse_MouseEnter|Leave.gml (segnali): al passaggio
+ * del mouse creano un'istanza `cc<valore>` (`STUDIO.md §5.4`, gia'
+ * documentato ma mai ricostruito — a quel tempo `input.js` non aveva
+ * ancora un vero hover) posizionata sopra il bottone/segnale, distrutta
+ * al MouseLeave. Non e' testo disegnato a runtime: ogni `cc*` mostra uno
+ * sprite PRE-RENDERIZZATO col numero gia' dentro (`c100`, `c500`, `c1000`,
+ * `c2000`, `c3500`, `c5000`, `c6000`, `c7500`, `c10000`, `c20000`,
+ * `c35000`, `c50000` — un taglio per ogni costo reale gia' in
+ * `placeCost`/`upgrades[].cost` qui sopra, verificato uno per uno). `chies`
+ * (`upcrc12`/`upcrc23`) e' l'unica eccezione: costa mon+oil insieme, niente
+ * taglio `cXXXX` a valuta singola gli si addice — usa due sprite dedicati
+ * gia' pronti nel decompilato, `c12aa`/`c23aa` (506x88, "banner" largo il
+ * doppio dei tagli normali).
+ */
+export function costTagSprite(type, upgradeIndex) {
+  if (type === "chies") return upgradeIndex === 0 ? "c12aa" : upgradeIndex === 1 ? "c23aa" : null;
+  const def = BUILDING_TYPES[type];
+  const cost = upgradeIndex == null ? def?.placeCost : def?.upgrades?.[upgradeIndex]?.cost;
+  const keys = cost ? Object.keys(cost) : [];
+  if (keys.length !== 1 || keys[0] !== "mon") return null;
+  return `c${cost.mon}`;
+}
+
+/**
  * La soglia di sblocco di un potenziamento e' una fra tre, mutuamente
  * esclusive per tipo: popolazione minima (`atPop`, chies — [C] chies/
  * Step.gml), cicli di produzione completati dall'edificio stesso al livello

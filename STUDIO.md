@@ -2150,3 +2150,47 @@ paragrafo 8.
   `tut_ok` "di riposo" mai sostituito da `tut_exit`. Segnalato all'autore,
   non implementato: comporterebbe decidere cosa significhi "esci" in una
   ricostruzione senza un vero menu principale a cui tornare.
+
+- **Linguette di prezzo all'hover sui bottoni edificio e sui segnali di
+  potenziamento.** Richiesto dall'autore — gia' documentato ma segnato
+  "non riprodotto" a §5.4/riga 569 ("richiederebbero tracciare l'hover, che
+  il nostro `Input` oggi non fa"): quella nota e' superata da tempo,
+  `input.hover` esiste da quando serve alla raccolta automatica delle
+  monete blu (STUDIO.md, "il pulsante blu delle monete"), semplicemente
+  nessuno aveva ancora ricostruito questa parte.
+  **[C]** src/objects/pu1..pumediat/Mouse_MouseEnter|Leave.gml (bottoni) e
+  upsign12|23|45s|45d/Mouse_MouseEnter|Leave.gml (segnali): al passaggio
+  del mouse creano un'istanza `cc<valore>` sopra il bottone/segnale,
+  distrutta al MouseLeave — **non e' testo disegnato a runtime**, ogni
+  `cc*` mostra uno sprite PRE-RENDERIZZATO col numero gia' dentro
+  (`c100`..`c50000`, un taglio per ogni costo reale gia' presente in
+  `placeCost`/`upgrades[].cost`, verificato uno per uno — nessun taglio
+  mancante). `chies` (`upcrc12`/`upcrc23`) e' l'unica eccezione: costa
+  mon+oil insieme, usa due sprite dedicati gia' pronti nel decompilato
+  (`c12aa`/`c23aa`, banner larghi il doppio dei tagli a valuta singola)
+  invece di un taglio `cXXXX`. `costTagSprite()` (buildings.js) fa questa
+  scelta: `chies` -> `c12aa`/`c23aa` per indice, altrimenti `c<mon>` se
+  (e solo se) il costo e' un singolo valore in `mon`.
+  Posizionamento: **[I]** l'originale usa un offset fisso in coordinate
+  room (-100 per i bottoni, -50 per gli upsign, `global.sca*0.5` di scala)
+  che non si traduce 1:1 nello spazio schermo di `uiButtons` di questo
+  motore (i bottoni bar sono gia' fissi in spazio schermo, non piu' istanze
+  di mondo con una propria scala "sca") — qui la linguetta dei bottoni sta
+  centrata sopra il bottone con un piccolo margine fisso (8px, spazio
+  schermo, scala `UI_SCALE` come il bottone stesso), quella degli upsign
+  centrata sopra il pin verde `upico` con margine derivato dalla sua vera
+  altezza (`upicoFrame.oy`) invece di un numero scollegato — stesso
+  risultato visivo dell'originale (una linguetta ben distanziata sopra
+  quello che descrive), non gli stessi identici pixel di offset.
+  Solo mouse (`input.hoverPointerType === "mouse"`), come la raccolta
+  automatica delle monete: il touch non ha un vero hover senza contatto, e
+  coprirebbe comunque il bottone/segnale col dito.
+  Sprite aggiunti a `GAMEPLAY_SPRITES` (tools/23_atlas.py): `c100`, `c500`,
+  `c1000`, `c2000`, `c3500`, `c5000`, `c6000`, `c7500`, `c10000`, `c20000`,
+  `c35000`, `c50000`, `c12aa`, `c23aa` — atlas e blitplan rigenerati.
+  Verificato in browser (Playwright): hover su un bottone edificio mostra
+  la linguetta col costo giusto (verificato villa 7500 e museo 35000),
+  sparisce spostando il mouse altrove; forzando una casa appena piazzata
+  allo stato "potenziamento pronto" (`ava` alla soglia), il pin verde
+  `upsign` compare e l'hover su di lui mostra "500" (`upsign12`, coerente
+  con `BUILDING_TYPES.casa.upgrades[0].cost`).
