@@ -1961,3 +1961,321 @@ paragrafo 8.
   gia' esistente, e un tentativo di costruire su uno dei 3 lotti bloccati
   fallisce silenziosamente (restano bloccati) anche dopo la sua morte; un
   ciclo salva/carica restituisce sia l'edificio che i 3 lotti bloccati.
+
+- **Dodicesimo e tredicesimo edificio, primi due a trascinamento:
+  `palazzo`/`museo`.** Richiesti dall'autore insieme ("ora fai il museo e
+  il palazzo, che prendono due caselle ciascuno e hanno una logica di
+  piazzamento diversa dagli altri edifici") — a differenza di `eolico`
+  (tocco singolo, raggio di ricerca piu' largo) questi due si trascinano
+  davvero da un lotto verso un vicino diagonale, e nel decompilato quel
+  meccanismo esiste per intero, mai wired nel menu di questo motore.
+  **[C] Identita'**: `pu6`/`selec==6` era etichettato "Grattacielo" in
+  questo repo (mai verificato) — `src/objects/level2palazz` (il popup
+  "livello 2 sbloccato" agganciato a `pu6/Mouse_MouseEnter.gml`, stesso
+  schema `level2<nome>` di level2club/level2gatling/level2sol per
+  club/gatling/solare) lo chiama "palazz[o]": rinominato. `pumediat`/
+  `selec==70` era gia' "Museo", giusto.
+  **[C] La meccanica di piazzamento**, letta da zero (nessuno dei due
+  bottoni aveva mai un ramo in `placeholder/Mouse_LeftReleased.gml`, la
+  release-only usata da ogni altro edificio): `placeholder/
+  Mouse_LeftPressed.gml` (rami selec==6/70) arma alla PRESSIONE (non al
+  rilascio) creando quattro sonde `cre1..cre4` ai quattro offset diagonali
+  fissi (+99,+57)/(+99,-57)/(-99,-57)/(-99,+57) dal lotto toccato — gli
+  stessi (ox,oy) che ogni istanza di `placeholder` dichiara in
+  `match_easy.scene.json`, non un numero a caso. Ogni sonda che tocca un
+  altro `placeholder` ancora libero (`creN/Collision_placeholder.gml`) arma
+  una direzione (`dirN`, oggetto invisibile: `dirN/Mouse_LeftReleased.gml`
+  mette `arm=1` al RILASCIO, non alla pressione — l'unico posto nel
+  decompilato dove un piazzamento distingue i due). Se il rilascio non cade
+  su nessuna direzione armata, `placeholder/Mouse_GlobalLeftReleased.gml`
+  (evento globale, non legato a un'istanza sotto al puntatore) annulla
+  tutto senza costo. Se cade su una direzione valida,
+  `placeholder/Collision_dir1..4.gml` (lette riga per riga, tutte e
+  quattro): le quattro direzioni si accoppiano in due assi opposti
+  (dir1+dir3 contro dir2+dir4, non dir1+dir2) — per ENTRAMBI gli assi
+  l'edificio vero nasce sempre sul lotto con la y maggiore fra origine e
+  vicino (l'ancoraggio "piu' vicino alla camera" coerente col resto del
+  motore), l'altro lotto della coppia viene ucciso da `dirdel` (spawnato
+  esattamente sulla sua posizione in tutti e 4 i rami — **[C]**
+  `dirdel/Collision_placeholder.gml`: uccide se stesso e il placeholder che
+  tocca, nessun'altra logica) — stessa sorte dei lotti extra di `eolico`,
+  riusa `blockedSlots` cosi' com'e', nessuna modifica a save.js. L'asse
+  sceglie solo quale famiglia di sprite di cantiere orientati usare
+  (`impa4r`/`IMPAMEDIA_R` contro `impa4rd`/`IMPAMEDIA_RD` — verificato con
+  `diff`: identici byte-per-byte agli originali "r", solo il prefisso degli
+  sprite cambia `sr*/sf*` -> `rd*/fd*`) e quale famiglia di varianti finali
+  (c4xx "dispari" contro "pari").
+  **[I] Asse come tipo concreto invece di un campo per-istanza**: invece di
+  far portare l'asse a ogni funzione di buildings.js (`currentDecor`,
+  `ruinSpriteFor`, `stepGrowth`, ...), `main.js`/`resolvePlacement()`
+  materializza l'asse in un secondo tipo concreto al momento della
+  costruzione vera — `BUILDING_TYPES.palazzo`/`museo` (asse "r") contro
+  `palazzoRd`/`museoRd` (asse "rd"), mai in `OTHER_BUILDINGS`/il menu, solo
+  raggiungibili da `resolvePlacement()`. `frontSprFor()` (buildings.js) e'
+  stato esteso per riconoscere anche i prefissi `sr*`/`rd*` (oltre a `ir*`
+  gia' noto), non serve altro nel motore.
+  **[I] Solo un livello portato**: nel decompilato `palazzo` continua con
+  un secondo salto (`casa4s|d/Alarm_2.gml`, ava==5 — MA solo se
+  `chies.level>=3`, un gate mai visto per nessun'altra `casa`: crea
+  `upsign45s|d` -> `impa5r|rd` -> `casa5ss|dd`, stesse sequenze/numeri).
+  Un secondo livello avrebbe richiesto un gate nuovo (soglia di sblocco
+  legata a un ALTRO edificio, non solo pop/makee/ava come
+  `upgradeProgress()` conosce oggi) — fuori dallo scopo di questo giro,
+  stesso genere di "fermata prima del massimo del decompilato" gia'
+  accettato per `casa` stessa. `museo` non ha comunque un secondo livello
+  nel decompilato: `media1s/Create.gml` arma `action_set_alarm(2000,2)` ma
+  **non esiste `media1s/Alarm_2.gml`** — alarm morto, `ava` resta 0 per
+  sempre; `med1`/`med2` sono solo un dado 50/50 sulla variante finale, non
+  due edifici (nessun oggetto decompilato "media2*" esiste).
+  **[C] Un canale nuovo**: `media1s/Alarm_3.gml` scala anche `r12.mon`
+  (-60 ogni 120 tick, oltre a `ele`) — mai visto in nessun altro edificio
+  con `consumption`: `stepConsumption()` ora legge anche un `rate.mon`
+  opzionale, indipendente da giorno/notte. `museo` da' `hap` diretta invece
+  di `pop` (nessun `grantPop`, nessuna crescita) — coerente con "un museo
+  aumenta la felicita', non la popolazione".
+  Sprite nuovi in `GAMEPLAY_SPRITES` (tools/23_atlas.py): le sequenze di
+  cantiere condivise `sr/sf/rd/fd1x..4x` (96 sprite, stessa sagoma
+  generica per entrambi gli edifici), `topls` (il topper, spawnato a meta'
+  cantiere), le 20 varianti finali di `palazzo`/`palazzoRd` (c4xx + decoro
+  luci "l"/"ds"), `ru41`/`ru41d`, e le 8 varianti/decoro di `museo`/
+  `museoRd` (med1/med2 + le rispettive "d") — atlas e blitplan
+  rigenerati (`python3 tools/24_blit.py font_gotham_mini` andava comunque
+  rigenerato a parte: il font bitmap non era mai stato blittato in questo
+  checkout, indipendente da questa modifica).
+  Verificato in browser (Playwright, via `window.__nimbus`): premere su un
+  lotto libero con "Palazzo"/"Museo" selezionato lo evidenzia SUBITO di
+  rosso (non il viola dell'hover — **[C]** `action_sprite_color(255,1)` e'
+  la costante GameMaker `c_red`, non bianco) e ferma lo scroll; trascinare
+  fino a un vicino diagonale libero e rilasciare li' costruisce davvero
+  (mon scalati esattamente, `blockedSlots` riceve il lotto NON scelto,
+  l'edificio nasce sul lotto con la y maggiore, sprite di cantiere corretto
+  per l'asse trascinato su entrambe le direzioni — verificato sia
+  "r"/`palazzo` sia "rd"/`museoRd`); rilasciare senza trascinare (o fuori
+  da ogni vicino valido) annulla senza scalare nulla; un tentativo di
+  costruire di nuovo sul lotto bloccato non aggiunge edifici.
+
+- **Torrette: il lanciarazzi punta/spara verso cose fuori dallo schermo.**
+  Segnalato dall'autore. `stepTurretAim()` (buildings.js, condivisa da
+  missile/gatling/laser — nessuna logica separata per il lanciarazzi)
+  aveva due problemi indipendenti, entrambi introdotti da un giro
+  precedente (**[C] git blame**: commit `e8352be`, "mira coerente col
+  bersaglio colpito" — corretto un bug ma ne ha lasciati due):
+  1. **Priorita' rigida invece di "il piu' vicino"**: le minacce vere
+     (`threats`: aerei/bombardieri/zeppelin) battevano SEMPRE le
+     mongolfiere (`balloons`, passate insieme alle auto decorative come
+     `targets`) se una qualunque minaccia era entro `aim.range` — anche
+     quando una mongolfiera era molto piu' vicina. Il cannone poteva
+     restare puntato su un bombardiere a 390px mentre una mongolfiera a
+     50px veniva ignorata. Corretto con un solo confronto di distanza fra
+     `targets` e `threats` insieme, senza piu' due liste in ordine di
+     priorita' — esattamente quello che l'autore ha chiesto ("calcolare la
+     distanza da tutti gli oggetti volanti — mongolfiere, aerei, dirigibile
+     — e puntare verso quella piu' vicina").
+  2. **`aimAngle`/`aimTarget` non si azzeravano mai**: quando nessun
+     bersaglio era piu' in portata (`nearest` restava `null`) la funzione
+     faceva `continue` senza toccarli — **[C]** fedele a
+     `rocket_launcher|gatlinggun|lasergun/Step.gml` (l'`if` che li
+     aggiorna e' innestato dentro il controllo di portata, niente ramo
+     `else`), ma con `targets`/`threats` che nascono fuori mappa e se ne
+     vanno (STUDIO.md sopra, "le mongolfiere"; `threats.js`,
+     `spawnX: -170` per gli aerei) un bersaglio puo' sparire (rimosso
+     dall'array quando muore/scade, `threats.splice`) senza che
+     `aimTarget` smetta MAI di puntare a quella posizione — il cannone
+     resta visivamente "agganciato" per sempre. `fireTurretManual`
+     (projectiles.js, tap manuale su missile/laser) spara sempre verso
+     `b.aimTarget` **senza richiedere che ci sia davvero una minaccia
+     vera**, quindi un tap dopo che il bersaglio se n'e' andato lanciava
+     comunque un razzo verso quel punto congelato — spesso fuori
+     dallo schermo, perche' l'ultimo bersaglio agganciato e' quasi sempre
+     uno che si stava allontanando o che e' appena nato al bordo/fuori
+     mappa. **[I]** Corretto azzerando `aimAngle`/`aimTarget` quando
+     `nearest` e' `null`: `fireTurretManual`/`stepTurretFire` (che gia'
+     controllano `aimTarget == null`) ora rifiutano correttamente il colpo
+     invece di sparare nel vuoto.
+  Rimossa anche `cars` dalla lista candidati (`main.js`,
+  `stepTurretAim(buildings, balloons, threats)` invece di
+  `cars.concat(balloons)`): le auto decorative non sono oggetti volanti,
+  e includerle era un altro modo per far restare il cannone puntato su
+  qualcosa a terra invece che sul velivolo piu' vicino — coerente con la
+  richiesta ("mongolfiere, aerei, dirigibile", non le auto). [I]: nel
+  decompilato il lanciarazzi punta anche i veicoli (`instance_nearest(
+  veicoli_target)`, gia' non piu' fedele da `e8352be` in poi che gli aveva
+  affiancato le minacce vere); qui si ferma agli oggetti volanti soltanto.
+  Verificato con un test unitario diretto su `stepTurretAim()` (node, import
+  ES module — non serve il browser per una funzione pura): mongolfiera a
+  50px batte una minaccia a 380px (prima sceglieva sempre la minaccia);
+  minaccia a 100px batte una mongolfiera a 350px (il "piu' vicino vince"
+  resta corretto in entrambe le direzioni); un bersaglio che sparisce fa
+  tornare `aimTarget`/`aimAngle` a `null` invece di restare congelato;
+  bersagli oltre `aim.range` restano ignorati. Verificato anche in browser
+  (Playwright) che piazzare e far vivere un lanciarazzi per qualche secondo
+  di gioco normale non introduce errori in console.
+
+- **Rettangolini rosa/rossi semitrasparenti sparsi intorno alla citta'.**
+  Segnalato dall'autore. `main.js` (ciclo di disegno, prima riga 1434-1439)
+  disegnava un quadrato colorato semitrasparente (`colorFor(it.obj)`, un
+  hash del nome oggetto — commento originale: "colore stabile per nome
+  oggetto, finche' non abbiamo gli atlas veri") per QUALUNQUE istanza della
+  room priva di sprite, invece di ometterla. Nella scena `match_easy` sono
+  31 istanze, 27 delle quali `pepazzittecollider` — **[C]**
+  `src/objects/pepazzittecollider/_object.json`: `sprite: null, visible: 0`
+  nel decompilato, un collisore invisibile by design (fa rimbalzare i
+  pedoni, `pplo/Collision_pepazzittecollider.gml`; STUDIO.md piu' sopra,
+  "l'autore stesso non ricorda a cosa delimitino esattamente"), non uno
+  sprite perso. Le altre 4 (`scroller`/`scroller2`/`scriptfucker`/`iconic`)
+  sono lo stesso genere di controller/collisore invisibile. Il quadratino
+  era pensato come aiuto per chi sviluppa ("dov'e' quello che non ho ancora
+  disegnato") ma restava visibile a QUALUNQUE giocatore, sparso per la
+  mappa come se fosse un segnaposto di qualcosa — **[I]** tolto: le
+  istanze senza `_f` ora vengono semplicemente saltate nel disegno, fedeli
+  all'originale (che non le ha mai disegnate nemmeno lui). Il conteggio
+  `missingArt`/"senza sprite N" nell'HUD di debug resta, e' gia' il modo
+  giusto per uno sviluppatore di sapere quanti sono senza che finiscano
+  davanti agli occhi di chi gioca soltanto. `colorFor()`/`it._c` (usati solo
+  per quel quadratino) rimossi, codice morto dopo la modifica.
+  Nella stessa occasione, individuata (ma non ancora ricostruita — non
+  richiesto) la sagoma nera a forma di mano/pollice che compare vicino
+  all'acqua in basso a destra sulla mappa: **[C]** e' `src/objects/reversi`
+  (sprite `tut_ok`, poi `action_sprite_set(tut_exit,...)` al Create — mai
+  riprodotto qui), il vero bottone SALVA-ED-ESCI del decompilato
+  (`Mouse_LeftPressed.gml`: `action_save_game(...)` + `r12.exiting = 1`),
+  non un placeholder generico ne' il bottone "mano" (`handbutton`/`handee`,
+  gia' vero, in basso a SINISTRA — coppia diversa, non va confusa).
+  Nell'originale segue la camera e si piazza in basso a destra SOLO nel
+  menu principale (`reversi/Step.gml`: `with (pu1) { if (menoo==0) ...
+  action_move_to(...) else action_move_to(-1000,-1000) }`) — qui invece
+  `reversi` non e' mai stato tolto da `staticWorld` (stesso trattamento gia'
+  dato a `pu1`/`chies`/`honda_facile_1|2`, mai esteso a questo), quindi resta
+  un oggetto di mondo fermo nella posizione della room con lo sprite
+  `tut_ok` "di riposo" mai sostituito da `tut_exit`. Segnalato all'autore,
+  non implementato: comporterebbe decidere cosa significhi "esci" in una
+  ricostruzione senza un vero menu principale a cui tornare.
+
+- **Linguette di prezzo all'hover sui bottoni edificio e sui segnali di
+  potenziamento.** Richiesto dall'autore — gia' documentato ma segnato
+  "non riprodotto" a §5.4/riga 569 ("richiederebbero tracciare l'hover, che
+  il nostro `Input` oggi non fa"): quella nota e' superata da tempo,
+  `input.hover` esiste da quando serve alla raccolta automatica delle
+  monete blu (STUDIO.md, "il pulsante blu delle monete"), semplicemente
+  nessuno aveva ancora ricostruito questa parte.
+  **[C]** src/objects/pu1..pumediat/Mouse_MouseEnter|Leave.gml (bottoni) e
+  upsign12|23|45s|45d/Mouse_MouseEnter|Leave.gml (segnali): al passaggio
+  del mouse creano un'istanza `cc<valore>` sopra il bottone/segnale,
+  distrutta al MouseLeave — **non e' testo disegnato a runtime**, ogni
+  `cc*` mostra uno sprite PRE-RENDERIZZATO col numero gia' dentro
+  (`c100`..`c50000`, un taglio per ogni costo reale gia' presente in
+  `placeCost`/`upgrades[].cost`, verificato uno per uno — nessun taglio
+  mancante). `chies` (`upcrc12`/`upcrc23`) e' l'unica eccezione: costa
+  mon+oil insieme, usa due sprite dedicati gia' pronti nel decompilato
+  (`c12aa`/`c23aa`, banner larghi il doppio dei tagli a valuta singola)
+  invece di un taglio `cXXXX`. `costTagSprite()` (buildings.js) fa questa
+  scelta: `chies` -> `c12aa`/`c23aa` per indice, altrimenti `c<mon>` se
+  (e solo se) il costo e' un singolo valore in `mon`.
+  Posizionamento: **[I]** l'originale usa un offset fisso in coordinate
+  room (-100 per i bottoni, -50 per gli upsign, `global.sca*0.5` di scala)
+  che non si traduce 1:1 nello spazio schermo di `uiButtons` di questo
+  motore (i bottoni bar sono gia' fissi in spazio schermo, non piu' istanze
+  di mondo con una propria scala "sca") — qui la linguetta dei bottoni sta
+  centrata sopra il bottone con un piccolo margine fisso (8px, spazio
+  schermo, scala `UI_SCALE` come il bottone stesso), quella degli upsign
+  centrata sopra il pin verde `upico` con margine derivato dalla sua vera
+  altezza (`upicoFrame.oy`) invece di un numero scollegato — stesso
+  risultato visivo dell'originale (una linguetta ben distanziata sopra
+  quello che descrive), non gli stessi identici pixel di offset.
+  Solo mouse (`input.hoverPointerType === "mouse"`), come la raccolta
+  automatica delle monete: il touch non ha un vero hover senza contatto, e
+  coprirebbe comunque il bottone/segnale col dito.
+  Sprite aggiunti a `GAMEPLAY_SPRITES` (tools/23_atlas.py): `c100`, `c500`,
+  `c1000`, `c2000`, `c3500`, `c5000`, `c6000`, `c7500`, `c10000`, `c20000`,
+  `c35000`, `c50000`, `c12aa`, `c23aa` — atlas e blitplan rigenerati.
+  Verificato in browser (Playwright): hover su un bottone edificio mostra
+  la linguetta col costo giusto (verificato villa 7500 e museo 35000),
+  sparisce spostando il mouse altrove; forzando una casa appena piazzata
+  allo stato "potenziamento pronto" (`ava` alla soglia), il pin verde
+  `upsign` compare e l'hover su di lui mostra "500" (`upsign12`, coerente
+  con `BUILDING_TYPES.casa.upgrades[0].cost`).
+
+- **Quattordicesimo e quindicesimo edificio, i primi due "a stella":
+  monumento e banca.** Richiesto dall'autore ("riusciamo a implementare
+  degli edifici con la stella?") — indagati tutti e tre i bottoni "stella"
+  prima di iniziare (`stella1`/`selec==71`/monumento, `stella2`/
+  `selec==72`/banca, `stella3`/`selec==82`): il terzo **non e' un edificio
+  nuovo**, e' un secondo modo di sbloccare `eolico` (gia' implementato) —
+  zero lavoro li'. Monumento e banca invece sono davvero nuovi, e a
+  differenza di ogni edificio precedente **non stanno mai nel menu base**:
+  sono ricompense di traguardo, invisibili finche' non si supera una
+  soglia.
+  **[C] Sblocco** — `pu1/Step.gml`, letto riga per riga (operatori: 0="==",
+  1="<", 2=">", 3="<=", 4=">=", tutti gia' stabiliti altrove nel
+  progetto — verificati di nuovo qui su un caso noto, `action_if_variable(
+  shifta,0,2)`/`(shifta,-1000,1)`, un chiaro clamp min/max dello scroll
+  orizzontale, prima di fidarsi sui casi nuovi): monumento a `distrutti>49`
+  (non ">=49" — la soglia vera e' 50 abbattimenti), banca a
+  `chies.level>1 && pop>=3000` (**non** "level>=1" come una prima lettura
+  aveva capito: l'idiom `with(chies){ if(level>1) break } if(__b__){...}`
+  va letto "esegui se la condizione dentro il with era vera" — lo stesso
+  schema gia' usato in decine di altri punti di questo file per le soglie
+  di potenziamento, qui riverificato con calma prima di fidarsene su un
+  caso nuovo).
+  `distrutti` (`pu1/Create.gml`, incrementato da `air/Destroy.gml` — **[C]**
+  a OGNI distruzione di un `air`, non solo un colpo vero: GameMaker manda
+  Destroy per qualunque motivo, replicato su tutti e 4 i punti di
+  `threats.js` dove un `air` esce dall'array, non solo `life<=0`) era gia'
+  dichiarato "non riprodotto, nessuna UI lo mostra" (STUDIO.md — quella nota
+  e' smentita da questo lavoro: la UI che lo mostra e' proprio lo sblocco
+  del monumento). Vive su `r12.distrutti` (game/src/state.js) invece che su
+  un'istanza `pu1` che qui non esiste mai per davvero.
+  **[I] Restano nel menu invece di fluttuare**: l'originale ancora
+  `stella1`/`stella2` a un offset FISSO sopra `pu1` (`pu1.x, pu1.y-100*sca`
+  / `pu1.x+100*sca, pu1.y-100*sca`), fuori dalla riga scorrevole dei
+  bottoni normali — qui compaiono/scompaiono nella STESSA riga
+  (`STAR_BUILDINGS`, main.js), riuso diretto dell'infrastruttura
+  `OTHER_BUILDINGS`/`uiButtons` gia' esistente invece di un secondo layout
+  a parte, stesso risultato osservabile (appaiono solo a soglia raggiunta).
+  **[I] Restano nascosti una volta costruiti**: l'originale ha un proprio
+  flag "gia' assegnato" (var 517/516, mai identificate con certezza) — qui
+  basta controllare se esiste gia' un edificio di quel tipo in `buildings`,
+  stesso risultato (il bottone non ricompare per un secondo esemplare).
+  **[C] Monumento** (`monum`, sprite `monu_img`): nessuna produzione/
+  crescita — vita 1000, felicita' simmetrica ±1000 (l'unico altro tipo cosi'
+  e' `eolico`), drenaggio perenne -5 mon/67 tic dopo il cantiere (oltre al
+  drain -3/20tic durante), rudere fisso `monu_ruin` (nessun dado, a
+  differenza di quasi ogni altro rudere), nessun danno da fulmine (solo le
+  bombe, gia' generiche in `stepBombs()`). **[C] placeholder/
+  Mouse_LeftReleased.gml, ramo selec==71**: scala 20000 mon SENZA
+  controllare prima l'affordability, unico ramo del file cosi' — riprodotto
+  con un nuovo `def.noAffordCheck` (buildings.js/main.js placeAt()) invece
+  di "correggerlo" silenziosamente: puo' davvero portare mon sotto zero.
+  **[C] Banca** (`banca1`, sprite `banca_img`): vita 1300, consumo elettrico
+  FISSO -18/-27 ele (giorno/notte, ogni 120 tic — banca non cresce mai,
+  nessun `Alarm_2` armato), fulmine 1/160 ogni 57 tic (piu' raro del
+  consueto 1/108), rudere `ruin3`/`ru31..34` (dado uniforme, stesso oggetto
+  gia' condiviso da industria3/casa3/lasergun). **[C] placeholder/
+  Mouse_LeftReleased.gml, ramo selec==72**: nessuna riga `mon=...` — davvero
+  gratis (`placeCost: {}`, gia' un no-op per `canAfford()`/il ciclo di
+  scalo, nessuna modifica al motore serviva). **[I] `Alarm_0` di banca1**
+  (dado di ricolorazione/16 varianti sprite) verificato ARMATO O NO prima di
+  crederci: `Create.gml` non arma mai lo slot 0 — stesso codice morto
+  copiato da `casa1/Alarm_0` gia' scartato per casa4s/d/casa5ss/dd, non
+  portato qui (una prima ricognizione lo aveva scambiato per una meccanica
+  vera). Il pulsante prestiti (`bankbuttoner`, oggetto `repre`/calendario
+  mesi, 4 prestiti a interesse composto) e' un sotto-sistema economico a
+  parte — **[I] gap dichiarato**, fuori scopo per questo giro: la banca
+  qui e' vita/luce/rudere/fulmine/consumo, non il prestito.
+  Entrambi condividono lo stesso cantiere `ir1x`/`if1x` gia' impacchettato
+  per casa/industria/missile/solare/palazzo/museo (nessuno sprite di
+  cantiere nuovo — verificato che monum e banca lo usino DAVVERO
+  identico, comprese le stesse 4 "gru" quadrate ad ogni tic3 e lo stesso
+  topper finale `tops3`→sprite reale gia' `toppers`, offset (0,-170)).
+  Sprite nuovi in `GAMEPLAY_SPRITES`: `sta1`/`sta1s`/`sta2`/`sta2s`
+  (icone bottone — dimenticate al primo giro, il bug che il bottone non
+  compariva mai nonostante `unlocked()` gia' corretta), `monu_img`/
+  `monu_ruin`/`monu_l`/`monu_lx`, `banca_img`/`banca_l`/`banca_lx`, e
+  `cfree` (il terzo cartellino di prezzo dedicato, per l'unico edificio
+  davvero gratis — `costTagSprite()` in buildings.js) — atlas e blitplan
+  rigenerati.
+  Verificato in browser (Playwright): nessuno dei due bottoni compare prima
+  della soglia; forzando `distrutti=50` il monumento compare, si piazza
+  (-20000 mon, cantiere condiviso "ir1x" visibile), e il bottone sparisce di
+  nuovo; forzando `chies.level=2`/`pop=3000` la banca compare, l'hover
+  mostra "It's free!", si piazza senza scalare mon.

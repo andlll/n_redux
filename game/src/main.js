@@ -2,7 +2,7 @@ import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture 
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -91,20 +91,6 @@ function effDepth(it) {
 }
 const sortWorld = (a, b) => effDepth(b) - effDepth(a);
 const staticWorld = scene.instances.slice().sort(sortWorld);
-
-// colore stabile per nome oggetto, finche' non abbiamo gli atlas veri
-function colorFor(name) {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  const hue = ((h % 360) + 360) % 360;
-  const f = (n) => {
-    const k = (n + hue / 30) % 12;
-    const c = 0.55 - 0.35 * Math.max(-1, Math.min(Math.min(k - 3, 9 - k), 1));
-    return Math.round(c * 255);
-  };
-  return (f(0) << 16) | (f(8) << 8) | f(4);
-}
-for (const it of staticWorld) it._c = colorFor(it.obj);
 
 // ---------------------------------------------------------------- atlas
 // Le pagine sono reimpacchettate per room da tools/23_atlas.py + 24_blit.py:
@@ -435,7 +421,12 @@ function placeAt(placeholder, type) {
   if (def.turret && tooCloseToTurret(buildings, placeholder.x, placeholder.y)) {
     return "troppo vicino a un'altra torretta di difesa";
   }
-  if (!canAfford(r12, def.placeCost)) {
+  // [C] placeholder/Mouse_LeftReleased.gml, ramo selec==71 (monum): scala
+  // 20000 mon senza controllare prima `mon>=20000`, a differenza di OGNI
+  // altro ramo di quel file — `def.noAffordCheck` riproduce esattamente
+  // questa asimmetria (buildings.js, BUILDING_TYPES.monum) invece di
+  // "correggerla" silenziosamente: puo' davvero portare mon sotto zero.
+  if (!def.noAffordCheck && !canAfford(r12, def.placeCost)) {
     return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
   }
   // [C] eoliplacer/Alarm_1.gml controlla `places>=4` DOPO aver gia' verificato
@@ -479,10 +470,145 @@ function placeAt(placeholder, type) {
   // questo. `eolico` (selec==4) crea `mon_bil` anche lui — [C]
   // eoliplacer/Alarm_1.gml, ramo selec==4.
   if (type === "casa" || type === "industria" || type === "missile" || type === "solare"
-    || type === "club" || type === "villa" || type === "gatling" || type === "laser" || type === "eolico") {
+    || type === "club" || type === "villa" || type === "gatling" || type === "laser" || type === "eolico"
+    || type === "monum" || type === "banca") {
     constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
   }
   return null;
+}
+
+// ---------------------------------------------------- piazzamento a trascinamento
+// `palazzo`/`museo` (buildings.js, `def.diagonalPlacement`) sono gli unici
+// edifici con una logica di piazzamento DAVVERO diversa da ogni altro tipo
+// (eolico incluso: quello resta un tocco singolo, solo con un raggio di
+// ricerca piu' largo) — **[C]** src/objects/placeholder/Mouse_LeftPressed.gml
+// (rami selec==6 "palazzo", selec==70 "museo"): il tocco su un lotto libero
+// (l'origine) crea quattro sonde `cre1..cre4` ai suoi quattro vicini
+// diagonali, agli stessi offset (ox,oy) del placeholder stesso —
+// game/data/match_easy.scene.json, ogni istanza dichiara "ox":99,"oy":57,
+// non un numero a caso. Ogni sonda che trova li' un placeholder ancora
+// libero arma una direzione (`dir1..dir4`, src/objects/dir1..4); il
+// giocatore conferma trascinando il tocco fin sopra a una di quelle
+// direzioni e RILASCIANDO — src/objects/dir1/Mouse_LeftReleased.gml:
+// `arm = 1` al rilascio, non alla pressione — a differenza di ogni edificio
+// a un lotto solo, che nasce gia' al tocco (placeholder/Mouse_LeftReleased,
+// un solo evento). Se il rilascio non cade su nessuna delle direzioni
+// armate, il gesto si annulla senza costo — [C]
+// placeholder/Mouse_GlobalLeftReleased.gml, ramo `making==1`.
+//
+// **[C]** src/objects/placeholder/Collision_dir1..4.gml, lette riga per
+// riga: le quattro direzioni si accoppiano in due assi opposti (dir1+dir3,
+// dir2+dir4 — non dir1+dir2). Per ENTRAMBI gli assi l'edificio vero nasce
+// sempre sul lotto con la y maggiore (piu' vicino alla camera) fra origine
+// e vicino scelto — l'altro lotto della coppia resta bloccato per sempre
+// (src/objects/dirdel, spawnato esattamente sulla posizione dell'altro
+// lotto in tutti e 4 i rami: stessa sorte dei lotti extra di `eolico`,
+// `blockedSlots`). L'asse (dir1/dir3 contro dir2/dir4) decide solo quale
+// famiglia di sprite di cantiere/varianti finali usare (`impa4r`/
+// `IMPAMEDIA_R` contro `impa4rd`/`IMPAMEDIA_RD` — materializzato in un
+// secondo tipo concreto in buildings.js, `resolvePlacement()` sotto).
+const DIAGONAL_DIRS = [
+  { dx: 99, dy: 57, axis: "r" },
+  { dx: 99, dy: -57, axis: "rd" },
+  { dx: -99, dy: -57, axis: "r" },
+  { dx: -99, dy: 57, axis: "rd" },
+];
+// px di tolleranza sulla spaziatura reale della griglia: misurata su
+// match_easy.scene.json i placeholder vicini distano davvero ~(100,58), non
+// esattamente (99,57) — stessa scelta "tarata, non esatta" gia' fatta per
+// EOLICO_RADIUS/TURRET_MIN_DIST.
+const DIAGONAL_TOLERANCE = 20;
+// [C] placeholder/Mouse_LeftPressed.gml, rami selec==6/70: `action_sprite_color(255, 1)`
+// — 255 e' la costante GameMaker `c_red` (0x0000FF nel suo ordine BGR), non
+// bianco. Stesso schema di ricomposizione gia' usato in cars.js (NIGHT_TINT):
+// R=255&0xff, G=(255>>8)&0xff=0, B=(255>>16)&0xff=0 -> 0xff0000.
+const ARMED_TINT = 0xff0000;
+
+/** I placeholder ancora liberi nei quattro vicini diagonali di `origin`, uno per direzione al massimo. */
+function findDiagonalTargets(origin) {
+  const targets = [];
+  for (const d of DIAGONAL_DIRS) {
+    const tx = origin.x + d.dx, ty = origin.y + d.dy;
+    const ph = placeholders.find((p) => p !== origin && !p.consumed
+      && Math.abs(p.x - tx) <= DIAGONAL_TOLERANCE && Math.abs(p.y - ty) <= DIAGONAL_TOLERANCE);
+    if (ph) targets.push({ placeholder: ph, axis: d.axis });
+  }
+  return targets;
+}
+
+/**
+ * Arma un gesto di piazzamento a trascinamento su `origin` (chiamata da
+ * `input.onPointerDown`, non `onTap`: vedi il commento sopra). Restituisce
+ * un messaggio d'errore se il piazzamento non puo' nemmeno cominciare (mon
+ * insufficienti — controllato PRIMA di armare, come l'originale — o nessun
+ * lotto libero in nessuna delle quattro direzioni), altrimenti arma
+ * `armedPlacement` e torna `null`.
+ */
+function armPlacement(origin, type) {
+  const def = BUILDING_TYPES[type];
+  if (!canAfford(r12, def.placeCost)) {
+    return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
+  }
+  const targets = findDiagonalTargets(origin);
+  // [I] l'originale arma comunque (crea cre1..cre4 a vuoto) anche con zero
+  // lotti liberi vicini, lasciando il giocatore trascinare per niente: qui,
+  // come gia' scelto per eolico, un messaggio chiaro subito invece di un
+  // gesto che puo' solo fallire.
+  if (targets.length === 0) return "serve un lotto libero adiacente in diagonale";
+  armedPlacement = { type, origin, targets };
+  origin._armed = true;
+  return null;
+}
+
+/** Annulla un gesto armato senza costruire nulla e senza costo — [C] placeholder/Mouse_GlobalLeftReleased.gml. */
+function cancelPlacement() {
+  if (!armedPlacement) return;
+  armedPlacement.origin._armed = false;
+  armedPlacement = null;
+}
+
+/**
+ * Rilascio del puntatore mentre un gesto e' armato (`input.onPointerUp`):
+ * se cade su una delle direzioni valide, costruisce davvero; altrimenti
+ * annulla. [C] Collision_dir1..4.gml: l'edificio nasce sul lotto con la y
+ * maggiore fra origine e vicino, l'altro resta bloccato per sempre.
+ */
+function resolvePlacement(sx, sy) {
+  if (!armedPlacement) return;
+  const { type, origin, targets } = armedPlacement;
+  const w = cam.screenToWorld(sx, sy);
+  const hit = targets.find((t) => inFrameDiamond(w.x, w.y, t.placeholder.x, t.placeholder.y, t.placeholder._f));
+  if (!hit) {
+    cancelPlacement();
+    message = "piazzamento annullato";
+    messageT = 3;
+    return;
+  }
+  const def = BUILDING_TYPES[type];
+  const neighbor = hit.placeholder;
+  const buildSite = neighbor.y > origin.y ? neighbor : origin;
+  const blockedSite = buildSite === neighbor ? origin : neighbor;
+  origin._armed = false;
+  for (const k in def.placeCost) r12[k] -= def.placeCost[k];
+  buildSite.consumed = true;
+  blockedSite.consumed = true;
+  blockedSlots.push({ x: blockedSite.x, y: blockedSite.y });
+  // L'asse (dir1/dir3 "r" contro dir2/dir4 "rd", vedi il commento su
+  // DIAGONAL_DIRS sopra) sceglie una catena di cantiere/varianti
+  // interamente diversa (sprite orientati, famiglia c4xx "dispari" contro
+  // "pari" — buildings.js, BUILDING_TYPES.palazzoRd/museoRd): invece di far
+  // portare l'asse ad ogni funzione di buildings.js (currentDecor,
+  // ruinSpriteFor, stepGrowth, ...) il tipo concreto e' gia' quello giusto,
+  // esattamente come ogni altro tipo — palazzoRd/museoRd non compaiono nel
+  // menu (OTHER_BUILDINGS), solo qui.
+  const concreteType = hit.axis === "rd" ? `${type}Rd` : type;
+  const b = placeBuilding(concreteType, buildSite.x, buildSite.y, 0);
+  buildings.push(b);
+  if (b.level >= 1) spawnDecor(b, currentDecor(b));
+  constructionBalloons.push(spawnConstructionBalloon(buildSite.x, buildSite.y));
+  armedPlacement = null;
+  message = `${def.label.toLowerCase()} piazzato (-${def.placeCost.mon} mon)`;
+  messageT = 3;
 }
 
 /** Aggiunge `chies` a `buildings` a partita nuova (nessun salvataggio): non
@@ -712,7 +838,33 @@ function inFrameDiamond(wx, wy, x, y, f) {
 }
 
 // ---------------------------------------------------------------- input
-input.onDrag = (dx, dy) => { userMoved = true; cam.panByScreen(dx, dy); };
+// [C] src/objects/placeholder/Mouse_LeftPressed.gml (rami selec==6/70):
+// `scroller2.goer = 0` ferma lo scorrimento della camera per tutta la durata
+// del gesto di piazzamento a trascinamento — qui basta ignorare `onDrag`
+// finche' `armedPlacement` e' vivo, invece di introdurre un vero stato
+// "scrolling disabilitato" nella camera.
+input.onDrag = (dx, dy) => { if (armedPlacement) return; userMoved = true; cam.panByScreen(dx, dy); };
+// Piazzamento a trascinamento (palazzo/museo, armPlacement()/resolvePlacement()
+// sopra): arma alla PRESSIONE (non al tocco — `onTap` scatta solo al
+// rilascio, e qui l'origine e il lotto diagonale distano ~100px, ben oltre
+// la soglia di tap: `onTap` non vedrebbe mai questo gesto come tale). Un
+// tocco che comincia sopra la UI (bottoni del selettore) non deve armare
+// niente sotto di essa — stesso spirito di `uiHitTest` per il pan.
+input.onPointerDown = (sx, sy) => {
+  if (armedPlacement) return;
+  for (const btn of uiButtons) {
+    if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) return;
+  }
+  const def = selectedType ? BUILDING_TYPES[selectedType] : null;
+  if (!def?.diagonalPlacement) return;
+  const w = cam.screenToWorld(sx, sy);
+  const ph = placeholders.find((p) => !p.consumed && inFrameDiamond(w.x, w.y, p.x, p.y, p._f));
+  if (!ph) return;
+  const err = armPlacement(ph, selectedType);
+  message = err ?? "trascina verso un lotto libero adiacente";
+  messageT = 3;
+};
+input.onPointerUp = (sx, sy) => resolvePlacement(sx, sy);
 // Il fattore si applica a `targetZoom`, non a `zoom` (che insegue con un
 // filo di ritardo, vedi Camera.update()): cosi' una rotellata mentre lo
 // zoom sta ancora animando accumula sul bersaglio invece di "strappare"
@@ -744,6 +896,10 @@ if (isMobile) {
 let picked = null;
 let message = "";
 let messageT = 0;
+// Gesto di piazzamento a trascinamento in corso (palazzo/museo, buildings.js
+// `def.diagonalPlacement`) — vedi armPlacement()/resolvePlacement() sotto.
+// null quando nessun gesto e' armato (il caso comune, per ogni altro tipo).
+let armedPlacement = null;   // { type, origin, targets: [{placeholder, axis}] }
 let uiButtons = [];   // { x, y, w, h, type }, ricalcolati ad ogni frame dal disegno del selettore
 
 // [C] placeholder/Mouse_LeftReleased.gml: `r12.selec` e' il vero selettore
@@ -790,12 +946,17 @@ const OTHER_BUILDINGS = [
   { type: "missile", selec: 3, spr: "p3", sprSel: "p3ss", label: "Lanciamissili", cost: 5000 },
   { type: "eolico", selec: 4, spr: "p4", sprSel: "p4ss", label: "Pala eolica", cost: 50000 },   // ora vero, BUILDING_TYPES.eolico
   { type: "laser", selec: 5, spr: "p5", sprSel: "p5ss", label: "Laser", cost: 20000 },
-  { type: "grattacielo", selec: 6, spr: "p6", sprSel: "p6ss", label: "Grattacielo", cost: null },
+  // "Grattacielo" era il nome (mai verificato) di una versione precedente
+  // di questa riga: **[C]** src/objects/level2palazz (il popup "livello 2
+  // sbloccato" agganciato a `pu6/Mouse_MouseEnter.gml`, stesso schema di
+  // level2club/level2gatling/level2sol per club/gatling/solare) chiama
+  // l'edificio "palazz[o]" — vedi il commento su BUILDING_TYPES.palazzo.
+  { type: "palazzo", selec: 6, spr: "p6", sprSel: "p6ss", label: "Palazzo", cost: 6000 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
   { type: "club", selec: 60, spr: "pdj", sprSel: "pdjss", label: "Club", cost: 3500 },   // ora vero, BUILDING_TYPES.club
   { type: "solare", selec: 61, spr: "psolare", sprSel: "psolaress", label: "Pannelli solari", cost: 1000 },
   { type: "gatling", selec: 62, spr: "pgatling", sprSel: "pgatlingss", label: "Mitragliatrice", cost: 10000 },
   { type: "villa", selec: 63, spr: "pvilla", sprSel: "pvillass", label: "Villa", cost: 7500 },
-  { type: "museo", selec: 70, spr: "pmuseo", sprSel: "pmuseoss", label: "Museo", cost: null },
+  { type: "museo", selec: 70, spr: "pmuseo", sprSel: "pmuseoss", label: "Museo", cost: 35000 },   // ora vero, BUILDING_TYPES.museo — piazzamento a trascinamento, vedi armPlacement()
   // [C] STUDIO.md "cosa manca": lo strumento vero di demolizione/
   // riparazione (selec==11), mai ricostruito — la distruzione oggi e'
   // immediata (destroyBuilding()) invece di passare da questo strumento.
@@ -803,6 +964,38 @@ const OTHER_BUILDINGS = [
 ];
 for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
 const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
+
+// Edifici "stella" (STUDIO.md, "monumento"/"banca"): ricompense di
+// traguardo, MAI un bottone statico come il resto del menu — [C] `stella1`/
+// `stella2` (src/objects) non stanno nella room, ne' nel pannello: sono
+// create al volo da `pu1/Step.gml` solo al superamento di una soglia (mai
+// prima), ancorate a un offset fisso sopra `pu1` invece che dentro la riga
+// scorrevole. **[I]** Qui, per riuso diretto dell'infrastruttura di
+// `OTHER_BUILDINGS`/`uiButtons` gia' esistente, compaiono/scompaiono nella
+// STESSA riga scorrevole invece di fluttuare a parte — stesso risultato
+// osservabile (appaiono solo a soglia raggiunta), non lo stesso layout a
+// pixel. `unlocked()` legge `pu1/Step.gml` riga per riga (operatori 2=">",
+// 4=">=", gia' stabiliti nel resto del progetto): monum a `distrutti>49`
+// (aerei abbattuti, STUDIO.md/state.js), banca a `chies.level>1 &&
+// pop>=3000`. Restano nascosti una volta gia' costruiti — [I]:
+// nell'originale un flag "gia' assegnato" mai identificato con certezza
+// ottiene lo stesso risultato (il bottone non ricompare per un secondo
+// esemplare), qui basta controllare se esiste gia' un edificio di quel
+// tipo.
+const STAR_BUILDINGS = [
+  {
+    type: "monum", selec: 71, spr: "sta1", sprSel: "sta1s", label: "Monumento", cost: 20000,
+    unlocked: () => (r12.distrutti ?? 0) > 49 && !buildings.some((b) => b.type === "monum"),
+  },
+  {
+    type: "banca", selec: 72, spr: "sta2", sprSel: "sta2s", label: "Banca", cost: 0,
+    unlocked: () => {
+      const chies = buildings.find((b) => b.type === "chies");
+      return !!chies && chies.level > 1 && r12.pop >= 3000 && !buildings.some((b) => b.type === "banca");
+    },
+  },
+];
+for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; BUILDING_LABEL[b.type] = b.label; }
 
 /** Raccoglie una moneta e fa partire la sua "bolla" (coinPops sopra) —
  * unico punto d'ingresso condiviso da input.onTap (tap/click, sotto) e
@@ -815,6 +1008,12 @@ function collectCoinAt(item) {
 }
 
 input.onTap = (sx, sy) => {
+  // Un gesto di piazzamento a trascinamento e' gia' stato armato da
+  // `input.onPointerDown` per lo stesso tocco (vedi sopra): il rilascio lo
+  // risolve gia' `input.onPointerUp` (resolvePlacement()), che scatta
+  // comunque anche quando questo tap viene ignorato — nessuna doppia
+  // gestione dello stesso rilascio.
+  if (armedPlacement) return;
   // il selettore edificio vive in spazio schermo, sopra la mappa: un tocco
   // che lo colpisce non deve raggiungere il mondo sotto.
   for (const btn of uiButtons) {
@@ -891,6 +1090,15 @@ input.onTap = (sx, sy) => {
     }
   }
   if (!picked) return;
+  // palazzo/museo: `input.onPointerDown`, per questo stesso tocco, ha gia'
+  // provato ad armare il piazzamento (armPlacement()) e ha gia' mostrato un
+  // messaggio — riuscito ("trascina verso...", ma allora `armedPlacement`
+  // e' vivo e la guardia in cima a questa funzione e' gia' uscita) o
+  // fallito (mon insufficienti/nessun lotto adiacente: qui sotto,
+  // `armedPlacement` e' rimasto `null`). In entrambi i casi il messaggio
+  // gia' mostrato e' quello giusto: non va sovrascritto col reset generico
+  // sotto, e placeAt() (a un lotto solo) non va comunque chiamato.
+  if (picked.obj === "placeholder" && !picked.consumed && BUILDING_TYPES[selectedType]?.diagonalPlacement) return;
   message = ""; messageT = 0;
   if (picked.obj === "placeholder" && !picked.consumed) {
     const def = selectedType ? BUILDING_TYPES[selectedType] : null;
@@ -1071,15 +1279,13 @@ function frame(now) {
   // STUDIO.md "le tempeste diventano reali" + bombe appena sganciate sopra).
   for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
   if (r12.alertT > 0) r12.alertT -= dt;
-  // Torrette (game/src/buildings.js, stepTurretAim): inseguono il "veicolo"
-  // piu' vicino — [C] rocket_launcher/Step.gml usa la famiglia
-  // `veicoli_target`, che nel motore sono le auto decorative e le
-  // mongolfiere di risorse/spia (non il pacco di cantiere, `notte_target`
-  // nel decompilato, e non le casse/gli avanzi di cantiere). [I] Le minacce
-  // vere (`threats`) hanno pero' la priorita' quando sono a tiro, cosi' il
-  // cannone punta davvero cio' che sta per colpire — vedi il commento su
-  // stepTurretAim() in buildings.js.
-  stepTurretAim(buildings, cars.concat(balloons), threats);
+  // Torrette (game/src/buildings.js, stepTurretAim): inseguono l'oggetto
+  // volante piu' vicino fra le mongolfiere di risorse/spia (`balloons`,
+  // game/src/balloons.js — non il pacco di cantiere ne' le casse/avanzi) e
+  // le minacce vere (`threats`: aerei/bombardieri/zeppelin, game/src/
+  // threats.js) — [I] non piu' le auto decorative (`cars`): non sono
+  // oggetti volanti, vedi il commento su stepTurretAim() in buildings.js.
+  stepTurretAim(buildings, balloons, threats);
   // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
   // gia' nella direzione appena calcolata (b.aimAngle).
   stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails);
@@ -1241,20 +1447,26 @@ function frame(now) {
   const vw = cam.worldW, vh = cam.worldH;
   const l = cam.x - vw / 2, t = cam.y - vh / 2, rr = l + vw, bb = t + vh;
   for (const it of frameList) {
-    if (it.obj === "placeholder" && !it._hovered) continue;
+    if (it.obj === "placeholder" && !it._hovered && !it._armed) continue;
     const f = it._f;
-    if (f) {
-      const x0 = it.x - f.ox, y0 = it.y - f.oy;
-      if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < t) continue;
-      const base = it._tint ?? 0xffffff;
-      const tint = it._selfLit ? base : mulTint(base, amb.rgb);
-      r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
-    } else {
-      // istanze senza sprite: controller invisibili, li mostro come marcatori
-      const s = 24;
-      if (it.x > rr + s || it.y > bb + s || it.x < l - s || it.y < t - s) continue;
-      r.draw(solidFrame(white, s, s), it.x - s / 2, it.y - s / 2, 1, mulTint(it._c, amb.rgb), 0.35);
-    }
+    // Istanze senza sprite (`missingArt` sopra): nel decompilato sono
+    // esattamente questo, non "arte persa" — controller/collisori invisibili
+    // by design (`pepazzittecollider`: sprite:null, visible:0, STUDIO.md "27
+    // istanze in match_easy, mai piu' ricostruite: fanno rimbalzare i
+    // pedoni"; `scroller`/`scroller2`/`scriptfucker`: idem). Un tempo
+    // disegnate come quadratino colorato semitrasparente per "vederle" in
+    // sviluppo — ma quel marcatore restava visibile a QUALUNQUE giocatore,
+    // sparsi per la mappa come se fossero un edificio/zona segnaposto
+    // (segnalato dall'autore: "i rettangolini rossi intorno alla citta'").
+    // `missingArt` in HUD resta il modo giusto per uno sviluppatore di sapere
+    // quanti sono — un conteggio testuale, non qualcosa che finisce davanti
+    // agli occhi di chi gioca soltanto.
+    if (!f) continue;
+    const x0 = it.x - f.ox, y0 = it.y - f.oy;
+    if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < t) continue;
+    const base = (it.obj === "placeholder" && it._armed) ? ARMED_TINT : (it._tint ?? 0xffffff);
+    const tint = it._selfLit ? base : mulTint(base, amb.rgb);
+    r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
     drawn++;
   }
   // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che
@@ -1265,6 +1477,28 @@ function frame(now) {
     const k = p.t / COIN_POP_LIFE;
     const size = 20 + k * 46;
     r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, 0x4fc3f7, (1 - k) * 0.85);
+  }
+  // Linguetta di prezzo sul segnale di potenziamento (upsign) al passaggio
+  // del mouse — [C] upsign12|23|45s|45d/Mouse_MouseEnter.gml, vedi
+  // costTagSprite() in buildings.js. Solo mouse (come la raccolta monete
+  // sopra): il touch non ha un vero hover senza contatto.
+  if (input.hover && input.hoverPointerType === "mouse") {
+    const hw = cam.screenToWorld(input.hover.x, input.hover.y);
+    const upicoFrame = frameFor("upico");
+    if (upicoFrame) for (const b of buildings) {
+      if (b.construction || !upgradeUnlocked(b, r12)) continue;
+      if (!inFrameRect(hw.x, hw.y, b.x, b.y, upicoFrame)) continue;
+      const tagFrame = frameFor(costTagSprite(b.type, b.level - 1));
+      if (tagFrame) {
+        const scale = 0.5;
+        // [C] upsign12/Mouse_MouseEnter.gml: offset -50 dal segnale — qui
+        // dal bordo superiore vero dell'icona "upico" (`upicoFrame.oy`,
+        // l'origine e' quasi in basso al centro), non da un numero fisso
+        // scollegato dalla sua altezza reale.
+        r.draw(tagFrame, b.x - (tagFrame.w * scale) / 2, b.y - upicoFrame.oy - 15, scale, 0xffffff, 1);
+      }
+      break;
+    }
   }
   r.flush();
 
@@ -1363,6 +1597,7 @@ function frame(now) {
         { kind: "building", type: "casa", spr: "p1", sprSel: "p1ss" },
         { kind: "building", type: "industria", spr: "p2", sprSel: "p2ss" },
         ...OTHER_BUILDINGS.map((b) => ({ kind: "building", type: b.type, spr: b.spr, sprSel: b.sprSel })),
+        ...STAR_BUILDINGS.filter((b) => b.unlocked()).map((b) => ({ kind: "building", type: b.type, spr: b.spr, sprSel: b.sprSel })),
         { kind: "menu", menoo: 0, spr: "baccc", label: "Indietro" },
       ]
     : menoo === 2
@@ -1427,6 +1662,21 @@ function frame(now) {
   uiRowBounds = (isMobile && maxScroll > 0)
     ? { x0: 0, y0: rowTop, x1: canvas.clientWidth, y1: canvas.clientHeight }
     : null;
+
+  // Linguetta di prezzo sui bottoni edificio al passaggio del mouse — [C]
+  // pu1..pumediat/Mouse_MouseEnter.gml, vedi costTagSprite() in
+  // buildings.js. Solo mouse (come la raccolta monete/il segnale di
+  // potenziamento sotto): il touch non ha un vero hover senza contatto,
+  // e qui coprirebbe comunque il bottone col dito.
+  if (input.hover && input.hoverPointerType === "mouse") {
+    const hb = uiButtons.find((btn) => btn.kind === "building"
+      && input.hover.x >= btn.x && input.hover.x <= btn.x + btn.w
+      && input.hover.y >= btn.y && input.hover.y <= btn.y + btn.h);
+    const tagFrame = hb && frameFor(costTagSprite(hb.type, null));
+    if (tagFrame) {
+      r.draw(tagFrame, hb.x + hb.w / 2 - (tagFrame.w * UI_SCALE) / 2, hb.y - 8, UI_SCALE, 0xffffff, 1);
+    }
+  }
 
   // Avviso "ATTACK INCOMING" (src/objects/aincom, game/src/balloons.js): una
   // mongolfiera spia ha completato il suo giro. [C] aincom/Create.gml +

@@ -17,6 +17,22 @@ export class Input {
     this.onDrag = null;              // (dxScreen, dyScreen)
     this.onTap = null;               // (sx, sy)
     this.onZoom = null;              // (factor, anchorSx, anchorSy)
+    // Rilascio del puntatore, sempre — a differenza di `onTap` (solo se il
+    // gesto non ha mai superato `TAP_SLOP`). Serve al piazzamento a
+    // trascinamento di palazzo/museo (game/src/main.js, armPlacement()):
+    // quello e' un vero drag (l'origine e il lotto adiacente distano ~100px,
+    // ben oltre la soglia di tap), quindi onTap non scatterebbe mai sul
+    // rilascio — [C] src/objects/dir1/Mouse_LeftReleased.gml, l'originale
+    // arma la direzione proprio al rilascio del tocco, non alla pressione.
+    this.onPointerUp = null;         // (sx, sy)
+    // Pressione del puntatore, un solo dito (`pointers.size` valutato PRIMA
+    // di registrare questo puntatore, cosi' il secondo dito di un pinch non
+    // lo fa scattare). Serve allo stesso piazzamento a trascinamento di
+    // palazzo/museo: [C] src/objects/placeholder/Mouse_LeftPressed.gml arma
+    // il gesto (crea cre1..cre4) alla PRESSIONE, non al rilascio come ogni
+    // altro edificio (`onTap`) — l'unica differenza reale rispetto al resto
+    // del piazzamento a un lotto solo.
+    this.onPointerDown = null;       // (sx, sy)
     // Un gesto che comincia sopra la UI (es. la barra di selettore edifici,
     // su mobile in scroll orizzontale) non deve muovere la camera sotto di
     // essa: `uiHitTest(sx, sy)` decide, al pointerdown, se questo puntatore
@@ -58,6 +74,7 @@ export class Input {
   _down(e) {
     this.el.setPointerCapture?.(e.pointerId);
     const p = this._pos(e);
+    if (this.pointers.size === 0) this.onPointerDown?.(p.x, p.y);
     this.pointers.set(e.pointerId, {
       x: p.x, y: p.y, sx: p.x, sy: p.y, t: performance.now(), moved: false,
       ui: this.uiHitTest?.(p.x, p.y) ?? false,
@@ -99,6 +116,7 @@ export class Input {
     // agganciata all'ultimo punto toccato.
     if (e.pointerType !== "mouse") { this.hover = null; this.hoverPointerType = null; }
     if (!st.moved && performance.now() - st.t < TAP_MS) this.onTap?.(st.x, st.y);
+    this.onPointerUp?.(st.x, st.y);
   }
 
   _wheel(e) {

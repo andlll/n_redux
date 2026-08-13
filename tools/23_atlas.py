@@ -158,6 +158,66 @@ GAMEPLAY_SPRITES = {
         # impalcatura separata), "eol" lo sprite finale, "rovent1"/"rovent2"
         # il suo rudere (ruinventola/Create.gml, dado a due vie).
         "impvent1", "impvent2", "impvent3", "eol", "rovent1", "rovent2",
+        # palazzo/museo: dodicesimo e tredicesimo edificio, primi due a
+        # piazzamento a trascinamento su due lotti diagonali (STUDIO.md,
+        # game/src/buildings.js BUILDING_TYPES.palazzo/museo/palazzoRd/
+        # museoRd + game/src/main.js DIAGONAL_DIRS/armPlacement()).
+        # "sr1x"/"sf1x" (asse "r", dir1/dir3) e "rd1x"/"fd1x" (asse "rd",
+        # dir2/dir4) sono la sequenza di cantiere condivisa da entrambi gli
+        # edifici — [C] impa4r/impa4f/impamediaR/impamediaF (e le varianti
+        # rd/fd), stesse identiche sequenze a tic, verificate con diff.
+        "sr11", "sr12", "sr13", "sr14", "sr15", "sr16",
+        "sr21", "sr22", "sr23", "sr24", "sr25", "sr26",
+        "sr31", "sr32", "sr33", "sr34", "sr35", "sr36",
+        "sr41", "sr42", "sr43", "sr44", "sr45", "sr46",
+        "sf11", "sf12", "sf13", "sf14", "sf15", "sf16",
+        "sf21", "sf22", "sf23", "sf24", "sf25", "sf26",
+        "sf31", "sf32", "sf33", "sf34", "sf35", "sf36",
+        "sf41", "sf42", "sf43", "sf44", "sf45", "sf46",
+        "rd11", "rd12", "rd13", "rd14", "rd15", "rd16",
+        "rd21", "rd22", "rd23", "rd24", "rd25", "rd26",
+        "rd31", "rd32", "rd33", "rd34", "rd35", "rd36",
+        "rd41", "rd42", "rd43", "rd44", "rd45", "rd46",
+        "fd11", "fd12", "fd13", "fd14", "fd15", "fd16",
+        "fd21", "fd22", "fd23", "fd24", "fd25", "fd26",
+        "fd31", "fd32", "fd33", "fd34", "fd35", "fd36",
+        "fd41", "fd42", "fd43", "fd44", "fd45", "fd46",
+        "topls",   # [C] tops4s/tops5s (src/objects), stesso topper per entrambi gli assi
+        # palazzo: 10 varianti "dispari" (casa4s, asse "r") + 10 "pari"
+        # (casa4d, asse "rd") — [C] casa4s|d/Create.gml, dado a 5 livelli.
+        "c411s", "c411sl", "c413s", "c413sl",
+        "c421", "c421l", "c423", "c423l",
+        "c431", "c431l", "c433", "c433l",
+        "c441", "c441l", "c443", "c443l",
+        "c451", "c451l", "c453", "c453l",
+        "c412d", "c412dl", "c414d", "c414ds",
+        "c422", "c422l", "c424", "c424l",
+        "c432", "c432l", "c434", "c434l",
+        "c442", "c442l", "c444", "c444l",
+        "c452", "c452l", "c454", "c454l",
+        "ru41", "ru41d",   # [C] casa4s/d/Step.gml: rudere (ru41d anche per casa4d, non ru41)
+        # museo: dado 50/50 fra due sprite finali, per asse — [C]
+        # media1s|d/Create.gml. "med2"/"med2d" non hanno un "l" acceso
+        # dedicato (asimmetria reale: l'acceso e' "med2x"/"med2dx" stesso).
+        "med1", "med1l", "med2", "med2x",
+        "med1d", "med1dl", "med2d", "med2dx",
+        # Linguette di prezzo all'hover (STUDIO.md §5.4, gia' documentate ma
+        # mai ricostruite — game/src/buildings.js, costTagSprite()): sprite
+        # pre-renderizzati col numero gia' dentro, un taglio per ogni costo
+        # reale di placeCost/upgrades[].cost in questo file. "c12aa"/"c23aa"
+        # sono i due banner dedicati di chies (mon+oil insieme, nessun taglio
+        # a valuta singola gli si addice).
+        "c100", "c500", "c1000", "c2000", "c3500", "c5000", "c6000", "c7500",
+        "c10000", "c20000", "c35000", "c50000", "c12aa", "c23aa",
+        "cfree",   # [C] ccfree/Create.gml: l'unico edificio davvero gratis (banca) ha il proprio cartellino dedicato
+        # monumento/banca: quattordicesimo e quindicesimo edificio, i primi
+        # due "a stella" (STUDIO.md, ricompense di traguardo mai nel menu
+        # base — game/src/buildings.js BUILDING_TYPES.monum/banca). Stesso
+        # cantiere ir1x/if1x/gru1/toppers gia' impacchettato sopra per casa/
+        # industria/missile/solare/palazzo/museo: nessuno sprite di cantiere
+        # nuovo, solo l'edificio finito/rudere/luce di ciascuno.
+        "monu_img", "monu_ruin", "monu_l", "monu_lx",
+        "banca_img", "banca_l", "banca_lx",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/
@@ -180,6 +240,11 @@ GAMEPLAY_SPRITES = {
         "p3", "p3ss", "p4", "p4ss", "p5", "p5ss", "p6", "p6ss", "p7", "p7ss",
         "pdj", "pdjss", "psolare", "psolaress", "pgatling", "pgatlingss",
         "pvilla", "pvillass", "pmuseo", "pmuseoss",
+        # stella1/stella2 (selec==71/72): bottoni "a stella" — mai statici
+        # nel menu, compaiono/scompaiono da soli a soglia raggiunta (vedi
+        # STAR_BUILDINGS in main.js) — stesso schema normale/selezionato
+        # px/pxss dei bottoni piazzabili sopra, non un segnaposto.
+        "sta1", "sta1s", "sta2", "sta2s",
         "ru", "russ",           # puruspa (bulldozer/ripara, selec==11, mai ricostruito)
         "reset",                # pureset
         # Gli altri bottoni del pannello (src/objects/handbutton|buildbutton|

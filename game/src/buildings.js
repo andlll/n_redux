@@ -848,6 +848,363 @@ export const BUILDING_TYPES = {
       ],
     },
   },
+
+  // Dodicesimo e tredicesimo edificio: `palazzo` (`pu6`/`selec==6` — la voce
+  // OTHER_BUILDINGS lo chiamava "Grattacielo", main.js: nessuno dei due nomi
+  // compare mai in un messaggio di gioco nell'originale, ma **[C]**
+  // src/objects/level2palazz (il popup "livello 2 sbloccato" agganciato a
+  // `pu6/Mouse_MouseEnter.gml` — stesso schema di level2club/level2gatling/
+  // level2sol per club/gatling/solare: "level2" + nome interno) chiama
+  // l'edificio "palazz[o]", non "grattacielo") e `museo` (`pumediat`/
+  // `selec==70`) sono i primi due edifici a DUE lotti — **diversi anche da
+  // `eolico`**, l'unico altro multi-lotto: quello resta un tocco singolo
+  // con un raggio di ricerca piu' largo (`multiTile` sopra), questi si
+  // piazzano con un vero trascinamento verso un vicino diagonale libero —
+  // vedi il commento su `DIAGONAL_DIRS`/`armPlacement()`/`resolvePlacement()`
+  // in game/src/main.js per la meccanica completa, letta da
+  // src/objects/placeholder/Mouse_LeftPressed.gml (rami selec==6/70) +
+  // Collision_dir1..4.gml + dir1..4 + dirdel. `def.diagonalPlacement: true`
+  // e' il flag che main.js legge per instradare questi due tipi ad
+  // armPlacement() invece del normale placeAt() a un lotto solo.
+  //
+  // **[C]** Collision_dir1..4.gml: le quattro direzioni si accoppiano in
+  // due assi opposti (dir1+dir3 contro dir2+dir4), che scelgono una catena
+  // di cantiere/varianti interamente diversa — sprite orientati (`sr*`/`sf*`
+  // contro `rd*`/`fd*`, la stessa idea di `ir*`/`if*` con un prefisso
+  // diverso, vedi `frontSprFor()` sopra) e una famiglia di varianti finali
+  // "dispari" contro "pari" (c4xx). Invece di far portare l'asse ad ogni
+  // funzione di buildings.js, main.js materializza l'asse in un TIPO
+  // concreto diverso al momento della costruzione vera —
+  // `resolvePlacement()`: "palazzo"/"museo" (asse dir1/dir3, "r") contro
+  // "palazzoRd"/"museoRd" (asse dir2/dir4, "rd") sotto. Questi ultimi due
+  // non compaiono mai in OTHER_BUILDINGS/il menu: sono raggiungibili solo
+  // internamente, come "chies".
+  //
+  // **[C]** src/objects/impa4r|impa4f/Alarm_0.gml: sequenza a tic reale,
+  // 23 passi (390+40*9+800+20*11 tic, ~2860 in tutto) — MA l'edificio vero
+  // (`casa4s`/`casa4d`) nasce gia' al passo 10 di `impa4f` (700 tic dopo
+  // l'inizio di quel passo, non alla fine dell'intera animazione):
+  // `impa4f/Alarm_5.gml`. I passi successivi (11..22) sono una coda
+  // cosmetica simmetrica che smonta la gru senza alcun effetto di gioco —
+  // stessa "coda cosmetica" gia' tagliata altrove nel motore (STUDIO.md,
+  // "due semplificazioni" — impalaser_r/impa2to3r). `steps` sotto si ferma
+  // al passo che consegna l'edificio (dur dell'ultimo passo troncata a 700,
+  // non 800, per allinearsi esattamente al momento della nascita). Il
+  // drain (`impa4r/Alarm_10.gml`, l'unico dei due a drenare mon — `impa4f`
+  // non drena niente, letto come `frontSpr` puramente cosmetico) resta
+  // attivo per tutta questa sequenza accorciata. **[I]** scelta dichiarata,
+  // non un dato mancante: il "vero" impa4r/impa4f originale continua a
+  // vivere (e a drenare) anche dopo la nascita dell'edificio, un concetto
+  // ("cantiere che sopravvive al proprio edificio") che questo motore non
+  // modella da nessuna parte — troncare e' coerente col resto del file.
+  //
+  // **[I] Solo un livello portato**: nel decompilato palazzo continua con
+  // un secondo salto (`casa4s|d/Alarm_2.gml`, ava==5 — MA solo se
+  // `chies.level>=3`, un gate mai visto per nessun'altra `casa`: crea
+  // `upsign45s|d` -> `impa5r|rd` -> `casa5ss|dd`, STUDIO.md sotto). Un
+  // secondo livello richiederebbe un gate nuovo (soglia di sblocco legata a
+  // un ALTRO edificio, non solo pop/makee/ava come `upgradeProgress()`
+  // conosce oggi) fuori dallo scopo di questo giro — stesso genere di
+  // "fermata prima del massimo del decompilato" gia' accettato per `casa`
+  // (che nell'originale arriva anch'essa a un quarto/quinto livello mai
+  // portato qui, STUDIO.md §9).
+  palazzo: {
+    label: "Palazzo",
+    placeCost: { mon: 6000 },   // [C] placeholder/Mouse_LeftPressed.gml, ramo selec==6
+    diagonalPlacement: true,
+    construct: {                 // livello 0 -> 1, impa4r/impa4f -> casa4s (asse "r", dir1/dir3)
+      drain: { mon: 3, every: 20 },                // [C] impa4r/Alarm_10.gml
+      life: 400, deathPop: -160,                    // [C] casa4s/Create.gml + Destroy.gml
+      grantPop: 37,                                  // [C] casa4s/Create.gml: r12.pop += 37 alla nascita
+      ruin: ["ru41"],                                // [C] casa4s/Step.gml: create_object(ruin4s)
+      // [C] casa4s/Create.gml: 5 livelli di dice(2) annidati, albero
+      // bilanciato (a differenza di villa) — 10 varianti "dispari" (suffisso
+      // 1/3), tutte 1/16: pickVariant() sopra e' gia' uniforme senza
+      // `weight`. Decoro luci notturne "cXXXsl" (STUDIO.md, stesso schema
+      // vil1/vil1l di villa).
+      variants: [
+        { spr: "c411s", decor: "c411sl" }, { spr: "c413s", decor: "c413sl" },
+        { spr: "c421", decor: "c421l" }, { spr: "c423", decor: "c423l" },
+        { spr: "c431", decor: "c431l" }, { spr: "c433", decor: "c433l" },
+        { spr: "c441", decor: "c441l" }, { spr: "c443", decor: "c443l" },
+        { spr: "c451", decor: "c451l" }, { spr: "c453", decor: "c453l" },
+      ],
+      // [C] impa4r/Alarm_0.gml, passi 0..10 (vedi commento sopra per il
+      // perche' si ferma qui). Il gruppo di 5 "gru" al passo 3 e' letto
+      // punto per punto (offset diversi ciascuna, non un pattern regolare).
+      steps: [
+        { spr: ["sr11", "sr12", "sr13", "sr14"], dur: 390 },
+        { spr: "sr15", dur: 40 }, { spr: "sr16", dur: 40 },
+        { spr: ["sr21", "sr22", "sr23", "sr24"], dur: 40 },
+        { spr: "sr25", dur: 40, spawn: [
+          { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+          { spr: "gru1", dx: -12, dy: -112 }, { spr: "gru1", dx: -80, dy: 50 },
+          { spr: "gru1", dx: -172, dy: -114 },
+        ] },
+        { spr: "sr26", dur: 40 },
+        { spr: ["sr31", "sr32", "sr33", "sr34"], dur: 40 },
+        { spr: "sr35", dur: 40 }, { spr: "sr36", dur: 40 },
+        { spr: ["sr41", "sr42", "sr43", "sr44"], dur: 40 },
+        { spr: "sr45", dur: 40 },
+        { spr: "sr46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170 }] },
+      ],
+    },
+    // [C] casa4s/Alarm_2.gml: primo intervallo 2000, poi dado uniforme fra
+    // 4 valori — stesso schema di villa/casa, +37 pop per stadio (0..5).
+    growth: [{ firstInterval: 2000, intervals: [9000, 13231, 15846, 9912], popPerStage: 37, maxAva: 5 }],
+    // [C] casa4s/Alarm_3.gml, ogni 120 tic, per stadio ava 0..5.
+    consumption: [[
+      { day: 6, night: 15 }, { day: 11, night: 24 }, { day: 17, night: 31 },
+      { day: 23, night: 42 }, { day: 33, night: 50 }, { day: 38, night: 55 },
+    ]],
+    storm: [{ dice: 108, loss: 50 }],   // [C] casa4s/Alarm_5.gml (crea anche "thunder", non riprodotto — stessa scelta di eolico/laser)
+  },
+
+  // Stessa entry di `palazzo` sopra, asse "rd" (dir2/dir4) — **[C]**
+  // impa4rd/impa4fd sono, verificato con diff, identici a impa4r/impa4f a
+  // parte i nomi sprite (sr*->rd*, sf*->fd*); `casa4d/Create.gml` e'
+  // identico a `casa4s` a parte le 10 varianti "pari" (suffisso 2/4) e il
+  // rudere (`ruin4d`, sprite "ru41d" invece di "ru41"). Mai selezionabile
+  // dal menu (non in OTHER_BUILDINGS): main.js, resolvePlacement() la
+  // materializza solo quando il trascinamento cade su dir2/dir4.
+  palazzoRd: {
+    label: "Palazzo",
+    placeCost: { mon: 6000 },
+    diagonalPlacement: true,
+    construct: {
+      drain: { mon: 3, every: 20 },
+      life: 400, deathPop: -160,
+      grantPop: 37,
+      ruin: ["ru41d"],
+      variants: [
+        { spr: "c412d", decor: "c412dl" }, { spr: "c414d", decor: "c414ds" },
+        { spr: "c422", decor: "c422l" }, { spr: "c424", decor: "c424l" },
+        { spr: "c432", decor: "c432l" }, { spr: "c434", decor: "c434l" },
+        { spr: "c442", decor: "c442l" }, { spr: "c444", decor: "c444l" },
+        { spr: "c452", decor: "c452l" }, { spr: "c454", decor: "c454l" },
+      ],
+      steps: [
+        { spr: ["rd11", "rd12", "rd13", "rd14"], dur: 390 },
+        { spr: "rd15", dur: 40 }, { spr: "rd16", dur: 40 },
+        { spr: ["rd21", "rd22", "rd23", "rd24"], dur: 40 },
+        { spr: "rd25", dur: 40, spawn: [
+          { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+          { spr: "gru1", dx: -12, dy: -112 }, { spr: "gru1", dx: -80, dy: 50 },
+          { spr: "gru1", dx: -172, dy: -114 },
+        ] },
+        { spr: "rd26", dur: 40 },
+        { spr: ["rd31", "rd32", "rd33", "rd34"], dur: 40 },
+        { spr: "rd35", dur: 40 }, { spr: "rd36", dur: 40 },
+        { spr: ["rd41", "rd42", "rd43", "rd44"], dur: 40 },
+        { spr: "rd45", dur: 40 },
+        { spr: "rd46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170 }] },
+      ],
+    },
+    growth: [{ firstInterval: 2000, intervals: [9000, 13231, 14464, 9912], popPerStage: 37, maxAva: 5 }],   // [C] casa4d/Alarm_2.gml: unico ramo diverso da casa4s (14464 invece di 15846)
+    consumption: [[
+      { day: 6, night: 15 }, { day: 11, night: 24 }, { day: 17, night: 31 },
+      { day: 23, night: 42 }, { day: 33, night: 50 }, { day: 38, night: 55 },
+    ]],
+    storm: [{ dice: 108, loss: 50 }],
+  },
+
+  // `museo` (`pumediat`/`selec==70`) — **[C]** unico livello, nessuna
+  // crescita: `media1s/Create.gml` arma `action_set_alarm(2000,2)` ma
+  // **non esiste `media1s/Alarm_2.gml`** nella directory decompilata (alarm
+  // armato senza handler, stesso genere di codice morto gia' documentato
+  // altrove nel file) — `ava` resta 0 per sempre, nessun secondo edificio
+  // "livello 2" (`med2`/`med2d` sono solo la seconda meta' di un dado 50/50
+  // sulla variante finale, non un livello — verificato: nessun oggetto
+  // decompilato "media2*" esiste). Da' `hap` diretta invece di `pop` (unico
+  // fra tutti i tipi con `construct.hap` a non avere ne' `grantPop` ne'
+  // crescita — coerente con "un museo aumenta la felicita', non la
+  // popolazione"). **[C]** media1s/Alarm_3.gml consuma anche mon ogni 120
+  // tic, oltre a ele — mai visto in nessun altro edificio con
+  // `consumption`: vedi `rate.mon` in stepConsumption() sopra.
+  museo: {
+    label: "Museo",
+    placeCost: { mon: 35000 },   // [C] placeholder/Mouse_LeftPressed.gml, ramo selec==70
+    diagonalPlacement: true,
+    construct: {                 // media1s (asse "r", dir1/dir3) — [C] impamediaR/impamediaF: stessa sequenza sr*/sf* di palazzo, solo il drain cambia
+      drain: { mon: 5, every: 20 },                 // [C] impamediaR/Alarm_10.gml
+      life: 350,                                      // [C] media1s/Create.gml
+      hap: { create: 1200, destroy: -1220 },          // [C] media1s/Create.gml + Destroy.gml
+      ruin: ["ru41"],                                 // [C] media1s/Step.gml: create_object(ruin4s) — stesso rudere di palazzo
+      variants: [                                     // [C] media1s/Create.gml: dado 50/50, non un dado a piu' vie
+        { spr: "med1", decor: "med1l" },
+        // [C] MEDIALITE2/Step.gml non anima nessuna transizione: lo sprite
+        // acceso e' "med2x" (non esiste "med2l" nel decompilato — asimmetria
+        // reale, non un refuso di trascrizione).
+        { spr: "med2", decor: "med2x" },
+      ],
+      steps: [
+        { spr: ["sr11", "sr12", "sr13", "sr14"], dur: 390 },
+        { spr: "sr15", dur: 40 }, { spr: "sr16", dur: 40 },
+        { spr: ["sr21", "sr22", "sr23", "sr24"], dur: 40 },
+        { spr: "sr25", dur: 40, spawn: [
+          { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+          { spr: "gru1", dx: -12, dy: -112 }, { spr: "gru1", dx: -80, dy: 50 },
+          { spr: "gru1", dx: -172, dy: -114 },
+        ] },
+        { spr: "sr26", dur: 40 },
+        { spr: ["sr31", "sr32", "sr33", "sr34"], dur: 40 },
+        { spr: "sr35", dur: 40 }, { spr: "sr36", dur: 40 },
+        { spr: ["sr41", "sr42", "sr43", "sr44"], dur: 40 },
+        { spr: "sr45", dur: 40 },
+        { spr: "sr46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170 }] },
+      ],
+    },
+    // [C] media1s/Alarm_3.gml: ogni 120 tic, SEMPRE lo stesso valore (`ava`
+    // non cresce mai — un solo elemento invece delle 6 voci per-stadio di
+    // casa/villa/palazzo, stepConsumption() sopra lo rilegge comunque ad
+    // ogni ciclo con `Math.min(0, cons.length-1)` = indice 0). `mon:60` e'
+    // il canale extra (sopra).
+    consumption: [[{ day: 60, night: 150, mon: 60 }]],
+    storm: [{ dice: 108, loss: 50 }],   // [C] media1s/Alarm_5.gml, stessi numeri di palazzo
+  },
+
+  // Stessa entry di `museo` sopra, asse "rd" — **[C]** media1d e' identico
+  // a media1s in OGNI file (Create/Alarm_0/1/3/5/9/Destroy/Step, verificato
+  // riga per riga): nessuna asimmetria numerica come invece esiste fra
+  // palazzo/palazzoRd. Solo gli sprite (cantiere rd*/fd*, varianti
+  // med1d/med2d) e il costo di trascinamento (dir2/dir4) cambiano.
+  museoRd: {
+    label: "Museo",
+    placeCost: { mon: 35000 },
+    diagonalPlacement: true,
+    construct: {
+      drain: { mon: 5, every: 20 },
+      life: 350,
+      hap: { create: 1200, destroy: -1220 },
+      ruin: ["ru41"],
+      variants: [
+        { spr: "med1d", decor: "med1dl" },
+        { spr: "med2d", decor: "med2dx" },   // [C] MEDIALITE2D: stessa asimmetria di MEDIALITE2, "med2dl" non esiste
+      ],
+      steps: [
+        { spr: ["rd11", "rd12", "rd13", "rd14"], dur: 390 },
+        { spr: "rd15", dur: 40 }, { spr: "rd16", dur: 40 },
+        { spr: ["rd21", "rd22", "rd23", "rd24"], dur: 40 },
+        { spr: "rd25", dur: 40, spawn: [
+          { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+          { spr: "gru1", dx: -12, dy: -112 }, { spr: "gru1", dx: -80, dy: 50 },
+          { spr: "gru1", dx: -172, dy: -114 },
+        ] },
+        { spr: "rd26", dur: 40 },
+        { spr: ["rd31", "rd32", "rd33", "rd34"], dur: 40 },
+        { spr: "rd35", dur: 40 }, { spr: "rd36", dur: 40 },
+        { spr: ["rd41", "rd42", "rd43", "rd44"], dur: 40 },
+        { spr: "rd45", dur: 40 },
+        { spr: "rd46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170 }] },
+      ],
+    },
+    consumption: [[{ day: 60, night: 150, mon: 60 }]],
+    storm: [{ dice: 108, loss: 50 }],
+  },
+
+  // Quattordicesimo edificio: `monum` ("Monumento", src/objects/monum,
+  // sprite `monu_img`) — il primo dei tre "edifici stella", una ricompensa
+  // di traguardo mai piazzabile dal menu normale (STUDIO.md sotto per il
+  // meccanismo di sblocco completo). **[C]** monum/Create.gml + Destroy.gml
+  // + Alarm_0.gml + Step.gml, letti riga per riga: nessuna produzione,
+  // nessuna crescita — solo vita, un drenaggio perenne di mon, e felicita'
+  // simmetrica alla nascita/morte (l'unico altro tipo cosi' e' `eolico`).
+  // **[C]** placeholder/Mouse_LeftReleased.gml, ramo selec==71: scala 20000
+  // mon SENZA controllare prima `mon>=20000` (a differenza di OGNI altro
+  // ramo di quel file) — puo' davvero portare `mon` sotto zero. `def.
+  // noAffordCheck` (main.js, placeAt()) riproduce esattamente questa
+  // asimmetria invece di "correggerla" silenziosamente.
+  // **[C]** Cantiere (`impaMONUr`/`impaMONUf`): la stessa identica sequenza
+  // "ir1x"/"if1x" gia' condivisa da casa/industria/missile/solare (nessuno
+  // sprite di cantiere nuovo) — l'edificio nasce al tic10 di `impaMONUf`,
+  // 700 tic dopo l'inizio di quel passo (`Alarm_5`), stessa "coda
+  // cosmetica" gia' tagliata per palazzo/museo (`steps` sotto si ferma li',
+  // dur dell'ultimo passo troncata a 700 non 800). Le 4 "gru" al passo 3
+  // (offset ±80,±50, un quadrato pulito — diverso dai 5 punti irregolari di
+  // palazzo) e il topper finale (`tops3`, sprite reale gia' "toppers": lo
+  // stesso oggetto di villa/club/missile/laser, nessuno sprite in piu').
+  monum: {
+    label: "Monumento",
+    placeCost: { mon: 20000 },   // [C] placeholder/Mouse_LeftReleased.gml, ramo selec==71
+    noAffordCheck: true,
+    construct: {
+      drain: { mon: 3, every: 20 },              // [C] impaMONUr/Alarm_10.gml
+      finalSprite: "monu_img", life: 1000,         // [C] monum/Create.gml
+      hap: { create: 1000, destroy: -1000 },       // [C] monum/Create.gml + Destroy.gml
+      ruin: ["monu_ruin"],                          // [C] monum/Step.gml: create_object(ruinmonument), nessun dado
+      decor: ["monu_l"],                            // [C] monum/Create.gml: create_object(monum_light)
+      steps: [
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
+        { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
+        { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+        { spr: "ir22", dur: 40, spawn: [
+          { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+          { spr: "gru1", dx: -80, dy: -50 }, { spr: "gru1", dx: -80, dy: 50 },
+        ] },
+        { spr: "ir21", dur: 40 },
+        { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 40 },
+        { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
+        { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
+        { spr: "ir42", dur: 40 },
+        { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170 }] },
+      ],
+    },
+    // [C] monum: nessun Alarm_5/storm armato in Create.gml (a differenza di
+    // banca sotto) — solo le bombe (generiche, stepBombs() in threats.js)
+    // possono danneggiarlo.
+  },
+
+  // Quindicesimo edificio: `banca` ("Banca", src/objects/banca1, sprite
+  // `banca_img`) — il secondo "edificio stella". **[C]**
+  // placeholder/Mouse_LeftReleased.gml, ramo selec==72: nessuna riga
+  // `r12.mon = ...` — davvero gratis, non solo senza controllo di
+  // affordability come il monumento. `placeCost: {}` (nessuna chiave) basta
+  // da solo: `canAfford()`/il ciclo di scalo su un oggetto vuoto sono gia'
+  // no-op, `costTagSprite()` sopra lo riconosce e mostra `cfree`.
+  // Stesso cantiere `ir1x`/`if1x` di monum (verificato: anche banca spawna
+  // le stesse 4 "gru" al passo 3 e lo stesso "toppers" al passo finale —
+  // **[I]** una fonte secondaria online per questo gioco descrive il
+  // cantiere della banca come "senza gru": non e' quello che il decompilato
+  // mostra, letto due volte riga per riga).
+  // **[C]** banca1/Create.gml + Alarm_3|5.gml, letti riga per riga: vita
+  // 1300, consumo elettrico FISSO (non per stadio: banca non cresce mai,
+  // nessun Alarm_2/crescita armato) -18 ele di giorno/-27 di notte ogni 120
+  // tic, danno da fulmine (dado 1/160 ogni 57 tic, -50 vita — PIU' raro del
+  // resto del motore, dove 1/108 e' la norma). **[I]** `Alarm_0`
+  // (armato-ma-mai-innescato: nessun `action_set_alarm(_,0)` in Create.gml)
+  // contiene un intero albero di ricolorazione/cambio sprite a dado
+  // ricopiato da `casa1/Alarm_0` — stesso codice morto gia' scartato per
+  // casa4s/casa4d/casa5ss/casa5dd, non portato qui per lo stesso motivo.
+  // Il pulsante prestiti (`bankbuttoner`, oggetto `repre`/calendario mesi,
+  // 4 prestiti a interesse) e' un intero sotto-sistema economico a parte —
+  // **[I] gap dichiarato**, fuori scopo per questo giro (STUDIO.md sotto).
+  banca: {
+    label: "Banca",
+    placeCost: {},
+    construct: {
+      drain: { mon: 3, every: 20 },               // [C] impaBANKr/Alarm_10.gml
+      finalSprite: "banca_img", life: 1300,         // [C] banca1/Create.gml
+      ruin: ["ru31", "ru32", "ru33", "ru34"],       // [C] ruin3/Create.gml: dado uniforme fra 4, stesso oggetto di industria3/casa3/lasergun
+      decor: ["banca_l"],                           // [C] banca1/Create.gml: create_object(banca1_light)
+      steps: [
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
+        { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
+        { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+        { spr: "ir22", dur: 40, spawn: [
+          { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+          { spr: "gru1", dx: -80, dy: -50 }, { spr: "gru1", dx: -80, dy: 50 },
+        ] },
+        { spr: "ir21", dur: 40 },
+        { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 40 },
+        { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
+        { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
+        { spr: "ir42", dur: 40 },
+        { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170 }] },
+      ],
+    },
+    consumption: [[{ day: 18, night: 27 }]],   // [C] banca1/Alarm_3.gml, ogni 120 tic — costante, nessun `ava` (banca non cresce)
+    storm: [{ dice: 160, loss: 50 }],           // [C] banca1/Alarm_5.gml
+  },
 };
 
 let nextId = 1;
@@ -877,9 +1234,18 @@ function pickVariant(variants) {
 /** Lo sprite "f" (impalcatura in sovraimpressione) che corrisponde allo
  * sprite "r" gia' scelto per il passo di cantiere corrente — vedi il
  * commento su BUILDING_TYPES.industria piu' sopra. null per le catene che
- * non hanno una traccia "f" nel decompilato (chies: sprite ce.../ci...). */
+ * non hanno una traccia "f" nel decompilato (chies: sprite ce.../ci...).
+ * `sr*`/`rd*` (palazzo/museo, BUILDING_TYPES.palazzo/museo/palazzoRd/
+ * museoRd) sono la stessa idea con un prefisso diverso — **[C]**
+ * impa4r/impa4f: stessa sequenza a tic, sprite "sr*"/"sf*" (diff riga per
+ * riga: solo il prefisso cambia); impa4rd/impa4fd: "rd*"/"fd*" per l'asse
+ * opposto (dir2/dir4).
+ */
 function frontSprFor(spr) {
-  return spr.startsWith("ir") ? "if" + spr.slice(2) : null;
+  if (spr.startsWith("ir")) return "if" + spr.slice(2);
+  if (spr.startsWith("sr")) return "sf" + spr.slice(2);
+  if (spr.startsWith("rd")) return "fd" + spr.slice(2);
+  return null;
 }
 
 /**
@@ -962,6 +1328,40 @@ export function ruinSpriteFor(b) {
 export function nextUpgrade(b) {
   const def = BUILDING_TYPES[b.type];
   return def.upgrades?.[b.level - 1] ?? null;
+}
+
+/**
+ * Lo sprite della "linguetta" di prezzo che compare all'hover su un
+ * bottone edificio (`upgradeIndex` null: `def.placeCost`) o su un segnale
+ * di potenziamento (`upgradeIndex`: indice in `def.upgrades`) — `null` se
+ * quel costo non ha una linguetta nota.
+ *
+ * **[C]** src/objects/pu1..pumediat/Mouse_MouseEnter|Leave.gml (bottoni) e
+ * upsign12|23|45s|45d/Mouse_MouseEnter|Leave.gml (segnali): al passaggio
+ * del mouse creano un'istanza `cc<valore>` (`STUDIO.md §5.4`, gia'
+ * documentato ma mai ricostruito — a quel tempo `input.js` non aveva
+ * ancora un vero hover) posizionata sopra il bottone/segnale, distrutta
+ * al MouseLeave. Non e' testo disegnato a runtime: ogni `cc*` mostra uno
+ * sprite PRE-RENDERIZZATO col numero gia' dentro (`c100`, `c500`, `c1000`,
+ * `c2000`, `c3500`, `c5000`, `c6000`, `c7500`, `c10000`, `c20000`,
+ * `c35000`, `c50000` — un taglio per ogni costo reale gia' in
+ * `placeCost`/`upgrades[].cost` qui sopra, verificato uno per uno). `chies`
+ * (`upcrc12`/`upcrc23`) e' l'unica eccezione: costa mon+oil insieme, niente
+ * taglio `cXXXX` a valuta singola gli si addice — usa due sprite dedicati
+ * gia' pronti nel decompilato, `c12aa`/`c23aa` (506x88, "banner" largo il
+ * doppio dei tagli normali). `banca` e' l'unico edificio DAVVERO gratis
+ * (`placeCost: {}`, nessuna riga di scalo in Mouse_LeftReleased.gml) — usa
+ * il terzo cartellino dedicato del decompilato, `cfree` (stella2/
+ * Mouse_MouseEnter.gml: `action_create_object(ccfree, 0, 0)`).
+ */
+export function costTagSprite(type, upgradeIndex) {
+  if (type === "chies") return upgradeIndex === 0 ? "c12aa" : upgradeIndex === 1 ? "c23aa" : null;
+  const def = BUILDING_TYPES[type];
+  const cost = upgradeIndex == null ? def?.placeCost : def?.upgrades?.[upgradeIndex]?.cost;
+  const keys = cost ? Object.keys(cost) : [];
+  if (keys.length === 0) return upgradeIndex == null && def?.placeCost ? "cfree" : null;
+  if (keys.length !== 1 || keys[0] !== "mon") return null;
+  return `c${cost.mon}`;
 }
 
 /**
@@ -1207,12 +1607,16 @@ export function stepGrowth(buildings, dt, r12, onPedestrian) {
 }
 
 /**
- * Avanza il consumo elettrico degli edifici finiti che dichiarano
- * `consumption` per livello e stadio di crescita (oggi solo `casa`, una
- * tabella per casa1/2/3). [C] casa1|2|3/Alarm_3.gml: ogni 120 tick consuma
- * energia in base allo stadio `b.ava` e a se e' notte (prima regola che
- * collega il ciclo giorno/notte — finora solo una tinta, STUDIO.md §5.2 —
- * a un numero di gioco).
+ * Avanza il consumo elettrico (ed eventualmente in mon) degli edifici
+ * finiti che dichiarano `consumption` per livello e stadio di crescita
+ * (casa, villa — una tabella per livello/stadio `ava`; museo, STUDIO.md
+ * sotto — una sola voce, mai indicizzata perche' non cresce mai). [C]
+ * casa1|2|3/Alarm_3.gml: ogni 120 tick consuma energia in base allo stadio
+ * `b.ava` e a se e' notte (prima regola che collega il ciclo giorno/notte —
+ * finora solo una tinta, STUDIO.md §5.2 — a un numero di gioco). `rate.mon`
+ * (opzionale, solo `museo`) e' un secondo canale: **[C]** media1s|d/Alarm_3.gml
+ * scala anche `r12.mon` allo stesso intervallo di 120 tick, indipendente da
+ * giorno/notte — mai visto in nessun altro edificio con `consumption`.
  */
 export function stepConsumption(buildings, dt, r12, isNight) {
   for (const b of buildings) {
@@ -1226,6 +1630,7 @@ export function stepConsumption(buildings, dt, r12, isNight) {
     while (b.consT >= period) {
       b.consT -= period;
       r12.ele -= isNight ? rate.night : rate.day;
+      if (rate.mon) r12.mon -= rate.mon;
     }
   }
 }
@@ -1314,28 +1719,40 @@ function turretSprFor(type, angleDeg) {
 
 /**
  * Le torrette (missile/gatling/laser, tutte con `turret: true`) inseguono
- * col cannone il veicolo piu' vicino entro `def.aim.range` — `targets` e'
- * una lista di `{x,y}` gia' assemblata da chi chiama (in main.js:
- * mongolfiere + auto decorative, l'equivalente di `veicoli_target`). [C]
- * rocket_launcher|gatlinggun|lasergun/Step.gml: se NESSUN veicolo e' in
- * portata lo sprite non cambia — resta all'ultima direzione puntata invece
- * di tornare alla posa di riposo, esattamente come nel decompilato (l'`if`
- * che aggiorna `sprite_index` e' innestato dentro il controllo di portata,
- * niente ramo `else`).
+ * col cannone l'oggetto volante piu' vicino entro `def.aim.range` —
+ * `targets`/`threats` sono liste di `{x,y}` gia' assemblate da chi chiama
+ * (in main.js: mongolfiere e minacce vere — aerei/bombardieri/zeppelin,
+ * game/src/threats.js). **[I]** Un solo bersaglio, il piu' vicino fra
+ * ENTRAMBE le liste — non piu' `instance_nearest(veicoli_target)`
+ * dell'originale (che ignora del tutto le minacce vere, vedi il commento su
+ * quella chiamata in projectiles.js) ne' la versione precedente di questa
+ * funzione (le minacce vere avevano sempre priorita' sulle mongolfiere,
+ * anche quando una mongolfiera era molto piu' vicina): segnalato
+ * dall'autore ("dovrebbe calcolare la distanza da tutti gli oggetti volanti
+ * — mongolfiere, aerei, dirigibile — e puntare verso quella piu' vicina"),
+ * corretto qui con un solo confronto di distanza invece di due liste in
+ * ordine di priorita'. Le auto decorative (`cars`, un tempo incluse come
+ * "veicoli_target") non sono piu' passate da main.js: non sono oggetti
+ * volanti, e includerle e' proprio quello che poteva far restare il cannone
+ * puntato su un'auto a terra invece che sul velivolo piu' vicino.
  *
- * [I] `threats`, se passato, ha priorita' sui semplici veicoli: quando una
- * minaccia vera (air/bombar/dirig) e' entro `def.aim.range` il cannone
- * punta LEI invece del veicolo piu' vicino — non piu' fedele all'originale
- * (che punta sempre al veicolo piu' vicino, vedi il commento su
- * `instance_nearest(veicoli_target)` in projectiles.js), corretto qui
- * perche' altrimenti il cannone poteva restare puntato su una mongolfiera
- * innocua anche con un bombardiere gia' a tiro — e siccome il fuoco vero
- * (projectiles.js, fireFrom) spara sempre verso `b.aimTarget`, il colpo
- * finiva su un bersaglio diverso da quello mostrato dallo sprite, confondendo
- * il giocatore. Qualunque minaccia entro il raggio di mira e' anche entro
- * `aim.fireRange` (sempre <= `aim.range`), quindi il bersaglio qui scelto e'
- * sempre coerente con quello che stepTurretFire()/fireTurretManual()
- * colpiranno davvero.
+ * **[I]** Se nessun bersaglio e' in portata, `aimAngle`/`aimTarget` vengono
+ * azzerati (non lasciati all'ultima direzione come nell'originale — [C]
+ * `rocket_launcher|gatlinggun|lasergun/Step.gml`, l'`if` che li aggiorna e'
+ * innestato dentro il controllo di portata, niente ramo `else`): con
+ * `targets`/`threats` che nascono fuori mappa e se ne vanno (STUDIO.md, "le
+ * mongolfiere"/threats.js) un bersaglio puo' allontanarsi parecchio, o
+ * sparire del tutto, senza che la sua POSIZIONE smetta mai di essere "in
+ * portata" rispetto a un cannone fermo — l'originale lascia il cannone
+ * agganciato per sempre a quel punto, e siccome il fuoco manuale
+ * (`fireTurretManual`, projectiles.js) spara sempre verso `b.aimTarget`
+ * senza ricontrollare se c'e' ancora qualcosa li', il colpo finiva verso il
+ * vuoto — spesso fuori dallo schermo, dato che l'ultimo bersaglio agganciato
+ * e' quasi sempre quello che si stava allontanando o e' appena nato lontano
+ * dalla mappa (STUDIO.md, `spawnX: -170` per gli aerei). Azzerare quando
+ * non c'e' davvero niente in portata e' l'unico modo per far tornare
+ * `fireTurretManual`/`stepTurretFire` (che gia' controllano `aimTarget ==
+ * null`) a rifiutare correttamente il colpo.
  */
 export function stepTurretAim(buildings, targets, threats) {
   for (const b of buildings) {
@@ -1343,17 +1760,15 @@ export function stepTurretAim(buildings, targets, threats) {
     const def = BUILDING_TYPES[b.type];
     if (!def.aim) continue;
     let nearest = null, nearestD2 = def.aim.range * def.aim.range;
-    if (threats) {
-      for (const th of threats) {
-        const d2 = (th.x - b.x) ** 2 + (th.y - b.y) ** 2;
-        if (d2 < nearestD2) { nearestD2 = d2; nearest = th; }
-      }
-    }
-    if (!nearest) for (const t of targets) {
+    for (const t of targets) {
       const d2 = (t.x - b.x) ** 2 + (t.y - b.y) ** 2;
       if (d2 < nearestD2) { nearestD2 = d2; nearest = t; }
     }
-    if (!nearest) continue;
+    if (threats) for (const th of threats) {
+      const d2 = (th.x - b.x) ** 2 + (th.y - b.y) ** 2;
+      if (d2 < nearestD2) { nearestD2 = d2; nearest = th; }
+    }
+    if (!nearest) { b.aimAngle = null; b.aimTarget = null; continue; }
     const angle = (Math.atan2(-(nearest.y - b.y), nearest.x - b.x) * 180) / Math.PI;
     b.spr = turretSprFor(b.type, angle);
     // [C] rocket_launcher/Step.gml: `direttorio` (l'angolo verso il

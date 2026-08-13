@@ -22,6 +22,13 @@ export function createR12() {
     hap: 600,           // [C] 400 base + 200 del ramo match_easy
     crys: 0, storm: 0, stormT: 0, stormeasy: 0, biotech: 0, autocore: 0,
     allerta: 0, selec: 0,
+    // [C] pu1/Create.gml: contatore caccia (`air`, non bombar/dirig)
+    // abbattuti — incrementato da air/Destroy.gml, letto da pu1/Step.gml
+    // per sbloccare `stella1`/il Monumento (BUILDING_TYPES.monum, > 49).
+    // Vive qui invece che su `pu1` (che in questo motore non e' mai
+    // un'istanza vera, STUDIO.md §5.4) per lo stesso motivo di onda/bombn/
+    // diron sopra.
+    distrutti: 0,
     // [C] r12/Create.gml: onda/ondan/arma partono a 0, spy a 0 (si sblocca
     // dopo 29000 tick, r12/Alarm_8.gml) — usati dalle mongolfiere di
     // risorse/spia, game/src/balloons.js. `arma` resta dichiarato per
