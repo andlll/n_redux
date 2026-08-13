@@ -256,6 +256,20 @@ GAMEPLAY_SPRITES = {
         "bomberspr",                                # bombar
         "dirspr",                                    # dirig
         "bomb", "fica",                              # bomba1/bomba2, esplo
+        # Lo stato piro (game/src/threats.js, STUDIO.md "lo stato piro"):
+        # gli sprite "in fiamme" mentre il velivolo precipita, prima di
+        # morire per davvero. "rosso_pic"/"blu_pic"/"giallo_pic"/
+        # "verde_pic" sono le quattro varianti colore di air (risolte per
+        # indice sprite come i 16 sprite di mira delle torrette, non nomi
+        # scelti qui); "bomb_p1"/"bomb_p2" i due bombardieri "spezzati" di
+        # bombar (dado 1/2, a seconda di quale set di detriti stacca);
+        # "dirspr_distrutto" il solo zeppelin in fiamme.
+        "rosso_pic", "blu_pic", "giallo_pic", "verde_pic",
+        "bomb_p1", "bomb_p2", "dirspr_distrutto",
+        # I pezzi di fusoliera che bombar stacca entrando in piro
+        # (src/objects/rot11|12|21|22|23|24 — game/src/threats.js,
+        # spawnDebris): sprite "bomb_rNN", stesso nome dell'oggetto.
+        "bomb_r11", "bomb_r12", "bomb_r21", "bomb_r22", "bomb_r23", "bomb_r24",
     ],
     # Il fuoco vero delle torrette (src/objects/red_ball/yellow_pro,
     # game/src/projectiles.js — il laser non ha un proiettile vero, e' un

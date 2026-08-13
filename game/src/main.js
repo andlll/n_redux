@@ -13,7 +13,7 @@ import {
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT } from "./smoke.js";
-import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT } from "./threats.js";
+import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
@@ -284,6 +284,9 @@ let explosions = [];
 // Scia di fumo di aerei/bombardieri (game/src/threats.js, spawnAerSmoke/
 // stepAerSmoke) — mai gli zeppelin, [C] nessun Alarm_6 su dirig.
 let aerSmoke = [];
+// Pezzi di fusoliera che bombar stacca entrando in stato piro
+// (game/src/threats.js, spawnDebris/stepDebris) — mai air/dirig.
+let debris = [];
 // Il fuoco vero delle torrette (game/src/projectiles.js): stepTurretFire
 // crea i colpi (dalla punta del cannone, quando una minaccia vera e' entro
 // portata), stepProjectiles li fa volare e colpire.
@@ -970,8 +973,9 @@ function frame(now) {
   // (contatori alzati in stepBalloons() sopra), poi ognuno vola, bombarda,
   // e sparisce da solo.
   stepThreatSpawner(r12, threats, dt);
-  stepThreats(threats, bombs, explosions, dt, r12, aerSmoke);
+  stepThreats(threats, bombs, explosions, dt, r12, aerSmoke, debris);
   stepAerSmoke(aerSmoke, dt);
+  stepDebris(debris, explosions, dt);
   stepBombs(bombs, explosions, buildings, dt, r12);
   stepExplosions(explosions, dt);
   // Unico controllo per tutte le fonti di danno di questo frame (fulmini,
@@ -1078,6 +1082,9 @@ function frame(now) {
   // mondo.
   for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale });
   for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y, _f: frameFor(bm.spr) });
+  // Pezzi di fusoliera del bombardiere abbattuto (game/src/threats.js,
+  // spawnDebris): puramente cosmetici come le bombe, stessa regola di depth.
+  for (const d of debris) dynamic.push({ obj: "decor", x: d.x, y: d.y, depth: -d.y, _f: frameFor(d.spr) });
   // Esplosioni (game/src/threats.js): "fica" ha 60 frame veri, uno stop-motion
   // da animare con ex.t (EXPLOSION_FRAME_COUNT) invece del solo frame 0 statico.
   for (const ex of explosions) {
@@ -1402,7 +1409,7 @@ window.__nimbus = {
   get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
   get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
   get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
-  get aerSmoke() { return aerSmoke; },
+  get aerSmoke() { return aerSmoke; }, get debris() { return debris; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,

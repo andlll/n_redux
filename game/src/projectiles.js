@@ -29,7 +29,7 @@
 // [I] = semplificato deliberatamente, dettagliato punto per punto sotto.
 
 import { BUILDING_TYPES } from "./buildings.js";
-import { spawnExplosion, spawnDeathEffect } from "./threats.js";
+import { spawnExplosion } from "./threats.js";
 import { BALLOON_TYPES, spawnLoot } from "./balloons.js";
 
 const TICK = 1 / 60;
@@ -96,12 +96,25 @@ function bucketFor(table, angleDeg) {
 // Un colpo per tipo di torretta — letto da fireFrom()/stepTurretFire()/
 // fireTurretManual() sotto, mai dal chiamante (main.js resta ignaro di
 // queste differenze, come per BUILDING_TYPES).
+// Danno per colpo contro una minaccia vera (air/bombar/dirig — mai le
+// mongolfiere, sempre un solo colpo a prescindere dall'arma, invariato).
+// [C] letto dai `Collision_*` di ciascun oggetto-colpo contro air(77)/
+// bombar(78)/dirig(85) — mappati per indice tramite data/objects.json,
+// non nomi scelti qui. Contro `threats.js` (`th.life`, ora una vita vera:
+// STUDIO.md, "lo stato piro" corregge una lettura precedente sbagliata —
+// l'operatore 3 di `action_if_variable` e' "<=", non "!=").
+const DAMAGE = {
+  missile: 1,                              // [C] red_ball/Collision_77|78|85.gml: uniforme sui tre tipi
+  gatling: 0.07,                           // [C] yellow_pro/Collision_77|78|85.gml: uniforme, per proiettile (due a scarica)
+  laser: { air: 2, bombar: 3, dirig: 2 },  // [C] laserone/Collision_77|78|85.gml: diverso per tipo, non uniforme
+};
+
 const WEAPONS = {
   // [C] red_ball/Create|Alarm_1.gml.
   missile: {
     kind: "projectile", muzzle: MISSILE_MUZZLE,
     cooldown: 40 * TICK,                 // [C] action_set_alarm(40, 6) -> Alarm_6 rimette launching = 1
-    speed: 50, life: 120 * TICK, spr: "redb",
+    speed: 50, life: 120 * TICK, spr: "redb", damage: DAMAGE.missile,
     // [C] red_ball/Alarm_0.gml: action_create_object(smoko, 0, 0), poi si
     // riarma da solo ogni 2 tick per tutta la vita del razzo (~120 tick) —
     // una vera scia di fumo, non un singolo sbuffo alla bocca (quello e'
@@ -130,7 +143,7 @@ const WEAPONS = {
     // (spra/amove/Alarm_9|11) non riprodotto — 50 tick e' quando `spra`
     // torna a 0 (Alarm_9) e la mira/il prossimo sparo vero tornano
     // possibili, il numero piu' difendibile come "ricarica effettiva".
-    speed: 60, life: 50 * TICK, spr: "gatmissse",
+    speed: 60, life: 50 * TICK, spr: "gatmissse", damage: DAMAGE.gatling,
     hitRadius: 70,                       // [I] proiettile piccolo, stessa logica di missile.hitRadius sopra
     ammoCost: { mon: 3 },                // per proiettile, non per scarica
     muzzleSmoke: true,                    // [C] yellow_pro/Create.gml: action_create_object(smoko, 0, 0)
@@ -145,15 +158,17 @@ const WEAPONS = {
   // finora: ogni sprite direzionale del motore e' gia' un fotogramma
   // separato per direzione, non uno ruotato a runtime), quindi il fascio
   // vero e proprio non si disegna. [I] Sostituito con un colpo secco e
-  // istantaneo (hitscan): se una o piu' minacce vere sono entro
-  // `aim.fireRange` il laser le distrugge TUTTE sul colpo (vedi fireFrom
-  // sotto — [C] fedele: nessuno dei Collision_* di `laserone`/
-  // `laserone_retro` uccide mai se stesso, solo l'altro oggetto colpito —
-  // il fascio non si consuma al primo bersaglio, trafigge chiunque tocchi
-  // finche' resta acceso), con un lampo alla bocca del cannone e
-  // un'esplosione vera su ciascun bersaglio — stesso risultato del beam
-  // originale (le minacce spariscono), solo senza il fascio disegnato in
-  // mezzo.
+  // istantaneo (hitscan): tutte le minacce vere entro `aim.fireRange`
+  // vengono danneggiate in un colpo solo (vedi fireFrom sotto — [C] fedele
+  // nello spirito, non alla lettera: `laserone`/`laserone_retro` non
+  // uccidono mai se stessi contro `bombar`, quindi tecnicamente
+  // trafiggono solo lui e non air/dirig, che invece lo fermano — una
+  // distinzione che richiederebbe una vera geometria di collisione lungo
+  // il fascio, non solo un raggio dal cannone: qui semplificata a "colpisce
+  // tutto cio' che e' in portata"), con un lampo alla bocca del cannone e
+  // un'esplosione su ciascun bersaglio effettivamente distrutto — non
+  // garantito al primo colpo, il danno per tipo (DAMAGE.laser sopra) non
+  // sempre basta da solo (air si', bombar/dirig no).
   laser: {
     kind: "beam", muzzle: LASER_MUZZLE,
     cooldown: 85 * TICK,                  // [C] launching=2, action_set_alarm(85, 1) -> Alarm_1 rimette launching = 0
@@ -197,7 +212,7 @@ function spawnProjectile(x, y, angleDeg, weapon) {
   return {
     x, y, vx: Math.cos(rad) * weapon.speed, vy: -Math.sin(rad) * weapon.speed,
     t: 0, spr: weapon.spr, life: weapon.life, hitRadius: weapon.hitRadius,
-    trailT: 0, trailPeriod: weapon.trailPeriod,
+    damage: weapon.damage, trailT: 0, trailPeriod: weapon.trailPeriod,
   };
 }
 
@@ -227,15 +242,16 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails) {
     explosions.push(spawnExplosion(mx, my, MUZZLE_FLASH_SCALE));
     // [C] il fascio non si ferma al primo bersaglio (vedi il commento su
     // WEAPONS.laser sopra): TUTTE le minacce vere entro `aim.fireRange`
-    // vengono distrutte, non solo la piu' vicina.
+    // vengono danneggiate, non solo la piu' vicina — ma solo danneggiate:
+    // se la vita non basta a portarle a 0 restano in volo, la vera morte
+    // (con l'eventuale stato piro) la decide threats.js/stepThreats() al
+    // prossimo frame, non qui.
     const fireRange = BUILDING_TYPES[b.type].aim.fireRange;
     const r2 = fireRange * fireRange;
-    for (let i = threats.length - 1; i >= 0; i--) {
-      const th = threats[i];
+    for (const th of threats) {
       const dx = th.x - b.x, dy = th.y - b.y;
       if (dx * dx + dy * dy > r2) continue;
-      threats.splice(i, 1);
-      explosions.push(...spawnDeathEffect(th.type, th.x, th.y));
+      th.life -= DAMAGE.laser[th.type];
     }
     return;
   }
@@ -331,25 +347,26 @@ export function fireTurretManual(b, projectiles, explosions, r12, threats, trail
  * oggetto red_ball/yellow_pro ha un handler per ciascuna — `veicoli_target`
  * e `nemici_target`), un solo bersaglio per proiettile. `p.life`/
  * `p.hitRadius` vengono dal tipo di arma che l'ha sparato (WEAPONS sopra),
- * non piu' una costante unica per tutti i proiettili. [I] Un solo colpo
- * distrugge sempre il bersaglio: nel decompilato `monvo_giga`/`monviolo`/
- * `air`/`bombar`/`dirig` hanno un contatore `life` che sembrerebbe
- * richiedere piu' colpi (yellow_pro/laserone ne toglierebbero solo una
- * frazione a botta), ma per i colpi di missile il controllo che lo legge e'
- * `life != 0` (non `== 0`): dopo il primo colpo `life` e' quasi sempre
- * ancora diverso da zero, quindi muoiono comunque al primo colpo — la
- * "vita" e' di fatto un contatore morto nel gioco originale stesso, non
- * solo qui. Applicata la stessa regola a gatling/laser per coerenza (un
- * unico modello di "colpito = distrutto" per tutte e tre le torrette,
- * invece di un vero conteggio danni che l'originale stesso non applica in
- * modo affidabile).
+ * non piu' una costante unica per tutti i proiettili.
+ *
+ * Contro una minaccia vera il proiettile si consuma comunque (un solo
+ * bersaglio a botta) ma non la distrugge da solo: applica `p.damage` a
+ * `hit.life` e basta — la vita e' vera (STUDIO.md, "lo stato piro" —
+ * corregge una lettura precedente di questo stesso file, che leggeva
+ * l'operatore 3 di `action_if_variable` come "!=" invece di "<=" e
+ * concludeva che un solo colpo bastasse sempre), e decidere se/come muore
+ * (esplosione sul colpo o stato piro) e' compito di threats.js/
+ * stepThreats(), valutato ogni frame sulla vita accumulata, non qui.
  *
  * Colpire una mongolfiera di risorse fa cadere comunque la sua cassa
  * ([C] monvo|monvo_giga|monbo|mongo|monviolo/Destroy.gml scatta a
  * prescindere da come muore, stessa logica gia' usata per il fulmine in
  * balloons.js/stepBalloons()); colpire una spia la fa sparire senza che
  * riferisca mai (nessun Destroy.gml su monspi) — il modo per fermarla
- * prima che "riesca", chiesto insieme alle minacce vere.
+ * prima che "riesca", chiesto insieme alle minacce vere. Queste due
+ * famiglie (mongolfiere/spie), a differenza delle minacce vere, restano
+ * un solo colpo = distrutte: [C] fedele, i loro `Collision_*` non toccano
+ * mai `life`, controllano solo `desto` prima di uccidere sul colpo.
  *
  * `trails` riceve la scia di fumo del razzo in volo (`p.trailPeriod`,
  * missile soltanto — vedi WEAPONS.missile/spawnSmoko sopra): un puff ogni
@@ -381,13 +398,17 @@ export function stepProjectiles(projectiles, balloons, threats, loot, explosions
 
     if (hit) {
       projectiles.splice(i, 1);
-      hitList.splice(hitIdx, 1);
       if (hitList === balloons) {
+        hitList.splice(hitIdx, 1);
         explosions.push(spawnExplosion(hit.x, hit.y));
         const def = BALLOON_TYPES[hit.type];
         if (def.loot) loot.push(spawnLoot(def.loot, hit.x, hit.y));
       } else {
-        explosions.push(...spawnDeathEffect(hit.type, hit.x, hit.y));
+        // minaccia vera: solo danno, non e' detto che muoia al primo
+        // colpo (missile si', gatling no — DAMAGE sopra) — la vera morte
+        // (con l'eventuale stato piro) la decide threats.js/stepThreats()
+        // al prossimo frame, non qui.
+        hit.life -= p.damage;
       }
       continue;
     }
