@@ -12,8 +12,9 @@ import {
   spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
+import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT } from "./smoke.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions } from "./threats.js";
-import { stepTurretFire, stepProjectiles } from "./projectiles.js";
+import { stepTurretFire, stepProjectiles, fireTurretManual } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -174,7 +175,16 @@ const fontMini = await loadFont(gl, "gotham_mini");
 // preesistente a centro mappa (STUDIO.md §9), non un tipo che il
 // giocatore piazza.
 const placeholders = staticWorld.filter((it) => it.obj === "placeholder");
-for (const p of placeholders) { p.id = `ph_${p.x}_${p.y}`; p.consumed = false; }
+// [I] depth: la room dichiara -5000 (data/objects.json: sempre in primissimo
+// piano, davanti persino agli edifici — cosi' com'era nell'originale, mai
+// letto/cambiato a runtime). Qui invece il rombo viola, quando appare sotto
+// hover, resta appena sopra il piano stradale (`air2`, depth -1, STUDIO.md
+// §5.2) e sotto a tutto il resto — alberi/auto/edifici sono depth 0 nella
+// room, quindi ordinati per `-y` da effDepth() sopra, e la y minima in
+// `match_easy` e' 17 (effDepth -17): -2 sta sempre fra i due, mai sopra un
+// edificio o un albero, ma sempre sopra la strada sotto di lui.
+const PLACEHOLDER_DEPTH = -2;
+for (const p of placeholders) { p.id = `ph_${p.x}_${p.y}`; p.consumed = false; p.depth = PLACEHOLDER_DEPTH; }
 const placeholderById = new Map(placeholders.map((p) => [p.id, p]));
 
 // `chies` e' gia' un'istanza vera nella room (src/rooms/match_easy.json:
@@ -259,6 +269,10 @@ let coins = [];
 // collectCoinAt() piu' sotto e disegnate/scartate nel loop principale.
 let coinPops = [];
 const COIN_POP_LIFE = 0.4;
+// Il fumo decorativo delle centrali (game/src/smoke.js): una o due ciminiere
+// per `industria` in piedi, mai in cantiere — vedi stepSmokeSpawner() piu'
+// sotto.
+let smoke = [];
 // Minacce vere (game/src/threats.js): `threats` sono aerei/bombardieri/
 // zeppelin, fatti nascere da stepThreatSpawner (r12/Alarm_4|5|6.gml) ogni
 // volta che una mongolfiera spia viene ignorata abbastanza a lungo da
@@ -781,8 +795,21 @@ input.onTap = (sx, sy) => {
     }
     messageT = 3;
   } else if (picked.obj === "building") {
-    const err = tryStartUpgrade(picked.ref, r12);
-    message = err ?? "cantiere avviato";
+    const b = picked.ref;
+    // [C] rocket_launcher/Mouse_LeftPressed.gml: un tocco su una torretta
+    // finita non apre un cantiere (missile e' a un livello solo, nessun
+    // potenziamento — tryStartUpgrade ci direbbe solo "livello massimo") —
+    // fa partire un colpo contro il bersaglio che il cannone sta gia'
+    // inseguendo (game/src/projectiles.js, fireTurretManual()). Sotto
+    // cantiere invece resta tryStartUpgrade come per qualunque edificio
+    // (che gia' risponderebbe da solo "cantiere gia' in corso").
+    if (!b.construction && BUILDING_TYPES[b.type]?.turret) {
+      const fired = fireTurretManual(b, projectiles, explosions);
+      message = fired ? "fuoco!" : b.aimTarget ? "cannone in ricarica" : "nessun bersaglio in portata";
+    } else {
+      const err = tryStartUpgrade(b, r12);
+      message = err ?? "cantiere avviato";
+    }
     messageT = 3;
   } else if (picked.obj === "loot") {
     const item = picked.ref;
@@ -868,6 +895,11 @@ function frame(now) {
   stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
   stepProduction(buildings, dt, r12);
   stepSolarProduction(buildings, dt, r12, night, dawn);
+  // Fumo delle centrali (game/src/smoke.js): dopo stepProduction(), cosi'
+  // "oil>0" gia' rispecchia il consumo di questo frame, come per le monete
+  // blu sotto (stesso ordine gia' scelto per stepCoinSpawner()).
+  stepSmokeSpawner(buildings, smoke, dt, r12);
+  stepSmoke(smoke, dt);
   stepGrowth(buildings, dt, r12, (b) => pedestrians.push(spawnPedestrian(b.x, b.y)));
   stepConsumption(buildings, dt, r12, night);
   stepWeather(r12, dt);
@@ -987,6 +1019,16 @@ function frame(now) {
   // confini della room (nascono appena fuori mappa, gli uccelli molto piu'
   // sotto) — il filtro di frustum culling nel ciclo di disegno piu' sotto
   // li scarta gia' da solo quando non sono in vista, niente da fare qui.
+  // Fumo delle centrali (game/src/smoke.js): stessa formula di depth
+  // dell'originale (`depth = -y - 150/-200`, smoke_ind/smoke_ind_2 — vedi
+  // CHIMNEYS in smoke.js), ricalcolata qui perche' il fumo si sposta (a
+  // differenza di monete/segnali, fissi sul loro edificio). L'animazione a
+  // 70 frame di cc1/cc2/cc3 gira per davvero (frameIdx), oltre e non invece
+  // dell'ingrandimento uniforme (_scale) — vedi smoke.js.
+  for (const p of smoke) {
+    const frameIdx = Math.min(SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
+    dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale });
+  }
   for (const c of atmo.clouds) dynamic.push({ obj: "cloud", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr) });
   for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
   // Pedoni (game/src/pedestrians.js): x/y/depth gia' avanzati da
@@ -1316,9 +1358,10 @@ window.__nimbus = {
   get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
   atmo, get pedestrians() { return pedestrians; },
   get balloons() { return balloons; }, get loot() { return loot; }, get coins() { return coins; },
+  get coinPops() { return coinPops; },
   get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
   get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
-  get projectiles() { return projectiles; },
+  get projectiles() { return projectiles; }, get smoke() { return smoke; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,

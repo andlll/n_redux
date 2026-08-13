@@ -398,9 +398,24 @@ paragrafo 8.
   olio/crescita popolazione (**[I]**, STUDIO.md §6). Ora `tickR12()`
   esclude dalla formula generica i tipi che dichiarano `production`, per
   non contare due volte lo stesso olio.
-  **Non portato** (resta un gap esplicito, non finto): il fumo
-  decorativo (`smoke_ind*`, puramente visivo), il danno da fulmine in
-  tempesta (`Alarm_5`/`6`: **[C]** la regola è letta — dado 1/100..130,
+  **Il fumo decorativo ora è portato** (`game/src/smoke.js`,
+  `stepSmokeSpawner`/`stepSmoke`, chiamate da `main.js`): una o due
+  ciminiere per livello (**[C]** `industria1|2|3/Alarm_3|4.gml` +
+  `smoke_ind|smoke_ind_2/Create|Step|Alarm_0.gml`), attive solo con
+  `oil > 0`, con la stessa cadenza (20 tick), lo stesso moto (direzione
+  70°, velocità 1.3 px/tick), la stessa crescita (+0.05 di scala/tick) e
+  la stessa vita (69 tick, sparisce di scatto, nessuna dissolvenza — non
+  l'aveva nemmeno l'originale) del decompilato. **[I]**: l'originale
+  sceglie a dado, una volta a `Create`, QUALE delle 2-4 ciminiere
+  disponibili usare (`xi`); `buildings.js` non riproduce quel dado
+  (`finalSprite` è fisso per livello), quindi qui si usa sempre l'offset
+  della variante che l'originale assocerebbe a quello sprite fisso. Le
+  collisioni che nell'originale la interrompono prima contro la
+  scenografia (`smoke_ind/Collision_*.gml`) restano un gap esplicito:
+  nessun sistema di collisione generico per il decoro esiste ancora, e
+  sarebbe invisibile alla scala di un frame.
+  **Non portato** (resta un gap esplicito, non finto): il danno da fulmine
+  in tempesta (`Alarm_5`/`6`: **[C]** la regola è letta — dado 1/100..130,
   vita −50 — ma non è cablata perché `r12.storm` è sempre 0 e non esiste
   ancora nessun sistema che agisca su `life` arrivata a 0, quindi
   sarebbe codice morto se collegato ora) e `demobasia`

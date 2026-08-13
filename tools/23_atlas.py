@@ -254,6 +254,11 @@ GAMEPLAY_SPRITES = {
     # livello 3), "soldfade" la stessa icona con la dissolvenza a 20 frame
     # usata quando invece si autoriscuote.
     "coins": ["soldico", "soldfade", "upico"],
+    # Il fumo decorativo delle centrali (src/objects/smoke_ind|smoke_ind_2,
+    # game/src/smoke.js): un solo sbuffo per famiglia ("cc1" il default,
+    # "cc2"/"cc3" le due varianti a dado di Create.gml — non serve
+    # distinguere smoke_ind da smoke_ind_2, condividono lo stesso sprite).
+    "smoke": ["cc1", "cc2", "cc3"],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})

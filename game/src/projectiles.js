@@ -62,15 +62,29 @@ function spawnProjectile(x, y, angleDeg) {
   return { x, y, vx: Math.cos(rad) * PROJECTILE_SPEED, vy: -Math.sin(rad) * PROJECTILE_SPEED, t: 0, spr: "redb" };
 }
 
+/** Fa davvero partire un razzo dalla punta del cannone (scelta da
+ * `b.aimAngle`) verso `b.aimTarget`, piu' il lampo di sparo cosmetico —
+ * il nucleo comune a fuoco automatico (stepTurretFire, sotto) e fuoco
+ * manuale al tap (fireTurretManual, sotto): stessa punta, stesso bersaglio,
+ * stesso ricalcolo della direzione dalla posizione di nascita del razzo
+ * ([C] `red_ball/Create.gml`: `action_move_point(...)` non eredita
+ * l'angolo del cannone cosi' com'e'). Non azzera `b.fireT`: la ricarica
+ * resta a carico di chi chiama, cosi' i due percorsi possono condividerla
+ * o meno secondo le proprie regole. */
+function fireFrom(b, projectiles, explosions) {
+  const off = muzzleOffsetFor(b.aimAngle);
+  const mx = b.x + off.dx, my = b.y + off.dy;
+  const target = b.aimTarget;
+  const fireAngle = (Math.atan2(-(target.y - my), target.x - mx) * 180) / Math.PI;
+  projectiles.push(spawnProjectile(mx, my, fireAngle));
+  explosions.push(spawnExplosion(mx, my, MUZZLE_FLASH_SCALE));   // [C] rol_avant/rol_diet
+}
+
 /**
  * Fa sparare le torrette (oggi solo `missile`, tramite `def.aim`): per
  * ognuna, cerca se una minaccia vera e' entro 250px, e se il cannone non
- * e' in ricarica crea un razzo dalla punta del cannone (scelta da
- * `b.aimAngle`) puntato di nuovo verso `b.aimTarget` da quella posizione —
- * [C] `red_ball/Create.gml`: `action_move_point(...)` ricalcola la
- * direzione dalla posizione di nascita del razzo, non eredita l'angolo
- * del cannone cosi' com'e' (STUDIO.md "il lanciarazzi") — piu' il lampo
- * di sparo cosmetico.
+ * e' in ricarica fa partire un razzo verso il bersaglio gia' inseguito
+ * (fireFrom sopra).
  */
 export function stepTurretFire(buildings, threats, dt, projectiles, explosions) {
   for (const b of buildings) {
@@ -85,13 +99,50 @@ export function stepTurretFire(buildings, threats, dt, projectiles, explosions) 
     }
     if (!inRange) continue;
     b.fireT = 0;
-    const off = muzzleOffsetFor(b.aimAngle);
-    const mx = b.x + off.dx, my = b.y + off.dy;
-    const target = b.aimTarget;
-    const fireAngle = (Math.atan2(-(target.y - my), target.x - mx) * 180) / Math.PI;
-    projectiles.push(spawnProjectile(mx, my, fireAngle));
-    explosions.push(spawnExplosion(mx, my, MUZZLE_FLASH_SCALE));   // [C] rol_avant/rol_diet
+    fireFrom(b, projectiles, explosions);
   }
+}
+
+/**
+ * Sparo manuale al tap — [C] rocket_launcher/Mouse_LeftPressed.gml: un
+ * tocco sul cannone, se non e' in ricarica (`launching==1` nell'originale)
+ * e ha un bersaglio entro 400px IN QUESTO ISTANTE, fa partire un razzo
+ * contro di lui — lo stesso `veicoli_target` piu' vicino che il cannone
+ * insegue di continuo (`b.aimAngle`/`b.aimTarget`, calcolati ogni frame da
+ * stepTurretAim() in buildings.js). Il controllo di portata e' rifatto qui
+ * (non solo ereditato da `aimTarget`) perche' l'originale lo rivaluta anche
+ * lui al tocco (`distance_to_object(veicoli_target) < 400`, non un
+ * confronto con l'ultima direzione disegnata) — `aimTarget` da solo
+ * potrebbe restare quello di un bersaglio ormai fuori portata: [C]
+ * `rocket_launcher/Step.gml`, se nessun veicolo e' piu' entro 400px lo
+ * sprite (e quindi `aimTarget`, calcolato dallo stesso identico
+ * controllo) semplicemente non si aggiorna piu', restando agganciato
+ * all'ultimo bersaglio anche quando e' ormai lontanissimo. Ritorna true se
+ * e' partito un colpo (per il messaggio in main.js), false se il cannone
+ * e' in ricarica o non ha nessun bersaglio in portata adesso.
+ *
+ * [I] L'originale sceglierebbe qui la punta del cannone da una tabella a
+ * parte, piu' rozza (4 vie invece dei 16 archi di TURRET_DIRECTIONS/
+ * MUZZLE_OFFSETS gia' usati per mira e fuoco automatico) — non replicata:
+ * sparerebbe da un punto diverso da quello a cui il giocatore vede gia'
+ * puntare il cannone, un disallineamento che sembrerebbe un difetto
+ * piuttosto che fedelta' al decompilato. Lo sparo manuale riusa la stessa
+ * punta fine e lo stesso bersaglio del fuoco automatico, e ne condivide
+ * anche la ricarica (`b.fireT`/FIRE_COOLDOWN) — nell'originale i due
+ * sparano dalla stessa unica variabile `launching`, quindi si contendono
+ * gia' la stessa ricarica, non se ne sommano due indipendenti.
+ */
+export function fireTurretManual(b, projectiles, explosions) {
+  if (b.aimAngle == null || !b.aimTarget) return false;
+  const range = BUILDING_TYPES[b.type]?.aim?.range;
+  if (range != null) {
+    const dx = b.aimTarget.x - b.x, dy = b.aimTarget.y - b.y;
+    if (dx * dx + dy * dy > range * range) return false;
+  }
+  if ((b.fireT ?? 0) < FIRE_COOLDOWN) return false;
+  b.fireT = 0;
+  fireFrom(b, projectiles, explosions);
+  return true;
 }
 
 /**
