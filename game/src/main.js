@@ -1221,13 +1221,17 @@ function frame(now) {
   // (`action_move_to`/`N*global.sca`); qui si accodano da sinistra usando
   // la larghezza vera di ciascuno sprite (`GAP` px fra l'uno e l'altro).
   // `chies` non ha un bottone: non e' un tipo piazzabile (vedi sopra).
-  // UI_SCALE: solo su mobile i bottoni sono piu' piccoli (STUDIO.md
-  // scorrevolezza qui sotto) — su desktop restano alla dimensione vera
-  // dello sprite, non c'e' bisogno di comprimerli. 0.6 e' il punto in cui
-  // ~13 bottoni (il menu "edifici" al completo) stanno in 4-5 schermate di
-  // scroll su un telefono stretto (~360-430px) restando comunque sopra i
-  // ~44px minimi comunemente raccomandati per un tocco.
-  const UI_SCALE = isMobile ? 0.6 : 1;
+  // UI_SCALE: su mobile i bottoni sono piu' piccoli per far stare piu'
+  // scroll orizzontale a schermo (STUDIO.md scorrevolezza qui sotto) — 0.6
+  // e' il punto in cui ~13 bottoni (il menu "edifici" al completo) stanno
+  // in 4-5 schermate di scroll su un telefono stretto (~360-430px)
+  // restando comunque sopra i ~44px minimi comunemente raccomandati per un
+  // tocco. Su desktop niente vincolo di tocco/scroll, ma alla dimensione
+  // vera dello sprite (1) la barra risultava sproporzionata — [I] 0.7 a
+  // richiesta, un compromesso fra leggibilita' e ingombro, non letto da
+  // nessuna parte nel decompilato (`global.sca` scala l'intera UI
+  // originale in un modo che non abbiamo ricostruito, STUDIO.md).
+  const UI_SCALE = isMobile ? 0.6 : 0.7;
   const baseY = Math.round(canvas.clientHeight - UI_MARGIN);
   // I "tasti costruzione" (menoo 1: casa/industria/...) sono adiacenti,
   // GAP 0 — ogni sprite porta gia' con se' la propria base rettangolare
