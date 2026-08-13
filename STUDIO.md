@@ -1040,9 +1040,10 @@ paragrafo 8.
   cassa a terra (`smoko`) non riprodotte — stesso gap gia' dichiarato per
   il fumo di `industria`.
 
-- **Primo edificio difensivo: `missile`.** L'inizio di una famiglia (in
-  arrivo: gatling, laser) diversa dai primi quattro edifici su un asse
-  nuovo — non produce ne' consuma risorse, insegue bersagli col cannone.
+- **Primo edificio difensivo: `missile`.** L'inizio di una famiglia (poi
+  raggiunta da gatling e laser, vedi in fondo al file) diversa dai primi
+  quattro edifici su un asse nuovo — non produce ne' consuma risorse,
+  insegue bersagli col cannone.
   **[C]** Cantiere `impamissr`/`impamissf` (coppia r/f, stesso schema gia'
   noto — STUDIO.md sopra "secondo edificio giocabile: industria"): riusa
   gli stessi sprite `ir1x`/`ir2x`/`if1x`/`if2x` di industria/casa/parco,
@@ -1090,8 +1091,9 @@ paragrafo 8.
   torrette a ~116px si respingono ("troppo vicino a un'altra torretta di
   difesa", nessun mon scalato), la stessa coppia a >200px si piazza.
   Il campo `turret: true` in `BUILDING_TYPES.missile` e la generalita' di
-  `tooCloseToTurret()`/`stepTurretAim()` sono pensate per gatling/laser,
-  non ancora aggiunte.
+  `tooCloseToTurret()`/`stepTurretAim()` erano gia' pensate per gatling/
+  laser: aggiunte in fondo al file, riusano entrambe le funzioni cosi'
+  come sono.
 
 - **Le minacce vere.** Il pezzo mancante che STUDIO.md segnalava da tempo
   ("da dove arrivano davvero le minacce vere... dipendono da contatori che
@@ -1605,3 +1607,80 @@ paragrafo 8.
   con `ava` forzato a 1 la stessa condizione produce invece `kind:"mon"`,
   `amount:40` — la biforcazione fra le due famiglie di ricompensa si
   comporta esattamente come letto.
+
+- **Nono e decimo edificio, seconda e terza torretta: `gatling` e
+  `laser`.** Completano la famiglia difensiva aperta da `missile`
+  (STUDIO.md "primo edificio difensivo" sopra): stesso `turret: true`,
+  stessa `stepTurretAim()` generica (buildings.js), ma armi diverse fra
+  loro — `game/src/projectiles.js` guadagna una tabella `WEAPONS` per
+  tipo invece di restare cablato su missile.
+  **[C]** Cantieri (`impagatlingr`/`f`, `impalaser_r`/`f`) riusano gli
+  stessi sprite `ir1x`/`ir2x`/`ir3x`/`ir4x`/`if1x`/"toppers"/"gr21" gia'
+  in atlas — nessuno sprite di cantiere in piu'. `impagatlingr/Alarm_0.gml`
+  e' riga per riga lo stesso codice di `impamissr/Alarm_0.gml` (stesse
+  durate, stesso offset del topper): copiato senza modifiche.
+  `impalaser_r` invece e' un cantiere a 4 fasi da 23 tic come quello di
+  `chies`/`industria` di livello 3, non i 10 tic "base" delle altre
+  torrette — **[I]** troncato a tic 0..10 (scartando 11..22, lo stesso
+  specchio "costruisci poi ripiega la gru" gia' troncato per
+  `impaind1to2r`/`2to3r`, STUDIO.md "secondo edificio giocabile:
+  industria"): a tic 6 pianta 4 "grubig" (sprite `gr21`, il rubble/gru gia'
+  usato altrove) ai quattro angoli invece di uno solo, l'unico edificio
+  a farlo. Costo di piazzamento **[C]** 10000 mon (gatling, `selec==62`)
+  e 20000 mon (laser, `selec==5`); entrambi creano un pacco di cantiere —
+  gatling `mon_bil` come le altre torrette, laser invece `mon_bbil` (la
+  variante grande, mai cablata: riusa `mon_bil` come le altre, stesso
+  pallone piu' piccolo del dovuto — game/src/balloons.js aggiornato di
+  conseguenza). Vita **[C]** 800/1000, danno da fulmine 1/130 e 1/90 ogni
+  57 tick -50 vita.
+  **`gatling` spara due colpi a canna** (`yellow_pro`, sprite
+  "gatmissse"): **[C]** `gatlinggun/Step.gml` insegue il veicolo piu'
+  vicino entro 550px, spara entro 450px da una vera minaccia (stessa
+  regola "punta al veicolo, non a chi ha innescato lo sparo" gia' letta
+  per missile), ogni proiettile costa **[C]** 3 mon a nascere —
+  incondizionato, senza `canAfford`, esattamente come nel decompilato: il
+  fuoco automatico puo' davvero portare `mon` sotto zero. **[I]** Non
+  riprodotta la posa di rinculo dopo lo sparo (`spra`/`amove`/Alarm_9|11,
+  un piccolo stato che fa lampeggiare il cannone per ~50 tick) — 50 tick
+  e' comunque il numero usato come ricarica effettiva (`WEAPONS.gatling.
+  cooldown`), la stima piu' difendibile di quando la mira/il prossimo
+  sparo tornano davvero possibili. **[C]** `gatlinggun/Mouse_LeftPressed.
+  gml` non spara affatto al tocco (imposta solo la posa di rinculo senza
+  crearne uno vero): nessun `manualFire` per gatling, un tocco su una
+  mitragliatrice finita non fa niente (`tryStartUpgrade` risponde "livello
+  massimo").
+  **`laser` e' un colpo istantaneo, non un proiettile**: **[C]**
+  `lasergun/Step.gml` insegue il veicolo piu' vicino entro 800px (il
+  raggio di mira piu' lungo dei tre) ma spara solo entro 200px da una
+  minaccia vera — un'arma a bruciapelo — costando **[C]** 200 energia,
+  stavolta DAVVERO gated (`if (ele>=200)`, a differenza del costo in
+  denaro di gatling): senza energia sufficiente non spara affatto, ne'
+  automaticamente ne' al tocco. **[I]** Nel decompilato il colpo
+  (`laserone`/`laserone_retro`, sprite unico "lasere") non si muove mai:
+  resta alla punta del cannone, ruotato (`image_angle`) verso il
+  bersaglio — e' lo sprite stesso, un fascio lungo gia' disegnato, a
+  raggiungere il bersaglio lontano. Il renderer di questo motore
+  (game/src/gl.js) non supporta rotazione (mai servita finora: ogni
+  sprite direzionale e' gia' un fotogramma separato per direzione, non uno
+  ruotato a runtime), quindi il fascio vero non si disegna: sostituito da
+  un colpo istantaneo (hitscan) che distrugge sul colpo la minaccia vera
+  piu' vicina entro `aim.fireRange`, con un lampo alla bocca del cannone e
+  un'esplosione vera sul bersaglio — stesso risultato (la minaccia
+  sparisce), niente fascio disegnato in mezzo. **[C]** `lasergun/
+  Mouse_LeftPressed.gml` spara per davvero al tocco (stessa forma
+  dell'automatico, `manualFire: true`): a differenza di missile pero'
+  l'originale non richiede affatto una minaccia vera per sparare
+  manualmente, solo un veicolo entro 800px — il colpo puo' partire (lampo
+  + costo + ricarica) anche senza colpire nulla, e distrugge la minaccia
+  vera piu' vicina solo se ce n'e' gia' una entro 200px in quell'istante.
+  Verificato in browser (con l'atlas rigenerato in locale, non solo a
+  occhio sul codice): entrambe piazzabili dal menu con il costo giusto
+  scalato, `tooCloseToTurret()` le blocca l'una vicino all'altra come le
+  altre torrette, i cantieri completano al tic e al livello giusti
+  (22.03s/1321 tick per gatling, 36.53s/2190 tick per laser — combaciano
+  con la somma delle durate lette sopra), la mira ruota lo sprite
+  correttamente seguendo il traffico decorativo, e forzando una minaccia
+  vera in portata di entrambe: gatling crea due proiettili (`gatmissse`)
+  che volano verso il veicolo inseguito (non verso la minaccia, fedele),
+  scala `mon` di 3 a testa; laser distrugge sul colpo la minaccia piu'
+  vicina, scala `ele` di 200, nessun proiettile creato.

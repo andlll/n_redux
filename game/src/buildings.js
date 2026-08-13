@@ -407,18 +407,25 @@ export const BUILDING_TYPES = {
     // (STUDIO.md, "pepazzittecollider" mai ricostruito) qui e' una distanza
     // minima fra torrette, vedi `tooCloseToTurret()` sotto.
     turret: true,
+    // [C] rocket_launcher/Mouse_LeftPressed.gml spara per davvero al tocco
+    // (laser fa lo stesso, gatling no — vedi i due edifici sotto) — un
+    // colpo verso lo stesso bersaglio gia' inseguito, non un potenziamento
+    // (missile e' a un livello solo): vedi fireTurretManual() in
+    // game/src/projectiles.js.
+    manualFire: true,
     // [C] rocket_launcher/Step.gml: insegue il veicolo piu' vicino
     // (famiglia `veicoli_target` — mongolfiere di risorse/spia e le auto
     // decorative) entro 400px, un sedicesimo di giro alla volta
     // (`turretSprFor()` sotto). Il fuoco vero (game/src/projectiles.js,
     // stepTurretFire — STUDIO.md "le minacce vere" era il pezzo che
     // mancava) scatta separatamente quando una minaccia vera
-    // (`nemici_target`: air/bombar/dirig) entra entro 250px, ma il razzo
-    // punta comunque al veicolo piu' vicino gia' calcolato qui sopra — non
-    // necessariamente alla minaccia che ha innescato lo sparo: [C] fedele,
-    // `red_ball/Create.gml` punta a `instance_nearest(veicoli_target)`,
-    // non a chi ha fatto scattare l'Alarm.
-    aim: { range: 400 },
+    // (`nemici_target`: air/bombar/dirig) entra entro 250px (`fireRange`),
+    // ma il razzo punta comunque al veicolo piu' vicino gia' calcolato qui
+    // sopra — non necessariamente alla minaccia che ha innescato lo sparo:
+    // [C] fedele, `red_ball/Create.gml` punta a
+    // `instance_nearest(veicoli_target)`, non a chi ha fatto scattare
+    // l'Alarm.
+    aim: { range: 400, fireRange: 250 },
     storm: [{ dice: 130, loss: 50 }],   // [C] rocket_launcher/Alarm_5.gml
     construct: {                  // livello 0 -> 1, impamissr (src/objects/impamissr)
       drain: { mon: 1, every: 20 },              // [C] impamissr/Alarm_10.gml
@@ -650,6 +657,99 @@ export const BUILDING_TYPES = {
         ] },
         { spr: "ir12", dur: 30 },
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
+      ],
+    },
+  },
+
+  // Nono edificio: `gatling` (src/objects/gatlinggun — "Mitragliatrice" nel
+  // menu, `pugatling`/`selec==62`). Seconda torretta dopo `missile`, stessa
+  // famiglia `turret` — vedi stepTurretAim()/turretSprFor() sopra e
+  // game/src/projectiles.js per il fuoco vero (bocca doppia, un colpo da
+  // ciascuna canna per scarica).
+  gatling: {
+    label: "Mitragliatrice",
+    placeCost: { mon: 10000 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==62
+    turret: true,
+    // [I] `gatlinggun/Mouse_LeftPressed.gml` non spara affatto al tocco —
+    // imposta solo `spra=1` (la stessa posa di rinculo che Step.gml userebbe
+    // dopo uno sparo vero, MA senza crearne uno), un tocco a vuoto senza
+    // conseguenze. A differenza di missile/laser (vedi sotto) niente
+    // `manualFire` qui: un tocco su una mitragliatrice finita resta senza
+    // effetto (tryStartUpgrade in main.js risponde "livello massimo", non
+    // diverso da nessun tocco).
+    //
+    // [C] gatlinggun/Step.gml: insegue il veicolo piu' vicino entro 550px
+    // (un filo piu' lungo del raggio di missile); il fuoco vero (fireRange,
+    // letto da game/src/projectiles.js) scatta separatamente entro 450px
+    // contro una minaccia vera — stessa struttura "punta sempre al veicolo
+    // piu' vicino, spara verso quello anche se non e' lui il bersaglio che
+    // ha innescato lo sparo" gia' documentata per missile.
+    aim: { range: 550, fireRange: 450 },
+    storm: [{ dice: 130, loss: 50 }],   // [C] gatlinggun/Alarm_5.gml
+    construct: {                  // livello 0 -> 1, impagatlingr (src/objects/impagatlingr)
+      drain: { mon: 1, every: 20 },              // [C] impagatlingr/Alarm_10.gml
+      finalSprite: "nm1a", life: 800,             // [C] gatlinggun/Create.gml
+      decor: [],                                   // [C] gatlinggun/Create.gml non crea nessun cddvd
+      // [C] impagatlingr/Create.gml + Alarm_0.gml, tic 0..10 — stessa
+      // identica forma (durate/sprite/offset del topper) di missile.construct
+      // sopra: impagatlingr/f e impamissr/f sono, tic per tic, lo stesso
+      // codice con nomi di oggetto diversi (verificato riga per riga).
+      steps: [
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 361 },
+        { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
+        { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+        { spr: "ir22", dur: 40 },
+        { spr: "ir21", dur: 640, spawn: [
+          { spr: "toppers", dx: 0, dy: -86 },
+        ] },
+        { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+        { spr: "ir11", dur: 40 }, { spr: "ir12", dur: 40 },
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 40 },
+      ],
+    },
+  },
+
+  // Decimo edificio: `laser` (src/objects/lasergun — "Laser" nel menu,
+  // niente bottone dedicato nel decompilato per questo slot [I] gia' letto
+  // da OTHER_BUILDINGS in main.js, `selec==5`). Terza e ultima torretta:
+  // raggio di mira lunghissimo (800px) ma raggio di fuoco vero cortissimo
+  // (200px, "a bruciapelo") e un costo per colpo in energia invece che in
+  // denaro — vedi game/src/projectiles.js.
+  laser: {
+    label: "Laser",
+    placeCost: { mon: 20000 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==5
+    turret: true,
+    // [C] lasergun/Mouse_LeftPressed.gml spara per davvero al tocco, stessa
+    // forma del fuoco automatico (stesso costo/ricarica/raggio di mira) —
+    // vedi fireTurretManual() in game/src/projectiles.js.
+    manualFire: true,
+    aim: { range: 800, fireRange: 200 },
+    storm: [{ dice: 90, loss: 50 }],   // [C] lasergun/Alarm_5.gml (thunder offset -70, non riprodotto: puramente cosmetico)
+    construct: {                  // livello 0 -> 1, impalaser_r (src/objects/impalaser_r)
+      drain: { mon: 3, every: 20 },              // [C] impalaser_r/Alarm_10.gml
+      finalSprite: "lan1", life: 1000,            // [C] lasergun/Create.gml
+      decor: [],                                   // [C] lasergun/Create.gml non crea nessun cddvd
+      // [C] impalaser_r/Create.gml + Alarm_0.gml: 23 tic in tutto (0..22),
+      // ma gli ultimi 12 (11..22) sono lo stesso specchio "costruisci poi
+      // ripiega la gru" gia' troncato per impaind1to2r/2to3r (STUDIO.md,
+      // industria "due semplificazioni") — troncato qui allo stesso modo,
+      // tic 0..10. tic6 pianta 4 "grubig" (sprite "gr21", gia' in atlas per
+      // il decoro di fine cantiere altrove) ai quattro angoli — l'unico
+      // edificio con una gru per lato invece di una sola.
+      steps: [
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
+        { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
+        { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+        { spr: "ir22", dur: 40 }, { spr: "ir21", dur: 40 },
+        { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 40 },
+        { spr: "ir32", dur: 40, spawn: [
+          { spr: "gr21", dx: 80, dy: 50 }, { spr: "gr21", dx: 80, dy: -50 },
+          { spr: "gr21", dx: -80, dy: -50 }, { spr: "gr21", dx: -80, dy: 50 },
+        ] },
+        { spr: "ir31", dur: 40 },
+        { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
+        { spr: "ir42", dur: 40 },
+        { spr: "ir41", dur: 1400 },
       ],
     },
   },
@@ -1021,8 +1121,8 @@ export function stepStormDamage(buildings, dt, r12) {
   }
 }
 
-// [I] Distanza minima fra torrette (`missile`, e in futuro `gatling`/
-// `laser`, tutte con `turret: true`): sostituisce la vera collisione fisica
+// [I] Distanza minima fra torrette (`missile`/`gatling`/`laser`, tutte con
+// `turret: true`): sostituisce la vera collisione fisica
 // dell'originale fra la maschera del cantiere/edificio e i placeholder
 // vicini (`placeholder/Collision_impamissr|rocket_launcher|gatlinggun|
 // lasergun.gml`, STUDIO.md "pepazzittecollider" mai ricostruito) — tarata
@@ -1042,33 +1142,49 @@ export function tooCloseToTurret(buildings, x, y) {
   return false;
 }
 
-// [C] rocket_launcher/Step.gml: point_direction (0°=est, cresce in senso
-// antiorario) diviso in 16 archi di 22.5°, ognuno con il proprio sprite
-// (`sprite_index = 240..255`, risolti per indice in data/sprites.json:
-// "lrn1".."lrn16" — non un nome scelto qui, letto dall'asset originale).
-const TURRET_DIRECTIONS = [
-  { max: 22.5, spr: "lrn3" }, { max: 45, spr: "lrn4" }, { max: 67.5, spr: "lrn5" },
-  { max: 90, spr: "lrn6" }, { max: 112.5, spr: "lrn7" }, { max: 135, spr: "lrn8" },
-  { max: 157.5, spr: "lrn9" }, { max: 180, spr: "lrn10" }, { max: 202.5, spr: "lrn11" },
-  { max: 225, spr: "lrn12" }, { max: 247.5, spr: "lrn13" }, { max: 270, spr: "lrn14" },
-  { max: 292.5, spr: "lrn15" }, { max: 315, spr: "lrn16" }, { max: 337.5, spr: "lrn1" },
-  { max: 360, spr: "lrn2" },
-];
-function turretSprFor(angleDeg) {
+// [C] rocket_launcher|gatlinggun|lasergun/Step.gml: point_direction (0°=est,
+// cresce in senso antiorario) diviso in 16 archi di 22.5°, ognuno col
+// proprio sprite — la STESSA rotazione "parti dal terzo nome, avvolgi a
+// 16" per tutte e tre le torrette (missile: sprite_index 240..255 = lrn1..
+// lrn16; gatling: 208..239 a due a due = nm1a..nm16a, qui solo le "a", le
+// "b" sono la posa di rinculo — vedi sotto; laser: 192..207 = lan1..lan16),
+// evidentemente una convenzione della striscia a 16 direzioni dell'editor
+// originale, non una coincidenza fra i tre. Un solo generatore invece di
+// tre tabelle scritte a mano — stesso ordine dei bucket, meno rischio di
+// trascrizione su 48 voci in tutto.
+const DIR_MAXES = [22.5, 45, 67.5, 90, 112.5, 135, 157.5, 180, 202.5, 225, 247.5, 270, 292.5, 315, 337.5, 360];
+function dirTable(prefix, suffix = "") {
+  return DIR_MAXES.map((max, i) => ({ max, spr: `${prefix}${((i + 2) % 16) + 1}${suffix}` }));
+}
+const TURRET_SPRITE_TABLES = {
+  missile: dirTable("lrn"),
+  // [I] gatlinggun/Step.gml alterna anche una posa di rinculo dopo ogni
+  // scarica (le "b", sprite_index dispari, pilotate da un piccolo stato
+  // (`spra`/`amove`/Alarm_9|11) che fa lampeggiare il cannone per ~50 tick
+  // dopo lo sparo) — non replicata: e' un dettaglio cosmetico del singolo
+  // sparo, non della mira continua che questa tabella serve, e la stessa
+  // macchina a stati aggiungerebbe parecchia complessita' per un lampeggio
+  // che dura meno di un secondo. Restano solo le pose di mira "a".
+  gatling: dirTable("nm", "a"),
+  laser: dirTable("lan"),
+};
+function turretSprFor(type, angleDeg) {
+  const table = TURRET_SPRITE_TABLES[type];
   const a = ((angleDeg % 360) + 360) % 360;
-  for (const bucket of TURRET_DIRECTIONS) if (a <= bucket.max) return bucket.spr;
-  return TURRET_DIRECTIONS[TURRET_DIRECTIONS.length - 1].spr;
+  for (const bucket of table) if (a <= bucket.max) return bucket.spr;
+  return table[table.length - 1].spr;
 }
 
 /**
- * Le torrette (oggi solo `missile`) inseguono col cannone il veicolo piu'
- * vicino entro `def.aim.range` — `targets` e' una lista di `{x,y}` gia'
- * assemblata da chi chiama (in main.js: mongolfiere + auto decorative,
- * l'equivalente di `veicoli_target`). [C] rocket_launcher/Step.gml: se
- * NESSUN veicolo e' in portata lo sprite non cambia — resta all'ultima
- * direzione puntata invece di tornare alla posa di riposo, esattamente come
- * nel decompilato (l'`if` che aggiorna `sprite_index` e' innestato dentro
- * il controllo di portata, niente ramo `else`).
+ * Le torrette (missile/gatling/laser, tutte con `turret: true`) inseguono
+ * col cannone il veicolo piu' vicino entro `def.aim.range` — `targets` e'
+ * una lista di `{x,y}` gia' assemblata da chi chiama (in main.js:
+ * mongolfiere + auto decorative, l'equivalente di `veicoli_target`). [C]
+ * rocket_launcher|gatlinggun|lasergun/Step.gml: se NESSUN veicolo e' in
+ * portata lo sprite non cambia — resta all'ultima direzione puntata invece
+ * di tornare alla posa di riposo, esattamente come nel decompilato (l'`if`
+ * che aggiorna `sprite_index` e' innestato dentro il controllo di portata,
+ * niente ramo `else`).
  */
 export function stepTurretAim(buildings, targets) {
   for (const b of buildings) {
@@ -1082,7 +1198,7 @@ export function stepTurretAim(buildings, targets) {
     }
     if (!nearest) continue;
     const angle = (Math.atan2(-(nearest.y - b.y), nearest.x - b.x) * 180) / Math.PI;
-    b.spr = turretSprFor(angle);
+    b.spr = turretSprFor(b.type, angle);
     // [C] rocket_launcher/Step.gml: `direttorio` (l'angolo verso il
     // veicolo piu' vicino) sceglie anche da quale punta del cannone
     // sparerebbe il razzo (game/src/projectiles.js, MUZZLE_OFFSETS) — ma

@@ -403,11 +403,17 @@ function placeAt(placeholder, type) {
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
   // [C] placeholder/Mouse_LeftReleased.gml: selec==1 (casa), selec==2
-  // (industria), selec==3 (missile), selec==60 (club), selec==61 (solare)
-  // e selec==63 (villa) creano `mon_bil` — i sei tipi piazzabili dal
-  // giocatore che lo fanno finora (`parco`, selec==7, non crea nessun
-  // pallone nel decompilato — game/src/balloons.js, in cima al file).
-  if (type === "casa" || type === "industria" || type === "missile" || type === "solare" || type === "club" || type === "villa") {
+  // (industria), selec==3 (missile), selec==60 (club), selec==61 (solare),
+  // selec==62 (gatling) e selec==63 (villa) creano `mon_bil` — i sette
+  // tipi piazzabili dal giocatore che lo fanno finora (`parco`, selec==7,
+  // non crea nessun pallone nel decompilato — game/src/balloons.js, in
+  // cima al file). `laser` (selec==5) crea invece `mon_bbil`, la variante
+  // piu' grande mai cablata (STUDIO.md/balloons.js: "serve solo a tipi non
+  // ancora ricostruiti") — riusa `mon_bil` come gli altri, stesso pallone
+  // piu' piccolo del dovuto invece di un secondo sprite/oggetto solo per
+  // questo.
+  if (type === "casa" || type === "industria" || type === "missile" || type === "solare"
+    || type === "club" || type === "villa" || type === "gatling" || type === "laser") {
     constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
   }
   return null;
@@ -796,16 +802,20 @@ input.onTap = (sx, sy) => {
     messageT = 3;
   } else if (picked.obj === "building") {
     const b = picked.ref;
-    // [C] rocket_launcher/Mouse_LeftPressed.gml: un tocco su una torretta
-    // finita non apre un cantiere (missile e' a un livello solo, nessun
-    // potenziamento — tryStartUpgrade ci direbbe solo "livello massimo") —
+    // [C] rocket_launcher|lasergun/Mouse_LeftPressed.gml (`manualFire` in
+    // buildings.js — gatlinggun non ne ha uno vero): un tocco su una
+    // torretta finita non apre un cantiere (nessuna delle tre ha
+    // potenziamenti — tryStartUpgrade ci direbbe solo "livello massimo") —
     // fa partire un colpo contro il bersaglio che il cannone sta gia'
     // inseguendo (game/src/projectiles.js, fireTurretManual()). Sotto
     // cantiere invece resta tryStartUpgrade come per qualunque edificio
     // (che gia' risponderebbe da solo "cantiere gia' in corso").
-    if (!b.construction && BUILDING_TYPES[b.type]?.turret) {
-      const fired = fireTurretManual(b, projectiles, explosions);
-      message = fired ? "fuoco!" : b.aimTarget ? "cannone in ricarica" : "nessun bersaglio in portata";
+    if (!b.construction && BUILDING_TYPES[b.type]?.manualFire) {
+      const fired = fireTurretManual(b, projectiles, explosions, r12, threats);
+      message = fired ? "fuoco!"
+        : !b.aimTarget ? "nessun bersaglio in portata"
+        : b.type === "laser" && r12.ele < 200 ? "energia insufficiente"
+        : "cannone in ricarica";
     } else {
       const err = tryStartUpgrade(b, r12);
       message = err ?? "cantiere avviato";
@@ -968,7 +978,7 @@ function frame(now) {
   stepTurretAim(buildings, cars.concat(balloons));
   // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
   // gia' nella direzione appena calcolata (b.aimAngle).
-  stepTurretFire(buildings, threats, dt, projectiles, explosions);
+  stepTurretFire(buildings, threats, dt, projectiles, explosions, r12);
   stepProjectiles(projectiles, balloons, threats, loot, explosions, dt);
   if (messageT > 0) messageT -= dt;
 

@@ -116,6 +116,21 @@ GAMEPLAY_SPRITES = {
         "vil7", "vil8", "vil9", "vil10", "vil11", "vil12",
         "vil1l", "vil2l", "vil3l", "vil4l", "vil5l", "vil6l",
         "vil7l", "vil8l", "vil9l", "vil10l", "vil11l", "vil12l",
+        # gatling: nono edificio, seconda torretta (src/objects/gatlinggun,
+        # cantiere impagatlingr/impagatlingf — riusano gli stessi ir1x/if1x/
+        # "toppers" di sopra, nessuno sprite di cantiere in piu'). "nm1a"..
+        # "nm16a" sono i 16 sprite di mira del cannone (gatlinggun/Step.gml,
+        # sprite_index risolti per indice come "lrn1".."lrn16" sopra) — solo
+        # le pose "a": le "b" (nm1b..nm16b) sono la posa di rinculo dopo lo
+        # sparo, non riprodotta (game/src/buildings.js).
+        "nm1a", "nm2a", "nm3a", "nm4a", "nm5a", "nm6a", "nm7a", "nm8a",
+        "nm9a", "nm10a", "nm11a", "nm12a", "nm13a", "nm14a", "nm15a", "nm16a",
+        # laser: decimo edificio, terza torretta (src/objects/lasergun,
+        # cantiere impalaser_r/impalaser_f — riusano ir1x/if1x/"toppers"/
+        # "gr21" di sopra, nessuno sprite di cantiere in piu'). "lan1"..
+        # "lan16" sono i 16 sprite di mira, stesso schema di "lrn"/"nm".
+        "lan1", "lan2", "lan3", "lan4", "lan5", "lan6", "lan7", "lan8",
+        "lan9", "lan10", "lan11", "lan12", "lan13", "lan14", "lan15", "lan16",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/
@@ -242,11 +257,12 @@ GAMEPLAY_SPRITES = {
         "dirspr",                                    # dirig
         "bomb", "fica",                              # bomba1/bomba2, esplo
     ],
-    # Il fuoco vero del lanciarazzi (src/objects/red_ball, rol_avant/
-    # rol_diet — game/src/projectiles.js). "fica" (il lampo di sparo, scala
+    # Il fuoco vero delle torrette (src/objects/red_ball/yellow_pro,
+    # game/src/projectiles.js — il laser non ha un proiettile vero, e' un
+    # colpo istantaneo). "fica" (il lampo di sparo per tutte e tre, scala
     # 0.4) e' gia' in "threats" sopra, nessuno sprite in piu' da aggiungere
     # per quello.
-    "projectiles": ["redb"],
+    "projectiles": ["redb", "gatmissse"],
     # I pulsanti blu delle monete (src/objects/sold1..18, game/src/coins.js)
     # e il segnale verde di potenziamento (src/objects/upsign12|23|upcrc12|
     # 23|upind12|23 — tutti la stessa icona "upico", game/src/main.js
