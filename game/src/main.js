@@ -2,7 +2,7 @@ import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture 
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -243,6 +243,17 @@ let decorEntities = [];      // ornamenti (permanenti a fine cantiere, o transit
 // simula piu' niente (nessuna produzione/crescita/mira/fulmine), e' decoro
 // inerte come `decorEntities` — vedi destroyBuilding() sotto.
 let ruins = [];
+// I lotti "extra" occupati da un edificio multi-tile (oggi solo `eolico`,
+// buildings.js `def.multiTile`) — [C] `impavent` uccide ogni placeholder che
+// la sua maschera copre, non solo quello toccato (vedi placeAt() sotto): qui
+// non c'e' niente da disegnare li' (nessun edificio/rudere), solo un
+// placeholder che deve restare bloccato per sempre. Nessun array a parte
+// servirebbe se il salvataggio potesse derivarli da `buildings`/`ruins`, ma
+// per definizione questi lotti non hanno nessuna delle due cose sopra —
+// persistito a parte in save.js, altrimenti un ciclo salva/carica li
+// libererebbe di nuovo (STUDIO.md non lo segnalava perche' e' un problema
+// nuovo, nato con questo edificio).
+let blockedSlots = [];
 // Auto decorative gia' in marcia da subito, come nella room originale
 // (phaseT parte da 0 = fase "giorno" in PHASES piu' sotto, quindi mai
 // notte alla nascita: nessun tint fanali sulle due iniziali).
@@ -396,6 +407,24 @@ function spawnParcoScatter(building) {
   }
 }
 
+/**
+ * `eolico` (buildings.js, `def.multiTile`) e' l'unico edificio che occupa
+ * PIU' di un placeholder — vedi il commento su `BUILDING_TYPES.eolico` in
+ * buildings.js per il perche'. Cerca fra i placeholder ancora liberi quelli
+ * entro `radius` da quello toccato (il piu' vicino per primo) e ne
+ * restituisce `count` in tutto (quello toccato incluso) — `null` se non ce
+ * ne sono abbastanza vicini. [I] Approssimazione dichiarata di una vera
+ * maschera di collisione (STUDIO.md, "pepazzittecollider" mai ricostruito).
+ */
+function findPlacementCluster(tapped, count, radius) {
+  const r2 = radius * radius;
+  const near = placeholders
+    .filter((p) => p !== tapped && !p.consumed && (p.x - tapped.x) ** 2 + (p.y - tapped.y) ** 2 <= r2)
+    .sort((a, b) => ((a.x - tapped.x) ** 2 + (a.y - tapped.y) ** 2) - ((b.x - tapped.x) ** 2 + (b.y - tapped.y) ** 2));
+  if (near.length < count - 1) return null;
+  return [tapped, ...near.slice(0, count - 1)];
+}
+
 function placeAt(placeholder, type) {
   const def = BUILDING_TYPES[type];
   // [C] placeholder/Mouse_LeftReleased.gml, selec==3: il piazzamento vero e
@@ -409,8 +438,26 @@ function placeAt(placeholder, type) {
   if (!canAfford(r12, def.placeCost)) {
     return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
   }
+  // [C] eoliplacer/Alarm_1.gml controlla `places>=4` DOPO aver gia' verificato
+  // i mon (stesso ordine qui) — a differenza dell'originale (fallisce in
+  // silenzio, vedi buildings.js) restituisce sempre un messaggio chiaro.
+  let cluster = [placeholder];
+  if (def.multiTile) {
+    cluster = findPlacementCluster(placeholder, def.multiTile.count, def.multiTile.radius);
+    if (!cluster) return `serve un'area libera di almeno ${def.multiTile.count} lotti vicini`;
+  }
   for (const k in def.placeCost) r12[k] -= def.placeCost[k];
-  placeholder.consumed = true;
+  // [C] `impavent`, una volta nato, uccide con la propria maschera ogni
+  // placeholder che copre (Collision_placeholder.gml) — qui equivale a
+  // consumare TUTTI i lotti del cluster, non solo quello toccato: gli altri
+  // restano bloccati per sempre (nessun edificio/rudere li occupa, spariscono
+  // e basta, fedele all'originale). Registrati in `blockedSlots` (solo quelli
+  // EXTRA, non il placeholder toccato: quello lo rioccupa gia' `buildings`)
+  // cosi' un salvataggio/caricamento non li libera di nuovo — vedi doLoad().
+  for (const ph of cluster) {
+    ph.consumed = true;
+    if (ph !== placeholder) blockedSlots.push({ x: ph.x, y: ph.y });
+  }
   // depth 0, NON placeholder.depth (-5000): quel numero e' il livello fisso
   // "sempre in primo piano" del segnaposto vuoto (STUDIO.md, cosi' si vede
   // sempre sopra il terreno), non un depth di mondo da ereditare. Un
@@ -429,9 +476,10 @@ function placeAt(placeholder, type) {
   // piu' grande mai cablata (STUDIO.md/balloons.js: "serve solo a tipi non
   // ancora ricostruiti") — riusa `mon_bil` come gli altri, stesso pallone
   // piu' piccolo del dovuto invece di un secondo sprite/oggetto solo per
-  // questo.
+  // questo. `eolico` (selec==4) crea `mon_bil` anche lui — [C]
+  // eoliplacer/Alarm_1.gml, ramo selec==4.
   if (type === "casa" || type === "industria" || type === "missile" || type === "solare"
-    || type === "club" || type === "villa" || type === "gatling" || type === "laser") {
+    || type === "club" || type === "villa" || type === "gatling" || type === "laser" || type === "eolico") {
     constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
   }
   return null;
@@ -492,7 +540,7 @@ function destroyBuilding(b) {
 // pagina e' quindi una partita nuova, come il primissimo avvio. S/L restano
 // per salvare/ricaricare a mano DENTRO la stessa sessione di test, se
 // serve, ma non sopravvivono piu' da soli a un refresh.
-function doSave() { save(scene.name, r12, buildings, ruins); }
+function doSave() { save(scene.name, r12, buildings, ruins, blockedSlots); }
 function doLoad() {
   const data = load(scene.name);
   if (!data) return false;
@@ -514,6 +562,14 @@ function doLoad() {
   ruins = (data.ruins ?? []).map((ru) => ({ obj: "decor", x: ru.x, y: ru.y, depth: -ru.y, spr: ru.spr, _f: frameFor(ru.spr) }));
   for (const ru of ruins) {
     const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === ru.x && p.y === ru.y);
+    if (ph) { ph.consumed = true; usedIds.add(ph.id); }
+  }
+  // Lotti "extra" di un edificio multi-tile (placeAt() sopra, oggi solo
+  // `eolico`): niente da disegnare, solo un placeholder che deve restare
+  // bloccato — stesso ciclo `usedIds` di sopra.
+  blockedSlots = (data.blockedSlots ?? []).map((s) => ({ x: s.x, y: s.y }));
+  for (const s of blockedSlots) {
+    const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === s.x && p.y === s.y);
     if (ph) { ph.consumed = true; usedIds.add(ph.id); }
   }
   return true;
@@ -716,8 +772,9 @@ let menoo = 0;
 // ciascuno riconosce di essere quello scelto) incrociati con
 // src/objects/placeholder/Mouse_LeftReleased.gml per i costi reali, dove
 // quel file li dichiara esplicitamente (`cost: null` altrove — non un
-// valore a caso, proprio "non letto"). Alcuni (parco/missile/solare/club,
-// via BUILDING_TYPES in buildings.js) sono ormai piazzabili per davvero;
+// valore a caso, proprio "non letto"). Alcuni (parco/missile/solare/club/
+// villa/gatling/laser/eolico, via BUILDING_TYPES in buildings.js) sono
+// ormai piazzabili per davvero;
 // gli altri restano un segnaposto statico — selezionabili ed evidenziati
 // come qualunque tipo vero, ma toccare un placeholder con uno di questi
 // ancora senza `BUILDING_TYPES[type]` mostra un messaggio invece di
@@ -731,7 +788,7 @@ let menoo = 0;
 const OTHER_BUILDINGS = [
   { type: "parco", selec: 7, spr: "p7", sprSel: "p7ss", label: "Parco", cost: 500 },
   { type: "missile", selec: 3, spr: "p3", sprSel: "p3ss", label: "Lanciamissili", cost: 5000 },
-  { type: "eolico", selec: 4, spr: "p4", sprSel: "p4ss", label: "Pala eolica", cost: null },
+  { type: "eolico", selec: 4, spr: "p4", sprSel: "p4ss", label: "Pala eolica", cost: 50000 },   // ora vero, BUILDING_TYPES.eolico
   { type: "laser", selec: 5, spr: "p5", sprSel: "p5ss", label: "Laser", cost: 20000 },
   { type: "grattacielo", selec: 6, spr: "p6", sprSel: "p6ss", label: "Grattacielo", cost: null },
   { type: "club", selec: 60, spr: "pdj", sprSel: "pdjss", label: "Club", cost: 3500 },   // ora vero, BUILDING_TYPES.club
@@ -946,6 +1003,7 @@ function frame(now) {
   stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
   stepProduction(buildings, dt, r12);
   stepSolarProduction(buildings, dt, r12, night, dawn);
+  stepWindProduction(buildings, dt, r12);
   // Fumo delle centrali (game/src/smoke.js): dopo stepProduction(), cosi'
   // "oil>0" gia' rispecchia il consumo di questo frame, come per le monete
   // blu sotto (stesso ordine gia' scelto per stepCoinSpawner()).
@@ -1448,6 +1506,7 @@ window.__nimbus = {
   get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
   get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
   get aerSmoke() { return aerSmoke; }, get debris() { return debris; }, get ruins() { return ruins; },
+  get blockedSlots() { return blockedSlots; }, get placeholders() { return placeholders; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,

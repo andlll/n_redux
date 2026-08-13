@@ -150,6 +150,14 @@ GAMEPLAY_SPRITES = {
         "ru31", "ru32", "ru33", "ru34",
         "soolr1", "soolr2",
         "ruinc1", "ruinc2", "ruinc3",
+        # eolico: undicesimo edificio, primo multi-tile (src/objects/eoli,
+        # cantiere impavent — STUDIO.md "I ruderi"/game/src/buildings.js,
+        # BUILDING_TYPES.eolico). "impvent1/2/3" sono le tre illustrazioni
+        # progressive del cantiere (non la coppia ir1x/if1x condivisa da
+        # tutti gli altri: gia' un disegno completo per fase, niente
+        # impalcatura separata), "eol" lo sprite finale, "rovent1"/"rovent2"
+        # il suo rudere (ruinventola/Create.gml, dado a due vie).
+        "impvent1", "impvent2", "impvent3", "eol", "rovent1", "rovent2",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/

@@ -1897,3 +1897,67 @@ paragrafo 8.
   **[C]** = comportamento letto nel decompilato. **[I]** = la sola scelta
   non fedele resta la stessa gia' dichiarata per la ruspa: nessuna
   ricostruzione a pagamento, il rudere e' permanente invece che riparabile.
+- **Undicesimo edificio, primo multi-tile: `eolico`.** Segnalato dall'autore
+  insieme ai ruderi ("partiamo dall'eolico"): a differenza di tutti i dieci
+  edifici gia' portati, `eoli` (src/objects/eoli, "Pala eolica" nel menu,
+  `pu4prov`/`selec==4`) non si piazza su un solo `placeholder`. **[C]** letto
+  da zero: `placeholder/Mouse_LeftReleased.gml` (selec==4) non crea
+  l'edificio direttamente — crea `eoliplacer` (offset +98px dal tocco), che
+  arma un timer a 3 tick. Nel frattempo `placeholder/Collision_445.gml`
+  (contro OGNI placeholder che la maschera FISSA "phold" di `eoliplacer`
+  tocca) fa salire `places` di 1 per ognuno — fino a un massimo implicito di
+  4, dato dalla geometria della maschera. Al timer, `eoliplacer/Alarm_1.gml`
+  guarda `places`: se e' gia' 4, crea `impavent` (il cantiere vero) e scala
+  50000 mon; altrimenti crea un `fantoccio` (sprite vuoto, nessun evento
+  utile, si autodistrugge da solo dopo 30 tick) e MUORE due tick dopo senza
+  mai piu' ricontrollare `places` — **sembra un meccanismo mai rifinito**
+  nell'originale stesso (fallisce in silenzio, nessun feedback al
+  giocatore, un solo controllo a tempo fisso). Una volta nato, `impavent`
+  (**[C]** `impavent/Collision_placeholder.gml`) uccide con la propria
+  maschera ("auton") ogni placeholder ancora sotto di lui — cosi' i 3 lotti
+  "vicini" spariscono per davvero, non solo quello toccato.
+  **[I] Approssimazione dichiarata** (stessa famiglia di `TURRET_MIN_DIST`/
+  `BLAST_RADIUS`: "pepazzittecollider" mai ricostruito): niente vera
+  maschera di collisione, `findPlacementCluster()` (main.js) cerca fra i
+  placeholder ancora liberi i 3 piu' vicini a quello toccato entro 130px —
+  la stessa spaziatura reale della griglia di `match_easy` gia' misurata per
+  `TURRET_MIN_DIST` (~116px fra vicini diretti, ~152px al vicino successivo:
+  130px prende esattamente i 4 vicini diagonali e nessun altro). A differenza
+  dell'originale (silenzioso) il giocatore riceve sempre un messaggio,
+  costruito o no — scelto per chiarezza, non per fedelta' a un dettaglio che
+  sembra un bug/gap dell'originale stesso. I 3 lotti extra, una volta
+  consumati, restano bloccati per sempre (nessun edificio/rudere li occupa
+  visibilmente, esattamente come nell'originale che li uccide senza lasciare
+  traccia) — persistiti in un nuovo array `blockedSlots` (main.js/save.js),
+  altrimenti un salvataggio/caricamento li avrebbe liberati di nuovo (un
+  problema che *non* esisteva prima di questo edificio: `buildings`/`ruins`
+  bastavano perche' ogni placeholder occupato aveva sempre qualcosa sopra).
+  Il resto di `eoli` e' invece un edificio ordinario, stessa infrastruttura
+  di dati di tutti gli altri: **[C]** produzione elettrica pura (`eoli/
+  Alarm_0.gml`, sempre +110 ele ogni 30 tick, nessun `oil` consumato — a
+  differenza di industria, un generatore vero, non una centrale) — nuovo
+  `windProduction`/`stepWindProduction()` invece di riusare `stepProduction()`
+  (industria-specifico: gated su `oil>0`, sottrae `prod.oil` incondizionato)
+  o `stepSolarProduction()` (dipende da giorno/notte, questo no); danno da
+  fulmine (`eoli/Alarm_5.gml`, dado 1/30, -50 vita — crea anche un oggetto
+  "thunder" cosmetico, non riprodotto, stessa scelta gia' fatta per laser);
+  `hap` -20/+20 alla nascita/morte (l'unico fra tutti i tipi con `hap` dove i
+  due numeri sono davvero l'opposto esatto); rudere `ruinventola`
+  (`rovent1`/`rovent2`, dado a due vie) quando la vita arriva a 0 — stessa
+  `ruinSpriteFor()`/array `ruins` gia' costruiti per gli altri dieci edifici,
+  nessuna modifica li' serviva. Cantiere (`impavent/Create.gml` +
+  `Alarm_0|1|2.gml`): tre sprite in sequenza (`impvent1`/`2`/`3`, 1740+600+
+  2200 = 4540 tick, ~76s — il piu' lungo del motore) e un drain di -1 mon
+  OGNI tick (non ogni N come altrove: stesso campo `{mon,every}`, qui
+  `every:1`), coerenti con un costo di piazzamento di 50000 mon.
+  Sprite nuovi in `GAMEPLAY_SPRITES` (tools/23_atlas.py): `impvent1/2/3`,
+  `eol`, `rovent1/2` — atlas e blitplan rigenerati.
+  Verificato in browser (Playwright): un tocco su un lotto con almeno 3
+  vicini liberi entro 130px avvia davvero il cantiere (spr "impvent1",
+  50000 mon scalati, i 3 vicini finiscono in `blockedSlots`); un tocco su un
+  lotto isolato (tutti i vicini gia' occupati) NON scala niente e mostra
+  "serve un'area libera di almeno 4 lotti vicini"; un `eoli` finito produce
+  110 ele ogni 30 tick, muore in un rudere `rovent*` fedele allo schema
+  gia' esistente, e un tentativo di costruire su uno dei 3 lotti bloccati
+  fallisce silenziosamente (restano bloccati) anche dopo la sua morte; un
+  ciclo salva/carica restituisce sia l'edificio che i 3 lotti bloccati.

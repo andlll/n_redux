@@ -19,7 +19,13 @@ export function saveSlotFor(sceneName) {
 // `_f`, ricalcolato al caricamento). Campo aggiunto senza toccare `v`: un
 // salvataggio vecchio senza `ruins` resta valido, `doLoad()` in main.js lo
 // legge con `?? []`.
-export function save(sceneName, r12, buildings, ruins) {
+// `blockedSlots` (game/src/main.js, placeAt()): i lotti "extra" che
+// `eolico` occupa oltre a quello toccato (buildings.js, `def.multiTile`) —
+// nessun edificio/rudere ci sta sopra, solo un placeholder permanentemente
+// bloccato: senza salvarli esplicitamente un ciclo salva/carica li
+// libererebbe di nuovo (doLoad() li rilegge come `buildings`/`ruins`, ma
+// questi lotti non compaiono in nessuno dei due).
+export function save(sceneName, r12, buildings, ruins, blockedSlots) {
   const data = {
     v: 1,
     r12,
@@ -28,9 +34,10 @@ export function save(sceneName, r12, buildings, ruins) {
       level: b.level, life: b.life, spr: b.spr, construction: b.construction,
       makee: b.makee, prodT: b.prodT, decorSpr: b.decorSpr,
       ava: b.ava, growthT: b.growthT, growthNext: b.growthNext, consT: b.consT,
-      coinT: b.coinT, coinNext: b.coinNext, solarT: b.solarT,
+      coinT: b.coinT, coinNext: b.coinNext, solarT: b.solarT, windT: b.windT,
     })),
     ruins: ruins.map((r) => ({ x: r.x, y: r.y, spr: r.spr })),
+    blockedSlots: blockedSlots.map((s) => ({ x: s.x, y: s.y })),
   };
   localStorage.setItem(saveSlotFor(sceneName), JSON.stringify(data));
 }

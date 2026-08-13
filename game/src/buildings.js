@@ -789,6 +789,65 @@ export const BUILDING_TYPES = {
       ],
     },
   },
+
+  // Undicesimo edificio: `eolico` (`eoli`, src/objects/eoli — "Pala eolica"
+  // nel menu, `pu4prov`/`selec==4`). Primo edificio NON piazzabile su un
+  // solo placeholder: **[C]** `eoliplacer/Alarm_1.gml` (creato al tap da
+  // `placeholder/Mouse_LeftReleased.gml`, selec==4) aspetta che
+  // `placeholder/Collision_445.gml` (contro OGNI placeholder che tocca la
+  // sua maschera fissa "phold", offset +98px dal tocco) faccia salire
+  // `places` a 4 prima di far nascere `impavent` per davvero — una pala
+  // eolica vuole un piccolo appezzamento libero, non un solo lotto. Senza
+  // una vera maschera di collisione (STUDIO.md, "pepazzittecollider" mai
+  // ricostruito — stessa scelta gia' fatta per `TURRET_MIN_DIST` sotto,
+  // proprio sulla spaziatura di questa griglia) `multiTile` sotto e'
+  // un'approssimazione dichiarata: il placeholder toccato PIU' i suoi 3
+  // vicini liberi piu' vicini entro un raggio fisso — vedi
+  // `findPlacementCluster()`/`EOLICO_RADIUS` in main.js. [I] A differenza
+  // dell'originale (che fallisce IN SILENZIO se non trova 4 lotti — un
+  // singolo controllo a tempo fisso 3 tick dopo la nascita di
+  // `eoliplacer`, mai piu' ripetuto: sembra un meccanismo mai rifinito,
+  // `fantoccio` che crea non fa letteralmente nulla, sprite vuoto, nessun
+  // evento oltre un timer che lo autodistrugge) qui il giocatore riceve
+  // sempre un messaggio, costruito o no.
+  eolico: {
+    label: "Pala eolica",
+    placeCost: { mon: 50000 },   // [C] eoliplacer/Alarm_1.gml, ramo selec==4
+    multiTile: { count: 4, radius: 130 },
+    // [C] eoli/Alarm_0.gml: ogni 30 tick, SEMPRE +110 ele — a differenza di
+    // industria non consuma `oil` (un generatore vero, non una centrale a
+    // combustibile) e non e' gated su niente: `stepWindProduction()` sotto,
+    // non il generico stepProduction() (quello e' industria-specifico,
+    // richiede oil>0 incondizionatamente).
+    windProduction: { every: 30, ele: 110 },
+    storm: [{ dice: 30, loss: 50 }],   // [C] eoli/Alarm_5.gml (crea anche "thunder", puramente cosmetico — non riprodotto, stessa scelta di laser)
+    construct: {                  // livello 0 -> 1, impavent (src/objects/impavent)
+      // [C] impavent/Step.gml: `r12.mon -= 1` OGNI tick (non ogni N come il
+      // `drain` di ogni altro cantiere) per tutta la sua durata — il campo
+      // e' lo stesso `{mon, every}`, qui `every:1` lo riproduce esatto.
+      drain: { mon: 1, every: 1 },
+      finalSprite: "eol", life: 800,             // [C] eoli/Create.gml
+      ruin: ["rovent1", "rovent2"],   // [C] eoli/Step.gml: create_object(ruinventola) — dado a due vie, ruinventola/Create.gml
+      decor: [],                                   // [C] eoli/Create.gml non crea nessun cddvd
+      hap: { create: -20, destroy: 20 },   // [C] eoli/Create.gml + Destroy.gml — l'unico simmetrico fra tutti i tipi con `hap`
+      // [C] impavent/Create.gml + Alarm_0/1.gml: tre sprite in sequenza,
+      // 1740+600+2200 = 4540 tick (~76s, il cantiere piu' lungo del motore —
+      // coerente con un costo di 50000 mon). `impavent/Alarm_3.gml` a tic
+      // 300 reimposta lo stesso sprite "impvent1" gia' attivo (un riavvio
+      // dell'animazione senza effetto visibile su sprite statici): fuso nel
+      // primo passo invece di un passo a parte, stesso principio gia' scelto
+      // per le code cosmetiche di industria/casa (STUDIO.md, "due
+      // semplificazioni"). Nessuna traccia "f" qui (`frontSprFor()` sotto
+      // non riconosce "impvent*", niente impalcatura in sovraimpressione:
+      // [C] fedele, questi sprite sono gia' l'illustrazione progressiva del
+      // cantiere, non una fondamenta "ir1x" condivisa).
+      steps: [
+        { spr: "impvent1", dur: 1740 },
+        { spr: "impvent2", dur: 600 },
+        { spr: "impvent3", dur: 2200 },
+      ],
+    },
+  },
 };
 
 let nextId = 1;
@@ -1086,6 +1145,28 @@ export function stepSolarProduction(buildings, dt, r12, isNight, isDawn) {
       r12.mon -= prod.mon;
       r12.ele += isNight ? prod.ele.night : isDawn ? prod.ele.dawn : prod.ele.day;
     }
+  }
+}
+
+/**
+ * Avanza `eolico` (`eoli/Alarm_0.gml`, `def.windProduction`): il piu'
+ * semplice fra i tre produttori del motore — sempre +110 ele ogni 30 tick,
+ * nessun costo, nessuna dipendenza da giorno/notte o da una materia prima
+ * da esaurire. Non riusa stepProduction() (industria-specifico: gated su
+ * `oil > 0` e sottrae `prod.oil` incondizionatamente, entrambi assenti qui)
+ * ne' stepSolarProduction() (dipende dalla fase del giorno, questo no):
+ * un generatore diverso merita il proprio stepper invece di forzare dati
+ * incompatibili in uno esistente.
+ */
+export function stepWindProduction(buildings, dt, r12) {
+  for (const b of buildings) {
+    if (b.construction) continue;
+    const def = BUILDING_TYPES[b.type];
+    const prod = def.windProduction;
+    if (!prod) continue;
+    b.windT = (b.windT ?? 0) + dt;
+    const period = prod.every * TICK;
+    while (b.windT >= period) { b.windT -= period; r12.ele += prod.ele; }
   }
 }
 
