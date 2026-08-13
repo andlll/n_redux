@@ -1,4 +1,4 @@
-import { Renderer, makeSolidTexture, solidFrame, loadTexture } from "./gl.js";
+import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
@@ -22,6 +22,11 @@ const hud = document.getElementById("hud");
 const r = new Renderer(canvas);
 const gl = r.gl;
 const white = makeSolidTexture(gl);
+// Cerchio morbido per l'animazione "bolla" delle monete raccolte (vedi
+// coinPops/collectCoinAt() piu' sotto) — nessun asset dell'originale la
+// prevede (nessun sistema di particelle in questo motore, STUDIO.md), e'
+// puramente nostra.
+const bubbleTex = makeCircleTexture(gl, 64);
 const cam = new Camera();
 const input = new Input(canvas);
 
@@ -249,6 +254,11 @@ let constructionBoxes = [];
 // I pulsanti blu delle monete (game/src/coins.js): una per `casa` felice e
 // con corrente, ogni 3000 tick — vedi stepCoinSpawner() piu' sotto.
 let coins = [];
+// Le "bolle" che animano la raccolta di una moneta (nostre, non
+// dell'originale — vedi bubbleTex sopra): { x, y, t }, spawnate da
+// collectCoinAt() piu' sotto e disegnate/scartate nel loop principale.
+let coinPops = [];
+const COIN_POP_LIFE = 0.4;
 // Minacce vere (game/src/threats.js): `threats` sono aerei/bombardieri/
 // zeppelin, fatti nascere da stepThreatSpawner (r12/Alarm_4|5|6.gml) ogni
 // volta che una mongolfiera spia viene ignorata abbastanza a lungo da
@@ -552,6 +562,29 @@ function mulTint(base, rgb) {
   return (r << 16) | (g << 8) | b;
 }
 
+/** Test punto-in-rettangolo sul bounding box di un frame (sprite/w/h/ox/oy)
+ * — l'hit test "leggero" usato per la maggior parte degli oggetti cliccabili. */
+function inFrameRect(wx, wy, x, y, f) {
+  const x0 = x - f.ox, y0 = y - f.oy;
+  return wx >= x0 && wx <= x0 + f.w && wy >= y0 && wy <= y0 + f.h;
+}
+
+/** Test punto-in-rombo, centrato sul bounding box di un frame: i placeholder
+ * sono disegnati come sprite romboidali ("phold", il rombo viola —
+ * Mouse_MouseEnter.gml originale), non rettangolari — un tocco/hover nei
+ * quattro angoli vuoti del bounding box (fuori dal rombo vero) non deve
+ * colpirli. Il decompilato usa la maschera di collisione precisa dello
+ * sprite (`mask_sprite`), non il suo bbox: qui approssimata con un rombo
+ * invece di un rettangolo pieno — molto piu' fedele alla sagoma vera per un
+ * costo quasi identico (un confronto in piu' rispetto all'AABB). */
+function inFrameDiamond(wx, wy, x, y, f) {
+  const x0 = x - f.ox, y0 = y - f.oy;
+  const cx = x0 + f.w / 2, cy = y0 + f.h / 2;
+  const hw = f.w / 2, hh = f.h / 2;
+  if (hw <= 0 || hh <= 0) return false;
+  return Math.abs(wx - cx) / hw + Math.abs(wy - cy) / hh <= 1;
+}
+
 // ---------------------------------------------------------------- input
 input.onDrag = (dx, dy) => { userMoved = true; cam.panByScreen(dx, dy); };
 // Il fattore si applica a `targetZoom`, non a `zoom` (che insegue con un
@@ -644,6 +677,16 @@ const OTHER_BUILDINGS = [
 for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
 const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
 
+/** Raccoglie una moneta e fa partire la sua "bolla" (coinPops sopra) —
+ * unico punto d'ingresso condiviso da input.onTap (tap/click, sotto) e
+ * dalla raccolta automatica al passaggio del mouse (stepCoinHover() nel
+ * loop principale), cosi' entrambi i gesti danno la stessa risposta
+ * visiva. */
+function collectCoinAt(item) {
+  coinPops.push({ x: item.x, y: item.y, t: 0 });
+  collectCoin(coins, item, r12);
+}
+
 input.onTap = (sx, sy) => {
   // il selettore edificio vive in spazio schermo, sopra la mappa: un tocco
   // che lo colpisce non deve raggiungere il mondo sotto.
@@ -690,10 +733,14 @@ input.onTap = (sx, sy) => {
   for (const it of frameList) {
     if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
       && it.obj !== "coin" && it.obj !== "upsign") continue;
-    const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
-    if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
-      if (!picked || it.depth < picked.depth) picked = it;
-    }
+    // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
+    // stessa ragione della raccolta hover piu' sotto. Tutto il resto
+    // (edifici, casse, monete, segnale di potenziamento) resta sul
+    // bounding box rettangolare, piu' leggero e gia' fedele alla loro sagoma.
+    const hit = it.obj === "placeholder"
+      ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
+      : inFrameRect(w.x, w.y, it.x, it.y, it._f);
+    if (hit && (!picked || it.depth < picked.depth)) picked = it;
   }
   if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
     const it = frameList[i];
@@ -704,8 +751,14 @@ input.onTap = (sx, sy) => {
     // qui non devono "rubare" il tocco.
     if (!it._f || it.obj === "decor" || it.obj === "scaffold" || it.obj === "car"
       || it.obj === "semaphore" || it.obj === "cloud" || it.obj === "bird" || it.obj === "pedestrian") continue;
-    const x0 = it.x - it._f.ox, y0 = it.y - it._f.oy;
-    if (w.x >= x0 && w.x <= x0 + it._f.w && w.y >= y0 && w.y <= y0 + it._f.h) {
+    // stessa distinzione rombo/rettangolo della prima passata sopra — un
+    // placeholder che arriva fin qui (nessun oggetto interattivo colpito
+    // nella prima passata) deve comunque rispettare la sua sagoma vera, non
+    // il bbox pieno.
+    const hit = it.obj === "placeholder"
+      ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
+      : inFrameRect(w.x, w.y, it.x, it.y, it._f);
+    if (hit) {
       picked = it;
       break;
     }
@@ -739,7 +792,7 @@ input.onTap = (sx, sy) => {
     picked = null;   // raccolta, non c'e' piu' niente da tenere selezionato
   } else if (picked.obj === "coin") {
     const item = picked.ref;
-    collectCoin(coins, item, r12);
+    collectCoinAt(item);
     message = `+${item.amount} ${item.kind ?? "mon"}`;
     messageT = 3;
     picked = null;
@@ -841,6 +894,26 @@ function frame(now) {
   // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
   stepCoinSpawner(buildings, coins, dt, r12);
   stepCoins(coins, dt, r12);
+  // Raccolta al passaggio del mouse — [C] sold*/soldbio/Mouse_MouseEnter.gml
+  // usa davvero un hover, non un click (coins.js, collectCoin() sopra il tap
+  // esplicito per touch/desktop): un vero hover pero' esiste solo col mouse
+  // fermo, non trascinando col dito (`hoverPointerType`, game/src/input.js) —
+  // altrimenti panoramicare la mappa col dito raccoglierebbe monete di
+  // striscio, un gesto che l'originale non prevede su touch.
+  if (input.hover && input.hoverPointerType === "mouse") {
+    const hw = cam.screenToWorld(input.hover.x, input.hover.y);
+    for (let i = coins.length - 1; i >= 0; i--) {
+      const c = coins[i];
+      const f = frameFor(c.spr);
+      if (!f) continue;
+      const x0 = c.x - f.ox, y0 = c.y - f.oy;
+      if (hw.x >= x0 && hw.x <= x0 + f.w && hw.y >= y0 && hw.y <= y0 + f.h) collectCoinAt(c);
+    }
+  }
+  for (let i = coinPops.length - 1; i >= 0; i--) {
+    coinPops[i].t += dt;
+    if (coinPops[i].t >= COIN_POP_LIFE) coinPops.splice(i, 1);
+  }
   stepConstructionBalloons(constructionBalloons, constructionBoxes, dt);
   stepConstructionBoxes(constructionBoxes, dt);
   // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
@@ -885,7 +958,10 @@ function frame(now) {
     // cantiere e' gia' in corso. Depth -9001, un filo piu' avanti delle
     // monete blu (-9000): [C] upsign12/_object.json, sempre in primo piano.
     if (!b.construction && upgradeUnlocked(b, r12)) {
-      dynamic.push({ obj: "upsign", ref: b, x: b.x, y: b.y, depth: UPSIGN_DEPTH, _f: frameFor("upico") });
+      // `_selfLit`: come le luci delle finestre (stepLights() sopra), un
+      // segnale simbolico dell'interfaccia — deve restare leggibile anche di
+      // notte, non scurirsi con la tinta ambientale come un edificio vero.
+      dynamic.push({ obj: "upsign", ref: b, x: b.x, y: b.y, depth: UPSIGN_DEPTH, _f: frameFor("upico"), _selfLit: true });
     }
   }
   for (const d of decorEntities) dynamic.push(d);
@@ -926,7 +1002,10 @@ function frame(now) {
   // invece di restare fermo al primo), "soldico" e' statica (un solo frame).
   for (const c of coins) {
     const frameIdx = c.auto ? Math.min(19, Math.floor(c.t / TICK)) : 0;
-    dynamic.push({ obj: "coin", ref: c, x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr, frameIdx) });
+    // `_selfLit`: stesso motivo di "upsign" sopra — un pulsante simbolico
+    // dell'interfaccia, non un oggetto di mondo, deve restare visibile
+    // anche di notte invece di scurirsi con la tinta ambientale.
+    dynamic.push({ obj: "coin", ref: c, x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr, frameIdx), _selfLit: true });
   }
   for (const m of constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
   for (const bx of constructionBoxes) dynamic.push({ obj: "decor", x: bx.x, y: bx.y, depth: bx.depth, _f: frameFor(bx.spr) });
@@ -961,8 +1040,7 @@ function frame(now) {
     const w = cam.screenToWorld(input.hover.x, input.hover.y);
     for (const p of placeholders) {
       if (p.consumed) continue;
-      const x0 = p.x - p._f.ox, y0 = p.y - p._f.oy;
-      if (w.x >= x0 && w.x <= x0 + p._f.w && w.y >= y0 && w.y <= y0 + p._f.h) { hoveredPh = p; break; }
+      if (inFrameDiamond(w.x, w.y, p.x, p.y, p._f)) { hoveredPh = p; break; }
     }
   }
   for (const p of placeholders) p._hovered = p === hoveredPh;
@@ -997,6 +1075,15 @@ function frame(now) {
       r.draw(solidFrame(white, s, s), it.x - s / 2, it.y - s / 2, 1, mulTint(it._c, amb.rgb), 0.35);
     }
     drawn++;
+  }
+  // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che
+  // cresce e sfuma sul punto della moneta appena presa, in primo piano come
+  // le monete stesse — niente tinta ambientale, per lo stesso motivo di
+  // `_selfLit` qui sopra.
+  for (const p of coinPops) {
+    const k = p.t / COIN_POP_LIFE;
+    const size = 20 + k * 46;
+    r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, 0x4fc3f7, (1 - k) * 0.85);
   }
   r.flush();
 
@@ -1075,7 +1162,15 @@ function frame(now) {
   // ~44px minimi comunemente raccomandati per un tocco.
   const UI_SCALE = isMobile ? 0.6 : 1;
   const baseY = Math.round(canvas.clientHeight - UI_MARGIN);
-  const GAP = isMobile ? 3 : 4;
+  // I "tasti costruzione" (menoo 1: casa/industria/...) sono adiacenti,
+  // GAP 0 — ogni sprite porta gia' con se' la propria base rettangolare
+  // nera fino al bordo del proprio frame (bbox ritagliato sui pixel
+  // opachi, tools/23_atlas.py): un GAP positivo apriva una fessura
+  // trasparente fra una base e l'altra, spezzando quella che nell'originale
+  // e' una sola barra nera continua sotto tutti i bottoni. Le altre due
+  // righe (menoo 0/2: mano/gru/occhio, vista/zoom) non sono bottoni di
+  // costruzione e restano staccate come prima.
+  const GAP = menoo === 1 ? 0 : (isMobile ? 3 : 4);
   const row = menoo === 1
     // menoo 1 "edifici" ([C] pu1/Create.gml li crea tutti insieme): i due
     // veri (casa/industria) + il resto del menu, segnaposto (vedi sopra).

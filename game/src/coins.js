@@ -121,8 +121,12 @@ export function stepCoins(coins, dt, r12) {
 
 /** [C] sold1..18|soldbio/Mouse_MouseEnter.gml: assegna la risorsa giusta
  * (`kind`: "mon" per sold1..18, "biotech" per soldbio — vedi sopra) e
- * rimuove la moneta — stesso schema di collectLoot() in balloons.js (un tap
- * la riscuote, non un hover: STUDIO.md §7 "input touch-first"). */
+ * rimuove la moneta. A differenza di collectLoot() in balloons.js (sempre un
+ * tap, mai un hover: STUDIO.md §7 "input touch-first"), qui il nome del
+ * Create originale non mentiva: game/src/main.js raccoglie davvero al
+ * passaggio del mouse (hover, niente click — restava tedioso doverci
+ * cliccare sopra una per una), con il tap come unico gesto possibile su
+ * touch (dove un vero hover non esiste). */
 export function collectCoin(coins, item, r12) {
   r12[item.kind] += item.amount;
   const idx = coins.indexOf(item);
