@@ -1255,15 +1255,13 @@ function frame(now) {
   // STUDIO.md "le tempeste diventano reali" + bombe appena sganciate sopra).
   for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
   if (r12.alertT > 0) r12.alertT -= dt;
-  // Torrette (game/src/buildings.js, stepTurretAim): inseguono il "veicolo"
-  // piu' vicino — [C] rocket_launcher/Step.gml usa la famiglia
-  // `veicoli_target`, che nel motore sono le auto decorative e le
-  // mongolfiere di risorse/spia (non il pacco di cantiere, `notte_target`
-  // nel decompilato, e non le casse/gli avanzi di cantiere). [I] Le minacce
-  // vere (`threats`) hanno pero' la priorita' quando sono a tiro, cosi' il
-  // cannone punta davvero cio' che sta per colpire — vedi il commento su
-  // stepTurretAim() in buildings.js.
-  stepTurretAim(buildings, cars.concat(balloons), threats);
+  // Torrette (game/src/buildings.js, stepTurretAim): inseguono l'oggetto
+  // volante piu' vicino fra le mongolfiere di risorse/spia (`balloons`,
+  // game/src/balloons.js — non il pacco di cantiere ne' le casse/avanzi) e
+  // le minacce vere (`threats`: aerei/bombardieri/zeppelin, game/src/
+  // threats.js) — [I] non piu' le auto decorative (`cars`): non sono
+  // oggetti volanti, vedi il commento su stepTurretAim() in buildings.js.
+  stepTurretAim(buildings, balloons, threats);
   // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
   // gia' nella direzione appena calcolata (b.aimAngle).
   stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails);

@@ -2053,3 +2053,60 @@ paragrafo 8.
   "r"/`palazzo` sia "rd"/`museoRd`); rilasciare senza trascinare (o fuori
   da ogni vicino valido) annulla senza scalare nulla; un tentativo di
   costruire di nuovo sul lotto bloccato non aggiunge edifici.
+
+- **Torrette: il lanciarazzi punta/spara verso cose fuori dallo schermo.**
+  Segnalato dall'autore. `stepTurretAim()` (buildings.js, condivisa da
+  missile/gatling/laser — nessuna logica separata per il lanciarazzi)
+  aveva due problemi indipendenti, entrambi introdotti da un giro
+  precedente (**[C] git blame**: commit `e8352be`, "mira coerente col
+  bersaglio colpito" — corretto un bug ma ne ha lasciati due):
+  1. **Priorita' rigida invece di "il piu' vicino"**: le minacce vere
+     (`threats`: aerei/bombardieri/zeppelin) battevano SEMPRE le
+     mongolfiere (`balloons`, passate insieme alle auto decorative come
+     `targets`) se una qualunque minaccia era entro `aim.range` — anche
+     quando una mongolfiera era molto piu' vicina. Il cannone poteva
+     restare puntato su un bombardiere a 390px mentre una mongolfiera a
+     50px veniva ignorata. Corretto con un solo confronto di distanza fra
+     `targets` e `threats` insieme, senza piu' due liste in ordine di
+     priorita' — esattamente quello che l'autore ha chiesto ("calcolare la
+     distanza da tutti gli oggetti volanti — mongolfiere, aerei, dirigibile
+     — e puntare verso quella piu' vicina").
+  2. **`aimAngle`/`aimTarget` non si azzeravano mai**: quando nessun
+     bersaglio era piu' in portata (`nearest` restava `null`) la funzione
+     faceva `continue` senza toccarli — **[C]** fedele a
+     `rocket_launcher|gatlinggun|lasergun/Step.gml` (l'`if` che li
+     aggiorna e' innestato dentro il controllo di portata, niente ramo
+     `else`), ma con `targets`/`threats` che nascono fuori mappa e se ne
+     vanno (STUDIO.md sopra, "le mongolfiere"; `threats.js`,
+     `spawnX: -170` per gli aerei) un bersaglio puo' sparire (rimosso
+     dall'array quando muore/scade, `threats.splice`) senza che
+     `aimTarget` smetta MAI di puntare a quella posizione — il cannone
+     resta visivamente "agganciato" per sempre. `fireTurretManual`
+     (projectiles.js, tap manuale su missile/laser) spara sempre verso
+     `b.aimTarget` **senza richiedere che ci sia davvero una minaccia
+     vera**, quindi un tap dopo che il bersaglio se n'e' andato lanciava
+     comunque un razzo verso quel punto congelato — spesso fuori
+     dallo schermo, perche' l'ultimo bersaglio agganciato e' quasi sempre
+     uno che si stava allontanando o che e' appena nato al bordo/fuori
+     mappa. **[I]** Corretto azzerando `aimAngle`/`aimTarget` quando
+     `nearest` e' `null`: `fireTurretManual`/`stepTurretFire` (che gia'
+     controllano `aimTarget == null`) ora rifiutano correttamente il colpo
+     invece di sparare nel vuoto.
+  Rimossa anche `cars` dalla lista candidati (`main.js`,
+  `stepTurretAim(buildings, balloons, threats)` invece di
+  `cars.concat(balloons)`): le auto decorative non sono oggetti volanti,
+  e includerle era un altro modo per far restare il cannone puntato su
+  qualcosa a terra invece che sul velivolo piu' vicino — coerente con la
+  richiesta ("mongolfiere, aerei, dirigibile", non le auto). [I]: nel
+  decompilato il lanciarazzi punta anche i veicoli (`instance_nearest(
+  veicoli_target)`, gia' non piu' fedele da `e8352be` in poi che gli aveva
+  affiancato le minacce vere); qui si ferma agli oggetti volanti soltanto.
+  Verificato con un test unitario diretto su `stepTurretAim()` (node, import
+  ES module — non serve il browser per una funzione pura): mongolfiera a
+  50px batte una minaccia a 380px (prima sceglieva sempre la minaccia);
+  minaccia a 100px batte una mongolfiera a 350px (il "piu' vicino vince"
+  resta corretto in entrambe le direzioni); un bersaglio che sparisce fa
+  tornare `aimTarget`/`aimAngle` a `null` invece di restare congelato;
+  bersagli oltre `aim.range` restano ignorati. Verificato anche in browser
+  (Playwright) che piazzare e far vivere un lanciarazzi per qualche secondo
+  di gioco normale non introduce errori in console.

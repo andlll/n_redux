@@ -1581,28 +1581,40 @@ function turretSprFor(type, angleDeg) {
 
 /**
  * Le torrette (missile/gatling/laser, tutte con `turret: true`) inseguono
- * col cannone il veicolo piu' vicino entro `def.aim.range` — `targets` e'
- * una lista di `{x,y}` gia' assemblata da chi chiama (in main.js:
- * mongolfiere + auto decorative, l'equivalente di `veicoli_target`). [C]
- * rocket_launcher|gatlinggun|lasergun/Step.gml: se NESSUN veicolo e' in
- * portata lo sprite non cambia — resta all'ultima direzione puntata invece
- * di tornare alla posa di riposo, esattamente come nel decompilato (l'`if`
- * che aggiorna `sprite_index` e' innestato dentro il controllo di portata,
- * niente ramo `else`).
+ * col cannone l'oggetto volante piu' vicino entro `def.aim.range` —
+ * `targets`/`threats` sono liste di `{x,y}` gia' assemblate da chi chiama
+ * (in main.js: mongolfiere e minacce vere — aerei/bombardieri/zeppelin,
+ * game/src/threats.js). **[I]** Un solo bersaglio, il piu' vicino fra
+ * ENTRAMBE le liste — non piu' `instance_nearest(veicoli_target)`
+ * dell'originale (che ignora del tutto le minacce vere, vedi il commento su
+ * quella chiamata in projectiles.js) ne' la versione precedente di questa
+ * funzione (le minacce vere avevano sempre priorita' sulle mongolfiere,
+ * anche quando una mongolfiera era molto piu' vicina): segnalato
+ * dall'autore ("dovrebbe calcolare la distanza da tutti gli oggetti volanti
+ * — mongolfiere, aerei, dirigibile — e puntare verso quella piu' vicina"),
+ * corretto qui con un solo confronto di distanza invece di due liste in
+ * ordine di priorita'. Le auto decorative (`cars`, un tempo incluse come
+ * "veicoli_target") non sono piu' passate da main.js: non sono oggetti
+ * volanti, e includerle e' proprio quello che poteva far restare il cannone
+ * puntato su un'auto a terra invece che sul velivolo piu' vicino.
  *
- * [I] `threats`, se passato, ha priorita' sui semplici veicoli: quando una
- * minaccia vera (air/bombar/dirig) e' entro `def.aim.range` il cannone
- * punta LEI invece del veicolo piu' vicino — non piu' fedele all'originale
- * (che punta sempre al veicolo piu' vicino, vedi il commento su
- * `instance_nearest(veicoli_target)` in projectiles.js), corretto qui
- * perche' altrimenti il cannone poteva restare puntato su una mongolfiera
- * innocua anche con un bombardiere gia' a tiro — e siccome il fuoco vero
- * (projectiles.js, fireFrom) spara sempre verso `b.aimTarget`, il colpo
- * finiva su un bersaglio diverso da quello mostrato dallo sprite, confondendo
- * il giocatore. Qualunque minaccia entro il raggio di mira e' anche entro
- * `aim.fireRange` (sempre <= `aim.range`), quindi il bersaglio qui scelto e'
- * sempre coerente con quello che stepTurretFire()/fireTurretManual()
- * colpiranno davvero.
+ * **[I]** Se nessun bersaglio e' in portata, `aimAngle`/`aimTarget` vengono
+ * azzerati (non lasciati all'ultima direzione come nell'originale — [C]
+ * `rocket_launcher|gatlinggun|lasergun/Step.gml`, l'`if` che li aggiorna e'
+ * innestato dentro il controllo di portata, niente ramo `else`): con
+ * `targets`/`threats` che nascono fuori mappa e se ne vanno (STUDIO.md, "le
+ * mongolfiere"/threats.js) un bersaglio puo' allontanarsi parecchio, o
+ * sparire del tutto, senza che la sua POSIZIONE smetta mai di essere "in
+ * portata" rispetto a un cannone fermo — l'originale lascia il cannone
+ * agganciato per sempre a quel punto, e siccome il fuoco manuale
+ * (`fireTurretManual`, projectiles.js) spara sempre verso `b.aimTarget`
+ * senza ricontrollare se c'e' ancora qualcosa li', il colpo finiva verso il
+ * vuoto — spesso fuori dallo schermo, dato che l'ultimo bersaglio agganciato
+ * e' quasi sempre quello che si stava allontanando o e' appena nato lontano
+ * dalla mappa (STUDIO.md, `spawnX: -170` per gli aerei). Azzerare quando
+ * non c'e' davvero niente in portata e' l'unico modo per far tornare
+ * `fireTurretManual`/`stepTurretFire` (che gia' controllano `aimTarget ==
+ * null`) a rifiutare correttamente il colpo.
  */
 export function stepTurretAim(buildings, targets, threats) {
   for (const b of buildings) {
@@ -1610,17 +1622,15 @@ export function stepTurretAim(buildings, targets, threats) {
     const def = BUILDING_TYPES[b.type];
     if (!def.aim) continue;
     let nearest = null, nearestD2 = def.aim.range * def.aim.range;
-    if (threats) {
-      for (const th of threats) {
-        const d2 = (th.x - b.x) ** 2 + (th.y - b.y) ** 2;
-        if (d2 < nearestD2) { nearestD2 = d2; nearest = th; }
-      }
-    }
-    if (!nearest) for (const t of targets) {
+    for (const t of targets) {
       const d2 = (t.x - b.x) ** 2 + (t.y - b.y) ** 2;
       if (d2 < nearestD2) { nearestD2 = d2; nearest = t; }
     }
-    if (!nearest) continue;
+    if (threats) for (const th of threats) {
+      const d2 = (th.x - b.x) ** 2 + (th.y - b.y) ** 2;
+      if (d2 < nearestD2) { nearestD2 = d2; nearest = th; }
+    }
+    if (!nearest) { b.aimAngle = null; b.aimTarget = null; continue; }
     const angle = (Math.atan2(-(nearest.y - b.y), nearest.x - b.x) * 180) / Math.PI;
     b.spr = turretSprFor(b.type, angle);
     // [C] rocket_launcher/Step.gml: `direttorio` (l'angolo verso il
