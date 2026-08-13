@@ -2,7 +2,7 @@ import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture 
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -235,6 +235,14 @@ const semaphores = staticWorld.filter((it) => it.obj === "object8").map((it) => 
 /** @type {ReturnType<typeof placeBuilding>[]} */
 let buildings = [];
 let decorEntities = [];      // ornamenti (permanenti a fine cantiere, o transitori durante)
+// I ruderi (game/src/buildings.js, ruinSpriteFor()): quando la vita di un
+// edificio finito arriva a 0, l'originale non lo rimuove — lo sostituisce
+// con un oggetto "ruin*" permanente (STUDIO.md, "il rudere") che nessuno
+// strumento nel motore puo' rimuovere (la ruspa/`selec==11` non e' mai stata
+// ricostruita). Array a parte invece che dentro `buildings`: un rudere non
+// simula piu' niente (nessuna produzione/crescita/mira/fulmine), e' decoro
+// inerte come `decorEntities` — vedi destroyBuilding() sotto.
+let ruins = [];
 // Auto decorative gia' in marcia da subito, come nella room originale
 // (phaseT parte da 0 = fase "giorno" in PHASES piu' sotto, quindi mai
 // notte alla nascita: nessun tint fanali sulle due iniziali).
@@ -439,26 +447,35 @@ function seedChies() {
 }
 
 /**
- * Un edificio la cui vita e' scesa a 0 (oggi solo per fulmine, STUDIO.md
- * §9 "le tempeste non sono cosmetiche in match"). Nell'originale resterebbe
- * un rudere (`ruin1`/`ruin2`/`ruin3`) riparabile solo con lo strumento
- * ruspa/bulldozer (`selec==11`, mai ricostruito, STUDIO.md §9 "GUI vera") —
- * un vicolo cieco per chi gioca senza quello strumento. Qui la rimozione e'
- * immediata e il placeholder torna libero: una semplificazione dichiarata,
- * non il comportamento vero. Applica il bilancio pop (`currentDeathPop`) e
+ * Un edificio la cui vita e' scesa a 0 (fulmine in tempesta, o una bomba
+ * sganciata da una minaccia vera — game/src/threats.js, stepBombs). [C]
+ * l'originale non lo rimuove: lo sostituisce con un rudere permanente
+ * (`ruinSpriteFor()`, game/src/buildings.js — sceglie fra `ruin1`/`ruin2`/
+ * `ruin3`/`ruinsol`/`ruinc1..3` in base a tipo e livello, con lo stesso dado
+ * uniforme del decompilato dove ne ha piu' di uno) che nessuno strumento nel
+ * motore puo' rimuovere: la ruspa/bulldozer (`selec==11`, l'unico modo per
+ * ripararlo nell'originale, pagando) non e' mai stata ricostruita — un
+ * vicolo cieco fedele, non piu' la rimozione immediata con placeholder
+ * libero di una versione precedente di questo motore. `parco` e' l'unica
+ * eccezione: **[C]** `parco/Step.gml` non legge mai `life`, quindi non fa
+ * NIENTE quando (nella pratica, quasi mai: `life: 9999`) succede —
+ * `ruinSpriteFor()` torna `null` e questa funzione si ferma subito, prima di
+ * toccare pop/hap/`buildings`, esattamente come l'originale non farebbe
+ * niente. Per tutti gli altri applica il bilancio pop (`currentDeathPop`) e
  * hap (`currentDeathHap`, industria/parco — STUDIO.md "i pulsanti blu delle
  * monete") del livello a cui e' morto, letti da chiesX/industriaX/casaX/
  * parco/Destroy.gml.
  */
 function destroyBuilding(b) {
+  const spr = ruinSpriteFor(b);
+  if (!spr) return;
   r12.pop += currentDeathPop(b);
   r12.hap += currentDeathHap(b);
   decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
-  const ph = placeholders.find((p) => p.x === b.x && p.y === b.y);
-  if (ph) ph.consumed = false;
   buildings = buildings.filter((x) => x !== b);
   coins = coins.filter((c) => c.buildingId !== b.id);
   if (picked?.obj === "building" && picked.ref === b) picked = null;
+  ruins.push({ obj: "decor", x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr) });
 }
 
 // -------------------------------------------------------------- salvataggio
@@ -475,7 +492,7 @@ function destroyBuilding(b) {
 // pagina e' quindi una partita nuova, come il primissimo avvio. S/L restano
 // per salvare/ricaricare a mano DENTRO la stessa sessione di test, se
 // serve, ma non sopravvivono piu' da soli a un refresh.
-function doSave() { save(scene.name, r12, buildings); }
+function doSave() { save(scene.name, r12, buildings, ruins); }
 function doLoad() {
   const data = load(scene.name);
   if (!data) return false;
@@ -488,6 +505,16 @@ function doLoad() {
     const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === b.x && p.y === b.y);
     if (ph) { ph.consumed = true; usedIds.add(ph.id); }
     if (b.level >= 1) spawnDecor(b, currentDecor(b));
+  }
+  // Ruderi (destroyBuilding() sopra): `_f`/`obj` non sono salvati (derivati,
+  // save.js), vanno ricalcolati qui — stesso principio di `_f` sugli edifici
+  // caricati. Occupano un placeholder anche loro (nessuna ruspa per
+  // liberarli): stesso ciclo `usedIds` di sopra, cosi' un edificio e un
+  // rudere non litigano mai per lo stesso slot.
+  ruins = (data.ruins ?? []).map((ru) => ({ obj: "decor", x: ru.x, y: ru.y, depth: -ru.y, spr: ru.spr, _f: frameFor(ru.spr) }));
+  for (const ru of ruins) {
+    const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === ru.x && p.y === ru.y);
+    if (ph) { ph.consumed = true; usedIds.add(ph.id); }
   }
   return true;
 }
@@ -1027,6 +1054,10 @@ function frame(now) {
     }
   }
   for (const d of decorEntities) dynamic.push(d);
+  // Ruderi (destroyBuilding() sopra): niente da avanzare ogni frame (non si
+  // muovono, non cambiano sprite) — solo da disegnare, come il resto del
+  // decoro permanente.
+  for (const ru of ruins) dynamic.push(ru);
   // Auto decorative (game/src/cars.js): x/y/sprite/frame gia' avanzati da
   // stepCars() sopra — `c.frame` anima per davvero le svolte (STUDIO.md
   // "le auto sterzano davvero"), frameFor() lo ritaglia da solo sull'ultimo
@@ -1416,7 +1447,7 @@ window.__nimbus = {
   get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
   get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
   get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
-  get aerSmoke() { return aerSmoke; }, get debris() { return debris; },
+  get aerSmoke() { return aerSmoke; }, get debris() { return debris; }, get ruins() { return ruins; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,

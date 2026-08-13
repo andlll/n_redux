@@ -131,6 +131,25 @@ GAMEPLAY_SPRITES = {
         # "lan16" sono i 16 sprite di mira, stesso schema di "lrn"/"nm".
         "lan1", "lan2", "lan3", "lan4", "lan5", "lan6", "lan7", "lan8",
         "lan9", "lan10", "lan11", "lan12", "lan13", "lan14", "lan15", "lan16",
+        # rovine (src/objects/ruin1|ruin2|ruin3|ruinsol, STUDIO.md "il
+        # rudere"): quando la vita di un edificio finito arriva a 0 (fulmine
+        # di tempesta o bomba sganciata da una minaccia vera), l'originale
+        # non lo rimuove — lo sostituisce con un rudere permanente, un
+        # vicolo cieco visibile senza lo strumento ruspa (mai ricostruito).
+        # Ogni ruinN sceglie a dado uniforme fra 4 varianti equiprobabili
+        # (ruinN/Create.gml: due action_if_dice(2) annidati, stesso schema
+        # gia' usato per casa/industria) — "taglia" diversa per livello, non
+        # per tipo: ruin1 (industria1/casa1/club1/villa1), ruin2
+        # (industria2/casa2/rocket_launcher/gatlinggun), ruin3 (industria3/
+        # casa3/lasergun). `solare`/sooool ha il proprio (ruinsol/Create.gml,
+        # un solo dado a due vie fra soolr1/soolr2). `chies` e' diverso da
+        # tutti: non crea un oggetto separato, cambia sprite a SE STESSA
+        # (chies/Step.gml, ruinc1/2/3 in base al livello) e resta piazzata.
+        "ru11", "ru12", "ru13", "ru14",
+        "ru21", "ru22", "ru23", "ru24",
+        "ru31", "ru32", "ru33", "ru34",
+        "soolr1", "soolr2",
+        "ruinc1", "ruinc2", "ruinc3",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/

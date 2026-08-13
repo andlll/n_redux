@@ -13,7 +13,13 @@ export function saveSlotFor(sceneName) {
   return SLOT[sceneName] ?? `nimsav_${sceneName}`;
 }
 
-export function save(sceneName, r12, buildings) {
+// `ruins` (game/src/main.js, destroyBuilding()): posizione/sprite bastano a
+// ricrearli, il resto (`_f`/`obj: "decor"`) e' derivato a runtime, non
+// serializzato — stesso principio gia' scelto per `buildings` sopra (niente
+// `_f`, ricalcolato al caricamento). Campo aggiunto senza toccare `v`: un
+// salvataggio vecchio senza `ruins` resta valido, `doLoad()` in main.js lo
+// legge con `?? []`.
+export function save(sceneName, r12, buildings, ruins) {
   const data = {
     v: 1,
     r12,
@@ -24,6 +30,7 @@ export function save(sceneName, r12, buildings) {
       ava: b.ava, growthT: b.growthT, growthNext: b.growthNext, consT: b.consT,
       coinT: b.coinT, coinNext: b.coinNext, solarT: b.solarT,
     })),
+    ruins: ruins.map((r) => ({ x: r.x, y: r.y, spr: r.spr })),
   };
   localStorage.setItem(saveSlotFor(sceneName), JSON.stringify(data));
 }

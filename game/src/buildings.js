@@ -26,11 +26,21 @@ export const BUILDING_TYPES = {
     placeCost: { mon: 5000 },                    // [I] sotto la dote iniziale (5500): la ruota reale apriva a 6000
     baseSprite: "crc", baseLife: 1000,             // [C] chies/Create.gml
     baseDecor: ["crcl"],                           // [C] chies/Create.gml: action_create_object(cddvd, 0, 0)
+    // [C] chies/Step.gml, ramo `life<=0`: a differenza di ogni altro
+    // edificio, chies non crea un oggetto "ruin*" a parte — cambia sprite a
+    // SE STESSA (`ruinc1`/`ruinc2`/`ruinc3` in base a `level`) e resta
+    // piazzata (nessun `action_kill_object`): non un rudere-oggetto ma la
+    // chiesa stessa che diventa rudere. `ruinSpriteFor()` sotto non
+    // distingue i due casi (un solo sprite fisso, niente dado, come per
+    // ogni altro tipo con un solo livello), destroyBuilding() in main.js
+    // tratta il risultato allo stesso modo per tutti.
+    baseRuin: "ruinc1",
     upgrades: [
       {                                            // livello 1 -> 2, upcrc12
         atPop: 500,                                // [C] chies/Step.gml: r12.pop >= 500
         cost: { mon: 5000, oil: 3000 },            // [C] upcrc12/Mouse_LeftPressed.gml
         finalSprite: "crc4", lifeBonus: 500,        // [C] upcrc12/Alarm_0.gml, tic==12
+        ruin: "ruinc2",                             // [C] chies/Step.gml: level==2 -> ruinc2
         decor: ["crc2l"],                           // sprite del figlio "cddvd2" che sostituisce "cddvd"
         steps: [                                    // [C] upcrc12/Mouse_LeftPressed.gml + Alarm_0.gml
           { spr: "ce11", dur: 60 },                  // sprite messo subito all'avvio del cantiere
@@ -44,6 +54,7 @@ export const BUILDING_TYPES = {
         atPop: 1500,                                // [C] chies/Step.gml: r12.pop >= 1500
         cost: { mon: 15000, oil: 9000 },            // [C] upcrc23/Mouse_LeftPressed.gml
         finalSprite: "crc5", lifeBonus: 500,        // [C] upcrc23/Alarm_0.gml, tic==16
+        ruin: "ruinc3",                             // [C] chies/Step.gml: level==3 -> ruinc3
         decor: ["crc3l", "crc3l2", "crc3l3", "crc3l4", "crc3l5"],  // sostituiscono "cddvd2"
         steps: [                                    // [C] upcrc23/Mouse_LeftPressed.gml + Alarm_0.gml
           { spr: "ci21", dur: 60 },                  // sprite messo subito all'avvio del cantiere
@@ -123,6 +134,13 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impaind0to1r (src/objects/impaind0to1r)
       drain: { mon: 1, every: 20 },              // [C] impaind0to1r/Alarm_10.gml
       finalSprite: "i11", life: 50,               // [C] industria1/Create.gml (life=50)
+      // [C] industria1/Step.gml, ramo `life<=0`: `action_create_object(ruin1, 0, 0)`
+      // — un rudere a parte (a differenza di chies), scelto a dado uniforme
+      // fra 4 varianti equiprobabili (ruin1/Create.gml, due dice(2) annidati
+      // — pickSpr() sotto replica lo stesso pick uniforme gia' usato per gli
+      // step di cantiere ad array). Stesso pool di industria1/casa1/club1/
+      // villa1: "taglia 1", non un rudere per tipo.
+      ruin: ["ru11", "ru12", "ru13", "ru14"],
       decor: ["i11l", "i11ll"],                   // [I] variante 1 delle 4 di industria1/Create.gml (dado non riletto)
       // [C] industria1/Create.gml: hap -50 alla nascita; industria1/Destroy.gml:
       // hap +50 quando smette di esistere A QUESTO livello (sia per morte vera
@@ -144,6 +162,7 @@ export const BUILDING_TYPES = {
         atMakee: 667,              // [C] industria1/Step.gml: upo==0 && makee>=667 -> crea upind12
         cost: { mon: 5000 },      // [C] upind12/Mouse_LeftPressed.gml
         finalSprite: "i21", life: 100,             // [C] industria2/Create.gml
+        ruin: ["ru21", "ru22", "ru23", "ru24"],   // [C] industria2/Step.gml: create_object(ruin2) — "taglia 2"
         decor: ["i21l", "i21b", "i21c"],           // [I] variante 1 delle 2 di industria2/Create.gml
         drain: { mon: 3, every: 20 },              // [C] impaind1to2r/Alarm_10.gml
         hap: { create: -100, destroy: 150 },       // [C] industria2/Create.gml + Destroy.gml (vedi livello 1 sopra)
@@ -170,6 +189,7 @@ export const BUILDING_TYPES = {
         atMakee: 1000,             // [C] industria2/Step.gml: upo==0 && makee>=1000 -> crea upind23
         cost: { mon: 10000 },     // [C] upind23/Mouse_LeftPressed.gml
         finalSprite: "i31", life: 200,             // [C] industria3/Create.gml
+        ruin: ["ru31", "ru32", "ru33", "ru34"],   // [C] industria3/Step.gml: create_object(ruin3) — "taglia 3"
         decor: ["i31a1", "i31a2", "i31a3", "i31l1l"],  // [C] i31aa1/2/3 sempre creati + [I] variante 1 di di311/di312
         drain: { mon: 3, every: 20 },              // [C] impaind2to3r/Alarm_10.gml
         // [C] industria3/Create.gml + Destroy.gml: gli stessi numeri del
@@ -284,6 +304,7 @@ export const BUILDING_TYPES = {
       // dei 5 stadi di crescita: l'originale stesso non torna, letto cosi'
       // com'e', non "corretto").
       deathPop: -10,
+      ruin: ["ru11", "ru12", "ru13", "ru14"],   // [C] casa1/Step.gml: create_object(ruin1) — stesso pool di industria1
       // [C] casa1/Create.gml: 5 livelli di action_if_dice(2) annidati
       // scelgono fra 20 coppie (sprite casa, decoro affiancato) — un pick
       // uniforme fra 20, come pickSpr() sugli array di step. Ogni dXXX
@@ -317,6 +338,7 @@ export const BUILDING_TYPES = {
         life: 200,                  // [C] casa2/Create.gml
         grantPop: 14,                // [C] casa2/Create.gml: r12.pop += 14 alla nascita
         deathPop: -34,                // [C] casa2/Destroy.gml
+        ruin: ["ru21", "ru22", "ru23", "ru24"],   // [C] casa2/Step.gml: create_object(ruin2)
         drain: { mon: 2, every: 10 },   // [C] impa1to2r/Alarm_10.gml
         cap: "im2f",   // [C] impa1to2f/Alarm_1.gml, stesso ruolo di industria (vedi upind12 sopra)
         variants: [                  // [C] casa2/Create.gml, stesso schema di casa1
@@ -349,6 +371,7 @@ export const BUILDING_TYPES = {
         life: 300,                  // [C] casa3/Create.gml
         grantPop: 40,                // [C] casa3/Create.gml: r12.pop += 40 alla nascita
         deathPop: -60,                // [C] casa3/Destroy.gml
+        ruin: ["ru31", "ru32", "ru33", "ru34"],   // [C] casa3/Step.gml: create_object(ruin3)
         drain: { mon: 3, every: 20 },   // [C] impa2to3r/Alarm_10.gml
         cap: "im4f",   // [C] impa2to3f/Alarm_1.gml, stesso ruolo di industria (vedi upind23 sopra)
         variants: [                  // [C] casa3/Create.gml, stesso schema di casa1/casa2
@@ -429,6 +452,7 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impamissr (src/objects/impamissr)
       drain: { mon: 1, every: 20 },              // [C] impamissr/Alarm_10.gml
       finalSprite: "rl_as", life: 600,            // [C] rocket_launcher/Create.gml
+      ruin: ["ru21", "ru22", "ru23", "ru24"],   // [C] rocket_launcher/Step.gml: create_object(ruin2) — "taglia 2"
       decor: [],                                   // [C] rocket_launcher/Create.gml non crea nessun cddvd
       steps: [                                    // [C] impamissr/Create.gml + Alarm_0.gml, tic 0..10
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 361 },   // sprite iniziale di Create.gml, dura fino al primo Alarm_0
@@ -466,6 +490,10 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impasolr (src/objects/impasolr)
       drain: { mon: 2, every: 20 },              // [C] impasolr/Alarm_10.gml
       finalSprite: "sool", life: 50,              // [C] sooool/Create.gml
+      // [C] sooool/Step.gml: create_object(ruinsol) — proprio rudere, un
+      // solo dado a due vie (ruinsol/Create.gml: default "soolr1", 50% di
+      // ribaltare a "soolr2"), non il pool a 4 vie di ruin1/2/3.
+      ruin: ["soolr1", "soolr2"],
       decor: [],                                   // [C] sooool/Create.gml non crea nessun cddvd (non e' un chies/casa/industria)
       hap: { destroy: 50 },
       steps: [                                    // [C] impasolr/Create.gml + Alarm_0/1/2/3/4, tic 0..770
@@ -499,6 +527,11 @@ export const BUILDING_TYPES = {
     construct: {                 // livello 0 -> 1, imparcr (src/objects/imparcr)
       drain: { mon: 1, every: 20 },              // [C] imparcr/Alarm_10.gml
       life: 9999,                                 // [I] nessun danno da fulmine ne' vita nel decompilato
+      // [C] parco/Step.gml non legge mai `life`: nessun ramo `life<=0`,
+      // quindi nessun `ruin*` — l'unico tipo senza (`ruinSpriteFor()` in
+      // fondo al file torna null, destroyBuilding() in main.js lo lascia
+      // stare). `life: 9999` sopra e' gia' la stessa scelta [I] a rendere il
+      // caso irraggiungibile nella pratica.
       decor: [],                                   // vedi sopra: il vero decoro passa da spawnParcoScatter()
       hap: { create: 200, destroy: -210 },   // [C] parco/Create.gml + Destroy.gml (non simmetrico, letto cosi' com'e')
       // [C] imparcr/Create.gml + Alarm_0/1/2/3: 150 tic totali (30+30+30+30+30) —
@@ -552,6 +585,7 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impaclubr (src/objects/impaclubr)
       drain: { mon: 2, every: 10 },              // [C] impaclubr/Alarm_10.gml
       life: 50,                                    // [C] club1/Create.gml
+      ruin: ["ru11", "ru12", "ru13", "ru14"],   // [C] club1/Step.gml: create_object(ruin1) — "taglia 1"
       hap: { destroy: 50 },
       variants: [                                  // [C] club1/Create.gml, dado uniforme fra 4
         { spr: "club11", decor: "club11i" },
@@ -620,6 +654,7 @@ export const BUILDING_TYPES = {
       life: 100,                                   // [C] villa1/Create.gml
       grantPop: 2,                                 // [C] villa1/Create.gml: r12.pop += 2 alla nascita
       deathPop: -10,                                // [C] villa1/Destroy.gml
+      ruin: ["ru11", "ru12", "ru13", "ru14"],   // [C] villa1/Step.gml: create_object(ruin1) — "taglia 1"
       // [C] villa1/Create.gml: 5 livelli di action_if_dice(2) annidati, MA
       // l'albero non e' bilanciato come quello di casa (STUDIO.md §9) — due
       // meta' quasi identiche ma non uguali producono pesi diversi: vil6/7/8
@@ -688,6 +723,7 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impagatlingr (src/objects/impagatlingr)
       drain: { mon: 1, every: 20 },              // [C] impagatlingr/Alarm_10.gml
       finalSprite: "nm1a", life: 800,             // [C] gatlinggun/Create.gml
+      ruin: ["ru21", "ru22", "ru23", "ru24"],   // [C] gatlinggun/Step.gml: create_object(ruin2) — "taglia 2"
       decor: [],                                   // [C] gatlinggun/Create.gml non crea nessun cddvd
       // [C] impagatlingr/Create.gml + Alarm_0.gml, tic 0..10 — stessa
       // identica forma (durate/sprite/offset del topper) di missile.construct
@@ -727,6 +763,7 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impalaser_r (src/objects/impalaser_r)
       drain: { mon: 3, every: 20 },              // [C] impalaser_r/Alarm_10.gml
       finalSprite: "lan1", life: 1000,            // [C] lasergun/Create.gml
+      ruin: ["ru31", "ru32", "ru33", "ru34"],   // [C] lasergun/Step.gml: create_object(ruin3) — "taglia 3"
       decor: [],                                   // [C] lasergun/Create.gml non crea nessun cddvd
       // [C] impalaser_r/Create.gml + Alarm_0.gml: 23 tic in tutto (0..22),
       // ma gli ultimi 12 (11..22) sono lo stesso specchio "costruisci poi
@@ -840,6 +877,26 @@ export function currentDeathHap(b) {
   if (b.level < 1) return 0;
   const cur = b.level === 1 ? def.construct : def.upgrades?.[b.level - 2];
   return cur?.hap?.destroy ?? 0;
+}
+
+/**
+ * Lo sprite del rudere che l'edificio lascerebbe se morisse ORA, al suo
+ * livello attuale — stesso schema di currentDecor()/currentDeathPop() sopra
+ * (`construct` per il livello 1, `upgrades[level-2]` oltre), con la stessa
+ * ricaduta `baseRuin` che currentDecor() usa per `baseDecor` (chies non ha
+ * `construct`). Un `ruin` puo' essere un pool di sprite equiprobabili (dado
+ * uniforme, `pickSpr()` sopra — industria/casa/missile/club/villa/gatling/
+ * laser/solare) o un unico sprite fisso (chies, niente dado nel decompilato).
+ * `null` per i tipi senza nessun ramo `life<=0` nel decompilato (`parco`,
+ * STUDIO.md/`BUILDING_TYPES.parco`): destroyBuilding() in main.js lo legge
+ * per capire se lasciare un rudere o non fare niente, fedele in entrambi i
+ * casi.
+ */
+export function ruinSpriteFor(b) {
+  const def = BUILDING_TYPES[b.type];
+  if (b.level < 1) return null;
+  if (b.level === 1) return pickSpr(def.construct?.ruin ?? def.baseRuin ?? null);
+  return pickSpr(def.upgrades?.[b.level - 2]?.ruin ?? null);
 }
 
 /** Il potenziamento che l'edificio potrebbe iniziare ora, se lo tocchi (null se il tipo non ne ha). */

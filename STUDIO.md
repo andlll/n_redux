@@ -638,15 +638,14 @@ paragrafo 8.
   (`destroyBuilding()` in `main.js`) si applica il bilancio popolazione del
   livello a cui è morto (**[C]** `casaX/Destroy.gml`: -10/-34/-60 — non
   l'esatto opposto di quanto guadagnato in vita, l'originale stesso non
-  torna) e il placeholder torna libero. **Semplificazione dichiarata**:
-  nell'originale l'edificio distrutto resterebbe un rudere (`ruin1/2/3`)
-  riparabile solo con lo strumento ruspa/bulldozer (`selec==11`,
-  `puruspa`, mai ricostruito — vedi sotto) pagando per rifarlo con la
-  stessa catena "rifai in loco" di `demobasia`: un vicolo cieco per chi
-  gioca senza quello strumento. `industria` tocca `hap` in `Destroy.gml`
-  invece di `pop`, ma `hap` non è tracciato da nessun'altra parte del
-  gioco (STUDIO.md, deciso già per `industria`/`casa`): per coerenza resta
-  fuori anche qui, non solo per industria.
+  torna). **Semplificazione dichiarata all'epoca, chiusa dopo** (vedi "I
+  ruderi" molto più sotto): a questo punto il placeholder tornava
+  semplicemente libero invece di restare occupato da un rudere permanente
+  come nell'originale — un gap dichiarato esplicitamente, non dimenticato.
+  `industria` tocca `hap` in `Destroy.gml` invece di `pop`, ma `hap` non è
+  tracciato da nessun'altra parte del gioco (STUDIO.md, deciso già per
+  `industria`/`casa`): per coerenza resta fuori anche qui, non solo per
+  industria.
 - **Zoom fluido, con limiti sensati, e nero fuori dai confini della mappa.**
   Tre correzioni distinte alla camera:
   1. Lo zoom da rotella applicava l'intero salto in un frame solo
@@ -683,9 +682,12 @@ paragrafo 8.
   `hap`/`wewe` (felicità/inquinamento visivo) e la sommossa che ne
   dipende; i "rifai in loco" cosmetici (`demobasia` + `impacasa*`/
   `impaind*` "rifatti") e il vero strumento di demolizione/riparazione
-  (`puruspa`, `selec==11` — oggi la distruzione libera subito il
-  placeholder invece di lasciare un rudere riparabile solo con
-  quello strumento); gli altri ~17 bottoni della barra (zoom, occhio,
+  (`puruspa`, `selec==11` — **[nota successiva]** i ruderi stessi sono stati
+  portati dopo, "I ruderi" molto più sotto: un edificio distrutto lascia ora
+  un rudere permanente e il placeholder resta bloccato, esattamente come
+  senza questo strumento nell'originale; resta soltanto la riparazione a
+  pagamento di `puruspa` stesso, MAI ricostruita); gli altri ~17 bottoni
+  della barra (zoom, occhio,
   reset — non più `puruspa`, appena discusso); le altre ~85 famiglie
   `impa*` (armi, minacce, altri edifici) non ancora lette; da dove
   arrivano davvero le minacce vere (bombe/aerei/zeppelin: dipendono da
@@ -1839,3 +1841,59 @@ paragrafo 8.
   volo/esplosione dei singoli pezzi avviene comunque). Una simulazione di
   due minuti con le tre torrette attive, minacce miste e una tempesta a
   meta' strada non ha prodotto eccezioni ne' posizioni NaN.
+- **I ruderi: la morte di un edificio lascia davvero un rudere, non piu' un
+  posto libero.** Chiudeva la "semplificazione dichiarata" della sezione
+  precedente ("Primo sistema vita/morte reale") — segnalato dall'autore
+  ("nel gioco originale c'erano delle rovine al posto degli edifici").
+  Decompilato letto da zero: ogni `casaX`/`industriaX`/`club1`/`villa1`/
+  `sooool`/`rocket_launcher`/`gatlinggun`/`lasergun`/`banca1`/`monum`/Step.gml
+  ha lo stesso ramo `life<=0` (letto con "<=", non "!=" — stesso operatore 3
+  gia' corretto per `threats.js`, "lo stato piro"): **[C]** crea un oggetto
+  `ruinN` a parte (mai la stessa istanza) e si distrugge. Non e' un rudere
+  per TIPO ma per "taglia": `ruin1`/`ruin2`/`ruin3` sono condivisi da piu'
+  edifici diversi allo stesso "livello di importanza" (es. `ruin1` =
+  industria1 **e** casa1 **e** club1 **e** villa1), ognuno scelto a dado
+  uniforme fra 4 varianti equiprobabili (`ruinN/Create.gml`: due
+  `action_if_dice(2)` annidati, stesso schema di pick gia' letto per gli
+  step di cantiere ad array — `pickSpr()`, riusato). `sooool` ha il proprio
+  (`ruinsol`, un solo dado a due vie fra `soolr1`/`soolr2`). **`chies` e'
+  l'eccezione**: non crea un oggetto a parte, cambia sprite a SE STESSA
+  (`ruinc1`/`ruinc2`/`ruinc3` in base a `level`, nessun dado) e resta
+  piazzata — l'unico `Step.gml` che non passa da `action_kill_object()` in
+  questo ramo. `parco` e' un'eccezione diversa: **[C]** il suo `Step.gml`
+  non legge mai `life` — nessun ramo `life<=0`, quindi nessun rudere: se mai
+  la sua vita toccasse 0 (in pratica quasi impossibile, `life: 9999` gia'
+  la scelta [I] fatta per questo) l'originale non farebbe letteralmente
+  niente, e cosi' anche `destroyBuilding()` ora.
+  Portato **fedele** a un dettaglio che prima era dichiarato "troppo": il
+  rudere e' un vicolo cieco vero, non un placeholder libero — senza lo
+  strumento ruspa/bulldozer (`selec==11`, `puruspa`, la sola cosa che
+  nell'originale rimuove un rudere per ricostruirci sopra pagando, ancora
+  MAI ricostruita: resta un gap dichiarato) il posto resta bloccato per
+  sempre. `ruinSpriteFor()` (buildings.js, stesso schema per-livello di
+  `currentDecor()`/`currentDeathPop()`: `construct`/`upgrades[level-2]`, con
+  `baseRuin` come fallback di `chies`) decide lo sprite; `destroyBuilding()`
+  (main.js) lo consulta PRIMA di toccare qualunque stato — se torna `null`
+  (solo `parco`) esce subito senza rimuovere l'edificio ne' applicare
+  pop/hap, altrimenti applica il bilancio come prima ma sposta l'istanza in
+  un array `ruins` a parte invece di rimetterla fra i `buildings` (un
+  rudere non produce, non cresce, non spara, non prende piu' danno da
+  fulmine: e' decoro inerte, stessa famiglia di `decorEntities`) e NON
+  libera piu' il placeholder trovato alla sua posizione. `ruins` e'
+  disegnato come `decorEntities` (non ruba il tap: nessun evento Mouse reale
+  sui `ruinN` a parte del ramo ruspa, non riprodotto) e ora e' anche
+  salvato/caricato (save.js: `x`/`y`/`spr` bastano, `_f`/`depth` derivati al
+  volo come per `buildings`) — senza, un rudere spariva a un ricaricamento
+  manuale e il suo placeholder tornava (erroneamente) libero.
+  Sprite nuovi in `GAMEPLAY_SPRITES` (tools/23_atlas.py): `ru11..ru14`/
+  `ru21..ru24`/`ru31..ru34` (le tre "taglie" condivise), `soolr1`/`soolr2`
+  (`sooool`), `ruinc1..ruinc3` (`chies`) — atlas e blitplan rigenerati e
+  verificati in browser (Playwright): una `casa` piazzata e poi forzata a
+  `life: 0` sparisce dai `buildings` e compare come rudere (`ru1N` scelto a
+  dado) esattamente alla sua posizione, il placeholder sotto resta bloccato
+  a un secondo tap (nessuna ricostruzione), `chies` forzata a morire diventa
+  `ruinc1` e sopravvive a un ciclo salva/carica, e un `parco` sintetico a
+  `life: 0` resta un edificio normale, invariato.
+  **[C]** = comportamento letto nel decompilato. **[I]** = la sola scelta
+  non fedele resta la stessa gia' dichiarata per la ruspa: nessuna
+  ricostruzione a pagamento, il rudere e' permanente invece che riparabile.
