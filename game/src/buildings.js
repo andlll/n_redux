@@ -848,6 +848,259 @@ export const BUILDING_TYPES = {
       ],
     },
   },
+
+  // Dodicesimo e tredicesimo edificio: `palazzo` (`pu6`/`selec==6` — la voce
+  // OTHER_BUILDINGS lo chiamava "Grattacielo", main.js: nessuno dei due nomi
+  // compare mai in un messaggio di gioco nell'originale, ma **[C]**
+  // src/objects/level2palazz (il popup "livello 2 sbloccato" agganciato a
+  // `pu6/Mouse_MouseEnter.gml` — stesso schema di level2club/level2gatling/
+  // level2sol per club/gatling/solare: "level2" + nome interno) chiama
+  // l'edificio "palazz[o]", non "grattacielo") e `museo` (`pumediat`/
+  // `selec==70`) sono i primi due edifici a DUE lotti — **diversi anche da
+  // `eolico`**, l'unico altro multi-lotto: quello resta un tocco singolo
+  // con un raggio di ricerca piu' largo (`multiTile` sopra), questi si
+  // piazzano con un vero trascinamento verso un vicino diagonale libero —
+  // vedi il commento su `DIAGONAL_DIRS`/`armPlacement()`/`resolvePlacement()`
+  // in game/src/main.js per la meccanica completa, letta da
+  // src/objects/placeholder/Mouse_LeftPressed.gml (rami selec==6/70) +
+  // Collision_dir1..4.gml + dir1..4 + dirdel. `def.diagonalPlacement: true`
+  // e' il flag che main.js legge per instradare questi due tipi ad
+  // armPlacement() invece del normale placeAt() a un lotto solo.
+  //
+  // **[C]** Collision_dir1..4.gml: le quattro direzioni si accoppiano in
+  // due assi opposti (dir1+dir3 contro dir2+dir4), che scelgono una catena
+  // di cantiere/varianti interamente diversa — sprite orientati (`sr*`/`sf*`
+  // contro `rd*`/`fd*`, la stessa idea di `ir*`/`if*` con un prefisso
+  // diverso, vedi `frontSprFor()` sopra) e una famiglia di varianti finali
+  // "dispari" contro "pari" (c4xx). Invece di far portare l'asse ad ogni
+  // funzione di buildings.js, main.js materializza l'asse in un TIPO
+  // concreto diverso al momento della costruzione vera —
+  // `resolvePlacement()`: "palazzo"/"museo" (asse dir1/dir3, "r") contro
+  // "palazzoRd"/"museoRd" (asse dir2/dir4, "rd") sotto. Questi ultimi due
+  // non compaiono mai in OTHER_BUILDINGS/il menu: sono raggiungibili solo
+  // internamente, come "chies".
+  //
+  // **[C]** src/objects/impa4r|impa4f/Alarm_0.gml: sequenza a tic reale,
+  // 23 passi (390+40*9+800+20*11 tic, ~2860 in tutto) — MA l'edificio vero
+  // (`casa4s`/`casa4d`) nasce gia' al passo 10 di `impa4f` (700 tic dopo
+  // l'inizio di quel passo, non alla fine dell'intera animazione):
+  // `impa4f/Alarm_5.gml`. I passi successivi (11..22) sono una coda
+  // cosmetica simmetrica che smonta la gru senza alcun effetto di gioco —
+  // stessa "coda cosmetica" gia' tagliata altrove nel motore (STUDIO.md,
+  // "due semplificazioni" — impalaser_r/impa2to3r). `steps` sotto si ferma
+  // al passo che consegna l'edificio (dur dell'ultimo passo troncata a 700,
+  // non 800, per allinearsi esattamente al momento della nascita). Il
+  // drain (`impa4r/Alarm_10.gml`, l'unico dei due a drenare mon — `impa4f`
+  // non drena niente, letto come `frontSpr` puramente cosmetico) resta
+  // attivo per tutta questa sequenza accorciata. **[I]** scelta dichiarata,
+  // non un dato mancante: il "vero" impa4r/impa4f originale continua a
+  // vivere (e a drenare) anche dopo la nascita dell'edificio, un concetto
+  // ("cantiere che sopravvive al proprio edificio") che questo motore non
+  // modella da nessuna parte — troncare e' coerente col resto del file.
+  //
+  // **[I] Solo un livello portato**: nel decompilato palazzo continua con
+  // un secondo salto (`casa4s|d/Alarm_2.gml`, ava==5 — MA solo se
+  // `chies.level>=3`, un gate mai visto per nessun'altra `casa`: crea
+  // `upsign45s|d` -> `impa5r|rd` -> `casa5ss|dd`, STUDIO.md sotto). Un
+  // secondo livello richiederebbe un gate nuovo (soglia di sblocco legata a
+  // un ALTRO edificio, non solo pop/makee/ava come `upgradeProgress()`
+  // conosce oggi) fuori dallo scopo di questo giro — stesso genere di
+  // "fermata prima del massimo del decompilato" gia' accettato per `casa`
+  // (che nell'originale arriva anch'essa a un quarto/quinto livello mai
+  // portato qui, STUDIO.md §9).
+  palazzo: {
+    label: "Palazzo",
+    placeCost: { mon: 6000 },   // [C] placeholder/Mouse_LeftPressed.gml, ramo selec==6
+    diagonalPlacement: true,
+    construct: {                 // livello 0 -> 1, impa4r/impa4f -> casa4s (asse "r", dir1/dir3)
+      drain: { mon: 3, every: 20 },                // [C] impa4r/Alarm_10.gml
+      life: 400, deathPop: -160,                    // [C] casa4s/Create.gml + Destroy.gml
+      grantPop: 37,                                  // [C] casa4s/Create.gml: r12.pop += 37 alla nascita
+      ruin: ["ru41"],                                // [C] casa4s/Step.gml: create_object(ruin4s)
+      // [C] casa4s/Create.gml: 5 livelli di dice(2) annidati, albero
+      // bilanciato (a differenza di villa) — 10 varianti "dispari" (suffisso
+      // 1/3), tutte 1/16: pickVariant() sopra e' gia' uniforme senza
+      // `weight`. Decoro luci notturne "cXXXsl" (STUDIO.md, stesso schema
+      // vil1/vil1l di villa).
+      variants: [
+        { spr: "c411s", decor: "c411sl" }, { spr: "c413s", decor: "c413sl" },
+        { spr: "c421", decor: "c421l" }, { spr: "c423", decor: "c423l" },
+        { spr: "c431", decor: "c431l" }, { spr: "c433", decor: "c433l" },
+        { spr: "c441", decor: "c441l" }, { spr: "c443", decor: "c443l" },
+        { spr: "c451", decor: "c451l" }, { spr: "c453", decor: "c453l" },
+      ],
+      // [C] impa4r/Alarm_0.gml, passi 0..10 (vedi commento sopra per il
+      // perche' si ferma qui). Il gruppo di 5 "gru" al passo 3 e' letto
+      // punto per punto (offset diversi ciascuna, non un pattern regolare).
+      steps: [
+        { spr: ["sr11", "sr12", "sr13", "sr14"], dur: 390 },
+        { spr: "sr15", dur: 40 }, { spr: "sr16", dur: 40 },
+        { spr: ["sr21", "sr22", "sr23", "sr24"], dur: 40 },
+        { spr: "sr25", dur: 40, spawn: [
+          { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+          { spr: "gru1", dx: -12, dy: -112 }, { spr: "gru1", dx: -80, dy: 50 },
+          { spr: "gru1", dx: -172, dy: -114 },
+        ] },
+        { spr: "sr26", dur: 40 },
+        { spr: ["sr31", "sr32", "sr33", "sr34"], dur: 40 },
+        { spr: "sr35", dur: 40 }, { spr: "sr36", dur: 40 },
+        { spr: ["sr41", "sr42", "sr43", "sr44"], dur: 40 },
+        { spr: "sr45", dur: 40 },
+        { spr: "sr46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170 }] },
+      ],
+    },
+    // [C] casa4s/Alarm_2.gml: primo intervallo 2000, poi dado uniforme fra
+    // 4 valori — stesso schema di villa/casa, +37 pop per stadio (0..5).
+    growth: [{ firstInterval: 2000, intervals: [9000, 13231, 15846, 9912], popPerStage: 37, maxAva: 5 }],
+    // [C] casa4s/Alarm_3.gml, ogni 120 tic, per stadio ava 0..5.
+    consumption: [[
+      { day: 6, night: 15 }, { day: 11, night: 24 }, { day: 17, night: 31 },
+      { day: 23, night: 42 }, { day: 33, night: 50 }, { day: 38, night: 55 },
+    ]],
+    storm: [{ dice: 108, loss: 50 }],   // [C] casa4s/Alarm_5.gml (crea anche "thunder", non riprodotto — stessa scelta di eolico/laser)
+  },
+
+  // Stessa entry di `palazzo` sopra, asse "rd" (dir2/dir4) — **[C]**
+  // impa4rd/impa4fd sono, verificato con diff, identici a impa4r/impa4f a
+  // parte i nomi sprite (sr*->rd*, sf*->fd*); `casa4d/Create.gml` e'
+  // identico a `casa4s` a parte le 10 varianti "pari" (suffisso 2/4) e il
+  // rudere (`ruin4d`, sprite "ru41d" invece di "ru41"). Mai selezionabile
+  // dal menu (non in OTHER_BUILDINGS): main.js, resolvePlacement() la
+  // materializza solo quando il trascinamento cade su dir2/dir4.
+  palazzoRd: {
+    label: "Palazzo",
+    placeCost: { mon: 6000 },
+    diagonalPlacement: true,
+    construct: {
+      drain: { mon: 3, every: 20 },
+      life: 400, deathPop: -160,
+      grantPop: 37,
+      ruin: ["ru41d"],
+      variants: [
+        { spr: "c412d", decor: "c412dl" }, { spr: "c414d", decor: "c414ds" },
+        { spr: "c422", decor: "c422l" }, { spr: "c424", decor: "c424l" },
+        { spr: "c432", decor: "c432l" }, { spr: "c434", decor: "c434l" },
+        { spr: "c442", decor: "c442l" }, { spr: "c444", decor: "c444l" },
+        { spr: "c452", decor: "c452l" }, { spr: "c454", decor: "c454l" },
+      ],
+      steps: [
+        { spr: ["rd11", "rd12", "rd13", "rd14"], dur: 390 },
+        { spr: "rd15", dur: 40 }, { spr: "rd16", dur: 40 },
+        { spr: ["rd21", "rd22", "rd23", "rd24"], dur: 40 },
+        { spr: "rd25", dur: 40, spawn: [
+          { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+          { spr: "gru1", dx: -12, dy: -112 }, { spr: "gru1", dx: -80, dy: 50 },
+          { spr: "gru1", dx: -172, dy: -114 },
+        ] },
+        { spr: "rd26", dur: 40 },
+        { spr: ["rd31", "rd32", "rd33", "rd34"], dur: 40 },
+        { spr: "rd35", dur: 40 }, { spr: "rd36", dur: 40 },
+        { spr: ["rd41", "rd42", "rd43", "rd44"], dur: 40 },
+        { spr: "rd45", dur: 40 },
+        { spr: "rd46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170 }] },
+      ],
+    },
+    growth: [{ firstInterval: 2000, intervals: [9000, 13231, 14464, 9912], popPerStage: 37, maxAva: 5 }],   // [C] casa4d/Alarm_2.gml: unico ramo diverso da casa4s (14464 invece di 15846)
+    consumption: [[
+      { day: 6, night: 15 }, { day: 11, night: 24 }, { day: 17, night: 31 },
+      { day: 23, night: 42 }, { day: 33, night: 50 }, { day: 38, night: 55 },
+    ]],
+    storm: [{ dice: 108, loss: 50 }],
+  },
+
+  // `museo` (`pumediat`/`selec==70`) — **[C]** unico livello, nessuna
+  // crescita: `media1s/Create.gml` arma `action_set_alarm(2000,2)` ma
+  // **non esiste `media1s/Alarm_2.gml`** nella directory decompilata (alarm
+  // armato senza handler, stesso genere di codice morto gia' documentato
+  // altrove nel file) — `ava` resta 0 per sempre, nessun secondo edificio
+  // "livello 2" (`med2`/`med2d` sono solo la seconda meta' di un dado 50/50
+  // sulla variante finale, non un livello — verificato: nessun oggetto
+  // decompilato "media2*" esiste). Da' `hap` diretta invece di `pop` (unico
+  // fra tutti i tipi con `construct.hap` a non avere ne' `grantPop` ne'
+  // crescita — coerente con "un museo aumenta la felicita', non la
+  // popolazione"). **[C]** media1s/Alarm_3.gml consuma anche mon ogni 120
+  // tic, oltre a ele — mai visto in nessun altro edificio con
+  // `consumption`: vedi `rate.mon` in stepConsumption() sopra.
+  museo: {
+    label: "Museo",
+    placeCost: { mon: 35000 },   // [C] placeholder/Mouse_LeftPressed.gml, ramo selec==70
+    diagonalPlacement: true,
+    construct: {                 // media1s (asse "r", dir1/dir3) — [C] impamediaR/impamediaF: stessa sequenza sr*/sf* di palazzo, solo il drain cambia
+      drain: { mon: 5, every: 20 },                 // [C] impamediaR/Alarm_10.gml
+      life: 350,                                      // [C] media1s/Create.gml
+      hap: { create: 1200, destroy: -1220 },          // [C] media1s/Create.gml + Destroy.gml
+      ruin: ["ru41"],                                 // [C] media1s/Step.gml: create_object(ruin4s) — stesso rudere di palazzo
+      variants: [                                     // [C] media1s/Create.gml: dado 50/50, non un dado a piu' vie
+        { spr: "med1", decor: "med1l" },
+        // [C] MEDIALITE2/Step.gml non anima nessuna transizione: lo sprite
+        // acceso e' "med2x" (non esiste "med2l" nel decompilato — asimmetria
+        // reale, non un refuso di trascrizione).
+        { spr: "med2", decor: "med2x" },
+      ],
+      steps: [
+        { spr: ["sr11", "sr12", "sr13", "sr14"], dur: 390 },
+        { spr: "sr15", dur: 40 }, { spr: "sr16", dur: 40 },
+        { spr: ["sr21", "sr22", "sr23", "sr24"], dur: 40 },
+        { spr: "sr25", dur: 40, spawn: [
+          { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+          { spr: "gru1", dx: -12, dy: -112 }, { spr: "gru1", dx: -80, dy: 50 },
+          { spr: "gru1", dx: -172, dy: -114 },
+        ] },
+        { spr: "sr26", dur: 40 },
+        { spr: ["sr31", "sr32", "sr33", "sr34"], dur: 40 },
+        { spr: "sr35", dur: 40 }, { spr: "sr36", dur: 40 },
+        { spr: ["sr41", "sr42", "sr43", "sr44"], dur: 40 },
+        { spr: "sr45", dur: 40 },
+        { spr: "sr46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170 }] },
+      ],
+    },
+    // [C] media1s/Alarm_3.gml: ogni 120 tic, SEMPRE lo stesso valore (`ava`
+    // non cresce mai — un solo elemento invece delle 6 voci per-stadio di
+    // casa/villa/palazzo, stepConsumption() sopra lo rilegge comunque ad
+    // ogni ciclo con `Math.min(0, cons.length-1)` = indice 0). `mon:60` e'
+    // il canale extra (sopra).
+    consumption: [[{ day: 60, night: 150, mon: 60 }]],
+    storm: [{ dice: 108, loss: 50 }],   // [C] media1s/Alarm_5.gml, stessi numeri di palazzo
+  },
+
+  // Stessa entry di `museo` sopra, asse "rd" — **[C]** media1d e' identico
+  // a media1s in OGNI file (Create/Alarm_0/1/3/5/9/Destroy/Step, verificato
+  // riga per riga): nessuna asimmetria numerica come invece esiste fra
+  // palazzo/palazzoRd. Solo gli sprite (cantiere rd*/fd*, varianti
+  // med1d/med2d) e il costo di trascinamento (dir2/dir4) cambiano.
+  museoRd: {
+    label: "Museo",
+    placeCost: { mon: 35000 },
+    diagonalPlacement: true,
+    construct: {
+      drain: { mon: 5, every: 20 },
+      life: 350,
+      hap: { create: 1200, destroy: -1220 },
+      ruin: ["ru41"],
+      variants: [
+        { spr: "med1d", decor: "med1dl" },
+        { spr: "med2d", decor: "med2dx" },   // [C] MEDIALITE2D: stessa asimmetria di MEDIALITE2, "med2dl" non esiste
+      ],
+      steps: [
+        { spr: ["rd11", "rd12", "rd13", "rd14"], dur: 390 },
+        { spr: "rd15", dur: 40 }, { spr: "rd16", dur: 40 },
+        { spr: ["rd21", "rd22", "rd23", "rd24"], dur: 40 },
+        { spr: "rd25", dur: 40, spawn: [
+          { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+          { spr: "gru1", dx: -12, dy: -112 }, { spr: "gru1", dx: -80, dy: 50 },
+          { spr: "gru1", dx: -172, dy: -114 },
+        ] },
+        { spr: "rd26", dur: 40 },
+        { spr: ["rd31", "rd32", "rd33", "rd34"], dur: 40 },
+        { spr: "rd35", dur: 40 }, { spr: "rd36", dur: 40 },
+        { spr: ["rd41", "rd42", "rd43", "rd44"], dur: 40 },
+        { spr: "rd45", dur: 40 },
+        { spr: "rd46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170 }] },
+      ],
+    },
+    consumption: [[{ day: 60, night: 150, mon: 60 }]],
+    storm: [{ dice: 108, loss: 50 }],
+  },
 };
 
 let nextId = 1;
@@ -877,9 +1130,18 @@ function pickVariant(variants) {
 /** Lo sprite "f" (impalcatura in sovraimpressione) che corrisponde allo
  * sprite "r" gia' scelto per il passo di cantiere corrente — vedi il
  * commento su BUILDING_TYPES.industria piu' sopra. null per le catene che
- * non hanno una traccia "f" nel decompilato (chies: sprite ce.../ci...). */
+ * non hanno una traccia "f" nel decompilato (chies: sprite ce.../ci...).
+ * `sr*`/`rd*` (palazzo/museo, BUILDING_TYPES.palazzo/museo/palazzoRd/
+ * museoRd) sono la stessa idea con un prefisso diverso — **[C]**
+ * impa4r/impa4f: stessa sequenza a tic, sprite "sr*"/"sf*" (diff riga per
+ * riga: solo il prefisso cambia); impa4rd/impa4fd: "rd*"/"fd*" per l'asse
+ * opposto (dir2/dir4).
+ */
 function frontSprFor(spr) {
-  return spr.startsWith("ir") ? "if" + spr.slice(2) : null;
+  if (spr.startsWith("ir")) return "if" + spr.slice(2);
+  if (spr.startsWith("sr")) return "sf" + spr.slice(2);
+  if (spr.startsWith("rd")) return "fd" + spr.slice(2);
+  return null;
 }
 
 /**
@@ -1207,12 +1469,16 @@ export function stepGrowth(buildings, dt, r12, onPedestrian) {
 }
 
 /**
- * Avanza il consumo elettrico degli edifici finiti che dichiarano
- * `consumption` per livello e stadio di crescita (oggi solo `casa`, una
- * tabella per casa1/2/3). [C] casa1|2|3/Alarm_3.gml: ogni 120 tick consuma
- * energia in base allo stadio `b.ava` e a se e' notte (prima regola che
- * collega il ciclo giorno/notte — finora solo una tinta, STUDIO.md §5.2 —
- * a un numero di gioco).
+ * Avanza il consumo elettrico (ed eventualmente in mon) degli edifici
+ * finiti che dichiarano `consumption` per livello e stadio di crescita
+ * (casa, villa — una tabella per livello/stadio `ava`; museo, STUDIO.md
+ * sotto — una sola voce, mai indicizzata perche' non cresce mai). [C]
+ * casa1|2|3/Alarm_3.gml: ogni 120 tick consuma energia in base allo stadio
+ * `b.ava` e a se e' notte (prima regola che collega il ciclo giorno/notte —
+ * finora solo una tinta, STUDIO.md §5.2 — a un numero di gioco). `rate.mon`
+ * (opzionale, solo `museo`) e' un secondo canale: **[C]** media1s|d/Alarm_3.gml
+ * scala anche `r12.mon` allo stesso intervallo di 120 tick, indipendente da
+ * giorno/notte — mai visto in nessun altro edificio con `consumption`.
  */
 export function stepConsumption(buildings, dt, r12, isNight) {
   for (const b of buildings) {
@@ -1226,6 +1492,7 @@ export function stepConsumption(buildings, dt, r12, isNight) {
     while (b.consT >= period) {
       b.consT -= period;
       r12.ele -= isNight ? rate.night : rate.day;
+      if (rate.mon) r12.mon -= rate.mon;
     }
   }
 }

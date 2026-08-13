@@ -1961,3 +1961,95 @@ paragrafo 8.
   gia' esistente, e un tentativo di costruire su uno dei 3 lotti bloccati
   fallisce silenziosamente (restano bloccati) anche dopo la sua morte; un
   ciclo salva/carica restituisce sia l'edificio che i 3 lotti bloccati.
+
+- **Dodicesimo e tredicesimo edificio, primi due a trascinamento:
+  `palazzo`/`museo`.** Richiesti dall'autore insieme ("ora fai il museo e
+  il palazzo, che prendono due caselle ciascuno e hanno una logica di
+  piazzamento diversa dagli altri edifici") — a differenza di `eolico`
+  (tocco singolo, raggio di ricerca piu' largo) questi due si trascinano
+  davvero da un lotto verso un vicino diagonale, e nel decompilato quel
+  meccanismo esiste per intero, mai wired nel menu di questo motore.
+  **[C] Identita'**: `pu6`/`selec==6` era etichettato "Grattacielo" in
+  questo repo (mai verificato) — `src/objects/level2palazz` (il popup
+  "livello 2 sbloccato" agganciato a `pu6/Mouse_MouseEnter.gml`, stesso
+  schema `level2<nome>` di level2club/level2gatling/level2sol per
+  club/gatling/solare) lo chiama "palazz[o]": rinominato. `pumediat`/
+  `selec==70` era gia' "Museo", giusto.
+  **[C] La meccanica di piazzamento**, letta da zero (nessuno dei due
+  bottoni aveva mai un ramo in `placeholder/Mouse_LeftReleased.gml`, la
+  release-only usata da ogni altro edificio): `placeholder/
+  Mouse_LeftPressed.gml` (rami selec==6/70) arma alla PRESSIONE (non al
+  rilascio) creando quattro sonde `cre1..cre4` ai quattro offset diagonali
+  fissi (+99,+57)/(+99,-57)/(-99,-57)/(-99,+57) dal lotto toccato — gli
+  stessi (ox,oy) che ogni istanza di `placeholder` dichiara in
+  `match_easy.scene.json`, non un numero a caso. Ogni sonda che tocca un
+  altro `placeholder` ancora libero (`creN/Collision_placeholder.gml`) arma
+  una direzione (`dirN`, oggetto invisibile: `dirN/Mouse_LeftReleased.gml`
+  mette `arm=1` al RILASCIO, non alla pressione — l'unico posto nel
+  decompilato dove un piazzamento distingue i due). Se il rilascio non cade
+  su nessuna direzione armata, `placeholder/Mouse_GlobalLeftReleased.gml`
+  (evento globale, non legato a un'istanza sotto al puntatore) annulla
+  tutto senza costo. Se cade su una direzione valida,
+  `placeholder/Collision_dir1..4.gml` (lette riga per riga, tutte e
+  quattro): le quattro direzioni si accoppiano in due assi opposti
+  (dir1+dir3 contro dir2+dir4, non dir1+dir2) — per ENTRAMBI gli assi
+  l'edificio vero nasce sempre sul lotto con la y maggiore fra origine e
+  vicino (l'ancoraggio "piu' vicino alla camera" coerente col resto del
+  motore), l'altro lotto della coppia viene ucciso da `dirdel` (spawnato
+  esattamente sulla sua posizione in tutti e 4 i rami — **[C]**
+  `dirdel/Collision_placeholder.gml`: uccide se stesso e il placeholder che
+  tocca, nessun'altra logica) — stessa sorte dei lotti extra di `eolico`,
+  riusa `blockedSlots` cosi' com'e', nessuna modifica a save.js. L'asse
+  sceglie solo quale famiglia di sprite di cantiere orientati usare
+  (`impa4r`/`IMPAMEDIA_R` contro `impa4rd`/`IMPAMEDIA_RD` — verificato con
+  `diff`: identici byte-per-byte agli originali "r", solo il prefisso degli
+  sprite cambia `sr*/sf*` -> `rd*/fd*`) e quale famiglia di varianti finali
+  (c4xx "dispari" contro "pari").
+  **[I] Asse come tipo concreto invece di un campo per-istanza**: invece di
+  far portare l'asse a ogni funzione di buildings.js (`currentDecor`,
+  `ruinSpriteFor`, `stepGrowth`, ...), `main.js`/`resolvePlacement()`
+  materializza l'asse in un secondo tipo concreto al momento della
+  costruzione vera — `BUILDING_TYPES.palazzo`/`museo` (asse "r") contro
+  `palazzoRd`/`museoRd` (asse "rd"), mai in `OTHER_BUILDINGS`/il menu, solo
+  raggiungibili da `resolvePlacement()`. `frontSprFor()` (buildings.js) e'
+  stato esteso per riconoscere anche i prefissi `sr*`/`rd*` (oltre a `ir*`
+  gia' noto), non serve altro nel motore.
+  **[I] Solo un livello portato**: nel decompilato `palazzo` continua con
+  un secondo salto (`casa4s|d/Alarm_2.gml`, ava==5 — MA solo se
+  `chies.level>=3`, un gate mai visto per nessun'altra `casa`: crea
+  `upsign45s|d` -> `impa5r|rd` -> `casa5ss|dd`, stesse sequenze/numeri).
+  Un secondo livello avrebbe richiesto un gate nuovo (soglia di sblocco
+  legata a un ALTRO edificio, non solo pop/makee/ava come
+  `upgradeProgress()` conosce oggi) — fuori dallo scopo di questo giro,
+  stesso genere di "fermata prima del massimo del decompilato" gia'
+  accettato per `casa` stessa. `museo` non ha comunque un secondo livello
+  nel decompilato: `media1s/Create.gml` arma `action_set_alarm(2000,2)` ma
+  **non esiste `media1s/Alarm_2.gml`** — alarm morto, `ava` resta 0 per
+  sempre; `med1`/`med2` sono solo un dado 50/50 sulla variante finale, non
+  due edifici (nessun oggetto decompilato "media2*" esiste).
+  **[C] Un canale nuovo**: `media1s/Alarm_3.gml` scala anche `r12.mon`
+  (-60 ogni 120 tick, oltre a `ele`) — mai visto in nessun altro edificio
+  con `consumption`: `stepConsumption()` ora legge anche un `rate.mon`
+  opzionale, indipendente da giorno/notte. `museo` da' `hap` diretta invece
+  di `pop` (nessun `grantPop`, nessuna crescita) — coerente con "un museo
+  aumenta la felicita', non la popolazione".
+  Sprite nuovi in `GAMEPLAY_SPRITES` (tools/23_atlas.py): le sequenze di
+  cantiere condivise `sr/sf/rd/fd1x..4x` (96 sprite, stessa sagoma
+  generica per entrambi gli edifici), `topls` (il topper, spawnato a meta'
+  cantiere), le 20 varianti finali di `palazzo`/`palazzoRd` (c4xx + decoro
+  luci "l"/"ds"), `ru41`/`ru41d`, e le 8 varianti/decoro di `museo`/
+  `museoRd` (med1/med2 + le rispettive "d") — atlas e blitplan
+  rigenerati (`python3 tools/24_blit.py font_gotham_mini` andava comunque
+  rigenerato a parte: il font bitmap non era mai stato blittato in questo
+  checkout, indipendente da questa modifica).
+  Verificato in browser (Playwright, via `window.__nimbus`): premere su un
+  lotto libero con "Palazzo"/"Museo" selezionato lo evidenzia SUBITO di
+  rosso (non il viola dell'hover — **[C]** `action_sprite_color(255,1)` e'
+  la costante GameMaker `c_red`, non bianco) e ferma lo scroll; trascinare
+  fino a un vicino diagonale libero e rilasciare li' costruisce davvero
+  (mon scalati esattamente, `blockedSlots` riceve il lotto NON scelto,
+  l'edificio nasce sul lotto con la y maggiore, sprite di cantiere corretto
+  per l'asse trascinato su entrambe le direzioni — verificato sia
+  "r"/`palazzo` sia "rd"/`museoRd`); rilasciare senza trascinare (o fuori
+  da ogni vicino valido) annulla senza scalare nulla; un tentativo di
+  costruire di nuovo sul lotto bloccato non aggiunge edifici.
