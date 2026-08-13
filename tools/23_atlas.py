@@ -209,6 +209,15 @@ GAMEPLAY_SPRITES = {
         # a valuta singola gli si addice).
         "c100", "c500", "c1000", "c2000", "c3500", "c5000", "c6000", "c7500",
         "c10000", "c20000", "c35000", "c50000", "c12aa", "c23aa",
+        "cfree",   # [C] ccfree/Create.gml: l'unico edificio davvero gratis (banca) ha il proprio cartellino dedicato
+        # monumento/banca: quattordicesimo e quindicesimo edificio, i primi
+        # due "a stella" (STUDIO.md, ricompense di traguardo mai nel menu
+        # base — game/src/buildings.js BUILDING_TYPES.monum/banca). Stesso
+        # cantiere ir1x/if1x/gru1/toppers gia' impacchettato sopra per casa/
+        # industria/missile/solare/palazzo/museo: nessuno sprite di cantiere
+        # nuovo, solo l'edificio finito/rudere/luce di ciascuno.
+        "monu_img", "monu_ruin", "monu_l", "monu_lx",
+        "banca_img", "banca_l", "banca_lx",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/
@@ -231,6 +240,11 @@ GAMEPLAY_SPRITES = {
         "p3", "p3ss", "p4", "p4ss", "p5", "p5ss", "p6", "p6ss", "p7", "p7ss",
         "pdj", "pdjss", "psolare", "psolaress", "pgatling", "pgatlingss",
         "pvilla", "pvillass", "pmuseo", "pmuseoss",
+        # stella1/stella2 (selec==71/72): bottoni "a stella" — mai statici
+        # nel menu, compaiono/scompaiono da soli a soglia raggiunta (vedi
+        # STAR_BUILDINGS in main.js) — stesso schema normale/selezionato
+        # px/pxss dei bottoni piazzabili sopra, non un segnaposto.
+        "sta1", "sta1s", "sta2", "sta2s",
         "ru", "russ",           # puruspa (bulldozer/ripara, selec==11, mai ricostruito)
         "reset",                # pureset
         # Gli altri bottoni del pannello (src/objects/handbutton|buildbutton|

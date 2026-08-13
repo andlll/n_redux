@@ -421,7 +421,12 @@ function placeAt(placeholder, type) {
   if (def.turret && tooCloseToTurret(buildings, placeholder.x, placeholder.y)) {
     return "troppo vicino a un'altra torretta di difesa";
   }
-  if (!canAfford(r12, def.placeCost)) {
+  // [C] placeholder/Mouse_LeftReleased.gml, ramo selec==71 (monum): scala
+  // 20000 mon senza controllare prima `mon>=20000`, a differenza di OGNI
+  // altro ramo di quel file — `def.noAffordCheck` riproduce esattamente
+  // questa asimmetria (buildings.js, BUILDING_TYPES.monum) invece di
+  // "correggerla" silenziosamente: puo' davvero portare mon sotto zero.
+  if (!def.noAffordCheck && !canAfford(r12, def.placeCost)) {
     return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
   }
   // [C] eoliplacer/Alarm_1.gml controlla `places>=4` DOPO aver gia' verificato
@@ -465,7 +470,8 @@ function placeAt(placeholder, type) {
   // questo. `eolico` (selec==4) crea `mon_bil` anche lui — [C]
   // eoliplacer/Alarm_1.gml, ramo selec==4.
   if (type === "casa" || type === "industria" || type === "missile" || type === "solare"
-    || type === "club" || type === "villa" || type === "gatling" || type === "laser" || type === "eolico") {
+    || type === "club" || type === "villa" || type === "gatling" || type === "laser" || type === "eolico"
+    || type === "monum" || type === "banca") {
     constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
   }
   return null;
@@ -958,6 +964,38 @@ const OTHER_BUILDINGS = [
 ];
 for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
 const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
+
+// Edifici "stella" (STUDIO.md, "monumento"/"banca"): ricompense di
+// traguardo, MAI un bottone statico come il resto del menu — [C] `stella1`/
+// `stella2` (src/objects) non stanno nella room, ne' nel pannello: sono
+// create al volo da `pu1/Step.gml` solo al superamento di una soglia (mai
+// prima), ancorate a un offset fisso sopra `pu1` invece che dentro la riga
+// scorrevole. **[I]** Qui, per riuso diretto dell'infrastruttura di
+// `OTHER_BUILDINGS`/`uiButtons` gia' esistente, compaiono/scompaiono nella
+// STESSA riga scorrevole invece di fluttuare a parte — stesso risultato
+// osservabile (appaiono solo a soglia raggiunta), non lo stesso layout a
+// pixel. `unlocked()` legge `pu1/Step.gml` riga per riga (operatori 2=">",
+// 4=">=", gia' stabiliti nel resto del progetto): monum a `distrutti>49`
+// (aerei abbattuti, STUDIO.md/state.js), banca a `chies.level>1 &&
+// pop>=3000`. Restano nascosti una volta gia' costruiti — [I]:
+// nell'originale un flag "gia' assegnato" mai identificato con certezza
+// ottiene lo stesso risultato (il bottone non ricompare per un secondo
+// esemplare), qui basta controllare se esiste gia' un edificio di quel
+// tipo.
+const STAR_BUILDINGS = [
+  {
+    type: "monum", selec: 71, spr: "sta1", sprSel: "sta1s", label: "Monumento", cost: 20000,
+    unlocked: () => (r12.distrutti ?? 0) > 49 && !buildings.some((b) => b.type === "monum"),
+  },
+  {
+    type: "banca", selec: 72, spr: "sta2", sprSel: "sta2s", label: "Banca", cost: 0,
+    unlocked: () => {
+      const chies = buildings.find((b) => b.type === "chies");
+      return !!chies && chies.level > 1 && r12.pop >= 3000 && !buildings.some((b) => b.type === "banca");
+    },
+  },
+];
+for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; BUILDING_LABEL[b.type] = b.label; }
 
 /** Raccoglie una moneta e fa partire la sua "bolla" (coinPops sopra) —
  * unico punto d'ingresso condiviso da input.onTap (tap/click, sotto) e
@@ -1559,6 +1597,7 @@ function frame(now) {
         { kind: "building", type: "casa", spr: "p1", sprSel: "p1ss" },
         { kind: "building", type: "industria", spr: "p2", sprSel: "p2ss" },
         ...OTHER_BUILDINGS.map((b) => ({ kind: "building", type: b.type, spr: b.spr, sprSel: b.sprSel })),
+        ...STAR_BUILDINGS.filter((b) => b.unlocked()).map((b) => ({ kind: "building", type: b.type, spr: b.spr, sprSel: b.sprSel })),
         { kind: "menu", menoo: 0, spr: "baccc", label: "Indietro" },
       ]
     : menoo === 2

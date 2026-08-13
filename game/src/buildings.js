@@ -1101,6 +1101,110 @@ export const BUILDING_TYPES = {
     consumption: [[{ day: 60, night: 150, mon: 60 }]],
     storm: [{ dice: 108, loss: 50 }],
   },
+
+  // Quattordicesimo edificio: `monum` ("Monumento", src/objects/monum,
+  // sprite `monu_img`) — il primo dei tre "edifici stella", una ricompensa
+  // di traguardo mai piazzabile dal menu normale (STUDIO.md sotto per il
+  // meccanismo di sblocco completo). **[C]** monum/Create.gml + Destroy.gml
+  // + Alarm_0.gml + Step.gml, letti riga per riga: nessuna produzione,
+  // nessuna crescita — solo vita, un drenaggio perenne di mon, e felicita'
+  // simmetrica alla nascita/morte (l'unico altro tipo cosi' e' `eolico`).
+  // **[C]** placeholder/Mouse_LeftReleased.gml, ramo selec==71: scala 20000
+  // mon SENZA controllare prima `mon>=20000` (a differenza di OGNI altro
+  // ramo di quel file) — puo' davvero portare `mon` sotto zero. `def.
+  // noAffordCheck` (main.js, placeAt()) riproduce esattamente questa
+  // asimmetria invece di "correggerla" silenziosamente.
+  // **[C]** Cantiere (`impaMONUr`/`impaMONUf`): la stessa identica sequenza
+  // "ir1x"/"if1x" gia' condivisa da casa/industria/missile/solare (nessuno
+  // sprite di cantiere nuovo) — l'edificio nasce al tic10 di `impaMONUf`,
+  // 700 tic dopo l'inizio di quel passo (`Alarm_5`), stessa "coda
+  // cosmetica" gia' tagliata per palazzo/museo (`steps` sotto si ferma li',
+  // dur dell'ultimo passo troncata a 700 non 800). Le 4 "gru" al passo 3
+  // (offset ±80,±50, un quadrato pulito — diverso dai 5 punti irregolari di
+  // palazzo) e il topper finale (`tops3`, sprite reale gia' "toppers": lo
+  // stesso oggetto di villa/club/missile/laser, nessuno sprite in piu').
+  monum: {
+    label: "Monumento",
+    placeCost: { mon: 20000 },   // [C] placeholder/Mouse_LeftReleased.gml, ramo selec==71
+    noAffordCheck: true,
+    construct: {
+      drain: { mon: 3, every: 20 },              // [C] impaMONUr/Alarm_10.gml
+      finalSprite: "monu_img", life: 1000,         // [C] monum/Create.gml
+      hap: { create: 1000, destroy: -1000 },       // [C] monum/Create.gml + Destroy.gml
+      ruin: ["monu_ruin"],                          // [C] monum/Step.gml: create_object(ruinmonument), nessun dado
+      decor: ["monu_l"],                            // [C] monum/Create.gml: create_object(monum_light)
+      steps: [
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
+        { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
+        { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+        { spr: "ir22", dur: 40, spawn: [
+          { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+          { spr: "gru1", dx: -80, dy: -50 }, { spr: "gru1", dx: -80, dy: 50 },
+        ] },
+        { spr: "ir21", dur: 40 },
+        { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 40 },
+        { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
+        { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
+        { spr: "ir42", dur: 40 },
+        { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170 }] },
+      ],
+    },
+    // [C] monum: nessun Alarm_5/storm armato in Create.gml (a differenza di
+    // banca sotto) — solo le bombe (generiche, stepBombs() in threats.js)
+    // possono danneggiarlo.
+  },
+
+  // Quindicesimo edificio: `banca` ("Banca", src/objects/banca1, sprite
+  // `banca_img`) — il secondo "edificio stella". **[C]**
+  // placeholder/Mouse_LeftReleased.gml, ramo selec==72: nessuna riga
+  // `r12.mon = ...` — davvero gratis, non solo senza controllo di
+  // affordability come il monumento. `placeCost: {}` (nessuna chiave) basta
+  // da solo: `canAfford()`/il ciclo di scalo su un oggetto vuoto sono gia'
+  // no-op, `costTagSprite()` sopra lo riconosce e mostra `cfree`.
+  // Stesso cantiere `ir1x`/`if1x` di monum (verificato: anche banca spawna
+  // le stesse 4 "gru" al passo 3 e lo stesso "toppers" al passo finale —
+  // **[I]** una fonte secondaria online per questo gioco descrive il
+  // cantiere della banca come "senza gru": non e' quello che il decompilato
+  // mostra, letto due volte riga per riga).
+  // **[C]** banca1/Create.gml + Alarm_3|5.gml, letti riga per riga: vita
+  // 1300, consumo elettrico FISSO (non per stadio: banca non cresce mai,
+  // nessun Alarm_2/crescita armato) -18 ele di giorno/-27 di notte ogni 120
+  // tic, danno da fulmine (dado 1/160 ogni 57 tic, -50 vita — PIU' raro del
+  // resto del motore, dove 1/108 e' la norma). **[I]** `Alarm_0`
+  // (armato-ma-mai-innescato: nessun `action_set_alarm(_,0)` in Create.gml)
+  // contiene un intero albero di ricolorazione/cambio sprite a dado
+  // ricopiato da `casa1/Alarm_0` — stesso codice morto gia' scartato per
+  // casa4s/casa4d/casa5ss/casa5dd, non portato qui per lo stesso motivo.
+  // Il pulsante prestiti (`bankbuttoner`, oggetto `repre`/calendario mesi,
+  // 4 prestiti a interesse) e' un intero sotto-sistema economico a parte —
+  // **[I] gap dichiarato**, fuori scopo per questo giro (STUDIO.md sotto).
+  banca: {
+    label: "Banca",
+    placeCost: {},
+    construct: {
+      drain: { mon: 3, every: 20 },               // [C] impaBANKr/Alarm_10.gml
+      finalSprite: "banca_img", life: 1300,         // [C] banca1/Create.gml
+      ruin: ["ru31", "ru32", "ru33", "ru34"],       // [C] ruin3/Create.gml: dado uniforme fra 4, stesso oggetto di industria3/casa3/lasergun
+      decor: ["banca_l"],                           // [C] banca1/Create.gml: create_object(banca1_light)
+      steps: [
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
+        { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
+        { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
+        { spr: "ir22", dur: 40, spawn: [
+          { spr: "gru1", dx: 80, dy: 50 }, { spr: "gru1", dx: 80, dy: -50 },
+          { spr: "gru1", dx: -80, dy: -50 }, { spr: "gru1", dx: -80, dy: 50 },
+        ] },
+        { spr: "ir21", dur: 40 },
+        { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 40 },
+        { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
+        { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
+        { spr: "ir42", dur: 40 },
+        { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170 }] },
+      ],
+    },
+    consumption: [[{ day: 18, night: 27 }]],   // [C] banca1/Alarm_3.gml, ogni 120 tic — costante, nessun `ava` (banca non cresce)
+    storm: [{ dice: 160, loss: 50 }],           // [C] banca1/Alarm_5.gml
+  },
 };
 
 let nextId = 1;
@@ -1245,13 +1349,17 @@ export function nextUpgrade(b) {
  * (`upcrc12`/`upcrc23`) e' l'unica eccezione: costa mon+oil insieme, niente
  * taglio `cXXXX` a valuta singola gli si addice — usa due sprite dedicati
  * gia' pronti nel decompilato, `c12aa`/`c23aa` (506x88, "banner" largo il
- * doppio dei tagli normali).
+ * doppio dei tagli normali). `banca` e' l'unico edificio DAVVERO gratis
+ * (`placeCost: {}`, nessuna riga di scalo in Mouse_LeftReleased.gml) — usa
+ * il terzo cartellino dedicato del decompilato, `cfree` (stella2/
+ * Mouse_MouseEnter.gml: `action_create_object(ccfree, 0, 0)`).
  */
 export function costTagSprite(type, upgradeIndex) {
   if (type === "chies") return upgradeIndex === 0 ? "c12aa" : upgradeIndex === 1 ? "c23aa" : null;
   const def = BUILDING_TYPES[type];
   const cost = upgradeIndex == null ? def?.placeCost : def?.upgrades?.[upgradeIndex]?.cost;
   const keys = cost ? Object.keys(cost) : [];
+  if (keys.length === 0) return upgradeIndex == null && def?.placeCost ? "cfree" : null;
   if (keys.length !== 1 || keys[0] !== "mon") return null;
   return `c${cost.mon}`;
 }

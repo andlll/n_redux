@@ -319,6 +319,14 @@ export function stepThreats(threats, bombs, explosions, dt, r12, trails, debris)
     }
     if (struck) {
       threats.splice(i, 1);
+      // [C] air/Destroy.gml: `pu1.distrutti += 1` — GameMaker manda
+      // l'evento Destroy per QUALUNQUE motivo di distruzione (abbattuto,
+      // fulminato, scaduto/volato via), non solo un colpo vero: replicato
+      // qui a ogni rimozione di un `air` dall'array, non solo su `life<=0`
+      // sotto. Solo `air` lo incrementa (bombar/dirig non hanno questo
+      // codice) — sblocca `stella1`/il Monumento (game/src/state.js,
+      // BUILDING_TYPES.monum in buildings.js).
+      if (th.type === "air") r12.distrutti = (r12.distrutti ?? 0) + 1;
       // [C] Alarm_5.gml crea sempre un "esplo" prima di uccidersi — poi
       // Destroy.gml (dirig soltanto) ci aggiunge la raggiera.
       explosions.push(spawnExplosion(th.x, th.y));
@@ -333,6 +341,7 @@ export function stepThreats(threats, bombs, explosions, dt, r12, trails, debris)
       }
       if (th.pyroT >= def.piro.life) {
         threats.splice(i, 1);
+        if (th.type === "air") r12.distrutti = (r12.distrutti ?? 0) + 1;
         explosions.push(...spawnDeathEffect(th.type, th.x, th.y));
       }
       continue;   // [C] niente bombe ne' controllo di scadenza naturale mentre precipita
@@ -356,6 +365,7 @@ export function stepThreats(threats, bombs, explosions, dt, r12, trails, debris)
         // [I] solo `air` puo' arrivare qui (chance < 1): esplode sul colpo
         // senza passare per il piro, come se non avesse questo stato.
         threats.splice(i, 1);
+        r12.distrutti = (r12.distrutti ?? 0) + 1;
         explosions.push(...spawnDeathEffect(th.type, th.x, th.y));
       }
       continue;
@@ -376,6 +386,7 @@ export function stepThreats(threats, bombs, explosions, dt, r12, trails, debris)
 
     if (th.t >= def.maxAge * TICK) {
       threats.splice(i, 1);
+      if (th.type === "air") r12.distrutti = (r12.distrutti ?? 0) + 1;
       // [C] Alarm_1.gml e' lo stesso evento raggiunto per scadenza naturale
       // O per il timer breve del piro — stesso effetto in entrambi i casi,
       // spawnDeathEffect() gia' distingue da solo air/bombar (un esplo) da

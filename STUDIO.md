@@ -2194,3 +2194,88 @@ paragrafo 8.
   allo stato "potenziamento pronto" (`ava` alla soglia), il pin verde
   `upsign` compare e l'hover su di lui mostra "500" (`upsign12`, coerente
   con `BUILDING_TYPES.casa.upgrades[0].cost`).
+
+- **Quattordicesimo e quindicesimo edificio, i primi due "a stella":
+  monumento e banca.** Richiesto dall'autore ("riusciamo a implementare
+  degli edifici con la stella?") — indagati tutti e tre i bottoni "stella"
+  prima di iniziare (`stella1`/`selec==71`/monumento, `stella2`/
+  `selec==72`/banca, `stella3`/`selec==82`): il terzo **non e' un edificio
+  nuovo**, e' un secondo modo di sbloccare `eolico` (gia' implementato) —
+  zero lavoro li'. Monumento e banca invece sono davvero nuovi, e a
+  differenza di ogni edificio precedente **non stanno mai nel menu base**:
+  sono ricompense di traguardo, invisibili finche' non si supera una
+  soglia.
+  **[C] Sblocco** — `pu1/Step.gml`, letto riga per riga (operatori: 0="==",
+  1="<", 2=">", 3="<=", 4=">=", tutti gia' stabiliti altrove nel
+  progetto — verificati di nuovo qui su un caso noto, `action_if_variable(
+  shifta,0,2)`/`(shifta,-1000,1)`, un chiaro clamp min/max dello scroll
+  orizzontale, prima di fidarsi sui casi nuovi): monumento a `distrutti>49`
+  (non ">=49" — la soglia vera e' 50 abbattimenti), banca a
+  `chies.level>1 && pop>=3000` (**non** "level>=1" come una prima lettura
+  aveva capito: l'idiom `with(chies){ if(level>1) break } if(__b__){...}`
+  va letto "esegui se la condizione dentro il with era vera" — lo stesso
+  schema gia' usato in decine di altri punti di questo file per le soglie
+  di potenziamento, qui riverificato con calma prima di fidarsene su un
+  caso nuovo).
+  `distrutti` (`pu1/Create.gml`, incrementato da `air/Destroy.gml` — **[C]**
+  a OGNI distruzione di un `air`, non solo un colpo vero: GameMaker manda
+  Destroy per qualunque motivo, replicato su tutti e 4 i punti di
+  `threats.js` dove un `air` esce dall'array, non solo `life<=0`) era gia'
+  dichiarato "non riprodotto, nessuna UI lo mostra" (STUDIO.md — quella nota
+  e' smentita da questo lavoro: la UI che lo mostra e' proprio lo sblocco
+  del monumento). Vive su `r12.distrutti` (game/src/state.js) invece che su
+  un'istanza `pu1` che qui non esiste mai per davvero.
+  **[I] Restano nel menu invece di fluttuare**: l'originale ancora
+  `stella1`/`stella2` a un offset FISSO sopra `pu1` (`pu1.x, pu1.y-100*sca`
+  / `pu1.x+100*sca, pu1.y-100*sca`), fuori dalla riga scorrevole dei
+  bottoni normali — qui compaiono/scompaiono nella STESSA riga
+  (`STAR_BUILDINGS`, main.js), riuso diretto dell'infrastruttura
+  `OTHER_BUILDINGS`/`uiButtons` gia' esistente invece di un secondo layout
+  a parte, stesso risultato osservabile (appaiono solo a soglia raggiunta).
+  **[I] Restano nascosti una volta costruiti**: l'originale ha un proprio
+  flag "gia' assegnato" (var 517/516, mai identificate con certezza) — qui
+  basta controllare se esiste gia' un edificio di quel tipo in `buildings`,
+  stesso risultato (il bottone non ricompare per un secondo esemplare).
+  **[C] Monumento** (`monum`, sprite `monu_img`): nessuna produzione/
+  crescita — vita 1000, felicita' simmetrica ±1000 (l'unico altro tipo cosi'
+  e' `eolico`), drenaggio perenne -5 mon/67 tic dopo il cantiere (oltre al
+  drain -3/20tic durante), rudere fisso `monu_ruin` (nessun dado, a
+  differenza di quasi ogni altro rudere), nessun danno da fulmine (solo le
+  bombe, gia' generiche in `stepBombs()`). **[C] placeholder/
+  Mouse_LeftReleased.gml, ramo selec==71**: scala 20000 mon SENZA
+  controllare prima l'affordability, unico ramo del file cosi' — riprodotto
+  con un nuovo `def.noAffordCheck` (buildings.js/main.js placeAt()) invece
+  di "correggerlo" silenziosamente: puo' davvero portare mon sotto zero.
+  **[C] Banca** (`banca1`, sprite `banca_img`): vita 1300, consumo elettrico
+  FISSO -18/-27 ele (giorno/notte, ogni 120 tic — banca non cresce mai,
+  nessun `Alarm_2` armato), fulmine 1/160 ogni 57 tic (piu' raro del
+  consueto 1/108), rudere `ruin3`/`ru31..34` (dado uniforme, stesso oggetto
+  gia' condiviso da industria3/casa3/lasergun). **[C] placeholder/
+  Mouse_LeftReleased.gml, ramo selec==72**: nessuna riga `mon=...` — davvero
+  gratis (`placeCost: {}`, gia' un no-op per `canAfford()`/il ciclo di
+  scalo, nessuna modifica al motore serviva). **[I] `Alarm_0` di banca1**
+  (dado di ricolorazione/16 varianti sprite) verificato ARMATO O NO prima di
+  crederci: `Create.gml` non arma mai lo slot 0 — stesso codice morto
+  copiato da `casa1/Alarm_0` gia' scartato per casa4s/d/casa5ss/dd, non
+  portato qui (una prima ricognizione lo aveva scambiato per una meccanica
+  vera). Il pulsante prestiti (`bankbuttoner`, oggetto `repre`/calendario
+  mesi, 4 prestiti a interesse composto) e' un sotto-sistema economico a
+  parte — **[I] gap dichiarato**, fuori scopo per questo giro: la banca
+  qui e' vita/luce/rudere/fulmine/consumo, non il prestito.
+  Entrambi condividono lo stesso cantiere `ir1x`/`if1x` gia' impacchettato
+  per casa/industria/missile/solare/palazzo/museo (nessuno sprite di
+  cantiere nuovo — verificato che monum e banca lo usino DAVVERO
+  identico, comprese le stesse 4 "gru" quadrate ad ogni tic3 e lo stesso
+  topper finale `tops3`→sprite reale gia' `toppers`, offset (0,-170)).
+  Sprite nuovi in `GAMEPLAY_SPRITES`: `sta1`/`sta1s`/`sta2`/`sta2s`
+  (icone bottone — dimenticate al primo giro, il bug che il bottone non
+  compariva mai nonostante `unlocked()` gia' corretta), `monu_img`/
+  `monu_ruin`/`monu_l`/`monu_lx`, `banca_img`/`banca_l`/`banca_lx`, e
+  `cfree` (il terzo cartellino di prezzo dedicato, per l'unico edificio
+  davvero gratis — `costTagSprite()` in buildings.js) — atlas e blitplan
+  rigenerati.
+  Verificato in browser (Playwright): nessuno dei due bottoni compare prima
+  della soglia; forzando `distrutti=50` il monumento compare, si piazza
+  (-20000 mon, cantiere condiviso "ir1x" visibile), e il bottone sparisce di
+  nuovo; forzando `chies.level=2`/`pop=3000` la banca compare, l'hover
+  mostra "It's free!", si piazza senza scalare mon.
