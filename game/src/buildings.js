@@ -416,15 +416,14 @@ export const BUILDING_TYPES = {
     // [C] rocket_launcher/Step.gml: insegue il veicolo piu' vicino
     // (famiglia `veicoli_target` — mongolfiere di risorse/spia e le auto
     // decorative) entro 400px, un sedicesimo di giro alla volta
-    // (`turretSprFor()` sotto). Il fuoco vero (game/src/projectiles.js,
-    // stepTurretFire — STUDIO.md "le minacce vere" era il pezzo che
-    // mancava) scatta separatamente quando una minaccia vera
-    // (`nemici_target`: air/bombar/dirig) entra entro 250px (`fireRange`),
-    // ma il razzo punta comunque al veicolo piu' vicino gia' calcolato qui
-    // sopra — non necessariamente alla minaccia che ha innescato lo sparo:
-    // [C] fedele, `red_ball/Create.gml` punta a
-    // `instance_nearest(veicoli_target)`, non a chi ha fatto scattare
-    // l'Alarm.
+    // (`turretSprFor()` sotto) — [I] a meno che una minaccia vera
+    // (`nemici_target`: air/bombar/dirig) non sia gia' entro lo stesso
+    // raggio, nel qual caso ha la priorita' (stepTurretAim() sotto). Il
+    // fuoco vero (game/src/projectiles.js, stepTurretFire) scatta
+    // separatamente quando una minaccia vera entra entro 250px
+    // (`fireRange`), sempre verso il bersaglio gia' inseguito qui sopra —
+    // che quindi e' sempre la minaccia stessa quando e' a tiro, non piu'
+    // un veicolo qualunque scelto a caso.
     aim: { range: 400, fireRange: 250 },
     storm: [{ dice: 130, loss: 50 }],   // [C] rocket_launcher/Alarm_5.gml
     construct: {                  // livello 0 -> 1, impamissr (src/objects/impamissr)
@@ -1185,14 +1184,34 @@ function turretSprFor(type, angleDeg) {
  * di tornare alla posa di riposo, esattamente come nel decompilato (l'`if`
  * che aggiorna `sprite_index` e' innestato dentro il controllo di portata,
  * niente ramo `else`).
+ *
+ * [I] `threats`, se passato, ha priorita' sui semplici veicoli: quando una
+ * minaccia vera (air/bombar/dirig) e' entro `def.aim.range` il cannone
+ * punta LEI invece del veicolo piu' vicino — non piu' fedele all'originale
+ * (che punta sempre al veicolo piu' vicino, vedi il commento su
+ * `instance_nearest(veicoli_target)` in projectiles.js), corretto qui
+ * perche' altrimenti il cannone poteva restare puntato su una mongolfiera
+ * innocua anche con un bombardiere gia' a tiro — e siccome il fuoco vero
+ * (projectiles.js, fireFrom) spara sempre verso `b.aimTarget`, il colpo
+ * finiva su un bersaglio diverso da quello mostrato dallo sprite, confondendo
+ * il giocatore. Qualunque minaccia entro il raggio di mira e' anche entro
+ * `aim.fireRange` (sempre <= `aim.range`), quindi il bersaglio qui scelto e'
+ * sempre coerente con quello che stepTurretFire()/fireTurretManual()
+ * colpiranno davvero.
  */
-export function stepTurretAim(buildings, targets) {
+export function stepTurretAim(buildings, targets, threats) {
   for (const b of buildings) {
     if (b.construction) continue;
     const def = BUILDING_TYPES[b.type];
     if (!def.aim) continue;
     let nearest = null, nearestD2 = def.aim.range * def.aim.range;
-    for (const t of targets) {
+    if (threats) {
+      for (const th of threats) {
+        const d2 = (th.x - b.x) ** 2 + (th.y - b.y) ** 2;
+        if (d2 < nearestD2) { nearestD2 = d2; nearest = th; }
+      }
+    }
+    if (!nearest) for (const t of targets) {
       const d2 = (t.x - b.x) ** 2 + (t.y - b.y) ** 2;
       if (d2 < nearestD2) { nearestD2 = d2; nearest = t; }
     }

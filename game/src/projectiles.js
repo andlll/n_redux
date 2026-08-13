@@ -9,15 +9,15 @@
 // [C] rocket_launcher/Step.gml: quando una minaccia vera (`nemici_target`
 // — air/bombar/dirig, non le mongolfiere) entra nel raggio di fuoco vero
 // (`aim.fireRange` per tipo, buildings.js) E il cannone non e' in
-// "ricarica", parte un colpo. Il dettaglio piu' facile da leggere male:
-// **il colpo non punta alla minaccia che ha fatto scattare lo sparo** —
-// punta a `instance_nearest(x, y, veicoli_target)`, lo stesso bersaglio
-// gia' inseguito dal cannone (STUDIO.md "il lanciarazzi", `b.aimAngle`,
-// buildings.js) — se una mongolfiera innocua e' piu' vicina della minaccia
-// vera che ha innescato lo sparo, il colpo vola verso QUELLA, non verso il
-// bombardiere. Fedele all'originale per tutte e tre le torrette, non un
-// bug di questa riscrittura: nessuno dei tre oggetti-proiettile menziona
-// `nemici_target` al proprio Create.
+// "ricarica", parte un colpo verso il bersaglio gia' inseguito dal cannone
+// (`b.aimAngle`/`b.aimTarget`, buildings.js/stepTurretAim). [C] l'originale
+// punta sempre a `instance_nearest(x, y, veicoli_target)` (mongolfiere/auto,
+// mai `nemici_target`), quindi poteva sparare verso una mongolfiera innocua
+// invece che verso la minaccia vera che aveva innescato il colpo — cannone
+// che punta una cosa e missile che ne colpisce un'altra, confuso da
+// guardare. [I] Corretto: stepTurretAim() da' priorita' alle minacce vere
+// quando sono a tiro, cosi' `b.aimTarget` (e quindi il colpo) e' sempre
+// coerente con cio' che il cannone sta visibilmente inseguendo.
 //
 // Le tre torrette non sono varianti dello stesso cannone: `WEAPONS` sotto
 // tiene i dati che le differenziano (raggio, ricarica, munizioni, la forma
@@ -178,7 +178,8 @@ const WEAPONS = {
 
 // [C] smoko/Create.gml: nessun moto, nessuna crescita (a differenza di
 // smoke_ind/smoke.js) — nasce, aspetta 36 tick (Alarm_0: action_kill_
-// object), sparisce di scatto. Sprite a dado tra c1 (25%, il default
+// object). [I] main.js dissolve l'alpha verso la fine di quei 36 tick
+// invece di far sparire l'oggetto di scatto. Sprite a dado tra c1 (25%, il default
 // dell'oggetto)/c2 (25%)/c3 (50%, l'ultimo dei due `action_if_dice(2)`
 // vince sempre perche' sovrascrive il primo) — proporzioni diverse da
 // quelle di smoke_ind (50/25/25) nonostante siano gli stessi tre sprite,
@@ -187,7 +188,7 @@ const WEAPONS = {
 // in primo piano, ma senza `_selfLit`: e' un residuo di sparo/scia, non un
 // simbolo dell'interfaccia come le monete, quindi si scurisce di notte
 // come qualunque altro decoro (STUDIO.md, coins/upsign).
-const SMOKO_LIFE = 36 * TICK;
+export const SMOKO_LIFE = 36 * TICK;   // [I] esportata per la dissolvenza in alpha, vedi stepSmoko() sotto
 const SMOKO_DEPTH = -9000;
 function spawnSmoko(x, y) {
   const d = Math.random();

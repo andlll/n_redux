@@ -12,9 +12,9 @@ import {
   spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
-import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT } from "./smoke.js";
-import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, stepDebris } from "./threats.js";
-import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko } from "./projectiles.js";
+import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
+import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
+import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, SMOKO_LIFE } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -584,6 +584,19 @@ function stepLights(entities, dt, night, r12) {
   }
 }
 
+// [I] I tre tipi di fumo (centrali/smoke.js, scia missile-gatling/
+// projectiles.js, scia aerei/threats.js) muoiono tutti di scatto
+// nell'originale (`action_kill_object` a fine vita) — qui invece si
+// dissolvono: alpha piena fino a SMOKE_FADE_FRAC di vita rimasta, poi un
+// fade lineare fino a 0 esattamente quando l'oggetto verrebbe comunque
+// scartato (stepSmoke()/stepSmoko()/stepAerSmoke()), cosi' non serve
+// allungarne la vita per vedere la dissolvenza.
+const SMOKE_FADE_FRAC = 0.35;
+function fadeAlpha(t, life) {
+  const remaining = (life - t) / life;
+  return Math.max(0, Math.min(1, remaining / SMOKE_FADE_FRAC));
+}
+
 /** Moltiplica una tinta 0xRRGGBB per una tinta ambientale [r,g,b] in 0..1. */
 function mulTint(base, rgb) {
   const r = Math.round(((base >> 16) & 255) * rgb[0]);
@@ -855,15 +868,6 @@ input.onTap = (sx, sy) => {
   }
 };
 
-/** Confronta per identita' logica: gli edifici sono incapsulati in un
- * wrapper nuovo ad ogni frame (lo sprite cambia durante il cantiere),
- * quindi il confronto va fatto sull'entita' vera (`ref`), non sul wrapper. */
-function isPicked(it) {
-  if (!picked) return false;
-  if (it === picked) return true;
-  return it.obj === "building" && picked.obj === "building" && it.ref === picked.ref;
-}
-
 // ---------------------------------------------------------------- loop
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -986,8 +990,11 @@ function frame(now) {
   // piu' vicino — [C] rocket_launcher/Step.gml usa la famiglia
   // `veicoli_target`, che nel motore sono le auto decorative e le
   // mongolfiere di risorse/spia (non il pacco di cantiere, `notte_target`
-  // nel decompilato, e non le casse/gli avanzi di cantiere).
-  stepTurretAim(buildings, cars.concat(balloons));
+  // nel decompilato, e non le casse/gli avanzi di cantiere). [I] Le minacce
+  // vere (`threats`) hanno pero' la priorita' quando sono a tiro, cosi' il
+  // cannone punta davvero cio' che sta per colpire — vedi il commento su
+  // stepTurretAim() in buildings.js.
+  stepTurretAim(buildings, cars.concat(balloons), threats);
   // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
   // gia' nella direzione appena calcolata (b.aimAngle).
   stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails);
@@ -1050,7 +1057,7 @@ function frame(now) {
   // dell'ingrandimento uniforme (_scale) — vedi smoke.js.
   for (const p of smoke) {
     const frameIdx = Math.min(SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
-    dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale });
+    dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, SMOKE_LIFE) });
   }
   for (const c of atmo.clouds) dynamic.push({ obj: "cloud", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr) });
   for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
@@ -1097,13 +1104,13 @@ function frame(now) {
   // come le monete blu ([C] smoko/_object.json), ma senza `_selfLit` — un
   // residuo di sparo, non un simbolo dell'interfaccia, si scurisce di
   // notte come qualunque altro decoro.
-  for (const p of trails) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
+  for (const p of trails) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr), _alpha: fadeAlpha(p.t, SMOKO_LIFE) });
   // Scia di fumo degli aerei (game/src/threats.js, spawnAerSmoke): stessa
   // animazione a 70 frame vera di smoke.js (cc2/cc3), ferma sul posto e in
   // crescita (_scale) — a differenza della scia dei proiettili sopra.
   for (const p of aerSmoke) {
     const frameIdx = Math.min(AER_SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
-    dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale });
+    dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, AER_SMOKE_LIFE) });
   }
   // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
   // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
@@ -1150,7 +1157,7 @@ function frame(now) {
     if (f) {
       const x0 = it.x - f.ox, y0 = it.y - f.oy;
       if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < t) continue;
-      const base = isPicked(it) ? 0xbfe0ff : (it._tint ?? 0xffffff);
+      const base = it._tint ?? 0xffffff;
       const tint = it._selfLit ? base : mulTint(base, amb.rgb);
       r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
     } else {

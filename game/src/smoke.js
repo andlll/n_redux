@@ -15,7 +15,7 @@
 // l'unica ciminiera di industria3, che non ha dado di variante).
 const TICK = 1 / 60;
 const SMOKE_PERIOD = 20 * TICK;      // [C] action_set_alarm(20, N): riarmo regolare, tutte le ciminiere
-const SMOKE_LIFE = 69 * TICK;        // [C] smoke_ind|smoke_ind_2/Create.gml: action_set_alarm(69, 0)
+export const SMOKE_LIFE = 69 * TICK; // [C] smoke_ind|smoke_ind_2/Create.gml: action_set_alarm(69, 0)
 const SMOKE_GROWTH = 3;              // [C] Step.gml: xsca += 0.05/tick = 3/s a 60fps
 // [C] cc1|cc2|cc3 (data/sprites.json) hanno davvero 70 frame ciascuno, e
 // `action_sprite_set(cc2, 0, 1)` a Create arma image_speed=1: sull'istanza
@@ -95,6 +95,12 @@ export function stepSmokeSpawner(buildings, smoke, dt, r12) {
  * (smoke_ind/Collision_*.gml) non sono riprodotte: senza un sistema di
  * collisione generico per il decoro sarebbero codice morto per un
  * dettaglio invisibile alla scala di un frame. */
+// [I] `SMOKE_LIFE` esportata cosi' che main.js possa calcolare una
+// dissolvenza in alpha verso la fine della vita di ogni sbuffo (stesso
+// principio di `_alpha`/LIGHT_FADE per il decoro luce): l'originale lo fa
+// sparire di scatto ad `action_kill_object` (Alarm_0.gml), qui e' un fade
+// out, coerente col resto del motore che gia' preferisce dissolvenze a
+// sparizioni istantanee.
 export function stepSmoke(smoke, dt) {
   for (let i = smoke.length - 1; i >= 0; i--) {
     const p = smoke[i];
