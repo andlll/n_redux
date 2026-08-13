@@ -60,6 +60,7 @@ export const THREAT_TYPES = {
     bombEvery: 40, bombChance: 2,             // [C] air/Alarm_0.gml: ogni 40 tick, dado 1/2 — solo se "desto" (vedi spawn)
     stormDice: 68,                            // [C] air/Alarm_5.gml
     explodeOnExpire: true,                    // [C] air/Alarm_1.gml: crea "esplo" anche a fine vita naturale
+    smokeTrail: true,                         // [C] air/Alarm_6.gml + Step.gml: vedi spawnAerSmoke()/stepThreats() sotto
   },
   bombar: {
     label: "bombardiere",
@@ -68,6 +69,7 @@ export const THREAT_TYPES = {
     bombEvery: 25, bombChance: 2,             // [C] bombar/Alarm_0.gml
     stormDice: 68,                            // [C] bombar/Alarm_5.gml
     explodeOnExpire: true,                    // [C] bombar/Alarm_1.gml
+    smokeTrail: true,                         // [C] bombar/Alarm_6.gml: stessa scia di air
   },
   dirig: {
     label: "zeppelin",
@@ -77,8 +79,30 @@ export const THREAT_TYPES = {
     bombOffsets: [{ dx: -20, dy: -5, chance: 2 }, { dx: 20, dy: 5, chance: 2 }],
     stormDice: 68,                            // [C] dirig/Alarm_5.gml
     explodeOnExpire: false,                   // [C] dirig/Alarm_1.gml: solo action_kill_object(), nessun "esplo"
+    // [C] nessun Alarm_6/smoko_aer in dirig: a differenza di air/bombar lo
+    // zeppelin non lascia nessuna scia — la stessa asimmetria gia' letta
+    // per l'esplosione a fine vita naturale (explodeOnExpire sopra).
   },
 };
+
+// [C] smoko_aer/Create|Step|Alarm_0.gml: riusa gli stessi sprite "cc2"/
+// "cc3" del fumo delle centrali (smoke.js) — MAI "cc1" (a differenza di
+// smoke_ind, qui il dado sceglie solo fra le due varianti), animazione a
+// frame vera come loro (70 frame, image_speed di default), ma ferma sul
+// posto (nessun moto: smoko_aer non insegue l'aereo che l'ha creata,
+// resta dov'e' nata) e con una crescita diversa — parte da scala 2 (il
+// doppio del fumo delle centrali) e cresce piu' in fretta (+0.2/tick =
+// 12/s contro 3/s). depth **[C]** -4000 fisso (data/objects.json), la
+// stessa quota delle esplosioni/del fuoco vero, non -9000 come il fumo di
+// scia dei proiettili (game/src/projectiles.js, spawnSmoko) — diversa
+// famiglia di oggetto nel decompilato, diversa quota.
+export const AER_SMOKE_FRAME_COUNT = 70;
+const AER_SMOKE_PERIOD = 8 * TICK;    // [C] air|bombar/Alarm_6.gml: si riarma ogni 8 tick
+const AER_SMOKE_LIFE = 36 * TICK;     // [C] smoko_aer/Create.gml: action_set_alarm(36, 0)
+const AER_SMOKE_GROWTH = 12;          // [C] Step.gml: xsca += 0.2/tick = 12/s a 60fps
+function spawnAerSmoke(x, y) {
+  return { x, y, t: 0, spr: Math.random() < 0.5 ? "cc2" : "cc3", scale: 2, depth: -4000 };
+}
 
 /** [C] air/Create.gml: meta' delle volte nasce "in prima fila" (depth
  * -3990, sgancia bombe davvero — `desto`), l'altra meta' piu' piccola e
@@ -92,8 +116,21 @@ export function spawnThreat(type) {
     spd: type === "dirig" ? 2 : type === "bombar" ? (dice(2) ? 8 : 6) : (dice(2) ? 16 : 13),  // [C]
     depth: front ? -3990 : 2, scale: front ? 1 : 0.75, desto: front,
     spr: type === "air" ? pickAirSpr() : type === "bombar" ? "bomberspr" : "dirspr",
-    t: 0, bombT: 0, stormT: 0,
+    t: 0, bombT: 0, stormT: 0, smokeT: 0,
   };
+}
+
+/** Avanza/scarta gli sbuffi di scia degli aerei (spawnAerSmoke sopra) —
+ * array separato dalla scia dei proiettili (game/src/projectiles.js,
+ * stepSmoko): stessa idea, ma questi crescono nel tempo e animano 70 frame
+ * veri, quelli restano un unico fotogramma fermo. */
+export function stepAerSmoke(trails, dt) {
+  for (let i = trails.length - 1; i >= 0; i--) {
+    const p = trails[i];
+    p.t += dt;
+    if (p.t >= AER_SMOKE_LIFE) { trails.splice(i, 1); continue; }
+    p.scale += AER_SMOKE_GROWTH * dt;
+  }
 }
 
 function spawnBomb(x, y) {
@@ -156,13 +193,15 @@ export function spawnDeathEffect(type, x, y) {
  * silenzio per dirig — [C] la stessa asimmetria del decompilato).
  *
  * [I] Non modella "piro" (lo stato "colpito, sto precipitando"): richiede
- * vita/danno su un nemico, che a sua volta richiede il fuoco vero del
- * lanciarazzi — non ancora ricostruito (STUDIO.md "il lanciarazzi": la
- * mira e' vera, il fuoco resta un gap dichiarato). Finche' niente puo'
- * abbattere un aereo, quel ramo di codice originale non scatterebbe
- * comunque.
+ * vita/danno su un nemico che sopravviva a un colpo solo — il fuoco vero
+ * (game/src/projectiles.js) uccide sempre al primo colpo (STUDIO.md "il
+ * lanciarazzi spara per davvero"), quindi quel ramo del decompilato non
+ * scatterebbe comunque. La scia di fumo continua invece si' (`smokeTrail`
+ * su air/bombar sopra, `trails` qui sotto): e' un alarm indipendente
+ * (Alarm_6) che si riarma per tutta la vita del velivolo, non legato a
+ * "piro".
  */
-export function stepThreats(threats, bombs, explosions, dt, r12) {
+export function stepThreats(threats, bombs, explosions, dt, r12, trails) {
   for (let i = threats.length - 1; i >= 0; i--) {
     const th = threats[i];
     const def = THREAT_TYPES[th.type];
@@ -170,6 +209,11 @@ export function stepThreats(threats, bombs, explosions, dt, r12) {
     const pxPerSec = th.spd * 60;
     th.x += COS30 * pxPerSec * dt;
     th.y -= SIN30 * pxPerSec * dt;
+
+    if (def.smokeTrail) {
+      th.smokeT += dt;
+      while (th.smokeT >= AER_SMOKE_PERIOD) { th.smokeT -= AER_SMOKE_PERIOD; trails.push(spawnAerSmoke(th.x, th.y)); }
+    }
 
     let struck = false;
     if (r12.storm) {

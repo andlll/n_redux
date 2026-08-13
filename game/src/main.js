@@ -13,7 +13,7 @@ import {
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT } from "./smoke.js";
-import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT } from "./threats.js";
+import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
@@ -281,6 +281,9 @@ let smoke = [];
 let threats = [];
 let bombs = [];
 let explosions = [];
+// Scia di fumo di aerei/bombardieri (game/src/threats.js, spawnAerSmoke/
+// stepAerSmoke) — mai gli zeppelin, [C] nessun Alarm_6 su dirig.
+let aerSmoke = [];
 // Il fuoco vero delle torrette (game/src/projectiles.js): stepTurretFire
 // crea i colpi (dalla punta del cannone, quando una minaccia vera e' entro
 // portata), stepProjectiles li fa volare e colpire.
@@ -967,7 +970,8 @@ function frame(now) {
   // (contatori alzati in stepBalloons() sopra), poi ognuno vola, bombarda,
   // e sparisce da solo.
   stepThreatSpawner(r12, threats, dt);
-  stepThreats(threats, bombs, explosions, dt, r12);
+  stepThreats(threats, bombs, explosions, dt, r12, aerSmoke);
+  stepAerSmoke(aerSmoke, dt);
   stepBombs(bombs, explosions, buildings, dt, r12);
   stepExplosions(explosions, dt);
   // Unico controllo per tutte le fonti di danno di questo frame (fulmini,
@@ -1087,6 +1091,13 @@ function frame(now) {
   // residuo di sparo, non un simbolo dell'interfaccia, si scurisce di
   // notte come qualunque altro decoro.
   for (const p of trails) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
+  // Scia di fumo degli aerei (game/src/threats.js, spawnAerSmoke): stessa
+  // animazione a 70 frame vera di smoke.js (cc2/cc3), ferma sul posto e in
+  // crescita (_scale) — a differenza della scia dei proiettili sopra.
+  for (const p of aerSmoke) {
+    const frameIdx = Math.min(AER_SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
+    dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale });
+  }
   // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
   // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
   // (`_alpha`, 0 di giorno) che il ciclo di disegno rispetta da solo — a
@@ -1391,6 +1402,7 @@ window.__nimbus = {
   get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
   get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
   get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
+  get aerSmoke() { return aerSmoke; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,

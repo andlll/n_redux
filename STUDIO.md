@@ -1148,12 +1148,13 @@ paragrafo 8.
   fatta per `tooCloseToTurret()` (STUDIO.md "il lanciarazzi"), nessun
   sistema di collisione vero in questo motore.
   **Non riprodotto**: `piro` (lo stato "colpito, sto precipitando" di
-  ciascun nemico) — richiede vita/danno su un nemico, che a sua volta
-  richiede il fuoco vero del lanciarazzi (STUDIO.md "il lanciarazzi": la
-  mira e' vera, il fuoco resta un gap dichiarato) — finche' niente puo'
-  abbattere un aereo, quel ramo del decompilato non scatterebbe comunque;
-  il fumo di scia (`smoko_aer`), puramente cosmetico, stesso gap gia'
-  dichiarato per il fumo di `industria`/la cassa di cantiere.
+  ciascun nemico) — il fuoco vero (aggiunto poi, STUDIO.md "il lanciarazzi
+  spara per davvero") uccide sempre al primo colpo, quindi quel ramo del
+  decompilato non scatterebbe comunque anche ora che il fuoco esiste.
+  **Il fumo di scia (`smoko_aer`) e' stato aggiunto in un giro successivo**
+  (vedi in fondo al file, insieme al fumo di scia dei proiettili): air/
+  bombar lo riarmano ogni 8 tick per tutta la loro vita (Alarm_6), mai
+  dirig.
   Verificato in browser: 10 spie riuscite di fila producono la contabilita'
   esatta (`onda`=10, `bombus`=2, `diro`=1); le tre ondate nascono nei tempi
   giusti e si vedono (caccia verde/giallo/zeppelin grigio in volo sopra la
@@ -1717,3 +1718,32 @@ paragrafo 8.
   step). Verificato in browser: un razzo lanciato lontano lascia una scia
   visibile di sbuffi grigi lungo tutta la traiettoria, non un singolo
   fotogramma fermo.
+
+- **La scia di fumo di aerei/bombardieri.** Ultimo gap dichiarato del
+  gruppo "minacce vere" (STUDIO.md sopra, "non riprodotto: piro... il
+  fumo di scia"), chiuso mentre gia' c'eravamo dentro per quello dei
+  proiettili. `game/src/threats.js`.
+  **[C]** `air/Alarm_6.gml`/`bombar/Alarm_6.gml`: un alarm indipendente
+  che si riarma da solo ogni 8 tick per tutta la vita del velivolo,
+  crea `smoko_aer` — MAI `dirig`, nessun `Alarm_6` sul suo oggetto: la
+  stessa asimmetria gia' letta per l'esplosione a fine vita naturale
+  (`explodeOnExpire`). **[C]** `smoko_aer/Create.gml` riusa gli sprite
+  "cc2"/"cc3" del fumo delle centrali (smoke.js) — mai "cc1" (qui il dado
+  e' un 50/50 secco fra i due, non i tre pesi 50/25/25 di `smoke_ind`) —
+  con la stessa animazione a 70 frame vera (`AER_SMOKE_FRAME_COUNT`), ma
+  **[C]** ferma sul posto (nessun moto: non insegue l'aereo, resta dov'e'
+  nata) e con una crescita diversa — scala iniziale 2 (il doppio del fumo
+  delle centrali), +0.2/tick invece di +0.05/tick, vita 36 tick. Depth
+  **[C]** -4000 fisso (`data/objects.json`), la stessa quota di esplosioni/
+  fuoco vero — diversa sia da quella del fumo delle centrali (dinamica,
+  `-y-150/-200`) sia da quella della scia dei proiettili (-9000 fisso):
+  tre famiglie di oggetti diverse nel decompilato, tre quote diverse,
+  lette cosi' come stanno invece di uniformarle. Nuovo array `aerSmoke` in
+  main.js, terzo tipo di fumo nel motore insieme a `smoke` (centrali) e
+  `trails` (proiettili) — nessuno dei tre condivide lo step con gli altri
+  due, le differenze (moto/crescita/animazione/quota) sono abbastanza
+  diverse da rendere un sistema di particelle unico piu' complicato dei
+  tre separati. Verificato in browser: un caccia forzato fermo lascia
+  dietro di se' una nuvola di sbuffi che crescono e si sovrappongono,
+  visibilmente diversi (piu' grandi, colore diverso, animati) dalla scia
+  puntiforme dei proiettili.
