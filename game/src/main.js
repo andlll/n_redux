@@ -20,6 +20,24 @@ import { loadFont, drawText } from "./font.js";
 
 const canvas = document.getElementById("view");
 const hud = document.getElementById("hud");
+
+// Schermata di caricamento (index.html #loading): il gioco e' diventato
+// pesante lato asset (atlas per-room + font bitmap, tutti fetchati prima
+// del primo frame, vedi gli "await fetch"/loadTexture/loadFont piu' sotto),
+// quindi copriamo quell'attesa con logo + sfondo nero invece di uno schermo
+// bianco/vuoto. "show" fa partire subito la dissolvenza in entrata del
+// logo; "hide" (chiamata da hideLoading(), sotto, al primo frame disegnato)
+// fa la dissolvenza in uscita dell'intera overlay.
+const loading = document.getElementById("loading");
+loading.classList.add("show");
+let loadingHidden = false;
+function hideLoading() {
+  if (loadingHidden) return;
+  loadingHidden = true;
+  loading.classList.add("hide");
+  loading.addEventListener("transitionend", () => loading.remove(), { once: true });
+}
+
 const r = new Renderer(canvas);
 const gl = r.gl;
 const white = makeSolidTexture(gl);
@@ -1738,6 +1756,8 @@ function frame(now) {
     (status ? status + "\n" : "") +
     (messageT > 0 ? message + "\n" : "") +
     `trascina, rotella/pinch, tap — [S] salva [L] carica`;
+
+  hideLoading();
 
   requestAnimationFrame(frame);
 }
