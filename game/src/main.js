@@ -1,8 +1,8 @@
 import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
-import { createR12, tickR12, stepWeather } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
+import { createR12, tickR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan } from "./state.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -143,6 +143,12 @@ function frameFor(sprName, frameIdx = 0) {
   return { tex: pageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1,
            w: f.w, h: f.h, ox: f.ox, oy: f.oy };
 }
+// Quante sottoimmagini ha davvero uno sprite nell'atlas — serve solo a chi
+// deve fare il modulo per un'animazione che gira in loop invece di fermarsi
+// all'ultimo frame (vedi "eol"/WIND_ANIM_FPS piu' sotto, buildings.js).
+function frameCountFor(sprName) {
+  return atlas.sprites[sprName]?.length ?? 1;
+}
 // Alberi (STUDIO.md §5.3, src/objects/albe|albe2|albe3/Create.gml): a
 // Create l'originale sceglie a dado uno sprite finale diverso per istanza
 // (in albe, se nessun dado va a buon fine resta il default "a1" della
@@ -176,6 +182,10 @@ const missingArt = staticWorld.filter((it) => !it._f).length;
 // iniziale, sbagliata: "gotham_mid" non e' piu' usato in questo file da
 // quando il bottone di test di chies e' sparito, STUDIO.md §9).
 const fontMini = await loadFont(gl, "gotham_mini");
+// [C] repre/DrawGUI.gml: dodici `action_draw_text` letterali, uno per ogni
+// valore di `repre.mon` (il mese, 1..12 — state.js, r12.month) — mai una
+// tabella nel decompilato, ricostruita qui come tale.
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 // -------------------------------------------------------- piazzabili e edifici
 // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
@@ -338,6 +348,20 @@ let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 // ramo "building" di input.onTap piu' sotto per come si arma/si conferma.
 let ruspaPending = null;   // { buildingId, cost } — la posizione si legge da b.x/b.y quando serve, non duplicata qui
 
+// Il pannello prestiti (src/objects/loanoscrino + get_loan1..4, state.js
+// LOANS/loanActive/takeLoan): a differenza del popup della ruspa (ancorato
+// al mondo, vicino all'edificio) e' un vero modale in spazio schermo — [C]
+// `loanoscrino/Step.gml`, ramo `os_type==4` (Android, il nostro target):
+// si RICENTRA sulla view ad ogni Step, di fatto un overlay fullscreen sul
+// solo target mobile del decompilato, non ancorato al mondo come sembra
+// dal punto di creazione relativo a `bankbuttoner`. `true` = aperto (un
+// solo banca possibile per partita, STUDIO.md — nessun bisogno di un id).
+// `bankButtons` sono i rettangoli schermo dei 4 bottoni prestito,
+// ricalcolati ad ogni frame dal disegno (stesso schema di `uiButtons`),
+// letti da input.onTap sotto.
+let bankPanelOpen = false;
+let bankButtons = [];   // { x, y, w, h, index }
+
 // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
 // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
 // { action_kill_object(); }` dentro upcrc12/upcrc23, stesso schema per
@@ -399,6 +423,22 @@ function addDecor(building, spawns) {
       ...(lit ? { _selfLit: true, _lightT: 0, _fadeTicks: fadeTicks } : {}),   // parte spento, come "empty" in originale (Create.gml)
     });
   }
+}
+
+/** `onSpawn` di stepConstructions() (buildings.js): le gru e i "topper"
+ * (toppers/topls) creati durante un cantiere — [C] gru1/toppers/Create.gml,
+ * nessuno dei due nel decompilato e' `notte_target`: sono impalcature vere,
+ * illuminate come il resto della scena dalla tinta ambientale, non un
+ * bagliore di finestra che ha bisogno di notte+corrente per comparire.
+ * Segnalato dall'autore ("non vedo mai il top delle impalcature"): passare
+ * `addDecor` diretto come `onSpawn` li faceva nascere con `lit:true` di
+ * default (lo stesso usato per il decoro FINALE, le finestre — vedi sopra),
+ * quindi restavano ad alpha 0 per tutta la durata tipica di un cantiere
+ * (mai una notte intera con energia sufficiente, la stessa soglia di
+ * stepLights()) — invisibili non per un bug di rendering ma perche' il
+ * motore li trattava come una luce mai accesa. */
+function addConstructionSpawn(building, spawns) {
+  addDecor(building, spawns.map((s) => ({ ...s, lit: false })));
 }
 
 // [C] parco/Create.gml: 7 posizioni fisse intorno al parco: ognuna, a dado
@@ -500,25 +540,60 @@ function placeAt(placeholder, type) {
   // (parco, buildings.js — [I] segnalato dall'autore) e' l'eccezione: bassa
   // scenografia piatta, non un edificio solido, resta sempre "in fondo"
   // invece di competere per -y con cio' che le passa sopra.
-  const b = placeBuilding(type, placeholder.x, placeholder.y, def.fixedDepth ?? 0);
+  // `eolico` (def.multiTile): il centro visivo dev'essere quello del
+  // cluster intero (media dei 4 lotti), non quello del solo lotto toccato
+  // — segnalato dall'autore ("la pala nasce disallineata: il centro
+  // corrisponde al centro di UN placeholder, ma ne occupa 4"). Lo sprite
+  // "eol" e' disegnato grande apposta per coprire tutto il cluster; ancorarlo
+  // al lotto toccato (che puo' essere uno qualunque dei 4, non
+  // necessariamente quello centrale) lo faceva "sbilanciare" verso un lato.
+  const anchorX = def.multiTile ? cluster.reduce((s, p) => s + p.x, 0) / cluster.length : placeholder.x;
+  const anchorY = def.multiTile ? cluster.reduce((s, p) => s + p.y, 0) / cluster.length : placeholder.y;
+  const b = placeBuilding(type, anchorX, anchorY, def.fixedDepth ?? 0);
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
-  // [C] placeholder/Mouse_LeftReleased.gml: selec==1 (casa), selec==2
-  // (industria), selec==3 (missile), selec==60 (club), selec==61 (solare),
-  // selec==62 (gatling) e selec==63 (villa) creano `mon_bil` — i sette
-  // tipi piazzabili dal giocatore che lo fanno finora (`parco`, selec==7,
-  // non crea nessun pallone nel decompilato — game/src/balloons.js, in
-  // cima al file). `laser` (selec==5) crea invece `mon_bbil`, la variante
-  // piu' grande mai cablata (STUDIO.md/balloons.js: "serve solo a tipi non
-  // ancora ricostruiti") — riusa `mon_bil` come gli altri, stesso pallone
-  // piu' piccolo del dovuto invece di un secondo sprite/oggetto solo per
-  // questo. `eolico` (selec==4) crea `mon_bil` anche lui — [C]
-  // eoliplacer/Alarm_1.gml, ramo selec==4.
+  // [C] placeholder/Mouse_LeftReleased.gml, letto riga per riga: selec==1
+  // (casa), selec==2 (industria), selec==3 (missile), selec==60 (club),
+  // selec==61 (solare), selec==62 (gatling), selec==63 (villa), selec==71
+  // (monum) creano `mon_bil` — otto dei nove tipi piazzabili dal giocatore
+  // che ne creano uno (`parco`, selec==7, non crea nessun pallone). Solo
+  // `laser` (selec==5) e `banca` (selec==72) creano `mon_bbil`, la
+  // variante grande — ora davvero cablata (`big`, balloons.js/
+  // spawnConstructionBalloon()), non piu' sempre `mon_bil` per tutti.
+  // `eolico` (selec==4) crea `mon_bil` anche lui — [C] eoliplacer/
+  // Alarm_1.gml, ramo selec==4.
   if (type === "casa" || type === "industria" || type === "missile" || type === "solare"
     || type === "club" || type === "villa" || type === "gatling" || type === "laser" || type === "eolico"
     || type === "monum" || type === "banca") {
-    constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
+    constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y, type === "laser" || type === "banca"));
   }
+  return null;
+}
+
+/**
+ * `parco/Mouse_LeftPressed.gml`, ramo selec==61: un secondo modo di
+ * piazzare `solare`, mai attraversato da `placeAt()` sopra (nessun
+ * placeholder coinvolto — l'edificio nasce esattamente sopra un `parco`
+ * gia' finito, che non viene ne' consumato ne' ucciso). **[C]** stesso
+ * costo del piazzamento normale (1000 mon, letto identico in entrambi i
+ * rami del decompilato) — l'UNICA differenza reale e' cosmetica/economica
+ * a valle: `overpark`/`oversolar` (impostati qui invece che da una vera
+ * collisione fisica, l'unico modo in cui i due potrebbero mai toccarsi)
+ * fanno costare di piu' la ruspa sul pannello (2700 invece di 2000,
+ * `ruspaCostFor()` in buildings.js) e disabilitano del tutto quella sul
+ * parco sottostante (nessun ramo per `oversolar==1` in
+ * `demobasia/Collision_parco.gml`: il parco non si puo' piu' demolire/
+ * riparare finche' il pannello resta li' sopra).
+ */
+function placeSolarOverPark(parco) {
+  const def = BUILDING_TYPES.solare;
+  if (!canAfford(r12, def.placeCost)) return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
+  for (const k in def.placeCost) r12[k] -= def.placeCost[k];
+  const b = placeBuilding("solare", parco.x, parco.y, 0);
+  b.overpark = true;
+  parco.oversolar = true;
+  buildings.push(b);
+  constructionBalloons.push(spawnConstructionBalloon(parco.x, parco.y));
   return null;
 }
 
@@ -647,7 +722,22 @@ function resolvePlacement(sx, sy) {
   // esattamente come ogni altro tipo — palazzoRd/museoRd non compaiono nel
   // menu (OTHER_BUILDINGS), solo qui.
   const concreteType = hit.axis === "rd" ? `${type}Rd` : type;
-  const b = placeBuilding(concreteType, buildSite.x, buildSite.y, 0);
+  // Depth: palazzo/museo nascono sul lotto con la y MAGGIORE (buildSite,
+  // sopra) ma lo sprite finale e' grande abbastanza da coprire visivamente
+  // ANCHE il lotto bloccato (blockedSite, y minore) accanto — se il depth
+  // si ordinasse come ogni altro edificio (-buildSite.y, il piu' vicino dei
+  // due alla camera) l'edificio vinceva il confronto per-y anche contro
+  // vicini genuinamente piu' vicini (y maggiore di buildSite ma ancora
+  // dentro l'ingombro visivo del suo sprite sovradimensionato) — segnalato
+  // dall'autore ("a volte si vedono sopra edifici che sono piu' in basso").
+  // [I] Nessun dato di "vera" altezza dello sprite per fare di meglio
+  // (STUDIO.md, "pepazzittecollider" mai ricostruito): la media fra i due
+  // lotti del cluster e' un compromesso, non l'ancoraggio a un singolo
+  // angolo (buildSite o blockedSite) — riduce il bias in avanti senza
+  // introdurre quello opposto (nascosto da vicini che dovrebbero stargli
+  // dietro).
+  const depthY = (buildSite.y + blockedSite.y) / 2;
+  const b = placeBuilding(concreteType, buildSite.x, buildSite.y, -depthY);
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));
   constructionBalloons.push(spawnConstructionBalloon(buildSite.x, buildSite.y));
@@ -700,6 +790,32 @@ function destroyBuilding(b) {
   coins = coins.filter((c) => c.buildingId !== b.id);
   if (picked?.obj === "building" && picked.ref === b) picked = null;
   ruins.push({ obj: "decor", x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr) });
+}
+
+/** Avvia un potenziamento e — [C] upcrc12/Mouse_LeftPressed.gml: `with
+ * (cddvd) { action_kill_object(); }` scatta SUBITO al tocco, insieme allo
+ * scalo dei costi e alla comparsa dell'impalcatura, non alla fine del
+ * cantiere — spegne il decoro del livello vecchio (le finestre illuminate,
+ * spawnDecor()/addDecor() sopra) invece di lasciarlo acceso sotto
+ * l'impalcatura fino al prossimo spawnDecor() a fine cantiere. Segnalato
+ * dall'autore ("le luci non devono accendersi mentre c'e' l'impalcatura
+ * sopra chies"): senza questo, il decoro del livello appena lasciato
+ * restava in `decorEntities` — mai rimosso da tryStartUpgrade(), solo
+ * RIMPIAZZATO da spawnDecor() al completamento — e stepLights() lo
+ * continuava ad accendere di notte per tutta la durata del cantiere. */
+function startUpgrade(b) {
+  const err = tryStartUpgrade(b, r12);
+  if (!err) decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
+  return err;
+}
+
+/** Stessa correzione di startUpgrade() sopra, per il cantiere riavviato
+ * dalla ruspa (tryRuspaRebuild() — un impalcatura torna comunque sopra
+ * all'edificio, con lo stesso decoro vecchio da spegnere subito). */
+function ruspaRebuild(b) {
+  const err = tryRuspaRebuild(b, r12);
+  if (!err) decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
+  return err;
 }
 
 /**
@@ -1110,11 +1226,41 @@ for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; BUILDING_LABE
  * loop principale), cosi' entrambi i gesti danno la stessa risposta
  * visiva. */
 function collectCoinAt(item) {
-  coinPops.push({ x: item.x, y: item.y, t: 0 });
+  // `item.{x,y}` e' l'ancora dell'edificio (il piede del pin "soldico"/
+  // "soldfade", STUDIO.md coins.js — sprite a forma di segnaposto con
+  // l'origine in fondo, non al centro), ma il simbolo dei soldi vero e
+  // proprio sta nella testa TONDA del pin, in alto. Segnalato dall'autore
+  // ("la bolla dovrebbe essere centrata sul simbolo, quindi più in alto"):
+  // la testa e' un cerchio di diametro pari alla larghezza dello sprite
+  // (`f.w`), disegnato subito sotto al bordo superiore — il suo centro sta
+  // quindi a meta' larghezza sopra l'ancora, non sull'ancora stessa.
+  const f = frameFor(item.spr);
+  const bubbleY = f ? item.y - (f.oy - f.w / 2) : item.y;
+  coinPops.push({ x: item.x, y: bubbleY, t: 0 });
   collectCoin(coins, item, r12);
 }
 
 input.onTap = (sx, sy) => {
+  // Il pannello prestiti (bankPanelOpen sopra), quando aperto, e' un vero
+  // modale: intercetta il tocco PRIMA di ogni altra cosa (bottoni,
+  // piazzamento, mondo). Un tocco su uno dei 4 bottoni prende quel
+  // prestito; altrove lo chiude senza fare niente — [I] l'originale non ha
+  // un vero "annulla" (l'unico modo per chiudere `loanoscrino` e'
+  // prenderne uno, `loanoscrino/Step.gml` si autodistrugge solo quando
+  // `bankbuttoner.loaned` diventa 1): qui un tocco fuori dai bottoni
+  // chiude senza costo, piu' comodo di un pannello che non si puo' annullare.
+  if (bankPanelOpen) {
+    const hit = bankButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+    if (hit) {
+      takeLoan(r12, hit.index);
+      message = `prestito di ${LOANS[hit.index].amount} mon ottenuto`;
+    } else {
+      message = "";
+    }
+    bankPanelOpen = false;
+    messageT = 3;
+    return;
+  }
   // Un gesto di piazzamento a trascinamento e' gia' stato armato da
   // `input.onPointerDown` per lo stesso tocco (vedi sopra): il rilascio lo
   // risolve gia' `input.onPointerUp` (resolvePlacement()), che scatta
@@ -1166,7 +1312,8 @@ input.onTap = (sx, sy) => {
   // della ruspa, stesso depth) sono qui per lo stesso motivo.
   for (const it of frameList) {
     if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
-      && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo") continue;
+      && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo"
+      && it.obj !== "bankIcon") continue;
     // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
     // stessa ragione della raccolta hover piu' sotto. Tutto il resto
     // (edifici, casse, monete, segnale di potenziamento) resta sul
@@ -1225,6 +1372,20 @@ input.onTap = (sx, sy) => {
     messageT = 3;
   } else if (picked.obj === "building") {
     const b = picked.ref;
+    // [C] parco/Mouse_LeftPressed.gml, ramo selec==61: un tocco su un parco
+    // GIA' FINITO con "Pannelli solari" selezionato non richiede un
+    // placeholder libero — crea il pannello direttamente sopra il parco
+    // (stessa x/y, il parco resta li' com'e', mai ucciso). `placeSolarOverPark()`
+    // sotto marca `overpark`/`oversolar` sui due edifici, esattamente come
+    // le collisioni reciproche `sooool/Collision_parco.gml` +
+    // `parco/Collision_sooool.gml` dell'originale (qui non serve una vera
+    // collisione: e' l'UNICO modo in cui potrebbero mai toccarsi).
+    if (!b.construction && b.type === "parco" && r12.selec === 61) {
+      const err = placeSolarOverPark(b);
+      message = err ?? "pannelli solari piazzati sul parco (-1000 mon)";
+      messageT = 3;
+      return;
+    }
     // [C] casa1|industria1|.../Mouse_LeftPressed.gml, ramo selec==11 (la
     // ruspa, OTHER_BUILDINGS sotto): un tocco su un edificio FINITO arma il
     // popup si'/no invece di potenziare/sparare — `demobasia/Create.gml`
@@ -1245,21 +1406,23 @@ input.onTap = (sx, sy) => {
       return;
     }
     // [C] rocket_launcher|lasergun/Mouse_LeftPressed.gml (`manualFire` in
-    // buildings.js — gatlinggun non ne ha uno vero): un tocco su una
-    // torretta finita non apre un cantiere (nessuna delle tre ha
-    // potenziamenti — tryStartUpgrade ci direbbe solo "livello massimo") —
-    // fa partire un colpo contro il bersaglio che il cannone sta gia'
-    // inseguendo (game/src/projectiles.js, fireTurretManual()). Sotto
-    // cantiere invece resta tryStartUpgrade come per qualunque edificio
-    // (che gia' risponderebbe da solo "cantiere gia' in corso").
+    // buildings.js — [I] ora attivo anche per gatlinggun, vedi il commento
+    // su `manualFire` li'): un tocco su una torretta finita non apre un
+    // cantiere (nessuna delle tre ha potenziamenti — tryStartUpgrade ci
+    // direbbe solo "livello massimo") — fa partire un colpo contro il
+    // bersaglio che il cannone sta gia' inseguendo (game/src/projectiles.js,
+    // fireTurretManual() — mongolfiera o minaccia vera, vedi il commento in
+    // cima a quel file). Sotto cantiere invece resta tryStartUpgrade come
+    // per qualunque edificio (che gia' risponderebbe da solo "cantiere gia'
+    // in corso").
     if (!b.construction && BUILDING_TYPES[b.type]?.manualFire) {
-      const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails);
+      const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails, balloons, loot);
       message = fired ? "fuoco!"
         : !b.aimTarget ? "nessun bersaglio in portata"
         : b.type === "laser" && r12.ele < 200 ? "energia insufficiente"
         : "cannone in ricarica";
     } else {
-      const err = tryStartUpgrade(b, r12);
+      const err = startUpgrade(b);
       message = err ?? "cantiere avviato";
     }
     messageT = 3;
@@ -1280,7 +1443,7 @@ input.onTap = (sx, sy) => {
         message = "demolita — lotti liberi";
       }
     } else {
-      const err = tryRuspaRebuild(b, r12);
+      const err = ruspaRebuild(b);
       message = err ?? "cantiere avviato (ruspa)";
     }
     ruspaPending = null;
@@ -1307,8 +1470,19 @@ input.onTap = (sx, sy) => {
     // gia' fa tap-ovunque-sull'edificio (tryStartUpgrade gia' controlla
     // soglia e costo) — qui e' solo il bersaglio VISIBILE e prioritario
     // quando il potenziamento e' davvero pronto.
-    const err = tryStartUpgrade(picked.ref, r12);
+    const err = startUpgrade(picked.ref);
     message = err ?? "cantiere avviato";
+    messageT = 3;
+    picked = null;
+  } else if (picked.obj === "bankIcon") {
+    // [C] bankbuttoner/Mouse_LeftPressed.gml: apre il pannello solo se
+    // NESSUN prestito e' gia' attivo (`loaned==0` nel decompilato, qui
+    // `loanActive()` — vedi il commento li' per il perche').
+    if (loanActive(r12)) {
+      message = "prestito gia' attivo";
+    } else {
+      bankPanelOpen = true;
+    }
     messageT = 3;
     picked = null;
   }
@@ -1362,7 +1536,7 @@ function frame(now) {
   const dawn = isDawn(phaseT);
 
   // --- simulazione: cantieri, economia, meteo, traffico, luci
-  stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
+  stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn);
   stepProduction(buildings, dt, r12);
   stepSolarProduction(buildings, dt, r12, night, dawn);
   stepWindProduction(buildings, dt, r12);
@@ -1376,6 +1550,7 @@ function frame(now) {
   stepWeather(r12, dt, scene.name === "match");
   stepStormDamage(buildings, dt, r12);
   tickR12(r12, dt, buildings);
+  stepCalendar(r12, dt);
   stepCars(cars, dt, r12, night);
   carmakerT += dt;
   while (carmakerIdx < CARMAKER_SCHEDULE.length && carmakerT >= CARMAKER_SCHEDULE[carmakerIdx].at) {
@@ -1441,8 +1616,12 @@ function frame(now) {
   // oggetti volanti, vedi il commento su stepTurretAim() in buildings.js.
   stepTurretAim(buildings, balloons, threats);
   // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
-  // gia' nella direzione appena calcolata (b.aimAngle).
-  stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails);
+  // gia' nella direzione appena calcolata (b.aimAngle). [I] Segnalato
+  // dall'autore: il grilletto automatico controllava solo `threats` (le
+  // minacce vere) per decidere se sparare — una mongolfiera vicina da sola
+  // non faceva mai partire un colpo, anche se il cannone la stava gia'
+  // inseguendo (`balloons` passato anche qui, non solo a stepTurretAim).
+  stepTurretFire(buildings, balloons, threats, dt, projectiles, explosions, r12, trails, loot);
   stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt);
   stepSmoko(trails, dt);
   if (messageT > 0) messageT -= dt;
@@ -1451,7 +1630,13 @@ function frame(now) {
   // esclusi) + edifici (sprite ricalcolato: cambia durante il cantiere) + decoro
   const dynamic = [];
   for (const b of buildings) {
-    dynamic.push({ obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
+    // `eolico` finito (b.animT, buildings.js/stepWindProduction): "eol" ha
+    // 8 sottoimmagini vere (le pale che girano), animate in loop invece che
+    // ferme al frame 0 — vedi il commento su WIND_ANIM_FPS in buildings.js.
+    // Ogni altro edificio resta un fotogramma fisso, come sempre.
+    const windFrames = (!b.construction && b.type === "eolico") ? frameCountFor(b.spr) : 1;
+    const buildingFrameIdx = windFrames > 1 ? Math.floor((b.animT ?? 0) * WIND_ANIM_FPS) % windFrames : 0;
+    dynamic.push({ obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr, buildingFrameIdx) });
     // Impalcatura in sovraimpressione + coperchio di fine cantiere (vedi
     // buildings.js): stessa x/y/depth dell'edificio, spinti sopra di lui
     // dall'ordine di inserimento (a parita' di depth+y l'array mantiene
@@ -1469,6 +1654,17 @@ function frame(now) {
       // segnale simbolico dell'interfaccia — deve restare leggibile anche di
       // notte, non scurirsi con la tinta ambientale come un edificio vero.
       dynamic.push({ obj: "upsign", ref: b, x: b.x, y: b.y, depth: UPSIGN_DEPTH, _f: frameFor("upico"), _selfLit: true });
+    }
+    // L'iconcina prestiti (obj: "bankIcon") — [C] banca1/Create.gml:
+    // `action_create_object(bankbuttoner, -50, -40)`, persistente per
+    // tutta la vita della banca (mai un cantiere in corso da aspettare:
+    // creata insieme all'edificio finito, uccisa insieme a lui —
+    // `banca1/Destroy.gml`, qui equivale a non pushare niente quando
+    // l'edificio sparisce da `buildings`, nessuna pulizia esplicita
+    // serve). Depth -9100, un filo davanti a upsign (-9001): [C]
+    // bankbuttoner/_object.json.
+    if (b.type === "banca" && !b.construction) {
+      dynamic.push({ obj: "bankIcon", ref: b, x: b.x - 50, y: b.y - 40, depth: -9100, _f: frameFor("bancobutt"), _selfLit: true });
     }
     // Popup si'/no della ruspa (ruspaPending, armato da input.onTap sotto)
     // — [C] demobasia/Create.gml: demobachia (annulla, sprite "demoback")
@@ -1643,10 +1839,13 @@ function frame(now) {
   // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che
   // cresce e sfuma sul punto della moneta appena presa, in primo piano come
   // le monete stesse — niente tinta ambientale, per lo stesso motivo di
-  // `_selfLit` qui sopra.
+  // `_selfLit` qui sopra. Segnalato dall'autore ("troppo piccola"): la testa
+  // del pin "soldico" e' un cerchio di ~60px di diametro (STUDIO.md,
+  // coins.js) — la bolla partiva a 20px e finiva a 66px, appena piu' grande
+  // dell'icona invece di avvolgerla con margine. Range raddoppiato (36..130).
   for (const p of coinPops) {
     const k = p.t / COIN_POP_LIFE;
-    const size = 20 + k * 46;
+    const size = 36 + k * 94;
     r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, 0x4fc3f7, (1 - k) * 0.85);
   }
   // Linguetta di prezzo sul segnale di potenziamento (upsign) al passaggio
@@ -1730,6 +1929,34 @@ function frame(now) {
   const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                  [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
   for (const [value, x] of stats) drawText(r, fontMini, String(value), barX + x, barY + 10, 1, 0x000000, 1);
+  // Data (mese + anno, game/src/state.js stepCalendar()) — [C] repre/
+  // DrawGUI.gml: il mese e' testo ("Jan".."Dec", da `repre.mon` — non
+  // r12, vedi state.js) a x=456/y=20+upp (stessa riga dell'icona, quindi
+  // qui `barY+0`), l'anno e' `r12.time` disegnato appena sotto a x=448/
+  // y=40+upp (`barY+20`) — stessi offset del decompilato, ribasati su
+  // `barY` come gia' fatto sopra per pop/olio/energia/denaro (offset - 20,
+  // la y a cui l'originale disegnava l'icona stessa).
+  drawText(r, fontMini, MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 0, 1, 0x000000, 1);
+  drawText(r, fontMini, String(Math.round(r12.time)), barX + 448, barY + 20, 1, 0x000000, 1);
+  // La "faccina" della felicita' (src/objects/hapware — segnalata
+  // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
+  // che diventa triste quando la felicita' scende sotto una soglia" — la
+  // nota precedente su una sommossa con soldati era gia' stata corretta,
+  // vedi il commento su BUILDING_TYPES.casa in buildings.js, ma questa
+  // faccina non era mai stata letta prima d'ora). **[C]** hapware/Step.gml:
+  // `hap3` (sorriso) se `r12.hap>=r12.pop`, `hap1` (broncio) altrimenti —
+  // esattamente la stessa soglia gia' usata per bloccare le monete blu
+  // (coins.js, stepCoinSpawner: "hap<pop" salta la generazione), quindi
+  // "gli edifici non generano piu' soldi" e "la faccina diventa triste"
+  // sono gia' la STESSA condizione, solo la seconda meta' (l'icona) mancava.
+  // Posizione/scala **[C]** dirette da hapware/Create|Step.gml: scala 0.62
+  // fissa (mai moltiplicata per `global.sca`/UI_SCALE in questo motore,
+  // stesso trattamento gia' scelto per la barra risorse — STUDIO.md §9,
+  // "zero zoom" sulla UI), offset (520, 42) in coordinate GML ribasate su
+  // `barY` come pop/olio/energia/denaro/data sopra (barY corrisponde a
+  // GML y=20, quindi 42-20=22).
+  const hapFrame = frameFor(r12.hap >= r12.pop ? "hap3" : "hap1");
+  if (hapFrame) r.draw(hapFrame, barX + 520, barY + 22, 0.62, 0xffffff, 1);
 
   // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
   // ancora ricostruita (STUDIO.md §6/§9), e replica la struttura a tre
@@ -1866,6 +2093,36 @@ function frame(now) {
       r.draw(ainco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
     }
   }
+  // Il pannello prestiti (bankPanelOpen, state.js LOANS) — vero modale in
+  // spazio schermo (vedi il commento su bankPanelOpen piu' sopra per il
+  // perche'), disegnato per ultimo cosi' resta sempre sopra a tutto il
+  // resto della GUI. `loanscr`/`getlo1..4` hanno gia' l'origine al centro
+  // (data/sprites.json), quindi il centro schermo e' gia' il punto giusto,
+  // come "ainco" sopra. Scala calcolata invece di UI_SCALE fisso: "loanscr"
+  // (540x1086) e' grande quanto un'intera view, UI_SCALE (pensata per le
+  // iconcine da ~100px del resto della barra) lo lascerebbe enorme o
+  // minuscolo a seconda dello schermo — qui si adatta sempre a circa l'85%
+  // del piu' piccolo fra larghezza/altezza disponibili.
+  bankButtons = [];
+  if (bankPanelOpen) {
+    const bankScale = Math.min(canvas.clientWidth / 540, canvas.clientHeight / 1086) * 0.85;
+    const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
+    const panelFrame = frameFor("loanscr");
+    if (panelFrame) r.draw(panelFrame, cx, cy, bankScale, 0xffffff, 1);
+    // [I] I quattro bottoni nel decompilato stavano a (270,-200..-50) da
+    // `bankbuttoner`, 50px di distanza fra un centro e l'altro — meno dei
+    // loro stessi 88px di altezza, quindi si sovrapporrebbero. Qui invece
+    // impilati senza sovrapposizioni, centrati nell'area vuota del
+    // pannello fra il titolo e la nota sul tasso.
+    const offsets = [-165, -55, 55, 165];
+    for (let i = 0; i < LOANS.length; i++) {
+      const f = frameFor(`getlo${i + 1}`);
+      if (!f) continue;
+      const bx = cx, by = cy + offsets[i] * bankScale;
+      r.draw(f, bx, by, bankScale, 0xffffff, 1);
+      bankButtons.push({ x: bx - (f.w * bankScale) / 2, y: by - (f.h * bankScale) / 2, w: f.w * bankScale, h: f.h * bankScale, index: i });
+    }
+  }
   r.flush();
 
   // --- HUD testuale di debug: numeri e stato dettagliato per lo sviluppo,
@@ -1936,6 +2193,8 @@ window.__nimbus = {
   get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
   get aerSmoke() { return aerSmoke; }, get debris() { return debris; }, get ruins() { return ruins; },
   get blockedSlots() { return blockedSlots; }, get placeholders() { return placeholders; },
+  get bankPanelOpen() { return bankPanelOpen; }, setBankPanelOpen: (v) => { bankPanelOpen = v; },
+  get bankButtons() { return bankButtons; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,

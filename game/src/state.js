@@ -22,7 +22,14 @@ export function createR12() {
     oilReal: 5000, monReal: 5500,
     pop: 0,             // [C]
     ele: 200,           // [C]
-    time: 2914,         // [C] orologio di gioco, non il ciclo giorno/notte visivo
+    time: 2914,         // [C] orologio di gioco, non il ciclo giorno/notte visivo — l'ANNO (vedi stepCalendar sotto)
+    // [C] repre/Create.gml: NON e' un campo di r12 nel decompilato — vive su
+    // `repre` (l'oggetto che disegna la barra risorse), una variabile locale
+    // chiamata anch'essa "mon" (STUDIO.md: "confusa col nome della variabile
+    // denaro di r12 — stesso nome, oggetti diversi"). Qui vive comunque su
+    // r12 (l'unico stato "orologio" del motore, come `time` sopra) ma con un
+    // nome che non collide con `mon` (i soldi) — `month`, 1..12.
+    month: 1,
     hap: 600,           // [C] 400 base + 200 del ramo match_easy
     crys: 0, storm: 0, stormT: 0, stormeasy: 0, biotech: 0, autocore: 0,
     allerta: 0, selec: 0,
@@ -56,7 +63,43 @@ export function createR12() {
     // quando si gioca su `match` (non `match_easy`, dove la base e' a terra
     // — vedi il commento su wewOilDrain()).
     wewe: 100,
+    // [C] repre/Create.gml: quattro prestiti indipendenti, mesi di rata
+    // residui (0 = nessun prestito attivo di quel taglio) — vedi LOANS/
+    // stepCalendar()/loanActive() sotto.
+    loanUno: 0, loanDue: 0, loanTre: 0, loanQuattro: 0,
   };
+}
+
+// [C] get_loan1..4/Mouse_LeftPressed.gml: quattro tagli fissi, tutti a 36
+// rate mensili (repre/Alarm_0.gml, lo stesso alarm del calendario — vedi
+// stepCalendar() sotto). `payment` e' letto diretto dal decompilato, non
+// ricalcolato da `amount`: 36*840=30240 (25000), 36*1680=60480 (50000),
+// 36*3333=119988 invece di 120000 esatto (100000 — l'originale stesso
+// arrotonda per difetto), 36*8400=302400 (250000) — tutti la stessa
+// proporzione (~1.21x, "20% interest rate" mostrato dal pannello
+// `loanscr`), tranne il terzo che ci si avvicina per arrotondamento.
+export const LOANS = [
+  { key: "loanUno", amount: 25000, payment: 840 },
+  { key: "loanDue", amount: 50000, payment: 1680 },
+  { key: "loanTre", amount: 100000, payment: 3333 },
+  { key: "loanQuattro", amount: 250000, payment: 8400 },
+];
+const LOAN_MONTHS = 36;
+
+/** [C] bankbuttoner/Mouse_LeftPressed.gml: il pannello prestiti si apre
+ * solo se NESSUN prestito e' gia' attivo — `bankbuttoner.loaned` nel
+ * decompilato, qui derivato dai quattro contatori invece di uno stato a
+ * parte che potrebbe disallinearsi. */
+export function loanActive(r12) {
+  return LOANS.some((l) => (r12[l.key] ?? 0) > 0);
+}
+
+/** [C] get_loanN/Mouse_LeftPressed.gml: accredita subito l'importo e arma
+ * 36 mesi di rata. */
+export function takeLoan(r12, index) {
+  const l = LOANS[index];
+  r12.mon += l.amount;
+  r12[l.key] = LOAN_MONTHS;
 }
 
 /**
@@ -133,6 +176,35 @@ export function clampR12(r12, buildings) {
     r12.mon = 999999;
     r12.oil = Math.max(r12.oil, 500000);
     _lastMon = r12.mon; _lastOil = r12.oil;
+  }
+}
+
+// [C] repre/Alarm_0.gml: `action_set_alarm(300,0)`, riarmato ad ogni scatto
+// — il mese avanza ogni 300 tick (5s), da 1 a 12 e poi torna a 1 (operatore
+// 1 = "<": mese < 12 -> +1, altrimenti torna a 1). [C] r12/Alarm_3.gml:
+// `action_set_alarm(3600,3)` — l'anno (`time`) avanza di 1 ogni 3600 tick
+// (60s) — 12 mesi x 300 tick = 3600 tick: le due alarm dell'originale sono
+// indipendenti (oggetti diversi) ma restano sincronizzate da sole finche'
+// partono insieme, esattamente come qui.
+const MONTH_PERIOD = 5;    // 300 tick / 60
+const YEAR_PERIOD = 60;    // 3600 tick / 60
+
+/** Avanza il calendario mostrato in barra risorse (main.js, accanto
+ * all'orologio) e le rate dei prestiti (LOANS sopra) — [C] repre/
+ * Alarm_0.gml le fa scattare insieme, stessa alarm: qui stesso timer. */
+export function stepCalendar(r12, dt) {
+  r12.monthT = (r12.monthT ?? 0) + dt;
+  while (r12.monthT >= MONTH_PERIOD) {
+    r12.monthT -= MONTH_PERIOD;
+    r12.month = r12.month < 12 ? r12.month + 1 : 1;
+    for (const l of LOANS) {
+      if ((r12[l.key] ?? 0) !== 0) { r12[l.key] -= 1; r12.mon -= l.payment; }
+    }
+  }
+  r12.yearT = (r12.yearT ?? 0) + dt;
+  while (r12.yearT >= YEAR_PERIOD) {
+    r12.yearT -= YEAR_PERIOD;
+    r12.time += 1;
   }
 }
 

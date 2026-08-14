@@ -255,6 +255,11 @@ GAMEPLAY_SPRITES = {
     # diversi.
     "gui": [
         "icone_oriz",          # sfondo barra risorse (repre/DrawGUI.gml)
+        # "faccina" della felicita' (src/objects/hapware): hap3 (sorriso) se
+        # r12.hap>=r12.pop, hap1 (broncio) altrimenti — hap2/hap1hc/hap3hc
+        # (variante colorata per lo stato hover, mai riprodotto in questo
+        # motore) restano fuori.
+        "hap1", "hap3",
         "p1", "p1ss",          # bottone casa (pu1, selec==1) — piazzabile
         "p2", "p2ss",          # bottone industria (pu2, selec==2) — piazzabile
         # Gli altri bottoni edificio del menu originale (src/objects/pu3|
@@ -273,6 +278,13 @@ GAMEPLAY_SPRITES = {
         "sta1", "sta1s", "sta2", "sta2s", "sta3", "sta3s",
         "ru", "russ",           # puruspa (bulldozer/ripara, selec==11, mai ricostruito)
         "reset",                # pureset
+        # Prestiti bancari (src/objects/bankbuttoner|loanoscrino|get_loan1..4):
+        # "bancobutt" e' l'iconcina persistente ancorata alla banca (creata
+        # da banca1/Create.gml, sempre visibile una volta costruita), "loanscr"
+        # il pannello di sfondo ("GET A LOAN" + "20% interest rate"), "getlo1..4"
+        # i quattro bottoni prestito (25000/50000/100000/250000, gia' col
+        # testo pre-renderizzato).
+        "bancobutt", "loanscr", "getlo1", "getlo2", "getlo3", "getlo4",
         # Gli altri bottoni del pannello (src/objects/handbutton|buildbutton|
         # eyebutton|eyebutton1|2|3|backobutton): nell'originale aprivano/
         # chiudevano le righe del menu (STUDIO.md §9 "menoo", tre pannelli
@@ -361,7 +373,9 @@ GAMEPLAY_SPRITES = {
         "mong", "mong_bar",                 # mongo: giallo/oliva, energia
         "monviola", "monviola_bar",         # monviolo: viola, cristalli
         "monr",                             # monspi: rossa, spia (nessun loot)
-        "mon_bild", "mon_bild_empty", "mon_bild_box",   # pacco di cantiere (casa/industria)
+        "reconspr",                         # recogn: aereo da ricognizione, seconda spia (chies.level==3)
+        "mon_bild", "mon_bild_empty", "mon_bild_box",   # pacco di cantiere (casa/industria/...)
+        "mon_bbild", "mon_bbild_empty", "mon_bbild_box",   # pacco di cantiere grande (laser/banca)
         "ainco",                            # avviso "ATTACK INCOMING" (spia riuscita)
     ],
     # Le minacce vere (src/objects/air|bombar|dirig, bomba1/bomba2, esplo —

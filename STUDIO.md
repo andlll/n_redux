@@ -2518,3 +2518,185 @@ paragrafo 8.
   risorse infinite] reale: ..."), la barra vera mostra invece il valore
   gonfiato. Verificato in browser: piazzata una casa (100 mon) con mon
   visualizzato fermo a 999999, `r12.monReal` scende comunque di ~100.
+
+- **Bug di sincronizzazione impalcatura/gru, e tre gap chiusi su richiesta
+  dell'autore: la faccina della felicita', i pannelli solari sopra un
+  parco, i prestiti bancari.** Diverse sessioni concentrate su rifiniture
+  segnalate giocando, non lette per la prima volta da capo.
+  **Impalcatura**: due bug distinti, entrambi segnalati dall'autore.
+  (1) Gru/topper transitori (`onSpawn` di `stepConstructions()`,
+  "gru1"/"toppers"/"topls") passavano per `addDecor()` con lo stesso
+  default `lit:true` del decoro FINALE (le finestre illuminate) — restavano
+  ad alpha 0 finche' non era notte con energia sufficiente, quasi sempre
+  per tutta la durata di un cantiere. `addConstructionSpawn()` (main.js) li
+  marca `lit:false`: impalcatura vera, sempre visibile. (2) L'edificio
+  finito (sprite/livello/pop/hap/decoro) scattava solo alla chiusura
+  dell'ultimo passo del cantiere, quando l'impalcatura spariva del tutto —
+  **[C]** nel decompilato la traccia "f" crea gia' l'edificio del livello
+  successivo mentre "r" e' ancora nella coda cosmetica finale (STUDIO.md,
+  "due semplificazioni"): `applyLevelFinish()` ora scatta all'INGRESSO
+  dell'ultimo passo (`c.finished`, stepConstructions()), la stessa finestra
+  in cui compare `up.cap` — l'impalcatura resta a schermo sopra un edificio
+  ormai gia' vero, non prima.
+  **Data in barra risorse**: **[C]** esisteva gia' nel decompilato ma su
+  due variabili mai lette — `r12/Alarm_3.gml` (l'anno, gia' `r12.time` ma
+  mai incrementato) e una variabile locale di `repre` chiamata anch'essa
+  "mon" (il mese, NON `r12.mon` — nome confuso apposta, oggetti diversi).
+  Mese ogni 300 tick (5s) Gen->Dic, anno ogni 3600 tick (60s, 12 mesi) —
+  due alarm indipendenti nell'originale, sincronizzate perche' partono
+  insieme, replicate cosi' in `stepCalendar()` (state.js). Testo disegnato
+  col font/pipeline gia' della barra (gotham_mini), stessi offset del
+  decompilato (`repre/DrawGUI.gml`).
+  **La faccina della felicita'** (`hapware`, mai letta prima): l'autore
+  giocando non si ricordava sommosse (una nota molto piu' sopra, gia'
+  superata dalla lettura vera di `coins.js`: la condizione e' `hap>=pop`,
+  non un'improbabile uguaglianza esatta, e produce una MONETA non dei
+  soldati) ma una "faccina che diventa triste sotto una soglia" — **[C]**
+  `hapware/Step.gml`: sprite `hap3` (sorriso) se `r12.hap>=r12.pop`, `hap1`
+  (broncio) altrimenti — la STESSA soglia gia' letta per bloccare le
+  monete blu, mancava solo l'icona. Bonus: `hapware/Create.gml` e' anche
+  dove l'originale imposta `global.upp` (l'offset mai identificato con
+  certezza per notch/status-bar) — Step.gml lo azzera comunque ad ogni
+  frame a prescindere dall'orientamento, confermando (non piu' solo
+  supponendo) che trattarlo come 0 ovunque in questo motore era gia'
+  corretto.
+  **Pannelli solari sopra un parco** (`overpark`/`oversolar`, letto da zero
+  su richiesta): **[C]** `parco/Mouse_LeftPressed.gml`, ramo selec==61 —
+  toccare un parco GIA' FINITO con "Pannelli solari" selezionato costruisce
+  il pannello direttamente sopra di lui (stesso 1000 mon del piazzamento
+  normale, nessun placeholder consumato, il parco resta li' com'e') —
+  `placeSolarOverPark()` (main.js). L'unico effetto a valle e' economico:
+  **[C]** `demobasia/Collision_sooool.gml` fa costare la ruspa sul pannello
+  2700 mon invece di 2000 se `overpark`; **[C]**
+  `demobasia/Collision_parco.gml` non ha PROPRIO un ramo per
+  `oversolar==1` — il parco sottostante diventa permanentemente non
+  ruspabile finche' il pannello resta li' sopra (`ruspaCostFor()` torna
+  `null`, stessa convenzione dei tipi mai ruspabili). Persistito in
+  save.js (`overpark`/`oversolar` sui due edifici, altrimenti un
+  salva/carica li avrebbe persi).
+  **Prestiti bancari** (`bankbuttoner`/`get_loan1..4`, sotto-sistema mai
+  indagato a fondo): **[C]** icona persistente ancorata alla banca appena
+  costruita (`banca1/Create.gml`, offset -50,-40), che apre un pannello
+  con 4 tagli fissi — 25000/50000/100000/250000 mon, tutti a 36 rate
+  mensili di 840/1680/3333/8400 (~20% di interesse totale, "20% interest
+  rate" mostrato dal pannello stesso — un prestito a rate fisse, non
+  composto come suggeriva una nota precedente mai verificata) — **[C]**
+  `repre/Alarm_0.gml`, la STESSA alarm del calendario: le rate scattano nel
+  medesimo tick del mese, ora nello stesso `stepCalendar()`. **[C]**
+  Solo un prestito alla volta: il pannello si riapre solo quando tutti e
+  quattro i contatori tornano a 0 (`loanActive()`, derivato invece di un
+  flag a parte che potrebbe disallinearsi). **[I]** Nel decompilato
+  `loanoscrino` (il pannello) su Android si ricentra sulla view ad ogni
+  Step — di fatto un modale fullscreen sul solo target mobile, replicato
+  qui come vero modale in spazio schermo (non ancorato al mondo come
+  farebbe pensare il punto di creazione relativo a `bankbuttoner`), con
+  scala calcolata invece di `UI_SCALE` fisso (il pannello nativo e' grande
+  quanto un'intera view, non un'iconcina). **[I]** I 4 bottoni prestito
+  nel decompilato si sovrappongono fisicamente (50px fra un centro e
+  l'altro, 88px di altezza ciascuno) — qui impilati senza sovrapposizioni.
+  **[I]** Nessun modo di annullare il pannello senza prendere un prestito
+  nel decompilato (`loanoscrino` si autodistrugge solo quando
+  `bankbuttoner.loaned` diventa 1) — qui un tocco fuori dai bottoni lo
+  chiude senza costo.
+  **Nota emersa testando**: `clampR12()` (state.js,
+  `DEBUG_INFINITE_RESOURCES`) traccia correttamente i cali di `r12.mon`
+  vero su `monReal` ma non gli AUMENTI che portano `mon` sopra 999999 —
+  il clamp generico (`Math.min(999999, mon)`, PRIMA del calcolo del delta)
+  azzera il guadagno prima che venga contato. Osservato prendendo un
+  prestito (mon gia' a 999999 per il debug): `monReal` non saliva.
+  Riguarda solo l'impalcatura di test (mai un problema a flag spento,
+  dove `mon` non e' mai pinnato), non corretto qui — segnalato per quando
+  quel flag verra' tolto.
+  Sprite aggiunti a `GAMEPLAY_SPRITES` (tools/23_atlas.py): `hap1`/`hap3`
+  (faccina, categoria gui — hap2/hap1hc/hap3hc, la variante hover mai
+  riprodotta, restano fuori), `bancobutt`/`loanscr`/`getlo1..4` (prestiti).
+  Verificato in browser (Playwright, `window.__nimbus`): forzando
+  `r12.pop` sopra `r12.hap` la faccina passa da sorriso a broncio;
+  toccare un parco finito con "Pannelli solari" selezionato crea un
+  secondo edificio co-locato (`overpark:true`), il parco diventa non
+  ruspabile (`ruspaCostFor` -> null), e la ruspa sul pannello finito costa
+  2700 invece di 2000; toccare l'icona banca apre il pannello, un tocco su
+  "25000 in 3 years" lo chiude e arma `loanUno=36`, un secondo tocco
+  sull'icona non riapre nulla finche' il prestito e' attivo, e dopo un
+  mese simulato (`stepCalendar`, isolato dal clamp di debug) `mon` scende
+  di 840 e `loanUno` di 1.
+
+- **Altri due gap dichiarati chiusi, continuando la stessa sessione.**
+  **Il grattacielo blocca lo spionaggio davvero**: una nota precedente
+  (STUDIO.md sopra, "il grattacielo blocca lo spionaggio non riprodotto")
+  la segnava come "semantica non verificabile perche' dipende dall'ordine
+  di esecuzione fra oggetti nello stesso tick" — riletta con calma,
+  `m3cant/Step.gml` (ramo `phase>=14`) non fa un confronto una tantum
+  sensibile a un ordine: azzera `r12.spy` OGNI tick, incondizionatamente,
+  finche' l'edificio esiste. Anche perdendo la corsa con l'alarm che
+  sblocca `spy` (balloons.js, `SPY_UNLOCK_T`) il tick successivo lo
+  azzera comunque di nuovo — l'esito in regime e' sempre lo stesso a
+  prescindere da chi gira prima. `stepConsumption()` (buildings.js) ora lo
+  fa per davvero, fuori dal throttle a 120 tick gia' li' (la condizione
+  originale gira ogni tick, non ogni 120). Verificato con un test diretto
+  (node, import ES module): `r12.spy` forzato a 1 prima della chiamata
+  torna 0 dopo, anche ripetendo la "corsa" piu' volte.
+  **`playbuttoner` investigato, non implementato**: la stessa nota
+  descriveva un "bottone play/pausa" che drena -5 ele/-5 mon PER TICK
+  durante il cantiere del grattacielo quando attivo (`m3cant/Step.gml`,
+  ramo `phase<14`) — **[C]** verificato leggendo `m3cant/Alarm_0.gml` (la
+  catena che avanza le 14 fasi del cantiere) riga per riga: NESSUN
+  riferimento a `playbuttoner`/`play` in nessuna fase, durate fisse
+  indipendenti. Il bottone non accelera nulla nel decompilato stesso —
+  drena risorse extra senza alcun beneficio reale, nonostante il nome
+  suggerisca un acceleratore. Lasciato fuori deliberatamente: implementare
+  un bottone che costa senza dare niente in cambio sarebbe una trappola
+  per il giocatore, non una funzionalita' mancante.
+  **Il pacco di cantiere grande per laser e banca**: **[C]** letto riga
+  per riga `placeholder/Mouse_LeftReleased.gml` per la lista esatta di chi
+  crea `mon_bil` (piccolo) contro `mon_bbil` (grande) — una nota
+  precedente li' elencava "banca, laser" come tipi che lo usano ma "non
+  ancora ricostruiti", superata da tempo (sono entrambi edifici veri da
+  diverse sessioni) senza che qualcuno tornasse a cablare la variante
+  giusta: `spawnConstructionBalloon()` (balloons.js) ora accetta un
+  parametro `big`, che sceglie il prefisso sprite (`mon_bild` contro
+  `mon_bbild`, sia per il pallone che per cassa/pallone-vuoto) — main.js
+  lo passa `true` solo per `laser`/`banca`, fedele alla lista letta.
+  Sprite aggiunti a `GAMEPLAY_SPRITES`: `mon_bbild`/`mon_bbild_empty`/
+  `mon_bbild_box` — atlas e blitplan rigenerati.
+  Verificato in browser (Playwright): piazzare un laser per davvero (menu
+  -> tocco su un placeholder) fa nascere un pallone `mon_bbild`, non piu'
+  `mon_bild`.
+
+- **Bug vero trovato per caso investigando `recogn` (la "seconda spia",
+  gap dichiarato da tempo — "non e' una mongolfiera, resta fuori"):
+  `hap>=pop`, non `hap===pop`.** Rileggendo `r12/Alarm_1.gml` riga per
+  riga per capire dove si aggancia `recogn` e' saltato fuori che la
+  condizione "rara" che dimezza la probabilita' di spia (dado 1/17 invece
+  di 1/2) era gia' cablata in `stepBalloonSpawner()` (balloons.js) con
+  l'operatore SBAGLIATO — `r12.hap === r12.pop` invece di `>=` — scritta
+  cosi' quando `hap` non era ancora aggiornato da nessuna parte (quindi
+  "non importava, tanto non scattava mai") e mai corretta quando poi lo e'
+  diventato (industria/casa/parco/club/solare/museo/monum/banca scrivono
+  tutti `hap` da diverse sessioni). Con l'operatore giusto la condizione
+  PUO' scattare per davvero in una partita lunga (una citta' con
+  abbastanza felicita' accumulata) — corretto.
+  **`recogn` implementato**: **[C]** stesso Alarm_1, stesso slot di
+  `monspi` ma condizionato al livello di `chies` — `monspi` mentre
+  `chies.level<3`, `recogn` una volta che `chies.level===3` (il massimo di
+  questo motore — l'originale ha un "livello 4" interno mai replicato,
+  solo un dettaglio di numerazione, non un livello di gioco in piu', vedi
+  buildings.js §chies). Stesso schema "riferisce" di monspi (isSpy,
+  stepBalloons() invariato), ma **[C]** `recogn/Create.gml`: vita piu'
+  corta (550 contro 750 tick), velocita' fissa 30 invece di un range
+  (`action_set_motion(30, ...)`, letta come 30px/tick — ~4-10x piu'
+  veloce delle mongolfiere lente, coerente con "aereo" invece di
+  "pallone"), e soprattutto una rotta quasi orizzontale (11° o 13° a
+  dado) invece dei 30° fissi di tutta la famiglia risorse/spia.
+  `spawnBalloon()`/`stepBalloons()` generalizzati per una rotta per-istanza
+  (`b.cos`/`b.sin`, da `def.dir()` se il tipo la dichiara — solo recogn,
+  finora) invece della costante globale COS30/SIN30, senza toccare nessun
+  altro tipo (tutti restano ai 30° impliciti di prima).
+  Sprite aggiunto a `GAMEPLAY_SPRITES`: `reconspr` — atlas e blitplan
+  rigenerati.
+  Verificato (node, import ES module — 60000 iterazioni per stabilita'
+  statistica): con `chies.level=1` nascono solo `monspi`, mai `recogn`;
+  con `chies.level=3` solo `recogn`, mai `monspi`; le rotte osservate su
+  20 spawn di recogn sono sempre 11° o 13°, mai altro. Verificato anche in
+  browser (screenshot): lo sprite "reconspr" (un biplano rosso) si
+  disegna correttamente sulla mappa.

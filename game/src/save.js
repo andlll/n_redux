@@ -35,6 +35,7 @@ export function save(sceneName, r12, buildings, ruins, blockedSlots) {
       makee: b.makee, prodT: b.prodT, decorSpr: b.decorSpr,
       ava: b.ava, growthT: b.growthT, growthNext: b.growthNext, consT: b.consT,
       coinT: b.coinT, coinNext: b.coinNext, solarT: b.solarT, windT: b.windT,
+      overpark: b.overpark, oversolar: b.oversolar,
     })),
     ruins: ruins.map((r) => ({ x: r.x, y: r.y, spr: r.spr })),
     blockedSlots: blockedSlots.map((s) => ({ x: s.x, y: s.y })),

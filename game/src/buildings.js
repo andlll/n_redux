@@ -519,13 +519,10 @@ export const BUILDING_TYPES = {
       finalSprite: "sool", life: 50,              // [C] sooool/Create.gml
       wewe: 10,                                    // [C] sooool/Create.gml: wewe += 10 — peso su `match`, state.js
       // [C] sooool/Mouse_LeftPressed.gml, ramo selec==11: 2000 mon SE il
-      // pannello non e' su un parco (`overpark`), 2700 se lo e' —
-      // **[I] `overpark`** (pannelli solari costruibili sopra un parco,
-      // `parco/Mouse_LeftPressed.gml` ramo selec==61) e' una meccanica a
-      // parte MAI ricostruita qui (nessun modo di piazzare solare su un
-      // parco esistente in questo motore): sempre il ramo normale, 2000.
-      // `impasoldem1r/Create.gml` arma il primo alarm a 30 tick, non 370
-      // come `impasolr`.
+      // pannello non e' su un parco, 2700 se lo e' (`overpark` — main.js,
+      // placeSolarOverPark(); il sovrapprezzo vero e proprio e' in
+      // ruspaCostFor() sopra, questo resta il costo base). `impasoldem1r/
+      // Create.gml` arma il primo alarm a 30 tick, non 370 come `impasolr`.
       ruspaCost: 2000, ruspaFirstStepDur: 30,
       // [C] sooool/Step.gml: create_object(ruinsol) — proprio rudere, un
       // solo dado a due vie (ruinsol/Create.gml: default "soolr1", 50% di
@@ -759,13 +756,15 @@ export const BUILDING_TYPES = {
     label: "Mitragliatrice",
     placeCost: { mon: 10000 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==62
     turret: true,
-    // [I] `gatlinggun/Mouse_LeftPressed.gml` non spara affatto al tocco —
-    // imposta solo `spra=1` (la stessa posa di rinculo che Step.gml userebbe
-    // dopo uno sparo vero, MA senza crearne uno), un tocco a vuoto senza
-    // conseguenze. A differenza di missile/laser (vedi sotto) niente
-    // `manualFire` qui: un tocco su una mitragliatrice finita resta senza
-    // effetto (tryStartUpgrade in main.js risponde "livello massimo", non
-    // diverso da nessun tocco).
+    // [C] `gatlinggun/Mouse_LeftPressed.gml` nel decompilato non spara
+    // affatto al tocco — imposta solo `spra=1` (la stessa posa di rinculo
+    // che Step.gml userebbe dopo uno sparo vero, MA senza crearne uno), un
+    // tocco a vuoto senza conseguenze. [I] Segnalato dall'autore giocando
+    // ("clicco sul gatling e non spara"): qui `manualFire` e' comunque
+    // attivo, come per missile/laser — un tocco su una mitragliatrice
+    // finita spara per davvero invece di restare senza effetto, deviazione
+    // deliberata dal decompilato per coerenza con le altre due torrette.
+    manualFire: true,
     //
     // [C] gatlinggun/Step.gml: insegue il veicolo piu' vicino entro 550px
     // (un filo piu' lungo del raggio di missile); il fuoco vero (fireRange,
@@ -1369,12 +1368,13 @@ export const BUILDING_TYPES = {
   // periodo fisso di 120 tick gia' cablato in `stepConsumption()`
   // moltiplicando per 120 (120/240), stesso risultato aggregato senza
   // toccare il motore per un singolo edificio.
-  // **[I]** Lo stesso blocco azzera anche `r12.spy` (il flag che sblocca le
+  // **[C]** Lo stesso blocco azzera anche `r12.spy` (il flag che sblocca le
   // mongolfiere spia dopo ~8 minuti, game/src/balloons.js) ogni tick a
-  // costruzione ultimata — un possibile effetto "il grattacielo blocca lo
-  // spionaggio" la cui semantica esatta (ordine di esecuzione fra oggetti
-  // nello stesso tick) non e' verificabile con sicurezza da qui: gap
-  // dichiarato, non riprodotto.
+  // costruzione ultimata — "il grattacielo blocca lo spionaggio" per
+  // davvero, non piu' un gap dichiarato: la condizione e' incondizionata e
+  // gira ogni tick (non un confronto sensibile all'ordine fra oggetti),
+  // quindi l'esito in regime non dipende da chi gira prima — vedi
+  // stepConsumption() sotto per l'implementazione.
   // **[C] Nessuna vita**: a differenza di OGNI altro edificio, `m3cant` non
   // ha ne' un `Destroy.gml` ne' una variabile `life` in nessun evento —
   // indistruttibile per davvero, non solo "senza fulmine" come `parco`.
@@ -1652,8 +1652,19 @@ function currentLevelDef(b) {
 /** Il costo ruspa (demolizione/riparazione) dell'edificio al suo livello
  * attuale — `null` se il tipo/livello non e' ruspabile (chies/monum/banca/
  * grattacielo: nessuno dei loro oggetti nel decompilato ha un ramo
- * `Mouse_LeftPressed.gml` per selec==11). */
+ * `Mouse_LeftPressed.gml` per selec==11).
+ *
+ * `overpark`/`oversolar` (main.js, placeSolarOverPark()): **[C]**
+ * `demobasia/Collision_sooool.gml` legge il costo della ruspa su un
+ * pannello solare 2700 mon se `overpark`, 2000 altrimenti — un pannello
+ * costruito sopra un parco costa di piu' da smontare/riparare. **[C]**
+ * `demobasia/Collision_parco.gml` invece non ha PROPRIO un ramo per
+ * `oversolar==1` (solo per `oversolar==0`, 500 mon): un parco con un
+ * pannello sopra non e' affatto ruspabile finche' il pannello resta li'
+ * — `null`, stessa convenzione gia' usata per i tipi non ruspabili sopra. */
 export function ruspaCostFor(b) {
+  if (b.type === "parco" && b.oversolar) return null;
+  if (b.type === "solare" && b.overpark) return 2700;
   return currentLevelDef(b)?.ruspaCost ?? null;
 }
 
@@ -1685,12 +1696,75 @@ export function tryRuspaRebuild(b, r12) {
   return null;
 }
 
+/** Applica il salto di livello vero e proprio (pop/hap/wewe/vita/sprite
+ * finale/decoro/contatori azzerati) — estratto da stepConstructions() sotto
+ * perche' ora scatta in un punto diverso da quando `b.construction` viene
+ * tolto (vedi il commento li' per il perche'). */
+function applyLevelFinish(b, def, up, c, r12, onDecor) {
+  // hap (industria/parco, `up.hap`/`oldDef.hap` in BUILDING_TYPES sopra):
+  // l'originale distrugge l'istanza del livello vecchio e ne crea una
+  // nuova per il livello nuovo, ognuna con il proprio Create.gml/
+  // Destroy.gml — qui e' la STESSA istanza che continua, quindi il
+  // "destroy" del livello che si sta lasciando va applicato esplicitamente
+  // insieme al "create" di quello nuovo: i due non si annullano a vicenda
+  // (i numeri del decompilato non sono simmetrici, vedi industria sopra).
+  // Nessun effetto per i tipi che non dichiarano `hap` (casa, chies).
+  const oldDef = c.upgradeIndex === -1 ? null
+    : c.upgradeIndex === 0 ? def.construct : def.upgrades[c.upgradeIndex - 1];
+  if (oldDef?.hap?.destroy) r12.hap += oldDef.hap.destroy;
+  if (c.upgradeIndex === -1) b.level = 1; else b.level++;
+  if (up.hap?.create) r12.hap += up.hap.create;
+  // [C] `wewe` (peso della piattaforma su `match`, state.js): scritto
+  // alla nascita di ogni livello che lo dichiara, mai sottratto (nessun
+  // Destroy.gml del decompilato lo tocca — un edificio distrutto non
+  // "alleggerisce" la piattaforma, fedele com'e').
+  if (up.wewe) r12.wewe = (r12.wewe ?? 0) + up.wewe;
+  b.life = up.life ?? (b.life + (up.lifeBonus ?? 0));
+  if (up.grantPop) r12.pop += up.grantPop;   // [C] casa1|2|3/Create.gml: pop += N alla nascita del livello
+  if (up.variants) {
+    // Edifici a variante casuale (casa/parco/club: uniforme; villa: pesato
+    // — vedi pickVariant() sopra) — sprite+decoro scelti una volta e
+    // persistiti sull'istanza.
+    const v = pickVariant(up.variants);
+    b.spr = v.spr;
+    b.decorSpr = v.decor;
+    onDecor?.(b, [v.decor]);
+  } else {
+    b.spr = up.finalSprite;
+    onDecor?.(b, up.decor);
+  }
+  // [C] industria1|2|3/Create.gml + casa1|2|3/Create.gml: `makee`/`ava`
+  // partono da 0 ad ogni livello. Nell'originale ogni livello e' un
+  // oggetto diverso che riparte da zero; qui e' lo stesso building che
+  // continua, quindi i contatori vanno azzerati esplicitamente ad ogni
+  // salto (insieme ai timer che li accumulano, cosi' non scattano subito
+  // con un resto lasciato dal livello precedente).
+  b.makee = 0; b.prodT = 0;
+  b.ava = 0; b.growthT = 0; b.growthNext = null; b.consT = 0;
+  // [C] casa1|2|3/Create.gml: `action_set_alarm(600, 4)`, riarmato a ogni
+  // livello — il pulsante blu della moneta (game/src/coins.js) riparte
+  // da zero ad ogni salto, stessa ragione dei contatori sopra.
+  b.coinT = 0; b.coinNext = COIN_FIRST_DELAY;
+}
+
 /**
  * Avanza tutti i cantieri in corso di `dt` secondi.
  * `onDecor(b, sprites)` sostituisce il decoro finale dell'edificio (fine
  * cantiere). `onSpawn(b, [{spr,dx,dy}])` aggiunge decoro transitorio
  * (gru/macerie) che sparisce quando `onDecor` rimpiazza tutto a fine
  * cantiere.
+ *
+ * [I] Segnalato dall'autore: l'edificio finito deve comparire quando
+ * l'impalcatura ENTRA nell'ultimo passo (la fase di smontaggio — la stessa
+ * finestra in cui compare `up.cap`, sotto), non quando quel passo finisce.
+ * [C] Nel decompilato la traccia "f" (impalcatura in sovraimpressione, mai
+ * ricostruita per intero — STUDIO.md "due semplificazioni") crea gia'
+ * l'edificio del livello successivo MENTRE "r" e' ancora impegnata nella
+ * coda cosmetica finale, che qui e' un solo passo lungo invece della sua
+ * vera durata (11 tic mai portati): la costruzione vera e' gia' finita da
+ * quel momento, resta solo la scenografia dello smontaggio — `applyLevelFinish()`
+ * sopra ora scatta li' (`c.finished`), non piu' quando l'ultimo passo
+ * chiude e l'impalcatura sparisce per davvero.
  */
 export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
   for (const b of buildings) {
@@ -1702,6 +1776,10 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
     if (c.curSpr === undefined) {
       c.curSpr = pickSpr(cur.spr);
       if (cur.spawn) onSpawn?.(b, cur.spawn);
+      if (c.stepIndex === up.steps.length - 1 && !c.finished) {
+        applyLevelFinish(b, def, up, c, r12, onDecor);
+        c.finished = true;
+      }
     }
     if (up.drain) {
       c.drainT = (c.drainT ?? 0) + dt;
@@ -1709,7 +1787,11 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
       while (c.drainT >= period) { c.drainT -= period; r12.mon -= up.drain.mon; }
     }
     c.t += dt;
-    b.spr = c.curSpr;
+    // Finche' non e' l'ultimo passo lo sprite disegnato e' ancora il
+    // cantiere generico (`c.curSpr`); da quando applyLevelFinish() sopra ha
+    // gia' girato (`c.finished`) resta quello vero appena assegnato, non
+    // va piu' sovrascritto ogni frame.
+    if (!c.finished) b.spr = c.curSpr;
     b.frontSpr = frontSprFor(c.curSpr);
     // Il coperchio a gru (`up.cap`) compare durante l'ultimo passo: e'
     // sempre quello lungo ("l'edificio e' quasi finito", vedi steps sopra),
@@ -1730,53 +1812,16 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
       cur = up.steps[c.stepIndex];
       c.curSpr = pickSpr(cur.spr);
       if (cur.spawn) onSpawn?.(b, cur.spawn);
-    } else {
-      // hap (industria/parco, `up.hap`/`oldDef.hap` in BUILDING_TYPES sopra):
-      // l'originale distrugge l'istanza del livello vecchio e ne crea una
-      // nuova per il livello nuovo, ognuna con il proprio Create.gml/
-      // Destroy.gml — qui e' la STESSA istanza che continua, quindi il
-      // "destroy" del livello che si sta lasciando va applicato esplicitamente
-      // insieme al "create" di quello nuovo: i due non si annullano a vicenda
-      // (i numeri del decompilato non sono simmetrici, vedi industria sopra).
-      // Nessun effetto per i tipi che non dichiarano `hap` (casa, chies).
-      const oldDef = c.upgradeIndex === -1 ? null
-        : c.upgradeIndex === 0 ? def.construct : def.upgrades[c.upgradeIndex - 1];
-      if (oldDef?.hap?.destroy) r12.hap += oldDef.hap.destroy;
-      if (c.upgradeIndex === -1) b.level = 1; else b.level++;
-      if (up.hap?.create) r12.hap += up.hap.create;
-      // [C] `wewe` (peso della piattaforma su `match`, state.js): scritto
-      // alla nascita di ogni livello che lo dichiara, mai sottratto (nessun
-      // Destroy.gml del decompilato lo tocca — un edificio distrutto non
-      // "alleggerisce" la piattaforma, fedele com'e').
-      if (up.wewe) r12.wewe = (r12.wewe ?? 0) + up.wewe;
-      b.life = up.life ?? (b.life + (up.lifeBonus ?? 0));
-      if (up.grantPop) r12.pop += up.grantPop;   // [C] casa1|2|3/Create.gml: pop += N alla nascita del livello
-      if (up.variants) {
-        // Edifici a variante casuale (casa/parco/club: uniforme; villa: pesato
-        // — vedi pickVariant() sopra) — sprite+decoro scelti una volta e
-        // persistiti sull'istanza.
-        const v = pickVariant(up.variants);
-        b.spr = v.spr;
-        b.decorSpr = v.decor;
-        onDecor?.(b, [v.decor]);
-      } else {
-        b.spr = up.finalSprite;
-        onDecor?.(b, up.decor);
+      if (c.stepIndex === up.steps.length - 1 && !c.finished) {
+        applyLevelFinish(b, def, up, c, r12, onDecor);
+        c.finished = true;
       }
+    } else {
+      // L'edificio (livello/sprite/decoro/contatori) e' gia' stato
+      // finalizzato all'ingresso dell'ultimo passo, sopra — qui resta solo
+      // da far sparire l'impalcatura residua, smontata per davvero.
       b.construction = null;
       b.frontSpr = null; b.capSpr = null;
-      // [C] industria1|2|3/Create.gml + casa1|2|3/Create.gml: `makee`/`ava`
-      // partono da 0 ad ogni livello. Nell'originale ogni livello e' un
-      // oggetto diverso che riparte da zero; qui e' lo stesso building che
-      // continua, quindi i contatori vanno azzerati esplicitamente ad ogni
-      // salto (insieme ai timer che li accumulano, cosi' non scattano subito
-      // con un resto lasciato dal livello precedente).
-      b.makee = 0; b.prodT = 0;
-      b.ava = 0; b.growthT = 0; b.growthNext = null; b.consT = 0;
-      // [C] casa1|2|3/Create.gml: `action_set_alarm(600, 4)`, riarmato a ogni
-      // livello — il pulsante blu della moneta (game/src/coins.js) riparte
-      // da zero ad ogni salto, stessa ragione dei contatori sopra.
-      b.coinT = 0; b.coinNext = COIN_FIRST_DELAY;
     }
   }
 }
@@ -1853,8 +1898,20 @@ export function stepWindProduction(buildings, dt, r12) {
     b.windT = (b.windT ?? 0) + dt;
     const period = prod.every * TICK;
     while (b.windT >= period) { b.windT -= period; r12.ele += prod.ele; }
+    // [C] eoli/Create.gml: `action_sprite_set(eol, 0, 0.25)` — "eol" ha 8
+    // sottoimmagini vere (le pale in rotazione, non un singolo fotogramma
+    // statico) e GameMaker le scorre da solo a `image_speed` 0.25
+    // frame/step = 15 frame/s a 60fps. Segnalato dall'autore ("la pala
+    // gira ma l'animazione non si vede"): il motore non aveva ancora un
+    // ciclo continuo per nessuno sprite di edificio finito (solo animazioni
+    // "un colpo solo" con un contatore di fine, tipo soldfade/fica) — qui
+    // basta un timer che non si azzera mai, letto in main.js insieme al
+    // numero di frame reale dell'atlas per fare il modulo.
+    b.animT = (b.animT ?? 0) + dt;
   }
 }
+// [C] eoli/Create.gml: 0.25 frame/step * 60 step/s.
+export const WIND_ANIM_FPS = 15;
 
 /**
  * Avanza la crescita di popolazione degli edifici finiti che dichiarano
@@ -1910,6 +1967,18 @@ export function stepConsumption(buildings, dt, r12, isNight) {
     const def = BUILDING_TYPES[b.type];
     const cons = def.consumption?.[b.level - 1];
     if (!cons) continue;
+    // [C] m3cant/Step.gml, ramo `phase>=14` (edificio finito): OGNI tick,
+    // se `r12.spy` e' 1 lo rimette a 0 — un grattacielo finito blocca le
+    // mongolfiere spia per sempre (STUDIO.md, "cosa non so ancora" lo
+    // segnava come "semantica non verificabile": rivisto, la condizione e'
+    // in realta' incondizionata e continua, non un singolo confronto
+    // sensibile all'ordine fra oggetti nello stesso tick — anche vincendo
+    // una sola volta la corsa con l'alarm che sblocca `spy`
+    // (balloons.js, SPY_UNLOCK_T), il tick successivo lo azzera comunque
+    // di nuovo, quindi l'esito in regime e' sempre lo stesso). Scritto qui
+    // fuori dal throttle `period` sotto (che scatta ogni 120 tick, non
+    // ogni tick) per restare fedele alla cadenza vera.
+    if (b.type === "grattacielo") r12.spy = 0;
     const rate = cons[Math.min(b.ava ?? 0, cons.length - 1)];
     b.consT = (b.consT ?? 0) + dt;
     const period = 120 * TICK;   // [C] casa1/Alarm_3.gml, fisso indipendentemente dallo stadio

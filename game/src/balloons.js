@@ -29,16 +29,14 @@
 //    fluttua via verso l'alto (una vera action_set_gravity(90, 0.1):
 //    l'originale la fa "alleggerire" e accelerare verso l'alto una volta
 //    consegnato il pacco) per altri 1000 tick prima di sparire. Solo
-//    `mon_bil` e' cablata qui: e' quella che l'originale usa per `casa`
-//    (selec==1), `industria` (selec==2), `missile` (selec==3), `club`
-//    (selec==60), `solare` (selec==61), `gatling` (selec==62) e `villa`
-//    (selec==63) — sette dei piazzabili dal giocatore, tutti tranne
-//    `parco` (selec==7, non crea nessun pallone nel decompilato) e
-//    `laser` (selec==5, crea `mon_bbil` — la variante piu' grande, mai
-//    cablata: game/src/main.js riusa `mon_bil` anche per lui, stesso
-//    pallone piu' piccolo del dovuto invece di un secondo sprite/oggetto
-//    solo per questo). `mon_bbil` altrimenti serve solo a tipi non ancora
-//    ricostruiti (banca — STUDIO.md).
+//    `mon_bil` e' quella che l'originale usa per `casa` (selec==1),
+//    `industria` (selec==2), `missile` (selec==3), `club` (selec==60),
+//    `solare` (selec==61), `gatling` (selec==62), `villa` (selec==63) e
+//    `monum` (selec==71) — otto dei piazzabili dal giocatore, tutti tranne
+//    `parco` (selec==7, non crea nessun pallone nel decompilato). Solo
+//    `laser` (selec==5) e `banca` (selec==72) creano `mon_bbil`, la
+//    variante piu' grande — entrambe cablate (`spawnConstructionBalloon(x,
+//    y, big)`, main.js passa `big` per quei due soli tipi).
 //
 // [C] = letto nel decompilato. [I] = semplificato deliberatamente (dettagliato
 // punto per punto sotto).
@@ -85,6 +83,19 @@ export const BALLOON_TYPES = {
     spr: "monr", life: 750, speedMin: 4, speedMax: 7, stormDice: 68,
     isSpy: true,
   },
+  // [C] recogn/Create.gml: la "seconda spia" — un aereo da ricognizione,
+  // non una mongolfiera (sprite "reconspr", verificato visivamente), ma
+  // riferisce esattamente come monspi (Alarm_0 identico: alza onda/bombolo/
+  // dirox, mostra ATTACK INCOMING — isSpy sotto lo tratta allo stesso modo
+  // in stepBalloons()). Tre differenze reali: vita piu' corta (550 contro
+  // 750 tick), velocita' fissa invece di un range (`action_set_motion(30,
+  // ...)`, non irandom), e soprattutto la rotta — 11° o 13° a dado, quasi
+  // orizzontale, non i 30° di tutta la famiglia risorse/spia (`dir` sotto,
+  // letto da spawnBalloon() invece della costante DIR universale).
+  recogn: {
+    spr: "reconspr", life: 550, speed: 30, stormDice: 68, isSpy: true,
+    dir: () => (dice(2) ? 11 : 13),
+  },
 };
 
 const LOOT_LIFE = 700 * TICK;                  // [C] bar*/Alarm_0.gml: action_set_alarm(700, 0)
@@ -102,10 +113,15 @@ function maxChiesLevel(buildings) {
 
 export function spawnBalloon(type) {
   const def = BALLOON_TYPES[type];
+  // `dir` (solo recogn, sopra): rotta scelta a dado invece dei 30° fissi
+  // di tutta la famiglia risorse/spia — cos/sin persistiti sull'istanza
+  // invece di ricalcolati ogni frame da stepBalloons().
+  const rad = ((def.dir ? def.dir() : 30) * Math.PI) / 180;
   return {
     type, x: SPAWN_X, y: SPAWN_Y[0] + Math.random() * (SPAWN_Y[1] - SPAWN_Y[0]),
-    spd: def.speedMin + Math.random() * (def.speedMax - def.speedMin),
+    spd: def.speed ?? (def.speedMin + Math.random() * (def.speedMax - def.speedMin)),
     t: 0, stormT: 0, spr: def.spr, depth: -3990,   // [C] Create.gml: depth = -3990 (fisso, sempre davanti al mondo)
+    cos: Math.cos(rad), sin: Math.sin(rad),
   };
 }
 
@@ -131,11 +147,23 @@ export function spawnLoot(lootDef, x, y) {
  * "cosa non so ancora"): qui `monviolo` dipende solo dal livello di chies,
  * come `monvo_giga` che nello stesso Alarm_1 non ha nessun gate simile.
  *
- * [I] Il ramo raro `r12.hap == r12.pop` (dado 1/17 invece di 1/2 per la
- * spia) resta letto ma non puo' mai scattare per davvero: `hap` non e'
- * aggiornato da nessuna parte del motore (STUDIO.md, stesso gap gia'
- * dichiarato per casa/industria) — la spia usa quindi sempre il dado 1/2,
- * esattamente come l'originale finisce per fare per lo stesso motivo.
+ * [C] Riletto da zero (una nota precedente usava `r12.hap === r12.pop`,
+ * un'uguaglianza quasi impossibile — sbagliata su due punti): l'operatore
+ * vero in `r12/Alarm_1.gml` e' 4 ("`>=`", non "=="), e ora che `hap` e'
+ * davvero aggiornato (industria/casa/parco/club/solare/museo/monum/banca)
+ * puo' succedere per davvero, non solo sulla carta. Quando `hap>=pop`
+ * (citta' "felice") la spia/ricognizione ha una probabilita' PIU' BASSA
+ * (dado 1/17 invece di 1/2) — la lettura opposta di quanto ci si
+ * aspetterebbe, ma e' cosi' che il decompilato lo scrive. **[C]** Il tipo
+ * dipende dal livello di `chies`, mai letto prima: `monspi` mentre
+ * `chies.level<3`, `recogn` (sopra) una volta che `chies.level===3` — nel
+ * decompilato i due controlli sono `level<3`/`level==3` scritti uno dopo
+ * l'altro sullo stesso valore letto due volte, non mutuamente esclusivi
+ * per costruzione: qui il secondo (`chiesLevel === 3`) e' gia' l'unico
+ * caso restante una volta escluso `<3`, dato che 3 e' il livello massimo
+ * di `chies` in questo motore (STUDIO.md: l'originale arriva a un "livello
+ * 4" interno mai replicato — un dettaglio di numerazione, non un livello
+ * di gioco in piu').
  */
 export function stepBalloonSpawner(r12, balloons, dt, buildings) {
   r12.spyT = (r12.spyT ?? 0) + dt;
@@ -163,15 +191,23 @@ export function stepBalloonSpawner(r12, balloons, dt, buildings) {
       if (dice(15)) balloons.push(spawnBalloon("monvo_giga"));     // [C]
     }
     if (r12.spy) {
-      const rare = r12.hap === r12.pop;                            // [C] (mai vero in pratica, vedi sopra)
-      if (rare ? dice(17) : dice(2)) balloons.push(spawnBalloon("monspi"));  // [C]
+      const rare = r12.hap >= r12.pop;   // [C] operatore 4, non ==: vedi il commento sopra
+      const spyDice = rare ? 17 : 2;
+      // [C] r12/Alarm_1.gml: monspi (mongolfiera spia) mentre chies non e'
+      // ancora al livello massimo, recogn (aereo da ricognizione, sopra)
+      // una volta che lo e' — mai insieme, stesso dado in entrambi i rami.
+      if (chiesLevel < 3) { if (dice(spyDice)) balloons.push(spawnBalloon("monspi")); }
+      else if (dice(spyDice)) balloons.push(spawnBalloon("recogn"));
     }
   }
 }
 
 /**
- * Avanza tutte le mongolfiere di risorse/spia: volano lungo la stessa
- * diagonale (COS30/SIN30), rischiano un fulmine durante una tempesta vera
+ * Avanza tutte le mongolfiere di risorse/spia (e `recogn`, la "spia
+ * aerea" — STUDIO.md, non una mongolfiera ma riusa lo stesso array/step):
+ * volano lungo la propria rotta (`b.cos`/`b.sin`, scelta a spawn da
+ * spawnBalloon() — 30° per tutta la famiglia risorse/spia, 11°/13° a dado
+ * solo per recogn), rischiano un fulmine durante una tempesta vera
  * (STUDIO.md "le tempeste diventano reali", stesso schema di
  * `stepStormDamage` in buildings.js), e a fine vita lasciano una cassa di
  * risorse — anche se la fine e' un fulmine: nel decompilato `action_kill_
@@ -188,8 +224,8 @@ export function stepBalloons(balloons, loot, dt, r12) {
     const def = BALLOON_TYPES[b.type];
     b.t += dt;
     const pxPerSec = b.spd * 60;
-    b.x += COS30 * pxPerSec * dt;
-    b.y -= SIN30 * pxPerSec * dt;
+    b.x += b.cos * pxPerSec * dt;
+    b.y -= b.sin * pxPerSec * dt;
 
     let struck = false;
     if (r12.storm) {
@@ -263,18 +299,23 @@ const CONSTRUCTION_GRAVITY = 0.1;                // [C] action_set_gravity(90, 0
 const BOX_FALL_SPEED = 1;                        // [C] mon_box/Create.gml: action_move("010000000", 1)
 const BOX_LIFE = 120 * TICK;                     // [C] mon_box/Alarm_0.gml: action_set_alarm(120, 0)
 
-/** Solo `mon_bil` (vedi commento in cima al file): il pallone che consegna
- * `casa`/`industria` appena piazzate. */
-export function spawnConstructionBalloon(targetX, targetY) {
+/** `mon_bil` (default) o `mon_bbil` (`big: true` — [C] placeholder/
+ * Mouse_LeftReleased.gml, selec==5/72: laser e banca creano la variante
+ * grande, mai cablata finora — riusava sempre `mon_bil`, un pallone piu'
+ * piccolo del dovuto per i due edifici piu' cari del motore). Stessa
+ * fisica/tempistica per entrambe: solo lo sprite (e quello della cassa/
+ * del pallone vuoto, sotto) cambia prefisso. */
+export function spawnConstructionBalloon(targetX, targetY, big = false) {
+  const prefix = big ? "mon_bbild" : "mon_bild";
   return {
     x: targetX + CONSTRUCTION_OFFSET.dx, y: targetY + CONSTRUCTION_OFFSET.dy,
     vx: COS30 * CONSTRUCTION_SPEED, vy: -SIN30 * CONSTRUCTION_SPEED,
-    t: 0, dropped: false, spr: "mon_bild", depth: -3000,   // [C] _object.json: depth = -3000, mai ricalcolato
+    t: 0, dropped: false, spr: prefix, prefix, depth: -3000,   // [C] _object.json: depth = -3000, mai ricalcolato
   };
 }
 
-function spawnConstructionBox(x, y) {
-  return { x, y, t: 0, spr: "mon_bild_box", depth: -y - 200 };   // [C] mon_box/Step.gml: depth = -y - 200
+function spawnConstructionBox(x, y, prefix) {
+  return { x, y, t: 0, spr: `${prefix}_box`, depth: -y - 200 };   // [C] mon_box/Step.gml: depth = -y - 200
 }
 
 /** Avanza i palloni di cantiere: 225 tick a volo dritto portando la cassa,
@@ -287,8 +328,8 @@ export function stepConstructionBalloons(list, boxes, dt) {
     m.t += dt;
     if (!m.dropped && m.t >= CONSTRUCTION_CARRY) {
       m.dropped = true;
-      m.spr = "mon_bild_empty";                 // [C] action_sprite_set(mon_bild_empty, 0, 1)
-      boxes.push(spawnConstructionBox(m.x, m.y));
+      m.spr = `${m.prefix}_empty`;              // [C] action_sprite_set(mon_bild_empty, 0, 1)
+      boxes.push(spawnConstructionBox(m.x, m.y, m.prefix));
     }
     if (m.dropped) m.vy -= CONSTRUCTION_GRAVITY * 60 * dt;   // [C] gravita' applicata un tick alla volta
     m.x += m.vx * 60 * dt;
