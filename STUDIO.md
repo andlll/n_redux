@@ -2279,3 +2279,242 @@ paragrafo 8.
   (-20000 mon, cantiere condiviso "ir1x" visibile), e il bottone sparisce di
   nuovo; forzando `chies.level=2`/`pop=3000` la banca compare, l'hover
   mostra "It's free!", si piazza senza scalare mon.
+
+- **Correzione: la terza stella non e' eolico, e' un edificio nuovo —
+  `grattacielo`.** La nota sopra ("monumento e banca") liquidava
+  `stella3`/`selec==82` come "un secondo modo di sbloccare eolico, zero
+  lavoro" dopo aver letto solo la riga che `placeholder/Mouse_LeftReleased.gml`
+  condivide fra selec==4 e selec==82 (entrambi creano `eoliplacer`), senza
+  scendere fino in fondo a `eoliplacer/Alarm_1.gml`. Segnalato dall'autore
+  ("dovrebbe essere un enorme grattacielo tipo Burj Khalifa, indaga bene").
+  **[C]** Quella funzione ha in realta' due rami indipendenti DOPO il punto
+  in comune: selec==4 (costo 50000, crea `impavent` — eolico, gia' letto)
+  e selec==82 (costo 200000, crea `m3cant` — un oggetto mai letto prima
+  d'ora). `m3cant` non condivide NIENTE con eolico oltre al meccanismo di
+  piazzamento (stessa maschera fissa `eoliplacer`/"phold", 4 lotti): **[C]**
+  `data/sprites.json`, `m3x1`..`m3x14`, sono 588px di larghezza per
+  un'altezza che cresce da 1085 a 1527px — una torre stretta e altissima,
+  non l'810x865 quasi quadrato di `eol`.
+  **[C] Crescita** (`m3cant/Create.gml` + `Alarm_0.gml`): a differenza di
+  OGNI altro edificio del motore, non c'e' una fondamenta generica "ir1x"
+  che poi si smaterializza in un `finalSprite` diverso — e' lo STESSO
+  oggetto che cambia `sprite_index` 14 volte (440 tick sul primo sprite,
+  poi 540-640 tick per passo), e l'ultimo sprite mostrato e' gia' l'edificio
+  finito. Cantiere totale 7560 tick (~126s), il piu' lungo del motore,
+  coerente con 200000 mon — nessun altro edificio piazzabile costa di piu'.
+  **[C] Sblocco**: `banca1_light/Create.gml` (il decoro-luce che
+  `BUILDING_TYPES.banca.construct.decor` gia' crea a fine cantiere) arma
+  `stella3` alla PRIMA banca costruita (dietro due flag "run once", stesso
+  idioma di `distrutti` per il monumento) — non una soglia a parte come le
+  prime due stelle.
+  **[C] Consumo**: riletti gli operatori di `m3cant/Step.gml` con la tabella
+  gia' stabilita altrove in questo file (4=">=", non "!="` come una prima
+  lettura del ramo `phase!=14` aveva capito — corretto a `phase>=14` prima
+  di fidarsene): PRIMA di finire il cantiere non consuma niente di suo
+  (l'unico drenaggio e' un "acceleratore" opzionale legato a `playbuttoner`,
+  un bottone play/pausa mai ricostruito — stesso gap dichiarato dei prestiti
+  di banca); UNA VOLTA FINITO consuma elettricita' OGNI TICK, non ogni 120
+  come il resto del motore — -1/-2 ele di giorno/notte, riprodotto
+  moltiplicando per 120 dentro il periodo fisso gia' cablato in
+  `stepConsumption()` invece di toccare il motore per un solo edificio.
+  Lo stesso blocco azzera anche `r12.spy` (mongolfiere spia, STUDIO.md
+  "le mongolfiere") ogni tick a costruzione ultimata — un possibile effetto
+  "il grattacielo blocca lo spionaggio" **non riprodotto**: la sua semantica
+  esatta dipende dall'ordine di esecuzione fra oggetti nello stesso tick
+  dell'originale, non verificabile con sicurezza da qui.
+  **[C] Nessuna vita**: `m3cant` non ha ne' un `Destroy.gml` ne' una
+  variabile `life` in nessun evento — indistruttibile per davvero, non solo
+  "senza fulmine" come `parco`. Stesso trucco [I] gia' scelto per
+  `BUILDING_TYPES.parco`: `life: 99999` invece di un caso speciale nel
+  motore.
+  **[C] Finestre notturne**: a fine cantiere l'originale crea 10 oggetti
+  sovrapposti nello stesso punto (`m3lux1`..`m3lux9` + `m3lux_red`, ognuno
+  una sagoma PIENA della torre — 588x1527 come `m3x14` stesso), ognuno con
+  la propria velocita' di dissolvenza (`image_alpha += 0.003..0.023` al
+  tick, diversa per ognuno — un vero "sfarfallio" di finestre a velocita'
+  diverse, non un'unica luce). La dissolvenza condivisa (`LIGHT_FADE`,
+  200 tick fissi per ogni altro decoro "luce" del motore) e' stata
+  generalizzata (`addDecor()`/`stepLights()`, game/src/main.js) per accettare
+  una durata per-decoro invece di estendere il motore con un caso speciale
+  solo per questo edificio — compatibile all'indietro, tutti gli altri
+  decori restano sulla stessa `LIGHT_FADE` di prima. `m3rd` (il fanale
+  rosso in cima) non si dissolve mai nel decompilato: `fadeTicks: 0`, un
+  caso a parte (nessun'altra luce del motore scatta di colpo).
+  **[I] Gap dichiarato — cantiere/gru non ricostruiti**: l'originale
+  affianca a `m3cant` un secondo oggetto (`impa31f`) che genera `impa31r` e
+  un'intera catena `impa31/32/33r|f` + tre gru rotanti dedicate
+  (`impa3gru`/`impa3gru1`/`impa3gru2`, ognuna con la propria macchina a
+  stati a oscillazione) — impalcatura/scenografia allo stesso titolo delle
+  code "f" gia' semplificate per industria/casa/palazzo (STUDIO.md sopra,
+  "due semplificazioni"), qui pero' un intero sotto-sistema invece di un
+  singolo passo troncato: nessun costo o tempo in piu' (letti entrambi
+  direttamente da `m3cant`), quindi un gap dichiarato invece di una
+  ricostruzione parziale rischiosa.
+  Sprite nuovi in `GAMEPLAY_SPRITES`: `m3x1`..`m3x14`, `m3l1`..`m3l9`,
+  `m3rd`, `sta3`/`sta3s` (icone bottone), `c200000` (cartellino di prezzo,
+  generico via `costTagSprite()`) — atlas e blitplan rigenerati.
+  Verificato in browser (Playwright, stato forzato via `window.__nimbus`):
+  a inizio cantiere si vede `m3x1`, una base bassa; saltando all'ultimo
+  passo cresce nella torre alta e stretta prevista dagli sprite; forzando
+  notte + energia le finestre si accendono gradualmente a colori/velocita'
+  diverse invece che tutte insieme, esattamente l'effetto "sfarfallio"
+  letto nel decompilato.
+
+- **`wewe` e' il peso della piattaforma, non l'inquinamento — e la
+  profondita' del parco.** Due segnalazioni dell'autore, indipendenti ma
+  risolte insieme.
+  **[C] `wewe`** (`r12/Create.gml`: parte a 100): quasi ogni edificio lo
+  scrive alla nascita (mai un `Destroy.gml` lo riduce) ed `r12/Alarm_2.gml`
+  lo rilegge ogni 60 tick per drenare `oil` a soglie crescenti — letto qui
+  come "inquinamento" in una nota precedente (STUDIO.md sopra, "cosa
+  manca"), corretto dall'autore: e' il peso della piattaforma volante,
+  "più la piattaforma pesa più consuma petrolio". Confermato dal codice
+  stesso: lo stesso flag (`action_if_number(736,0,0)`) che guarda il
+  drenaggio guarda anche l'innesco della tempesta VERA (non `stormeasy`,
+  STUDIO.md sopra "le tempeste diventano reali") — entrambi gia' noti per
+  essere il ramo `match`, mai `match_easy`, dove la base sta a terra ("una
+  citta' 'normale'", l'autore) e non deve reggersi in volo.
+  `state.js`: `wewOilDrain(wewe)` riproduce le 11 soglie lette riga per
+  riga — comprese le prime due, che NON sono fasce esclusive: a
+  `wewe===100` (il valore di partenza) scattano ENTRAMBE (-2 e -3, totale
+  -5, uguale alla fascia 201-300), mentre 101-200 fa scattare solo la
+  seconda (-3) — un edificio della piattaforma vuota drena piu' del primo
+  edificio costruito. Verificato con gli operatori (3="<=", 2=">") gia'
+  confermati altrove nel progetto, non "raddrizzato" a tiers puliti.
+  `stepWeather(r12, dt, isMatch)` applica il drenaggio SOLO se `isMatch`
+  (main.js passa `scene.name === "match"`, oggi sempre `false`: il motore
+  carica solo `match_easy`, quindi il codice e' corretto ma dormiente fino
+  a quella room) — a differenza della tempesta, gia' simulata "vera" anche
+  su `match_easy` per una scelta dichiarata (costava poco tenerla pronta).
+  Corretto anche un bug di questa porting scoperto rileggendo la funzione
+  per aggiungerci `wewe`: il `return` anticipato mentre una tempesta era
+  attiva fermava pure il conteggio dei 60 tick, che nel decompilato e'
+  incondizionato (non annidato dentro `storm==0`).
+  `BUILDING_TYPES`: campo `wewe` per livello su banca/casa(1-3)/club/
+  eolico/gatling/industria(1-3)/laser/missile/museo/museoRd/palazzo/
+  palazzoRd/solare/villa (14 tipi, 18 livelli — palazzo/museo hanno un
+  secondo livello nel decompilato, `casa5ss|dd`, mai portato: STUDIO.md
+  sopra, "un secondo livello fuori scopo"), applicato da
+  `stepConstructions()` a fine cantiere insieme a `hap`. `chies`/`parco`/
+  `monum`/`grattacielo` non pesano nulla nel decompilato: nessun campo.
+  Verificato (Playwright, `window.__nimbus` + `import('./src/buildings.js')`
+  per leggere gli esatti valori attesi): piazzate finte istanze a fine
+  cantiere per tutti e 14 i tipi, `r12.wewe` passa da 100 a 1110 (100 + la
+  somma esatta dei 14 delta); con `wewe` cosi' alto l'`oil` non crolla nei
+  secondi successivi (il piccolo calo osservato e' la formula placeholder
+  generica di `tickR12()`, non il drenaggio da peso — fedele, il motore
+  gira sempre su `match_easy`).
+  **[I] Profondita' del parco**: segnalato dall'autore — un parco e'
+  scenografia bassa e piatta (lo scatter di alberi/lampioni di
+  `spawnParcoScatter()`, non un edificio solido), ma nasceva con lo stesso
+  `depth` dinamico di ogni altro edificio (`effDepth()`, main.js:
+  `depth===0` -> `-y`), finendo davanti a pali/auto vicini che dovrebbero
+  invece coprirlo. `BUILDING_TYPES.parco.fixedDepth = -5` (fuori dalla
+  gamma tipica di `-y` su questa mappa, poche centinaia/migliaia negativi)
+  letto da `placeAt()` (main.js) al posto del solito 0 — lo stesso
+  `effDepth()` lo tratta gia' come "fisso" per qualunque valore diverso da
+  zero, nessuna modifica al motore serviva oltre a leggere il campo.
+  Verificato in browser: un parco piazzato vicino a un lampione mostra
+  l'asta del lampione sopra il prato invece di sparire sotto.
+
+- **La ruspa: demolizione/riparazione, `puruspa`/`selec==11`.** Segnalata
+  da tempo come gap dichiarato ("cosa manca" §5, poi ribadita piu' volte
+  come "mai ricostruita"). Investigata da zero, letta riga per riga.
+  **[C] Non e' un rudere-a-un-lotto-libero come una prima ipotesi
+  suggeriva**: `demobasia/Collision_*.gml` collide SOLO con gli edifici
+  FINITI (`casa1`, `industria1`, ...), mai con un rudere — un rudere resta
+  un vicolo cieco vero, la ruspa non lo tocca mai (destroyBuilding(),
+  main.js, corretta di conseguenza: una nota precedente li' diceva il
+  contrario). **[C] Il meccanismo vero**: ogni edificio finito, col ramo
+  selec==11 del proprio `Mouse_LeftPressed.gml`, controlla il costo e (se
+  coperto) crea `demobasia` sulla propria posizione — un popup, non una
+  demolizione immediata. `demobasia/Create.gml` genera tre figli:
+  `demobachia` (annulla, sprite "demoback"), `demoiessa` (conferma,
+  "demoyesse", imposta `demobasia.iessa=1` al tocco), `disegnaprezzo` (il
+  costo, un font disegnato a runtime — qui il cartellino gia' generico "cN"
+  di `costTagSprite()`, nessun font nuovo). Solo quando `iessa==1`
+  `demobasia/Collision_<tipo>.gml` scala il costo e crea un oggetto
+  "_demo" dedicato per quel livello (`impacasa2r`, `impaind3r`, ...).
+  **[C] Cosa fa davvero l'oggetto "_demo"** — verificato con un diff riga
+  per riga contro il cantiere/potenziamento NORMALE dello stesso livello
+  (`impacasa2r` contro `impa1to2r`, `impademogatlingr` contro
+  `impagatlingr`, altri campionati a mano): la stessa identica sequenza da
+  `Alarm_0` in poi. L'UNICA differenza reale e' la durata del PRIMO passo
+  (`Create.gml`, un solo `action_set_alarm`): per un edificio a un solo
+  livello o per il livello 1 di casa/industria/palazzo/museo (quelli che
+  normalmente iniziano con una lunga fase di "sgombero lotto", 361-390
+  tick) la ruspa la accorcia a 30 tick (1 per missile/gatling, quasi
+  istantaneo) — ricostruire su un lotto gia' sviluppato salta lo sgombero.
+  I livelli 2/3 (gia' brevi di loro, 30 tick anche da nuovi) non cambiano.
+  Tradotto nel motore: `tryRuspaRebuild()` (buildings.js) rimanda
+  l'edificio ALLO STESSO livello in cantiere (`b.level -= 1` prima di
+  riusare la stessa formula gia' scelta da `tryStartUpgrade()`,
+  `upgradeIndex: b.level-1` — nessun codice duplicato, `up.steps` e' lo
+  stesso array del cantiere normale), con `ruspaFirstStepDur` (nuovo campo
+  per livello) a sostituire solo la durata del primo passo quando serve
+  (`stepConstructions()`, `c.rebuilding` marca l'istanza appena riavviata
+  dalla ruspa).
+  **[C] `eolico` e' l'eccezione**: `impavent_dem`, letto per intero
+  (Create+Alarm_0/1/2) invece di dedurlo dal solo primo alarm, NON
+  ricostruisce la pala eolica — l'ultimo passo crea 4 `placeholder` (agli
+  stessi offset ±98/±58 di `impavent/Alarm_2.gml`) e si autodistrugge: la
+  ruspa su una pala eolica libera il terreno, non lo ricostruisce (coerente
+  con l'essere multi-lotto: rimettere ESATTAMENTE la stessa pala eolica
+  nello stesso punto sarebbe un'operazione diversa da ogni altro tipo).
+  `def.construct.ruspaDemolish` marca questo caso; `demolishMultiTile()`
+  (main.js) libera il lotto toccato (mai rimosso da `placeholders`, solo
+  `consumed`) e i 3 lotti piu' vicini entro il raggio di `multiTile` in
+  `blockedSlots` — lo stesso raggio approssimato gia' scelto per il
+  piazzamento (STUDIO.md, "pepazzittecollider" mai ricostruito), qui
+  applicato al contrario.
+  **[C] Costi**, tutti letti dal proprio `Alarm_9`/`Alarm_10` (il numero
+  di alarm cambia quando 9 e' gia' preso da altro, es. gatling/solare):
+  casa 500/2000/10000, industria 5000/50000/200000, parco 500, club/solare
+  2000, villa 6000, palazzo/museo 20000, missile/gatling 20000, laser
+  100000, eolico 200000 (il piu' caro del motore, coerente con l'unico che
+  smonta invece di ricostruire). **[I]** `sooool/Mouse_LeftPressed.gml` ha
+  un costo diverso (2700 invece di 2000) se il pannello e' su un parco
+  (`overpark`) — una meccanica "pannelli solari sopra un parco esistente"
+  MAI ricostruita in questo motore (`parco/Mouse_LeftPressed.gml`, ramo
+  selec==61, trovata per caso investigando la ruspa): gap dichiarato,
+  resta sempre il ramo normale.
+  **UI**: popup si'/no in-mondo invece di un font disegnato a runtime —
+  `ruspaPending` (main.js) sostituisce i quattro oggetti del decompilato
+  (`demobasia`/`demobachia`/`demoiessa`/`disegnaprezzo`) con uno stato solo,
+  due nuove entita' pickable ("ruspaYes"/"ruspaNo", stesso schema di
+  "upsign" — depth sempre in primo piano, intercettate a prescindere dallo
+  z-order) piu' un cartellino di prezzo "cN" riusato. Resta aperto finche'
+  non tocchi si'/no (**[C]** `demobasia` non ha ne' `Step` ne' `Destroy` nel
+  decompilato: nemmeno l'originale lo richiude da solo) — [I] un secondo
+  tocco su un ALTRO edificio con la ruspa selezionata riarma il popup su
+  quello nuovo invece di aprirne un secondo, unica scelta pratica con un
+  solo stato invece di N istanze `demobasia` coesistenti.
+  Sprite nuovi in `GAMEPLAY_SPRITES`: `demoback`, `demoyesse`, `c100000`
+  (cartellino mancante, serviva solo al costo del laser) — atlas e
+  blitplan rigenerati.
+  Verificato in browser (Playwright, stato forzato via `window.__nimbus` +
+  tap reali via `cam.worldToScreen()`): tocco su una casa1 con la ruspa
+  apre il popup col cartellino "500"; "Back" lo chiude senza toccare mon;
+  "Yes!" scala 500 mon e la rimanda in cantiere allo stesso livello, che
+  supera il primo passo (accorciato) molto prima dei 390 tick normali;
+  un'eolico ruspato scala 200000 mon, sparisce da `buildings`, e tutti e 4
+  i lotti che occupava tornano piazzabili.
+
+- **Due piccolezze segnalate dall'autore.** (1) Il popup della ruspa
+  disegnava "Back"/"Yes!"/il cartellino a piena grandezza (scale 1),
+  visibilmente piu' grandi dei bottoni del selettore edificio (gia'
+  rimpiccioliti a `UI_SCALE`, 0.6 mobile/0.7 desktop) — `UI_SCALE` portata a
+  livello di modulo (game/src/main.js, prima era locale alla sola funzione
+  di disegno) cosi' anche il popup la riusa, offset scalati di conseguenza
+  per restare ravvicinati. (2) `DEBUG_INFINITE_RESOURCES`
+  (game/src/buildings.js, **[TEST] non comportamento dell'originale**,
+  segnalato esplicitamente come temporaneo): `canAfford()` non blocca piu'
+  niente per mancanza di mon/oil, ma la spesa/produzione VERA continua
+  intatta — `clampR12()` (state.js) accumula il delta genuino su
+  `r12.monReal`/`r12.oilReal` (seminati dai valori di partenza veri, 5500/
+  5000) prima di rialzare la soglia usabile a un valore comodo (999999 mon,
+  gia' il tetto esistente; 500000 di pavimento per l'olio, che non ne ha
+  uno fisso). I valori veri restano leggibili nell'HUD di debug ("[TEST
+  risorse infinite] reale: ..."), la barra vera mostra invece il valore
+  gonfiato. Verificato in browser: piazzata una casa (100 mon) con mon
+  visualizzato fermo a 999999, `r12.monReal` scende comunque di ~100.

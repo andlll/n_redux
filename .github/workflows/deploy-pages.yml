@@ -46,6 +46,11 @@ jobs:
             python3 tools/24_blit.py "font_$font"
           done
 
+      - name: Rigenera il logo della schermata di caricamento
+        run: |
+          python3 tools/26_logo.py mount_logo
+          python3 tools/24_blit.py mount_logo
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3

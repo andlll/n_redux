@@ -2,7 +2,7 @@ import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture 
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -20,6 +20,24 @@ import { loadFont, drawText } from "./font.js";
 
 const canvas = document.getElementById("view");
 const hud = document.getElementById("hud");
+
+// Schermata di caricamento (index.html #loading): il gioco e' diventato
+// pesante lato asset (atlas per-room + font bitmap, tutti fetchati prima
+// del primo frame, vedi gli "await fetch"/loadTexture/loadFont piu' sotto),
+// quindi copriamo quell'attesa con logo + sfondo nero invece di uno schermo
+// bianco/vuoto. "show" fa partire subito la dissolvenza in entrata del
+// logo; "hide" (chiamata da hideLoading(), sotto, al primo frame disegnato)
+// fa la dissolvenza in uscita dell'intera overlay.
+const loading = document.getElementById("loading");
+loading.classList.add("show");
+let loadingHidden = false;
+function hideLoading() {
+  if (loadingHidden) return;
+  loadingHidden = true;
+  loading.classList.add("hide");
+  loading.addEventListener("transitionend", () => loading.remove(), { once: true });
+}
+
 const r = new Renderer(canvas);
 const gl = r.gl;
 const white = makeSolidTexture(gl);
@@ -40,6 +58,15 @@ const input = new Input(canvas);
 // rotella, niente bottoni zoom+/- in UI, solo l'interfaccia com'e' disegnata,
 // pixel per pixel — la richiesta era esplicitamente "zero zoom" su desktop.
 const isMobile = matchMedia("(pointer: coarse)").matches;
+
+// Scala dei bottoni del selettore edificio (usata piu' sotto per disegnarli)
+// — [I] segnalato dall'autore: le linguette di prezzo/i popup della ruspa
+// disegnavano gli sprite originali a piena grandezza (scale 1), decisamente
+// piu' grandi dei bottoni gia' rimpiccioliti con questa stessa scala.
+// Portata qui, a livello di modulo, cosi' anche il popup della ruspa
+// (dynamic.push() piu' sopra nel ciclo di frame, molto prima della sezione
+// che disegna i bottoni) puo' riusarla invece di un secondo numero scollegato.
+const UI_SCALE = isMobile ? 0.6 : 0.7;
 
 // ---------------------------------------------------------------- scena
 const scene = await fetch("./data/match_easy.scene.json").then((x) => x.json());
@@ -303,6 +330,14 @@ let trails = [];
 let r12 = createR12();
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
+// La ruspa (`puruspa`, `selec===11`, STUDIO.md/OTHER_BUILDINGS sotto): tocco
+// su un edificio finito con la ruspa selezionata NON demolisce subito — apre
+// un popup si'/no come nel decompilato (`demobasia`, che crea `demobachia`/
+// `demoiessa`/`disegnaprezzo` — src/objects), letto qui in un solo oggetto
+// invece di quattro. `null` = nessun popup aperto. Vedi il commento sul
+// ramo "building" di input.onTap piu' sotto per come si arma/si conferma.
+let ruspaPending = null;   // { buildingId, cost } — la posizione si legge da b.x/b.y quando serve, non duplicata qui
+
 // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
 // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
 // { action_kill_object(); }` dentro upcrc12/upcrc23, stesso schema per
@@ -318,7 +353,12 @@ function spawnDecor(building, decorSprites) {
   // finito", invece che dentro buildings.js che non sa niente di alberi o
   // lampioni.
   if (building.type === "parco") { spawnParcoScatter(building); return; }
-  addDecor(building, decorSprites.map((spr) => ({ spr, dx: 0, dy: 0 })));
+  // Un decoro e' di solito solo un nome di sprite (dx/dy/lit di default
+  // vanno bene per tutti); `grattacielo` (buildings.js) passa invece
+  // `{spr, fadeTicks}` per le finestre notturne, ognuna con la propria
+  // velocita' di dissolvenza (vedi addDecor()/stepLights() sotto).
+  addDecor(building, decorSprites.map((d) =>
+    typeof d === "string" ? { spr: d, dx: 0, dy: 0 } : { spr: d.spr, dx: 0, dy: 0, fadeTicks: d.fadeTicks }));
   // [C] casa1|2|3/Create.gml: l'ultima riga crea un "pplo" (STUDIO.md) alla
   // posizione della casa — un abitante per ogni salto di livello, non uno
   // per casa: una casa a livello 3 ne ha lasciati indietro due, mai
@@ -348,13 +388,15 @@ function spawnDecor(building, decorSprites) {
  * fermo alla y del suo edificio come un albero vero, tinto dal ciclo
  * giorno/notte come qualunque altro oggetto di mondo. */
 function addDecor(building, spawns) {
-  for (const { spr, dx, dy, lit = true } of spawns) {
+  for (const { spr, dx, dy, lit = true, fadeTicks } of spawns) {
     const y = building.y + dy;
     decorEntities.push({
       obj: "decor", buildingId: building.id,
       x: building.x + dx, y, depth: lit ? -y - 1 : -y,
       spr, _f: frameFor(spr),
-      ...(lit ? { _selfLit: true, _lightT: 0 } : {}),   // parte spento, come "empty" in originale (Create.gml)
+      // `fadeTicks` (grattacielo, buildings.js): dissolvenza propria invece
+      // della LIGHT_FADE condivisa da tutti gli altri decori — vedi stepLights().
+      ...(lit ? { _selfLit: true, _lightT: 0, _fadeTicks: fadeTicks } : {}),   // parte spento, come "empty" in originale (Create.gml)
     });
   }
 }
@@ -454,8 +496,11 @@ function placeAt(placeholder, type) {
   // sempre sopra il terreno), non un depth di mondo da ereditare. Un
   // edificio vero e' un oggetto "di mondo" come chies o gli alberi: deve
   // ordinarsi per la propria y (vedi effDepth() sopra), non restare per
-  // sempre incollato davanti a tutto il resto della mappa.
-  const b = placeBuilding(type, placeholder.x, placeholder.y, 0);
+  // sempre incollato davanti a tutto il resto della mappa. `def.fixedDepth`
+  // (parco, buildings.js — [I] segnalato dall'autore) e' l'eccezione: bassa
+  // scenografia piatta, non un edificio solido, resta sempre "in fondo"
+  // invece di competere per -y con cio' che le passa sopra.
+  const b = placeBuilding(type, placeholder.x, placeholder.y, def.fixedDepth ?? 0);
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
   // [C] placeholder/Mouse_LeftReleased.gml: selec==1 (casa), selec==2
@@ -627,16 +672,21 @@ function seedChies() {
  * (`ruinSpriteFor()`, game/src/buildings.js — sceglie fra `ruin1`/`ruin2`/
  * `ruin3`/`ruinsol`/`ruinc1..3` in base a tipo e livello, con lo stesso dado
  * uniforme del decompilato dove ne ha piu' di uno) che nessuno strumento nel
- * motore puo' rimuovere: la ruspa/bulldozer (`selec==11`, l'unico modo per
- * ripararlo nell'originale, pagando) non e' mai stata ricostruita — un
- * vicolo cieco fedele, non piu' la rimozione immediata con placeholder
- * libero di una versione precedente di questo motore. `parco` e' l'unica
- * eccezione: **[C]** `parco/Step.gml` non legge mai `life`, quindi non fa
- * NIENTE quando (nella pratica, quasi mai: `life: 9999`) succede —
- * `ruinSpriteFor()` torna `null` e questa funzione si ferma subito, prima di
- * toccare pop/hap/`buildings`, esattamente come l'originale non farebbe
- * niente. Per tutti gli altri applica il bilancio pop (`currentDeathPop`) e
- * hap (`currentDeathHap`, industria/parco — STUDIO.md "i pulsanti blu delle
+ * motore puo' rimuovere — un vicolo cieco fedele, non piu' la rimozione
+ * immediata con placeholder libero di una versione precedente di questo
+ * motore. **[C] Corretto**: una nota precedente qui diceva che la ruspa
+ * (`selec==11`, tryRuspaRebuild()/ruspaPending sotto) fosse "l'unico modo
+ * per ripararlo" — falso, verificato: `demobasia/Collision_*.gml` collide
+ * SOLO con gli oggetti degli edifici FINITI (`casa1`, `industria1`, ...),
+ * mai con un `ruinN`/`ru11`/`ruinc1` — un rudere non ha nessun ramo
+ * `Mouse_LeftPressed.gml` per selec==11 nel decompilato, la ruspa non lo
+ * tocca mai. `parco` e' l'unica eccezione a QUESTA funzione: **[C]**
+ * `parco/Step.gml` non legge mai `life`, quindi non fa NIENTE quando (nella
+ * pratica, quasi mai: `life: 9999`) succede — `ruinSpriteFor()` torna
+ * `null` e questa funzione si ferma subito, prima di toccare pop/hap/
+ * `buildings`, esattamente come l'originale non farebbe niente. Per tutti
+ * gli altri applica il bilancio pop (`currentDeathPop`) e hap
+ * (`currentDeathHap`, industria/parco — STUDIO.md "i pulsanti blu delle
  * monete") del livello a cui e' morto, letti da chiesX/industriaX/casaX/
  * parco/Destroy.gml.
  */
@@ -650,6 +700,40 @@ function destroyBuilding(b) {
   coins = coins.filter((c) => c.buildingId !== b.id);
   if (picked?.obj === "building" && picked.ref === b) picked = null;
   ruins.push({ obj: "decor", x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr) });
+}
+
+/**
+ * Il caso a parte della ruspa su `eolico` (`def.construct.ruspaDemolish`,
+ * buildings.js): **[C]** `impavent_dem/Alarm_2.gml`, a differenza di OGNI
+ * altro "_demo", non ricostruisce l'edificio — crea 4 `placeholder` (agli
+ * stessi offset ±98/±58 di `impavent/Alarm_2.gml` per i suoi 4 lotti) e si
+ * autodistrugge: una pala eolica ruspata torna terreno libero, non una pala
+ * eolica nuova. Qui equivale a togliere l'edificio da `buildings` e
+ * liberare i 4 lotti che aveva consumato — [I] lo stesso raggio di ricerca
+ * approssimato gia' usato da findPlacementCluster()/multiTile in placeAt()
+ * invece di una vera maschera di collisione (STUDIO.md, "pepazzittecollider"
+ * mai ricostruito): il lotto toccato (sempre un vero `placeholder`, mai
+ * rimosso dall'array — solo `consumed`) torna libero, e i 3 `blockedSlots`
+ * piu' vicini entro lo stesso raggio di piazzamento tornano `placeholders`
+ * veri invece di restare bloccati per sempre.
+ */
+function demolishMultiTile(b) {
+  const def = BUILDING_TYPES[b.type];
+  const ph = placeholders.find((p) => p.x === b.x && p.y === b.y);
+  if (ph) ph.consumed = false;
+  const r2 = def.multiTile.radius * def.multiTile.radius;
+  const near = blockedSlots
+    .filter((s) => (s.x - b.x) ** 2 + (s.y - b.y) ** 2 <= r2)
+    .sort((a, c) => ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) - ((c.x - b.x) ** 2 + (c.y - b.y) ** 2))
+    .slice(0, def.multiTile.count - 1);
+  for (const s of near) {
+    blockedSlots = blockedSlots.filter((x) => x !== s);
+    const already = placeholders.find((p) => p.x === s.x && p.y === s.y);
+    if (already) already.consumed = false;
+  }
+  decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
+  buildings = buildings.filter((x) => x !== b);
+  if (picked?.obj === "building" && picked.ref === b) picked = null;
 }
 
 // -------------------------------------------------------------- salvataggio
@@ -788,8 +872,16 @@ function stepLights(entities, dt, night, r12) {
   const lit = night && r12.ele > 3;
   for (const d of entities) {
     if (!d._selfLit) continue;
-    d._lightT = Math.max(0, Math.min(LIGHT_FADE, d._lightT + (lit ? dt : -dt)));
-    d._alpha = d._lightT / LIGHT_FADE;
+    // `_fadeTicks` (grattacielo, buildings.js/addDecor()): `0` e' il fanale
+    // rosso in cima ("m3rd"), che nel decompilato scatta di colpo invece di
+    // dissolversi — nessun'altra luce del motore lo fa, quindi resta un
+    // caso a parte invece di una LIGHT_FADE di durata zero (divisione per
+    // zero). Le altre finestre (m3l1..9) hanno ognuna la propria durata;
+    // tutto il resto del motore lascia `_fadeTicks` undefined e riusa LIGHT_FADE.
+    if (d._fadeTicks === 0) { d._alpha = lit ? 1 : 0; continue; }
+    const fade = d._fadeTicks != null ? d._fadeTicks * TICK : LIGHT_FADE;
+    d._lightT = Math.max(0, Math.min(fade, d._lightT + (lit ? dt : -dt)));
+    d._alpha = d._lightT / fade;
   }
 }
 
@@ -951,6 +1043,10 @@ const OTHER_BUILDINGS = [
   // sbloccato" agganciato a `pu6/Mouse_MouseEnter.gml`, stesso schema di
   // level2club/level2gatling/level2sol per club/gatling/solare) chiama
   // l'edificio "palazz[o]" — vedi il commento su BUILDING_TYPES.palazzo.
+  // Il nome "Grattacielo" e' finito altrove: e' l'etichetta scelta ora per
+  // `BUILDING_TYPES.grattacielo` (STAR_BUILDINGS sotto, la terza stella),
+  // un edificio completamente diverso da questo — nessuna relazione se non
+  // l'omonimia mai risolta a suo tempo.
   { type: "palazzo", selec: 6, spr: "p6", sprSel: "p6ss", label: "Palazzo", cost: 6000 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
   { type: "club", selec: 60, spr: "pdj", sprSel: "pdjss", label: "Club", cost: 3500 },   // ora vero, BUILDING_TYPES.club
   { type: "solare", selec: 61, spr: "psolare", sprSel: "psolaress", label: "Pannelli solari", cost: 1000 },
@@ -993,6 +1089,17 @@ const STAR_BUILDINGS = [
       const chies = buildings.find((b) => b.type === "chies");
       return !!chies && chies.level > 1 && r12.pop >= 3000 && !buildings.some((b) => b.type === "banca");
     },
+  },
+  // Terza stella: `grattacielo` (buildings.js — corregge la conclusione
+  // precedente che la scambiava per un secondo sblocco di eolico, vedi il
+  // commento su BUILDING_TYPES.grattacielo). **[C]** `banca1_light/
+  // Create.gml` arma `stella3` alla PRIMA banca costruita (dietro due flag
+  // "run once", stesso idioma di `distrutti` per il monumento) — non una
+  // soglia a parte come le prime due stelle: `unlocked()` qui legge
+  // semplicemente "esiste gia' una banca".
+  {
+    type: "grattacielo", selec: 82, spr: "sta3", sprSel: "sta3s", label: "Grattacielo", cost: 200000,
+    unlocked: () => buildings.some((b) => b.type === "banca") && !buildings.some((b) => b.type === "grattacielo"),
   },
 ];
 for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; BUILDING_LABEL[b.type] = b.label; }
@@ -1055,10 +1162,11 @@ input.onTap = (sx, sy) => {
   // edifici) e' qui per lo stesso motivo di "building": va intercettato a
   // prescindere dal depth, non solo per z-order — e vince comunque contro
   // l'edificio sotto di lui perche' il suo depth (UPSIGN_DEPTH, sempre in
-  // primo piano) e' piu' negativo.
+  // primo piano) e' piu' negativo. "ruspaYes"/"ruspaNo" (il popup si'/no
+  // della ruspa, stesso depth) sono qui per lo stesso motivo.
   for (const it of frameList) {
     if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
-      && it.obj !== "coin" && it.obj !== "upsign") continue;
+      && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo") continue;
     // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
     // stessa ragione della raccolta hover piu' sotto. Tutto il resto
     // (edifici, casse, monete, segnale di potenziamento) resta sul
@@ -1117,6 +1225,25 @@ input.onTap = (sx, sy) => {
     messageT = 3;
   } else if (picked.obj === "building") {
     const b = picked.ref;
+    // [C] casa1|industria1|.../Mouse_LeftPressed.gml, ramo selec==11 (la
+    // ruspa, OTHER_BUILDINGS sotto): un tocco su un edificio FINITO arma il
+    // popup si'/no invece di potenziare/sparare — `demobasia/Create.gml`
+    // non tocca ancora `r12.mon`, solo apre il popup (e nemmeno quello se
+    // il costo non e' coperto: `casa1/Mouse_LeftPressed.gml` controlla
+    // `mon>=500` PRIMA di creare `demobasia`, non dopo). La conferma vera
+    // arriva dal tocco su "ruspaYes" sotto.
+    if (r12.selec === 11) {
+      const cost = ruspaCostFor(b);
+      if (b.construction) message = "cantiere gia' in corso";
+      else if (cost == null) message = `${BUILDING_LABEL[b.type] ?? b.type}: non demolibile/riparabile con la ruspa`;
+      else if (!canAfford(r12, { mon: cost })) message = `serve ${cost} mon (hai ${r12.mon.toFixed(0)})`;
+      else {
+        ruspaPending = { buildingId: b.id, cost };
+        message = `demolizione/riparazione: tocca "si'" per confermare (-${cost} mon)`;
+      }
+      messageT = 3;
+      return;
+    }
     // [C] rocket_launcher|lasergun/Mouse_LeftPressed.gml (`manualFire` in
     // buildings.js — gatlinggun non ne ha uno vero): un tocco su una
     // torretta finita non apre un cantiere (nessuna delle tre ha
@@ -1136,6 +1263,33 @@ input.onTap = (sx, sy) => {
       message = err ?? "cantiere avviato";
     }
     messageT = 3;
+  } else if (picked.obj === "ruspaYes") {
+    // [C] demoiessa/Mouse_LeftReleased.gml: `iessa=1`, letto dalla
+    // collisione di demobasia col vero edificio (qui, tryRuspaRebuild()/
+    // demolishMultiTile() in buildings.js/main.js) — la stessa conferma,
+    // un solo tocco invece di un flag+collisione al frame dopo.
+    const b = picked.ref;
+    const def = BUILDING_TYPES[b.type];
+    if (def?.construct?.ruspaDemolish) {
+      const cost = ruspaCostFor(b);
+      if (!canAfford(r12, { mon: cost })) {
+        message = `serve ${cost} mon (hai ${r12.mon.toFixed(0)})`;
+      } else {
+        r12.mon -= cost;
+        demolishMultiTile(b);
+        message = "demolita — lotti liberi";
+      }
+    } else {
+      const err = tryRuspaRebuild(b, r12);
+      message = err ?? "cantiere avviato (ruspa)";
+    }
+    ruspaPending = null;
+    messageT = 3;
+    picked = null;
+  } else if (picked.obj === "ruspaNo") {
+    // [C] demobachia/Mouse_LeftReleased.gml: annulla, nessun costo.
+    ruspaPending = null;
+    picked = null;
   } else if (picked.obj === "loot") {
     const item = picked.ref;
     collectLoot(loot, item, r12);
@@ -1219,7 +1373,7 @@ function frame(now) {
   stepSmoke(smoke, dt);
   stepGrowth(buildings, dt, r12, (b) => pedestrians.push(spawnPedestrian(b.x, b.y)));
   stepConsumption(buildings, dt, r12, night);
-  stepWeather(r12, dt);
+  stepWeather(r12, dt, scene.name === "match");
   stepStormDamage(buildings, dt, r12);
   tickR12(r12, dt, buildings);
   stepCars(cars, dt, r12, night);
@@ -1315,6 +1469,23 @@ function frame(now) {
       // segnale simbolico dell'interfaccia — deve restare leggibile anche di
       // notte, non scurirsi con la tinta ambientale come un edificio vero.
       dynamic.push({ obj: "upsign", ref: b, x: b.x, y: b.y, depth: UPSIGN_DEPTH, _f: frameFor("upico"), _selfLit: true });
+    }
+    // Popup si'/no della ruspa (ruspaPending, armato da input.onTap sotto)
+    // — [C] demobasia/Create.gml: demobachia (annulla, sprite "demoback")
+    // offset (16,-16), demoiessa (conferma, "demoyesse") offset (177,-16),
+    // disegnaprezzo (il costo, qui il cartellino gia' generico "cN" invece
+    // di un font disegnato a runtime — stesso riuso di costTagSprite())
+    // offset (157,-185), tutti relativi alla posizione dell'edificio
+    // (demobasia stesso nasce li', offset (0,0)). [I] Segnalato dall'autore:
+    // a piena grandezza (scale 1) il popup risultava molto piu' grande dei
+    // bottoni gia' rimpiccioliti — disegnato a UI_SCALE (sopra, la stessa
+    // dei bottoni) con gli offset scalati di conseguenza, altrimenti le tre
+    // icone piu' piccole finirebbero staccate l'una dall'altra invece che
+    // ravvicinate come nell'originale.
+    if (ruspaPending?.buildingId === b.id) {
+      dynamic.push({ obj: "ruspaNo", ref: b, x: b.x + 16 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: frameFor("demoback"), _selfLit: true, _scale: UI_SCALE });
+      dynamic.push({ obj: "ruspaYes", ref: b, x: b.x + 177 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: frameFor("demoyesse"), _selfLit: true, _scale: UI_SCALE });
+      dynamic.push({ obj: "decor", x: b.x + 157 * UI_SCALE, y: b.y - 185 * UI_SCALE, depth: UPSIGN_DEPTH, _f: frameFor(`c${ruspaPending.cost}`), _selfLit: true, _scale: UI_SCALE });
     }
   }
   for (const d of decorEntities) dynamic.push(d);
@@ -1579,7 +1750,8 @@ function frame(now) {
   // richiesta, un compromesso fra leggibilita' e ingombro, non letto da
   // nessuna parte nel decompilato (`global.sca` scala l'intera UI
   // originale in un modo che non abbiamo ricostruito, STUDIO.md).
-  const UI_SCALE = isMobile ? 0.6 : 0.7;
+  // (UI_SCALE stessa e' dichiarata a livello di modulo, sopra: il popup
+  // della ruspa la riusa anche lui, vedi dynamic.push() piu' su.)
   const baseY = Math.round(canvas.clientHeight - UI_MARGIN);
   // I "tasti costruzione" (menoo 1: casa/industria/...) sono adiacenti,
   // GAP 0 — ogni sprite porta gia' con se' la propria base rettangolare
@@ -1735,9 +1907,16 @@ function frame(now) {
     `zoom ${cam.zoom.toFixed(2)}  camera ${cam.x.toFixed(0)},${cam.y.toFixed(0)}\n` +
     `fase ${amb.label}  edifici ${buildings.length}` +
     (r12.storm ? `  ⛈ tempesta (${r12.stormT.toFixed(0)}s)\n` : `\n`) +
+    // [TEST] DEBUG_INFINITE_RESOURCES (buildings.js): mon/oil in barra sono
+    // gonfiati apposta — questa riga e' l'unico punto dove restano visibili
+    // i valori veri (r12.monReal/oilReal, state.js), per non perderli di
+    // vista mentre si testa senza restare mai a corto.
+    (DEBUG_INFINITE_RESOURCES ? `[TEST risorse infinite] reale: ${r12.monReal.toFixed(0)} mon, ${r12.oilReal.toFixed(0)} oil\n` : "") +
     (status ? status + "\n" : "") +
     (messageT > 0 ? message + "\n" : "") +
     `trascina, rotella/pinch, tap — [S] salva [L] carica`;
+
+  hideLoading();
 
   requestAnimationFrame(frame);
 }

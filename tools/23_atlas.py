@@ -208,8 +208,14 @@ GAMEPLAY_SPRITES = {
         # sono i due banner dedicati di chies (mon+oil insieme, nessun taglio
         # a valuta singola gli si addice).
         "c100", "c500", "c1000", "c2000", "c3500", "c5000", "c6000", "c7500",
-        "c10000", "c20000", "c35000", "c50000", "c12aa", "c23aa",
+        "c10000", "c20000", "c35000", "c50000", "c100000", "c200000", "c12aa", "c23aa",
         "cfree",   # [C] ccfree/Create.gml: l'unico edificio davvero gratis (banca) ha il proprio cartellino dedicato
+        # Popup si'/no della ruspa (STUDIO.md, "demolizione/riparazione" —
+        # game/src/buildings.js tryRuspaRebuild()/ruspaDemolish, main.js
+        # ruspaPending): "demoback" (annulla, src/objects/demobachia) e
+        # "demoyesse" (conferma, src/objects/demoiessa). Il cartellino di
+        # prezzo del popup riusa i "cN" sopra, nessuno sprite in piu'.
+        "demoback", "demoyesse",
         # monumento/banca: quattordicesimo e quindicesimo edificio, i primi
         # due "a stella" (STUDIO.md, ricompense di traguardo mai nel menu
         # base — game/src/buildings.js BUILDING_TYPES.monum/banca). Stesso
@@ -218,6 +224,26 @@ GAMEPLAY_SPRITES = {
         # nuovo, solo l'edificio finito/rudere/luce di ciascuno.
         "monu_img", "monu_ruin", "monu_l", "monu_lx",
         "banca_img", "banca_l", "banca_lx",
+        # Sedicesimo edificio, il terzo "a stella": `m3cant` ("Grattacielo",
+        # STUDIO.md — corregge una conclusione precedente che lo scambiava
+        # per un secondo sblocco di `eolico`: `eoliplacer/Alarm_1.gml` ha
+        # DAVVERO due rami paralleli, selec==4 (eolico, gia' letto) e
+        # selec==82 che invece crea `m3cant`, un oggetto mai visto prima —
+        # zero rapporto con la pala eolica oltre a riusare lo stesso
+        # meccanismo di piazzamento a 4 lotti). A differenza di ogni altro
+        # edificio, l'intera crescita del cantiere e' l'oggetto stesso che
+        # cambia sprite 14 volte (`m3x1`..`m3x14`, nessuna fondamenta
+        # "ir1x" generica: `game/src/buildings.js`, BUILDING_TYPES.grattacielo)
+        # — 588x1085..1527px, una torre, non un edificio largo come tutti
+        # gli altri. Le finestre notturne sono 9 sovrimpressioni a piena
+        # sagoma con velocita' di dissolvenza diverse ("twinkle", m3l1..9,
+        # dissolvenza gia' generalizzata in game/src/main.js/stepLights())
+        # piu' il fanale rosso in cima ("m3rd", a scatto, nessuna
+        # dissolvenza — la stessa "luce di segnalazione notturna" che
+        # avrebbe un vero grattacielo).
+        "m3x1", "m3x2", "m3x3", "m3x4", "m3x5", "m3x6", "m3x7",
+        "m3x8", "m3x9", "m3x10", "m3x11", "m3x12", "m3x13", "m3x14",
+        "m3l1", "m3l2", "m3l3", "m3l4", "m3l5", "m3l6", "m3l7", "m3l8", "m3l9", "m3rd",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/
@@ -244,7 +270,7 @@ GAMEPLAY_SPRITES = {
         # nel menu, compaiono/scompaiono da soli a soglia raggiunta (vedi
         # STAR_BUILDINGS in main.js) — stesso schema normale/selezionato
         # px/pxss dei bottoni piazzabili sopra, non un segnaposto.
-        "sta1", "sta1s", "sta2", "sta2s",
+        "sta1", "sta1s", "sta2", "sta2s", "sta3", "sta3s",
         "ru", "russ",           # puruspa (bulldozer/ripara, selec==11, mai ricostruito)
         "reset",                # pureset
         # Gli altri bottoni del pannello (src/objects/handbutton|buildbutton|

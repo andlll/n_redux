@@ -134,6 +134,8 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impaind0to1r (src/objects/impaind0to1r)
       drain: { mon: 1, every: 20 },              // [C] impaind0to1r/Alarm_10.gml
       finalSprite: "i11", life: 50,               // [C] industria1/Create.gml (life=50)
+      wewe: 20,                                    // [C] industria1/Create.gml: wewe += 20 — peso su `match`, state.js
+      ruspaCost: 5000, ruspaFirstStepDur: 30,       // [C] industria1/Mouse_LeftPressed.gml, ramo selec==11 — impaindu1r arma 30 tick, non 390 come impaind0to1r
       // [C] industria1/Step.gml, ramo `life<=0`: `action_create_object(ruin1, 0, 0)`
       // — un rudere a parte (a differenza di chies), scelto a dado uniforme
       // fra 4 varianti equiprobabili (ruin1/Create.gml, due dice(2) annidati
@@ -162,6 +164,8 @@ export const BUILDING_TYPES = {
         atMakee: 667,              // [C] industria1/Step.gml: upo==0 && makee>=667 -> crea upind12
         cost: { mon: 5000 },      // [C] upind12/Mouse_LeftPressed.gml
         finalSprite: "i21", life: 100,             // [C] industria2/Create.gml
+        wewe: 60,                                   // [C] industria2/Create.gml: wewe += 60
+        ruspaCost: 50000,                            // [C] industria2/Mouse_LeftPressed.gml, ramo selec==11 — nessun ruspaFirstStepDur: impaindu2r arma 30 tick, identico a impaind1to2r
         ruin: ["ru21", "ru22", "ru23", "ru24"],   // [C] industria2/Step.gml: create_object(ruin2) — "taglia 2"
         decor: ["i21l", "i21b", "i21c"],           // [I] variante 1 delle 2 di industria2/Create.gml
         drain: { mon: 3, every: 20 },              // [C] impaind1to2r/Alarm_10.gml
@@ -189,6 +193,8 @@ export const BUILDING_TYPES = {
         atMakee: 1000,             // [C] industria2/Step.gml: upo==0 && makee>=1000 -> crea upind23
         cost: { mon: 10000 },     // [C] upind23/Mouse_LeftPressed.gml
         finalSprite: "i31", life: 200,             // [C] industria3/Create.gml
+        wewe: 180,                                  // [C] industria3/Create.gml: wewe += 180
+        ruspaCost: 200000,                           // [C] industria3/Mouse_LeftPressed.gml, ramo selec==11 — nessun ruspaFirstStepDur: impaind3r arma 30 tick, identico a impaind2to3r
         ruin: ["ru31", "ru32", "ru33", "ru34"],   // [C] industria3/Step.gml: create_object(ruin3) — "taglia 3"
         decor: ["i31a1", "i31a2", "i31a3", "i31l1l"],  // [C] i31aa1/2/3 sempre creati + [I] variante 1 di di311/di312
         drain: { mon: 3, every: 20 },              // [C] impaind2to3r/Alarm_10.gml
@@ -237,8 +243,9 @@ export const BUILDING_TYPES = {
   // industria): il danno da fulmine (Alarm_5, stessa regola letta/non
   // cablata di industria — nessun sistema vita/morte esiste ancora); il
   // "rifai in loco" a pagamento (`demobasia`, cosmetico, stesso schema di
-  // industria). `wewe` resta inerte: letto ma scritto da nessuna regola
-  // implementata.
+  // industria). `wewe` (peso su `match`, state.js — non "inquinamento" come
+  // ipotizzato qui in un primo momento) e' scritto da ogni livello, vedi
+  // `construct`/`upgrades` sotto.
   //
   // **I pulsanti blu delle monete** (casa1|2|3/Alarm_4.gml — `sold1..18`,
   // game/src/coins.js): una nota precedente qui diceva "condizione che non
@@ -298,6 +305,16 @@ export const BUILDING_TYPES = {
     ],
     construct: {                 // livello 0 -> 1, impa0to1r (src/objects/impa0to1r)
       life: 100,                  // [C] casa1/Create.gml
+      wewe: 10,                   // [C] casa1/Create.gml: wewe += 10 — peso su `match`, state.js
+      // [C] casa1/Mouse_LeftPressed.gml, ramo selec==11 (ruspa): 500 mon —
+      // vedi il commento su `tryRuspaRebuild()` in fondo al file per il
+      // meccanismo completo. `ruspaFirstStepDur` sostituisce SOLO la durata
+      // del primo passo di `steps` sotto: **[C]** `impacasa1r/Create.gml`
+      // arma il primo alarm a 30 tick, non 390 come `impa0to1r` (il cantiere
+      // vero, da lotto vuoto) — il resto della sequenza (`Alarm_0` in poi)
+      // e' byte-per-byte identico, verificato diff alla mano: ricostruire
+      // su un lotto gia' sviluppato salta solo la fase di "sgombero".
+      ruspaCost: 500, ruspaFirstStepDur: 30,
       grantPop: 2,                // [C] casa1/Create.gml: r12.pop += 2 alla nascita, prima della crescita
       // [C] casa1/Destroy.gml: r12.pop += -10 quando muore (non l'esatto
       // opposto dei +12 accumulati in vita — 2 alla nascita + 2 per ognuno
@@ -336,6 +353,8 @@ export const BUILDING_TYPES = {
         atAva: 5,                   // [C] casa1/Alarm_2.gml: ava==5 crea upsign12
         cost: { mon: 500 },        // [C] upsign12/Mouse_LeftPressed.gml
         life: 200,                  // [C] casa2/Create.gml
+        wewe: 25,                    // [C] casa2/Create.gml: wewe += 25
+        ruspaCost: 2000,              // [C] casa2/Mouse_LeftPressed.gml, ramo selec==11 — nessun ruspaFirstStepDur: impacasa2r arma 30 tick, identico a impa1to2r
         grantPop: 14,                // [C] casa2/Create.gml: r12.pop += 14 alla nascita
         deathPop: -34,                // [C] casa2/Destroy.gml
         ruin: ["ru21", "ru22", "ru23", "ru24"],   // [C] casa2/Step.gml: create_object(ruin2)
@@ -369,6 +388,8 @@ export const BUILDING_TYPES = {
         atAva: 5,                   // [C] casa2/Alarm_2.gml: ava==5 crea upsign23
         cost: { mon: 2000 },       // [C] upsign23/Mouse_LeftPressed.gml
         life: 300,                  // [C] casa3/Create.gml
+        wewe: 40,                    // [C] casa3/Create.gml: wewe += 40
+        ruspaCost: 10000,             // [C] casa3/Mouse_LeftPressed.gml, ramo selec==11 — nessun ruspaFirstStepDur: impacasa3r arma 30 tick, identico a impa2to3r
         grantPop: 40,                // [C] casa3/Create.gml: r12.pop += 40 alla nascita
         deathPop: -60,                // [C] casa3/Destroy.gml
         ruin: ["ru31", "ru32", "ru33", "ru34"],   // [C] casa3/Step.gml: create_object(ruin3)
@@ -452,6 +473,12 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impamissr (src/objects/impamissr)
       drain: { mon: 1, every: 20 },              // [C] impamissr/Alarm_10.gml
       finalSprite: "rl_as", life: 600,            // [C] rocket_launcher/Create.gml
+      wewe: 40,                                    // [C] rocket_launcher/Create.gml: wewe += 40 — peso su `match`, state.js
+      // [C] rocket_launcher/Mouse_LeftPressed.gml, ramo selec==11: 20000
+      // mon. `ruspaFirstStepDur: 1` e' il piu' estremo del motore —
+      // `impamissilir/Create.gml` arma il primo alarm a 1 tick, non 361
+      // come `impamissr`: praticamente salta il primo passo.
+      ruspaCost: 20000, ruspaFirstStepDur: 1,
       ruin: ["ru21", "ru22", "ru23", "ru24"],   // [C] rocket_launcher/Step.gml: create_object(ruin2) — "taglia 2"
       decor: [],                                   // [C] rocket_launcher/Create.gml non crea nessun cddvd
       steps: [                                    // [C] impamissr/Create.gml + Alarm_0.gml, tic 0..10
@@ -490,6 +517,16 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impasolr (src/objects/impasolr)
       drain: { mon: 2, every: 20 },              // [C] impasolr/Alarm_10.gml
       finalSprite: "sool", life: 50,              // [C] sooool/Create.gml
+      wewe: 10,                                    // [C] sooool/Create.gml: wewe += 10 — peso su `match`, state.js
+      // [C] sooool/Mouse_LeftPressed.gml, ramo selec==11: 2000 mon SE il
+      // pannello non e' su un parco (`overpark`), 2700 se lo e' —
+      // **[I] `overpark`** (pannelli solari costruibili sopra un parco,
+      // `parco/Mouse_LeftPressed.gml` ramo selec==61) e' una meccanica a
+      // parte MAI ricostruita qui (nessun modo di piazzare solare su un
+      // parco esistente in questo motore): sempre il ramo normale, 2000.
+      // `impasoldem1r/Create.gml` arma il primo alarm a 30 tick, non 370
+      // come `impasolr`.
+      ruspaCost: 2000, ruspaFirstStepDur: 30,
       // [C] sooool/Step.gml: create_object(ruinsol) — proprio rudere, un
       // solo dado a due vie (ruinsol/Create.gml: default "soolr1", 50% di
       // ribaltare a "soolr2"), non il pool a 4 vie di ruin1/2/3.
@@ -524,9 +561,19 @@ export const BUILDING_TYPES = {
   parco: {
     label: "Parco",
     placeCost: { mon: 500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==7
+    // [I] Segnalato dall'autore: un parco e' scenografia bassa e piatta (lo
+    // scatter di alberi/lampioni di spawnParcoScatter(), non un edificio
+    // solido), ma con `depth` dinamico (`effDepth()`, main.js: `depth===0` ->
+    // `-y` come ogni altro edificio) finiva davanti a pali/auto/altri oggetti
+    // di mondo vicini che dovrebbero invece coprirlo. Un `fixedDepth` fuori
+    // dalla gamma tipica di `-y` (poche centinaia/migliaia negativi su
+    // questa mappa) lo tiene sempre "in fondo", dietro a tutto cio' che si
+    // muove sopra — placeAt() (main.js) lo legge invece del solito 0.
+    fixedDepth: -5,
     construct: {                 // livello 0 -> 1, imparcr (src/objects/imparcr)
       drain: { mon: 1, every: 20 },              // [C] imparcr/Alarm_10.gml
       life: 9999,                                 // [I] nessun danno da fulmine ne' vita nel decompilato
+      ruspaCost: 500,                              // [C] parco/Mouse_LeftPressed.gml, ramo selec==11 — nessun ruspaFirstStepDur: imparcor_demo arma 30 tick, identico a imparcr
       // [C] parco/Step.gml non legge mai `life`: nessun ramo `life<=0`,
       // quindi nessun `ruin*` — l'unico tipo senza (`ruinSpriteFor()` in
       // fondo al file torna null, destroyBuilding() in main.js lo lascia
@@ -577,14 +624,16 @@ export const BUILDING_TYPES = {
     label: "Club",
     placeCost: { mon: 3500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==60
     storm: [{ dice: 200, loss: 50 }],   // [C] club1/Alarm_5.gml
-    // [C] club1/Destroy.gml: hap +50 alla morte, nessun costo alla nascita
-    // (Create.gml scrive solo `wewe` — resta inerte, stesso principio gia'
-    // scelto per industria sopra: letto ma non cablato da nessuna regola,
-    // il suo significato reale [?] non e' ancora chiaro) — non simmetrico,
-    // stesso schema gia' letto per solare/parco.
+    // [C] club1/Destroy.gml: hap +50 alla morte, nessun costo alla nascita —
+    // non simmetrico, stesso schema gia' letto per solare/parco.
     construct: {                  // livello 0 -> 1, impaclubr (src/objects/impaclubr)
       drain: { mon: 2, every: 10 },              // [C] impaclubr/Alarm_10.gml
       life: 50,                                    // [C] club1/Create.gml
+      wewe: 20,                                    // [C] club1/Create.gml: wewe += 20 — peso su `match`, state.js
+      // [C] club1/Mouse_LeftPressed.gml, ramo selec==11: 2000 mon.
+      // `impaclubdemr/Create.gml` arma il primo alarm a 30 tick, non 390
+      // come `impaclubr`.
+      ruspaCost: 2000, ruspaFirstStepDur: 30,
       ruin: ["ru11", "ru12", "ru13", "ru14"],   // [C] club1/Step.gml: create_object(ruin1) — "taglia 1"
       hap: { destroy: 50 },
       variants: [                                  // [C] club1/Create.gml, dado uniforme fra 4
@@ -652,6 +701,12 @@ export const BUILDING_TYPES = {
     construct: {                 // livello 0 -> 1, impavil_r (src/objects/impavil_r)
       drain: { mon: 2, every: 20 },              // [C] impavil_r/Alarm_10.gml
       life: 100,                                   // [C] villa1/Create.gml
+      wewe: 10,                                     // [C] villa1/Create.gml: wewe += 10 — peso su `match`, state.js
+      // [C] villa1/Mouse_LeftPressed.gml, ramo selec==11: 6000 mon.
+      // `impavilla1r/Create.gml` arma il primo alarm a 30 tick, non 390
+      // come `impavil_r` — dal secondo passo in poi (Alarm_0) e' l'unica
+      // coppia verificata byte-per-byte identica fra le due varianti.
+      ruspaCost: 6000, ruspaFirstStepDur: 30,
       grantPop: 2,                                 // [C] villa1/Create.gml: r12.pop += 2 alla nascita
       deathPop: -10,                                // [C] villa1/Destroy.gml
       ruin: ["ru11", "ru12", "ru13", "ru14"],   // [C] villa1/Step.gml: create_object(ruin1) — "taglia 1"
@@ -723,6 +778,12 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impagatlingr (src/objects/impagatlingr)
       drain: { mon: 1, every: 20 },              // [C] impagatlingr/Alarm_10.gml
       finalSprite: "nm1a", life: 800,             // [C] gatlinggun/Create.gml
+      wewe: 40,                                    // [C] gatlinggun/Create.gml: wewe += 40 — peso su `match`, state.js
+      // [C] gatlinggun/Mouse_LeftPressed.gml, ramo selec==11: 20000 mon
+      // (armato su Alarm_10, non Alarm_9 come tutti gli altri — Alarm_9 di
+      // gatlinggun e' gia' preso da altro). `impademogatlingr/Create.gml`
+      // arma il primo alarm a 1 tick, non 361 come `impagatlingr`.
+      ruspaCost: 20000, ruspaFirstStepDur: 1,
       ruin: ["ru21", "ru22", "ru23", "ru24"],   // [C] gatlinggun/Step.gml: create_object(ruin2) — "taglia 2"
       decor: [],                                   // [C] gatlinggun/Create.gml non crea nessun cddvd
       // [C] impagatlingr/Create.gml + Alarm_0.gml, tic 0..10 — stessa
@@ -763,6 +824,12 @@ export const BUILDING_TYPES = {
     construct: {                  // livello 0 -> 1, impalaser_r (src/objects/impalaser_r)
       drain: { mon: 3, every: 20 },              // [C] impalaser_r/Alarm_10.gml
       finalSprite: "lan1", life: 1000,            // [C] lasergun/Create.gml
+      wewe: 90,                                    // [C] lasergun/Create.gml: wewe += 90 — peso su `match`, state.js
+      // [C] lasergun/Mouse_LeftPressed.gml, ramo selec==11: 100000 mon —
+      // il piu' caro tra le torrette (coerente con 20000 di piazzamento,
+      // il piu' caro anche li'). `impalasdem_r/Create.gml` arma il primo
+      // alarm a 30 tick, non 390 come `impalaser_r`.
+      ruspaCost: 100000, ruspaFirstStepDur: 30,
       ruin: ["ru31", "ru32", "ru33", "ru34"],   // [C] lasergun/Step.gml: create_object(ruin3) — "taglia 3"
       decor: [],                                   // [C] lasergun/Create.gml non crea nessun cddvd
       // [C] impalaser_r/Create.gml + Alarm_0.gml: 23 tic in tutto (0..22),
@@ -827,6 +894,23 @@ export const BUILDING_TYPES = {
       // e' lo stesso `{mon, every}`, qui `every:1` lo riproduce esatto.
       drain: { mon: 1, every: 1 },
       finalSprite: "eol", life: 800,             // [C] eoli/Create.gml
+      // [C] eoli/Create.gml: wewe += 200 — di gran lunga il piu' pesante fra
+      // tutti gli edifici (il secondo, media1s/d, si ferma a 150): una pala
+      // eolica intera sulla piattaforma volante, fedele al nome "wewe"
+      // (peso, non "inquinamento" come ipotizzato in un primo momento —
+      // vedi state.js). Applicato solo su `match`, mai su `match_easy`.
+      wewe: 200,
+      // [C] eoli/Mouse_LeftPressed.gml, ramo selec==11: 200000 mon — il
+      // rudere piu' costoso del motore, coerente con essere anche
+      // l'edificio piu' costoso da piazzare. **[C] `impavent_dem`, letto
+      // riga per riga (Create.gml + Alarm_0/1/2), e' DIVERSO da ogni altro
+      // "_demo": non ricostruisce `eoli`, crea 4 `placeholder` (agli offset
+      // ±98/±58, la stessa geometria di `impavent/Alarm_2.gml` per i suoi
+      // 4 lotti) e si autodistrugge — una pala eolica ruspata torna terreno
+      // libero, non una pala eolica nuova. `ruspaDemolish: true` marca
+      // questo (main.js, la gestisce a parte da `tryRuspaRebuild()`) invece
+      // di forzarla nella forma "stessa tipo/livello" di ogni altro edificio.
+      ruspaCost: 200000, ruspaDemolish: true,
       ruin: ["rovent1", "rovent2"],   // [C] eoli/Step.gml: create_object(ruinventola) — dado a due vie, ruinventola/Create.gml
       decor: [],                                   // [C] eoli/Create.gml non crea nessun cddvd
       hap: { create: -20, destroy: 20 },   // [C] eoli/Create.gml + Destroy.gml — l'unico simmetrico fra tutti i tipi con `hap`
@@ -915,6 +999,11 @@ export const BUILDING_TYPES = {
     construct: {                 // livello 0 -> 1, impa4r/impa4f -> casa4s (asse "r", dir1/dir3)
       drain: { mon: 3, every: 20 },                // [C] impa4r/Alarm_10.gml
       life: 400, deathPop: -160,                    // [C] casa4s/Create.gml + Destroy.gml
+      wewe: 100,                                      // [C] casa4s/Create.gml: wewe += 100 — peso su `match`, state.js
+      // [C] casa4s/Mouse_LeftPressed.gml, ramo selec==11: 20000 mon.
+      // `impa4r_demo/Create.gml` arma il primo alarm a 30 tick, non 390
+      // come `impa4r`.
+      ruspaCost: 20000, ruspaFirstStepDur: 30,
       grantPop: 37,                                  // [C] casa4s/Create.gml: r12.pop += 37 alla nascita
       ruin: ["ru41"],                                // [C] casa4s/Step.gml: create_object(ruin4s)
       // [C] casa4s/Create.gml: 5 livelli di dice(2) annidati, albero
@@ -974,6 +1063,8 @@ export const BUILDING_TYPES = {
     construct: {
       drain: { mon: 3, every: 20 },
       life: 400, deathPop: -160,
+      wewe: 100,                                      // [C] casa4d/Create.gml: wewe += 100 — peso su `match`, state.js
+      ruspaCost: 20000, ruspaFirstStepDur: 30,          // [C] casa4d/Mouse_LeftPressed.gml, ramo selec==11 — impa4rd_demo/Create.gml arma 30 tick, non 390 come impa4rd
       grantPop: 37,
       ruin: ["ru41d"],
       variants: [
@@ -1028,6 +1119,11 @@ export const BUILDING_TYPES = {
     construct: {                 // media1s (asse "r", dir1/dir3) — [C] impamediaR/impamediaF: stessa sequenza sr*/sf* di palazzo, solo il drain cambia
       drain: { mon: 5, every: 20 },                 // [C] impamediaR/Alarm_10.gml
       life: 350,                                      // [C] media1s/Create.gml
+      wewe: 150,                                       // [C] media1s/Create.gml: wewe += 150 — peso su `match`, state.js
+      // [C] media1s/Mouse_LeftPressed.gml, ramo selec==11: 20000 mon.
+      // `IMPAMEDIA_R_DEMO/Create.gml` arma il primo alarm a 30 tick, non
+      // 390 come `impamediaR`.
+      ruspaCost: 20000, ruspaFirstStepDur: 30,
       hap: { create: 1200, destroy: -1220 },          // [C] media1s/Create.gml + Destroy.gml
       ruin: ["ru41"],                                 // [C] media1s/Step.gml: create_object(ruin4s) — stesso rudere di palazzo
       variants: [                                     // [C] media1s/Create.gml: dado 50/50, non un dado a piu' vie
@@ -1075,6 +1171,8 @@ export const BUILDING_TYPES = {
     construct: {
       drain: { mon: 5, every: 20 },
       life: 350,
+      wewe: 150,                                       // [C] media1d/Create.gml: wewe += 150 — peso su `match`, state.js
+      ruspaCost: 20000, ruspaFirstStepDur: 30,          // [C] media1d/Mouse_LeftPressed.gml, ramo selec==11 — IMPAMEDIA_RD_DEMO/Create.gml arma 30 tick, non 390 come impamediaRD
       hap: { create: 1200, destroy: -1220 },
       ruin: ["ru41"],
       variants: [
@@ -1184,6 +1282,7 @@ export const BUILDING_TYPES = {
     construct: {
       drain: { mon: 3, every: 20 },               // [C] impaBANKr/Alarm_10.gml
       finalSprite: "banca_img", life: 1300,         // [C] banca1/Create.gml
+      wewe: 70,                                       // [C] banca1/Create.gml: wewe += 70 — peso su `match`, state.js
       ruin: ["ru31", "ru32", "ru33", "ru34"],       // [C] ruin3/Create.gml: dado uniforme fra 4, stesso oggetto di industria3/casa3/lasergun
       decor: ["banca_l"],                           // [C] banca1/Create.gml: create_object(banca1_light)
       steps: [
@@ -1204,6 +1303,123 @@ export const BUILDING_TYPES = {
     },
     consumption: [[{ day: 18, night: 27 }]],   // [C] banca1/Alarm_3.gml, ogni 120 tic — costante, nessun `ava` (banca non cresce)
     storm: [{ dice: 160, loss: 50 }],           // [C] banca1/Alarm_5.gml
+  },
+
+  // Sedicesimo edificio, il terzo "a stella": `m3cant` ("Grattacielo").
+  // **Correzione di un errore**: la nota precedente su STUDIO.md (§9,
+  // "monumento e banca") liquidava `stella3`/`selec==82` come "un secondo
+  // modo di sbloccare eolico, zero lavoro" — letta la sola RIGA che le due
+  // ramificazioni condividono in `eoliplacer/Alarm_1.gml` (la creazione di
+  // `eoliplacer` da `placeholder/Mouse_LeftReleased.gml`, identica per
+  // selec==4 e selec==82) senza scendere fino in fondo a quella funzione.
+  // **[C]** In realta' `eoliplacer/Alarm_1.gml` ha due rami INDIPENDENTI
+  // dopo quel punto comune: selec==4 (costo 50000, crea `impavent`, gia'
+  // letto — `BUILDING_TYPES.eolico` sopra) e selec==82 (costo 200000, crea
+  // `m3cant`, un oggetto MAI letto prima d'ora). Stesso meccanismo di
+  // piazzamento (il placeholder toccato + 3 vicini liberi entro un raggio,
+  // `multiTile` sotto), edificio finale completamente diverso: non una pala
+  // eolica, una torre — **[C]** `m3x1`..`m3x14` (data/sprites.json) sono
+  // 588px di larghezza per un'altezza che cresce da 1085 a 1527px, contro
+  // l'810x865 quasi quadrato di `eol`. Il nome scelto qui ("Grattacielo")
+  // non e' mai scritto nel decompilato (nessun `draw_text`/`show_message`
+  // in `m3cant`/`stella3`): stessa scelta gia' fatta per "Monumento"/
+  // "Banca", un'etichetta leggibile invece del nome tecnico dell'oggetto.
+  // **[C] Sblocco**: `banca1_light/Create.gml` (il decoro-luce che
+  // `BUILDING_TYPES.banca.construct.decor` gia' crea a fine cantiere)
+  // chiama `instance_create(pu1.x, pu1.y, stella3)` dietro due flag
+  // "run once" (`action_if_number(159/161,...)`, stesso idioma di
+  // `distrutti`/monumento) — la terza stella si sblocca alla PRIMA banca
+  // costruita, non a una soglia separata: `unlocked()` in main.js legge
+  // `buildings.some(b => b.type === "banca")`.
+  // **[C] Piazzamento** (`eoliplacer/Alarm_1.gml`, ramo selec==82): costo
+  // 200000 mon, stesso `places>=4` di eolico — `multiTile` sotto riusa
+  // esattamente `count`/`radius` di `BUILDING_TYPES.eolico` (stessa maschera
+  // fissa "phold" di `eoliplacer`, STUDIO.md, indipendente dal tipo che
+  // finira' per nascere).
+  // **[C] Crescita** (`m3cant/Create.gml` + `Alarm_0.gml`, letti riga per
+  // riga): a differenza di OGNI altro edificio, non c'e' una fondamenta
+  // generica "ir1x" che poi si smaterializza in un `finalSprite` diverso —
+  // e' lo stesso oggetto che cambia `sprite_index` 14 volte (`m3x1` per i
+  // primi 440 tick, poi `m3x2`..`m3x14` ogni 540-640 tick), e l'ultimo
+  // sprite mostrato E' gia' l'edificio finito (`finalSprite` sotto coincide
+  // col l'ultimo passo, non e' un errore di battitura). Cantiere totale
+  // 7560 tick (~126s) — il piu' lungo del motore, coerente con 200000 mon.
+  // **[I] Gap dichiarato — cantiere/gru non ricostruiti**: l'originale
+  // affianca a `m3cant` un secondo oggetto (`impa31f`, creato dal suo
+  // stesso `Create.gml`) che a sua volta genera `impa31r` e un'intera
+  // catena `impa31/32/33r|f` + tre gru rotanti dedicate (`impa3gru`/
+  // `impa3gru1`/`impa3gru2`, ognuna con la propria macchina a stati a
+  // oscillazione) — impalcatura/scenografia allo stesso titolo delle code
+  // "f" gia' semplificate per industria/casa/palazzo (STUDIO.md §9, "due
+  // semplificazioni"), qui pero' un intero sotto-sistema invece di un
+  // singolo passo troncato: non porta nessun costo o tempo in piu' (letti
+  // entrambi direttamente da `m3cant`), quindi un gap dichiarato invece di
+  // una ricostruzione parziale rischiosa.
+  // **[C] Consumo** (`m3cant/Step.gml`, letto con gli operatori confermati
+  // altrove in questo progetto — 4=">=", non "!="` come una prima lettura
+  // aveva capito): PRIMA di finire (`phase<14`) il cantiere non consuma
+  // niente di suo — l'unico drenaggio e' un "acceleratore" opzionale
+  // (-5 mon/-5 ele PER TICK, legato a `playbuttoner`, un bottone
+  // play/pausa mai ricostruito qui, stesso gap dichiarato del sistema
+  // prestiti di banca) che il giocatore puo' attivare per pagare la
+  // costruzione piu' in fretta — non implementato, il cantiere avanza
+  // sempre alla velocita' base. UNA VOLTA FINITO (`phase>=14`) consuma
+  // invece elettricita' OGNI TICK, non ogni 120 come ogni altro edificio:
+  // -1 ele/tick di giorno, -2/tick di notte — `consumption` sotto riusa il
+  // periodo fisso di 120 tick gia' cablato in `stepConsumption()`
+  // moltiplicando per 120 (120/240), stesso risultato aggregato senza
+  // toccare il motore per un singolo edificio.
+  // **[I]** Lo stesso blocco azzera anche `r12.spy` (il flag che sblocca le
+  // mongolfiere spia dopo ~8 minuti, game/src/balloons.js) ogni tick a
+  // costruzione ultimata — un possibile effetto "il grattacielo blocca lo
+  // spionaggio" la cui semantica esatta (ordine di esecuzione fra oggetti
+  // nello stesso tick) non e' verificabile con sicurezza da qui: gap
+  // dichiarato, non riprodotto.
+  // **[C] Nessuna vita**: a differenza di OGNI altro edificio, `m3cant` non
+  // ha ne' un `Destroy.gml` ne' una variabile `life` in nessun evento —
+  // indistruttibile per davvero, non solo "senza fulmine" come `parco`.
+  // `life: 99999` sotto e' lo stesso trucco [I] gia' scelto per
+  // `BUILDING_TYPES.parco` (nessun ramo `life<=0` da riprodurre, un numero
+  // irraggiungibile tiene il motore generico invece di un caso speciale).
+  // **[C] Finestre notturne**: a fine cantiere l'originale crea 10 oggetti
+  // sovrapposti nello stesso punto (`m3lux1`..`m3lux9` + `m3lux_red`,
+  // ognuno una sagoma PIENA della torre — 588x1527 come `m3x14` stesso, non
+  // un dettaglio in un angolo), ognuno con la propria soglia di dissolvenza
+  // (`image_alpha += 0.003..0.023` al tick, diverso per ognuno — un vero
+  // "sfarfallio" di finestre che si accendono a velocita' diverse, non
+  // un'unica luce). `fadeTicks` sotto (game/src/main.js, addDecor()/
+  // stepLights() generalizzati per questo) converte ogni incremento nel
+  // numero di tick equivalente (1/incremento). `m3rd` (il fanale rosso in
+  // cima) non si dissolve mai nel decompilato — scatta di colpo — quindi
+  // `fadeTicks: 0`.
+  grattacielo: {
+    label: "Grattacielo",
+    placeCost: { mon: 200000 },   // [C] eoliplacer/Alarm_1.gml, ramo selec==82
+    multiTile: { count: 4, radius: 130 },   // stessa maschera "phold" di eolico, STUDIO.md
+    construct: {
+      finalSprite: "m3x14", life: 99999,   // [C] m3cant/Alarm_0.gml fase 13; [I] indistruttibile, vedi sopra
+      decor: [
+        { spr: "m3l1", fadeTicks: 50 }, { spr: "m3l2", fadeTicks: 100 },
+        { spr: "m3l3", fadeTicks: 200 }, { spr: "m3l4", fadeTicks: 50 },
+        { spr: "m3l5", fadeTicks: 100 }, { spr: "m3l6", fadeTicks: 67 },
+        { spr: "m3l7", fadeTicks: 77 }, { spr: "m3l8", fadeTicks: 43 },
+        { spr: "m3l9", fadeTicks: 333 }, { spr: "m3rd", fadeTicks: 0 },
+      ],
+      steps: [
+        { spr: "m3x1", dur: 440 },
+        { spr: "m3x2", dur: 540 }, { spr: "m3x3", dur: 540 }, { spr: "m3x4", dur: 540 },
+        { spr: "m3x5", dur: 640 }, { spr: "m3x6", dur: 640 }, { spr: "m3x7", dur: 640 }, { spr: "m3x8", dur: 640 },
+        { spr: "m3x9", dur: 540 }, { spr: "m3x10", dur: 540 }, { spr: "m3x11", dur: 540 }, { spr: "m3x12", dur: 540 },
+        { spr: "m3x13", dur: 540 },
+        { spr: "m3x14", dur: 240 },
+      ],
+    },
+    // [C] m3cant/Step.gml, ramo `phase>=14`: -1 ele/tick di giorno, -2/tick
+    // di notte, applicati OGNI tick (non ogni 120 come il resto del
+    // motore) — moltiplicato per 120 cosi' stepConsumption() (periodo fisso
+    // 120 tick) applica lo stesso totale aggregato.
+    consumption: [[{ day: 120, night: 240 }]],
+    // nessun `storm`: m3cant non arma nessun Alarm di fulmine (vedi sopra, "Nessuna vita").
   },
 };
 
@@ -1266,7 +1482,20 @@ export function placeBuilding(type, x, y, depth) {
   return b;
 }
 
+// [TEST] Richiesto dall'autore mentre si testano le meccaniche economiche
+// appena collegate (wewe/oil, costi della ruspa): con questo flag a `true`
+// nessun costo blocca piu' niente — NON e' comportamento dell'originale, va
+// tolto (o riportato a `false`) prima di considerare il bilanciamento
+// "vero". La spesa VERA continua comunque (`pay()`/`r12[k] -= cost[k]`
+// restano invariati, chiamati normalmente da chi supera questo controllo):
+// solo il blocco sparisce. game/src/state.js (clampR12()) tiene traccia a
+// parte di quanto mon/oil sarebbero DAVVERO in `r12.monReal`/`r12.oilReal`
+// (mostrati nell'HUD di debug da main.js) prima di rialzare la soglia
+// effettivamente usabile.
+export let DEBUG_INFINITE_RESOURCES = true;
+
 export function canAfford(r12, cost) {
+  if (DEBUG_INFINITE_RESOURCES) return true;
   for (const k in cost) if ((r12[k] ?? 0) < cost[k]) return false;
   return true;
 }
@@ -1411,6 +1640,51 @@ export function tryStartUpgrade(b, r12) {
   return null;
 }
 
+/** La configurazione (construct o upgrades[i]) del livello ATTUALE di un
+ * edificio finito — stesso schema di currentDecor()/ruinSpriteFor() sopra,
+ * usata sotto per leggere ruspaCost/ruspaFirstStepDur senza duplicarlo. */
+function currentLevelDef(b) {
+  const def = BUILDING_TYPES[b.type];
+  if (b.level < 1) return null;
+  return b.level === 1 ? def.construct : def.upgrades?.[b.level - 2];
+}
+
+/** Il costo ruspa (demolizione/riparazione) dell'edificio al suo livello
+ * attuale — `null` se il tipo/livello non e' ruspabile (chies/monum/banca/
+ * grattacielo: nessuno dei loro oggetti nel decompilato ha un ramo
+ * `Mouse_LeftPressed.gml` per selec==11). */
+export function ruspaCostFor(b) {
+  return currentLevelDef(b)?.ruspaCost ?? null;
+}
+
+/**
+ * Tocco di conferma sulla ruspa (`r12.selec===11`, popup si'/no gia'
+ * confermato dal giocatore — main.js gestisce l'armare/il conferma, vedi
+ * `ruspaPending` li'): paga il costo e rimanda l'edificio in cantiere ALLO
+ * STESSO livello. **[C]** `demobasia/Collision_*.gml` crea, per ogni
+ * livello, un oggetto "_demo" dedicato (`impacasa2r`, `impaind3r`, ...) che
+ * si e' rivelato — diff alla mano contro il cantiere/potenziamento normale
+ * dello stesso livello — la stessa identica catena `Alarm_0` in poi, con
+ * AL PIU' il primo passo accorciato (`ruspaFirstStepDur` per livello,
+ * buildings.js sopra: ricostruire su un lotto gia' sviluppato salta la fase
+ * di sgombero che un lotto vuoto richiede). Riusa percio' `up.steps` cosi'
+ * com'e' invece di duplicarlo — `c.rebuilding` (letto da
+ * stepConstructions() sotto) e' l'unica differenza dal percorso normale.
+ * `eolico` non passa mai di qui (`def.construct.ruspaDemolish` sopra):
+ * main.js lo intercetta prima e demolisce per davvero invece.
+ */
+export function tryRuspaRebuild(b, r12) {
+  if (b.construction) return "cantiere gia' in corso";
+  const cost = ruspaCostFor(b);
+  if (cost == null) return "non ricostruibile con la ruspa";
+  if (!canAfford(r12, { mon: cost })) return `serve ${cost} mon (hai ${r12.mon.toFixed(0)})`;
+  r12.mon -= cost;
+  b.level -= 1;
+  b.construction = { upgradeIndex: b.level - 1, stepIndex: 0, t: 0, rebuilding: true };
+  b.spr = "empty";
+  return null;
+}
+
 /**
  * Avanza tutti i cantieri in corso di `dt` secondi.
  * `onDecor(b, sprites)` sostituisce il decoro finale dell'edificio (fine
@@ -1442,7 +1716,14 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
     // la stessa finestra in cui l'originale lo mostra davvero (poco dopo
     // l'inizio del cantiere, ma resta a schermo comunque fino alla fine).
     b.capSpr = (up.cap && c.stepIndex === up.steps.length - 1) ? up.cap : null;
-    if (c.t < cur.dur * TICK) continue;
+    // [C] `c.rebuilding` (tryRuspaRebuild() sopra): il primo passo di un
+    // cantiere avviato dalla ruspa dura `ruspaFirstStepDur`, non `cur.dur`
+    // — solo il primo, il resto della catena e' identico a un cantiere
+    // normale (verificato diff alla mano su piu' tipi, vedi i commenti su
+    // ogni `ruspaFirstStepDur` in BUILDING_TYPES).
+    const dur = (c.stepIndex === 0 && c.rebuilding && up.ruspaFirstStepDur != null)
+      ? up.ruspaFirstStepDur : cur.dur;
+    if (c.t < dur * TICK) continue;
     c.t = 0;
     c.stepIndex++;
     if (c.stepIndex < up.steps.length) {
@@ -1463,6 +1744,11 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
       if (oldDef?.hap?.destroy) r12.hap += oldDef.hap.destroy;
       if (c.upgradeIndex === -1) b.level = 1; else b.level++;
       if (up.hap?.create) r12.hap += up.hap.create;
+      // [C] `wewe` (peso della piattaforma su `match`, state.js): scritto
+      // alla nascita di ogni livello che lo dichiara, mai sottratto (nessun
+      // Destroy.gml del decompilato lo tocca — un edificio distrutto non
+      // "alleggerisce" la piattaforma, fedele com'e').
+      if (up.wewe) r12.wewe = (r12.wewe ?? 0) + up.wewe;
       b.life = up.life ?? (b.life + (up.lifeBonus ?? 0));
       if (up.grantPop) r12.pop += up.grantPop;   // [C] casa1|2|3/Create.gml: pop += N alla nascita del livello
       if (up.variants) {
