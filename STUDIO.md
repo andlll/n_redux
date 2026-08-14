@@ -2662,3 +2662,41 @@ paragrafo 8.
   Verificato in browser (Playwright): piazzare un laser per davvero (menu
   -> tocco su un placeholder) fa nascere un pallone `mon_bbild`, non piu'
   `mon_bild`.
+
+- **Bug vero trovato per caso investigando `recogn` (la "seconda spia",
+  gap dichiarato da tempo — "non e' una mongolfiera, resta fuori"):
+  `hap>=pop`, non `hap===pop`.** Rileggendo `r12/Alarm_1.gml` riga per
+  riga per capire dove si aggancia `recogn` e' saltato fuori che la
+  condizione "rara" che dimezza la probabilita' di spia (dado 1/17 invece
+  di 1/2) era gia' cablata in `stepBalloonSpawner()` (balloons.js) con
+  l'operatore SBAGLIATO — `r12.hap === r12.pop` invece di `>=` — scritta
+  cosi' quando `hap` non era ancora aggiornato da nessuna parte (quindi
+  "non importava, tanto non scattava mai") e mai corretta quando poi lo e'
+  diventato (industria/casa/parco/club/solare/museo/monum/banca scrivono
+  tutti `hap` da diverse sessioni). Con l'operatore giusto la condizione
+  PUO' scattare per davvero in una partita lunga (una citta' con
+  abbastanza felicita' accumulata) — corretto.
+  **`recogn` implementato**: **[C]** stesso Alarm_1, stesso slot di
+  `monspi` ma condizionato al livello di `chies` — `monspi` mentre
+  `chies.level<3`, `recogn` una volta che `chies.level===3` (il massimo di
+  questo motore — l'originale ha un "livello 4" interno mai replicato,
+  solo un dettaglio di numerazione, non un livello di gioco in piu', vedi
+  buildings.js §chies). Stesso schema "riferisce" di monspi (isSpy,
+  stepBalloons() invariato), ma **[C]** `recogn/Create.gml`: vita piu'
+  corta (550 contro 750 tick), velocita' fissa 30 invece di un range
+  (`action_set_motion(30, ...)`, letta come 30px/tick — ~4-10x piu'
+  veloce delle mongolfiere lente, coerente con "aereo" invece di
+  "pallone"), e soprattutto una rotta quasi orizzontale (11° o 13° a
+  dado) invece dei 30° fissi di tutta la famiglia risorse/spia.
+  `spawnBalloon()`/`stepBalloons()` generalizzati per una rotta per-istanza
+  (`b.cos`/`b.sin`, da `def.dir()` se il tipo la dichiara — solo recogn,
+  finora) invece della costante globale COS30/SIN30, senza toccare nessun
+  altro tipo (tutti restano ai 30° impliciti di prima).
+  Sprite aggiunto a `GAMEPLAY_SPRITES`: `reconspr` — atlas e blitplan
+  rigenerati.
+  Verificato (node, import ES module — 60000 iterazioni per stabilita'
+  statistica): con `chies.level=1` nascono solo `monspi`, mai `recogn`;
+  con `chies.level=3` solo `recogn`, mai `monspi`; le rotte osservate su
+  20 spawn di recogn sono sempre 11° o 13°, mai altro. Verificato anche in
+  browser (screenshot): lo sprite "reconspr" (un biplano rosso) si
+  disegna correttamente sulla mappa.

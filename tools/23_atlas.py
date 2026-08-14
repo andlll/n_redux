@@ -373,6 +373,7 @@ GAMEPLAY_SPRITES = {
         "mong", "mong_bar",                 # mongo: giallo/oliva, energia
         "monviola", "monviola_bar",         # monviolo: viola, cristalli
         "monr",                             # monspi: rossa, spia (nessun loot)
+        "reconspr",                         # recogn: aereo da ricognizione, seconda spia (chies.level==3)
         "mon_bild", "mon_bild_empty", "mon_bild_box",   # pacco di cantiere (casa/industria/...)
         "mon_bbild", "mon_bbild_empty", "mon_bbild_box",   # pacco di cantiere grande (laser/banca)
         "ainco",                            # avviso "ATTACK INCOMING" (spia riuscita)
