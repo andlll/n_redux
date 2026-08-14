@@ -2416,3 +2416,86 @@ paragrafo 8.
   zero, nessuna modifica al motore serviva oltre a leggere il campo.
   Verificato in browser: un parco piazzato vicino a un lampione mostra
   l'asta del lampione sopra il prato invece di sparire sotto.
+
+- **La ruspa: demolizione/riparazione, `puruspa`/`selec==11`.** Segnalata
+  da tempo come gap dichiarato ("cosa manca" §5, poi ribadita piu' volte
+  come "mai ricostruita"). Investigata da zero, letta riga per riga.
+  **[C] Non e' un rudere-a-un-lotto-libero come una prima ipotesi
+  suggeriva**: `demobasia/Collision_*.gml` collide SOLO con gli edifici
+  FINITI (`casa1`, `industria1`, ...), mai con un rudere — un rudere resta
+  un vicolo cieco vero, la ruspa non lo tocca mai (destroyBuilding(),
+  main.js, corretta di conseguenza: una nota precedente li' diceva il
+  contrario). **[C] Il meccanismo vero**: ogni edificio finito, col ramo
+  selec==11 del proprio `Mouse_LeftPressed.gml`, controlla il costo e (se
+  coperto) crea `demobasia` sulla propria posizione — un popup, non una
+  demolizione immediata. `demobasia/Create.gml` genera tre figli:
+  `demobachia` (annulla, sprite "demoback"), `demoiessa` (conferma,
+  "demoyesse", imposta `demobasia.iessa=1` al tocco), `disegnaprezzo` (il
+  costo, un font disegnato a runtime — qui il cartellino gia' generico "cN"
+  di `costTagSprite()`, nessun font nuovo). Solo quando `iessa==1`
+  `demobasia/Collision_<tipo>.gml` scala il costo e crea un oggetto
+  "_demo" dedicato per quel livello (`impacasa2r`, `impaind3r`, ...).
+  **[C] Cosa fa davvero l'oggetto "_demo"** — verificato con un diff riga
+  per riga contro il cantiere/potenziamento NORMALE dello stesso livello
+  (`impacasa2r` contro `impa1to2r`, `impademogatlingr` contro
+  `impagatlingr`, altri campionati a mano): la stessa identica sequenza da
+  `Alarm_0` in poi. L'UNICA differenza reale e' la durata del PRIMO passo
+  (`Create.gml`, un solo `action_set_alarm`): per un edificio a un solo
+  livello o per il livello 1 di casa/industria/palazzo/museo (quelli che
+  normalmente iniziano con una lunga fase di "sgombero lotto", 361-390
+  tick) la ruspa la accorcia a 30 tick (1 per missile/gatling, quasi
+  istantaneo) — ricostruire su un lotto gia' sviluppato salta lo sgombero.
+  I livelli 2/3 (gia' brevi di loro, 30 tick anche da nuovi) non cambiano.
+  Tradotto nel motore: `tryRuspaRebuild()` (buildings.js) rimanda
+  l'edificio ALLO STESSO livello in cantiere (`b.level -= 1` prima di
+  riusare la stessa formula gia' scelta da `tryStartUpgrade()`,
+  `upgradeIndex: b.level-1` — nessun codice duplicato, `up.steps` e' lo
+  stesso array del cantiere normale), con `ruspaFirstStepDur` (nuovo campo
+  per livello) a sostituire solo la durata del primo passo quando serve
+  (`stepConstructions()`, `c.rebuilding` marca l'istanza appena riavviata
+  dalla ruspa).
+  **[C] `eolico` e' l'eccezione**: `impavent_dem`, letto per intero
+  (Create+Alarm_0/1/2) invece di dedurlo dal solo primo alarm, NON
+  ricostruisce la pala eolica — l'ultimo passo crea 4 `placeholder` (agli
+  stessi offset ±98/±58 di `impavent/Alarm_2.gml`) e si autodistrugge: la
+  ruspa su una pala eolica libera il terreno, non lo ricostruisce (coerente
+  con l'essere multi-lotto: rimettere ESATTAMENTE la stessa pala eolica
+  nello stesso punto sarebbe un'operazione diversa da ogni altro tipo).
+  `def.construct.ruspaDemolish` marca questo caso; `demolishMultiTile()`
+  (main.js) libera il lotto toccato (mai rimosso da `placeholders`, solo
+  `consumed`) e i 3 lotti piu' vicini entro il raggio di `multiTile` in
+  `blockedSlots` — lo stesso raggio approssimato gia' scelto per il
+  piazzamento (STUDIO.md, "pepazzittecollider" mai ricostruito), qui
+  applicato al contrario.
+  **[C] Costi**, tutti letti dal proprio `Alarm_9`/`Alarm_10` (il numero
+  di alarm cambia quando 9 e' gia' preso da altro, es. gatling/solare):
+  casa 500/2000/10000, industria 5000/50000/200000, parco 500, club/solare
+  2000, villa 6000, palazzo/museo 20000, missile/gatling 20000, laser
+  100000, eolico 200000 (il piu' caro del motore, coerente con l'unico che
+  smonta invece di ricostruire). **[I]** `sooool/Mouse_LeftPressed.gml` ha
+  un costo diverso (2700 invece di 2000) se il pannello e' su un parco
+  (`overpark`) — una meccanica "pannelli solari sopra un parco esistente"
+  MAI ricostruita in questo motore (`parco/Mouse_LeftPressed.gml`, ramo
+  selec==61, trovata per caso investigando la ruspa): gap dichiarato,
+  resta sempre il ramo normale.
+  **UI**: popup si'/no in-mondo invece di un font disegnato a runtime —
+  `ruspaPending` (main.js) sostituisce i quattro oggetti del decompilato
+  (`demobasia`/`demobachia`/`demoiessa`/`disegnaprezzo`) con uno stato solo,
+  due nuove entita' pickable ("ruspaYes"/"ruspaNo", stesso schema di
+  "upsign" — depth sempre in primo piano, intercettate a prescindere dallo
+  z-order) piu' un cartellino di prezzo "cN" riusato. Resta aperto finche'
+  non tocchi si'/no (**[C]** `demobasia` non ha ne' `Step` ne' `Destroy` nel
+  decompilato: nemmeno l'originale lo richiude da solo) — [I] un secondo
+  tocco su un ALTRO edificio con la ruspa selezionata riarma il popup su
+  quello nuovo invece di aprirne un secondo, unica scelta pratica con un
+  solo stato invece di N istanze `demobasia` coesistenti.
+  Sprite nuovi in `GAMEPLAY_SPRITES`: `demoback`, `demoyesse`, `c100000`
+  (cartellino mancante, serviva solo al costo del laser) — atlas e
+  blitplan rigenerati.
+  Verificato in browser (Playwright, stato forzato via `window.__nimbus` +
+  tap reali via `cam.worldToScreen()`): tocco su una casa1 con la ruspa
+  apre il popup col cartellino "500"; "Back" lo chiude senza toccare mon;
+  "Yes!" scala 500 mon e la rimanda in cantiere allo stesso livello, che
+  supera il primo passo (accorciato) molto prima dei 390 tick normali;
+  un'eolico ruspato scala 200000 mon, sparisce da `buildings`, e tutti e 4
+  i lotti che occupava tornano piazzabili.

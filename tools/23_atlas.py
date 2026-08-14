@@ -208,8 +208,14 @@ GAMEPLAY_SPRITES = {
         # sono i due banner dedicati di chies (mon+oil insieme, nessun taglio
         # a valuta singola gli si addice).
         "c100", "c500", "c1000", "c2000", "c3500", "c5000", "c6000", "c7500",
-        "c10000", "c20000", "c35000", "c50000", "c200000", "c12aa", "c23aa",
+        "c10000", "c20000", "c35000", "c50000", "c100000", "c200000", "c12aa", "c23aa",
         "cfree",   # [C] ccfree/Create.gml: l'unico edificio davvero gratis (banca) ha il proprio cartellino dedicato
+        # Popup si'/no della ruspa (STUDIO.md, "demolizione/riparazione" —
+        # game/src/buildings.js tryRuspaRebuild()/ruspaDemolish, main.js
+        # ruspaPending): "demoback" (annulla, src/objects/demobachia) e
+        # "demoyesse" (conferma, src/objects/demoiessa). Il cartellino di
+        # prezzo del popup riusa i "cN" sopra, nessuno sprite in piu'.
+        "demoback", "demoyesse",
         # monumento/banca: quattordicesimo e quindicesimo edificio, i primi
         # due "a stella" (STUDIO.md, ricompense di traguardo mai nel menu
         # base — game/src/buildings.js BUILDING_TYPES.monum/banca). Stesso

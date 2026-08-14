@@ -2,7 +2,7 @@ import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture 
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -320,6 +320,14 @@ let projectiles = [];
 let trails = [];
 let r12 = createR12();
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
+
+// La ruspa (`puruspa`, `selec===11`, STUDIO.md/OTHER_BUILDINGS sotto): tocco
+// su un edificio finito con la ruspa selezionata NON demolisce subito — apre
+// un popup si'/no come nel decompilato (`demobasia`, che crea `demobachia`/
+// `demoiessa`/`disegnaprezzo` — src/objects), letto qui in un solo oggetto
+// invece di quattro. `null` = nessun popup aperto. Vedi il commento sul
+// ramo "building" di input.onTap piu' sotto per come si arma/si conferma.
+let ruspaPending = null;   // { buildingId, cost } — la posizione si legge da b.x/b.y quando serve, non duplicata qui
 
 // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
 // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
@@ -655,16 +663,21 @@ function seedChies() {
  * (`ruinSpriteFor()`, game/src/buildings.js — sceglie fra `ruin1`/`ruin2`/
  * `ruin3`/`ruinsol`/`ruinc1..3` in base a tipo e livello, con lo stesso dado
  * uniforme del decompilato dove ne ha piu' di uno) che nessuno strumento nel
- * motore puo' rimuovere: la ruspa/bulldozer (`selec==11`, l'unico modo per
- * ripararlo nell'originale, pagando) non e' mai stata ricostruita — un
- * vicolo cieco fedele, non piu' la rimozione immediata con placeholder
- * libero di una versione precedente di questo motore. `parco` e' l'unica
- * eccezione: **[C]** `parco/Step.gml` non legge mai `life`, quindi non fa
- * NIENTE quando (nella pratica, quasi mai: `life: 9999`) succede —
- * `ruinSpriteFor()` torna `null` e questa funzione si ferma subito, prima di
- * toccare pop/hap/`buildings`, esattamente come l'originale non farebbe
- * niente. Per tutti gli altri applica il bilancio pop (`currentDeathPop`) e
- * hap (`currentDeathHap`, industria/parco — STUDIO.md "i pulsanti blu delle
+ * motore puo' rimuovere — un vicolo cieco fedele, non piu' la rimozione
+ * immediata con placeholder libero di una versione precedente di questo
+ * motore. **[C] Corretto**: una nota precedente qui diceva che la ruspa
+ * (`selec==11`, tryRuspaRebuild()/ruspaPending sotto) fosse "l'unico modo
+ * per ripararlo" — falso, verificato: `demobasia/Collision_*.gml` collide
+ * SOLO con gli oggetti degli edifici FINITI (`casa1`, `industria1`, ...),
+ * mai con un `ruinN`/`ru11`/`ruinc1` — un rudere non ha nessun ramo
+ * `Mouse_LeftPressed.gml` per selec==11 nel decompilato, la ruspa non lo
+ * tocca mai. `parco` e' l'unica eccezione a QUESTA funzione: **[C]**
+ * `parco/Step.gml` non legge mai `life`, quindi non fa NIENTE quando (nella
+ * pratica, quasi mai: `life: 9999`) succede — `ruinSpriteFor()` torna
+ * `null` e questa funzione si ferma subito, prima di toccare pop/hap/
+ * `buildings`, esattamente come l'originale non farebbe niente. Per tutti
+ * gli altri applica il bilancio pop (`currentDeathPop`) e hap
+ * (`currentDeathHap`, industria/parco — STUDIO.md "i pulsanti blu delle
  * monete") del livello a cui e' morto, letti da chiesX/industriaX/casaX/
  * parco/Destroy.gml.
  */
@@ -678,6 +691,40 @@ function destroyBuilding(b) {
   coins = coins.filter((c) => c.buildingId !== b.id);
   if (picked?.obj === "building" && picked.ref === b) picked = null;
   ruins.push({ obj: "decor", x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr) });
+}
+
+/**
+ * Il caso a parte della ruspa su `eolico` (`def.construct.ruspaDemolish`,
+ * buildings.js): **[C]** `impavent_dem/Alarm_2.gml`, a differenza di OGNI
+ * altro "_demo", non ricostruisce l'edificio — crea 4 `placeholder` (agli
+ * stessi offset ±98/±58 di `impavent/Alarm_2.gml` per i suoi 4 lotti) e si
+ * autodistrugge: una pala eolica ruspata torna terreno libero, non una pala
+ * eolica nuova. Qui equivale a togliere l'edificio da `buildings` e
+ * liberare i 4 lotti che aveva consumato — [I] lo stesso raggio di ricerca
+ * approssimato gia' usato da findPlacementCluster()/multiTile in placeAt()
+ * invece di una vera maschera di collisione (STUDIO.md, "pepazzittecollider"
+ * mai ricostruito): il lotto toccato (sempre un vero `placeholder`, mai
+ * rimosso dall'array — solo `consumed`) torna libero, e i 3 `blockedSlots`
+ * piu' vicini entro lo stesso raggio di piazzamento tornano `placeholders`
+ * veri invece di restare bloccati per sempre.
+ */
+function demolishMultiTile(b) {
+  const def = BUILDING_TYPES[b.type];
+  const ph = placeholders.find((p) => p.x === b.x && p.y === b.y);
+  if (ph) ph.consumed = false;
+  const r2 = def.multiTile.radius * def.multiTile.radius;
+  const near = blockedSlots
+    .filter((s) => (s.x - b.x) ** 2 + (s.y - b.y) ** 2 <= r2)
+    .sort((a, c) => ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) - ((c.x - b.x) ** 2 + (c.y - b.y) ** 2))
+    .slice(0, def.multiTile.count - 1);
+  for (const s of near) {
+    blockedSlots = blockedSlots.filter((x) => x !== s);
+    const already = placeholders.find((p) => p.x === s.x && p.y === s.y);
+    if (already) already.consumed = false;
+  }
+  decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
+  buildings = buildings.filter((x) => x !== b);
+  if (picked?.obj === "building" && picked.ref === b) picked = null;
 }
 
 // -------------------------------------------------------------- salvataggio
@@ -1106,10 +1153,11 @@ input.onTap = (sx, sy) => {
   // edifici) e' qui per lo stesso motivo di "building": va intercettato a
   // prescindere dal depth, non solo per z-order — e vince comunque contro
   // l'edificio sotto di lui perche' il suo depth (UPSIGN_DEPTH, sempre in
-  // primo piano) e' piu' negativo.
+  // primo piano) e' piu' negativo. "ruspaYes"/"ruspaNo" (il popup si'/no
+  // della ruspa, stesso depth) sono qui per lo stesso motivo.
   for (const it of frameList) {
     if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
-      && it.obj !== "coin" && it.obj !== "upsign") continue;
+      && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo") continue;
     // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
     // stessa ragione della raccolta hover piu' sotto. Tutto il resto
     // (edifici, casse, monete, segnale di potenziamento) resta sul
@@ -1168,6 +1216,25 @@ input.onTap = (sx, sy) => {
     messageT = 3;
   } else if (picked.obj === "building") {
     const b = picked.ref;
+    // [C] casa1|industria1|.../Mouse_LeftPressed.gml, ramo selec==11 (la
+    // ruspa, OTHER_BUILDINGS sotto): un tocco su un edificio FINITO arma il
+    // popup si'/no invece di potenziare/sparare — `demobasia/Create.gml`
+    // non tocca ancora `r12.mon`, solo apre il popup (e nemmeno quello se
+    // il costo non e' coperto: `casa1/Mouse_LeftPressed.gml` controlla
+    // `mon>=500` PRIMA di creare `demobasia`, non dopo). La conferma vera
+    // arriva dal tocco su "ruspaYes" sotto.
+    if (r12.selec === 11) {
+      const cost = ruspaCostFor(b);
+      if (b.construction) message = "cantiere gia' in corso";
+      else if (cost == null) message = `${BUILDING_LABEL[b.type] ?? b.type}: non demolibile/riparabile con la ruspa`;
+      else if (!canAfford(r12, { mon: cost })) message = `serve ${cost} mon (hai ${r12.mon.toFixed(0)})`;
+      else {
+        ruspaPending = { buildingId: b.id, cost };
+        message = `demolizione/riparazione: tocca "si'" per confermare (-${cost} mon)`;
+      }
+      messageT = 3;
+      return;
+    }
     // [C] rocket_launcher|lasergun/Mouse_LeftPressed.gml (`manualFire` in
     // buildings.js — gatlinggun non ne ha uno vero): un tocco su una
     // torretta finita non apre un cantiere (nessuna delle tre ha
@@ -1187,6 +1254,33 @@ input.onTap = (sx, sy) => {
       message = err ?? "cantiere avviato";
     }
     messageT = 3;
+  } else if (picked.obj === "ruspaYes") {
+    // [C] demoiessa/Mouse_LeftReleased.gml: `iessa=1`, letto dalla
+    // collisione di demobasia col vero edificio (qui, tryRuspaRebuild()/
+    // demolishMultiTile() in buildings.js/main.js) — la stessa conferma,
+    // un solo tocco invece di un flag+collisione al frame dopo.
+    const b = picked.ref;
+    const def = BUILDING_TYPES[b.type];
+    if (def?.construct?.ruspaDemolish) {
+      const cost = ruspaCostFor(b);
+      if (!canAfford(r12, { mon: cost })) {
+        message = `serve ${cost} mon (hai ${r12.mon.toFixed(0)})`;
+      } else {
+        r12.mon -= cost;
+        demolishMultiTile(b);
+        message = "demolita — lotti liberi";
+      }
+    } else {
+      const err = tryRuspaRebuild(b, r12);
+      message = err ?? "cantiere avviato (ruspa)";
+    }
+    ruspaPending = null;
+    messageT = 3;
+    picked = null;
+  } else if (picked.obj === "ruspaNo") {
+    // [C] demobachia/Mouse_LeftReleased.gml: annulla, nessun costo.
+    ruspaPending = null;
+    picked = null;
   } else if (picked.obj === "loot") {
     const item = picked.ref;
     collectLoot(loot, item, r12);
@@ -1366,6 +1460,18 @@ function frame(now) {
       // segnale simbolico dell'interfaccia — deve restare leggibile anche di
       // notte, non scurirsi con la tinta ambientale come un edificio vero.
       dynamic.push({ obj: "upsign", ref: b, x: b.x, y: b.y, depth: UPSIGN_DEPTH, _f: frameFor("upico"), _selfLit: true });
+    }
+    // Popup si'/no della ruspa (ruspaPending, armato da input.onTap sotto)
+    // — [C] demobasia/Create.gml: demobachia (annulla, sprite "demoback")
+    // offset (16,-16), demoiessa (conferma, "demoyesse") offset (177,-16),
+    // disegnaprezzo (il costo, qui il cartellino gia' generico "cN" invece
+    // di un font disegnato a runtime — stesso riuso di costTagSprite())
+    // offset (157,-185), tutti relativi alla posizione dell'edificio
+    // (demobasia stesso nasce li', offset (0,0)).
+    if (ruspaPending?.buildingId === b.id) {
+      dynamic.push({ obj: "ruspaNo", ref: b, x: b.x + 16, y: b.y - 16, depth: UPSIGN_DEPTH, _f: frameFor("demoback"), _selfLit: true });
+      dynamic.push({ obj: "ruspaYes", ref: b, x: b.x + 177, y: b.y - 16, depth: UPSIGN_DEPTH, _f: frameFor("demoyesse"), _selfLit: true });
+      dynamic.push({ obj: "decor", x: b.x + 157, y: b.y - 185, depth: UPSIGN_DEPTH, _f: frameFor(`c${ruspaPending.cost}`), _selfLit: true });
     }
   }
   for (const d of decorEntities) dynamic.push(d);
