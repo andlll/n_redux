@@ -22,7 +22,14 @@ export function createR12() {
     oilReal: 5000, monReal: 5500,
     pop: 0,             // [C]
     ele: 200,           // [C]
-    time: 2914,         // [C] orologio di gioco, non il ciclo giorno/notte visivo
+    time: 2914,         // [C] orologio di gioco, non il ciclo giorno/notte visivo — l'ANNO (vedi stepCalendar sotto)
+    // [C] repre/Create.gml: NON e' un campo di r12 nel decompilato — vive su
+    // `repre` (l'oggetto che disegna la barra risorse), una variabile locale
+    // chiamata anch'essa "mon" (STUDIO.md: "confusa col nome della variabile
+    // denaro di r12 — stesso nome, oggetti diversi"). Qui vive comunque su
+    // r12 (l'unico stato "orologio" del motore, come `time` sopra) ma con un
+    // nome che non collide con `mon` (i soldi) — `month`, 1..12.
+    month: 1,
     hap: 600,           // [C] 400 base + 200 del ramo match_easy
     crys: 0, storm: 0, stormT: 0, stormeasy: 0, biotech: 0, autocore: 0,
     allerta: 0, selec: 0,
@@ -133,6 +140,32 @@ export function clampR12(r12, buildings) {
     r12.mon = 999999;
     r12.oil = Math.max(r12.oil, 500000);
     _lastMon = r12.mon; _lastOil = r12.oil;
+  }
+}
+
+// [C] repre/Alarm_0.gml: `action_set_alarm(300,0)`, riarmato ad ogni scatto
+// — il mese avanza ogni 300 tick (5s), da 1 a 12 e poi torna a 1 (operatore
+// 1 = "<": mese < 12 -> +1, altrimenti torna a 1). [C] r12/Alarm_3.gml:
+// `action_set_alarm(3600,3)` — l'anno (`time`) avanza di 1 ogni 3600 tick
+// (60s) — 12 mesi x 300 tick = 3600 tick: le due alarm dell'originale sono
+// indipendenti (oggetti diversi) ma restano sincronizzate da sole finche'
+// partono insieme, esattamente come qui.
+const MONTH_PERIOD = 5;    // 300 tick / 60
+const YEAR_PERIOD = 60;    // 3600 tick / 60
+
+/** Avanza il calendario cosmetico mostrato in barra risorse (main.js,
+ * accanto all'orologio) — nessun effetto di gioco, solo la data che
+ * scorre. */
+export function stepCalendar(r12, dt) {
+  r12.monthT = (r12.monthT ?? 0) + dt;
+  while (r12.monthT >= MONTH_PERIOD) {
+    r12.monthT -= MONTH_PERIOD;
+    r12.month = r12.month < 12 ? r12.month + 1 : 1;
+  }
+  r12.yearT = (r12.yearT ?? 0) + dt;
+  while (r12.yearT >= YEAR_PERIOD) {
+    r12.yearT -= YEAR_PERIOD;
+    r12.time += 1;
   }
 }
 

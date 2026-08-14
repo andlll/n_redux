@@ -1,7 +1,7 @@
 import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
-import { createR12, tickR12, stepWeather } from "./state.js";
+import { createR12, tickR12, stepWeather, stepCalendar } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
@@ -182,6 +182,10 @@ const missingArt = staticWorld.filter((it) => !it._f).length;
 // iniziale, sbagliata: "gotham_mid" non e' piu' usato in questo file da
 // quando il bottone di test di chies e' sparito, STUDIO.md §9).
 const fontMini = await loadFont(gl, "gotham_mini");
+// [C] repre/DrawGUI.gml: dodici `action_draw_text` letterali, uno per ogni
+// valore di `repre.mon` (il mese, 1..12 — state.js, r12.month) — mai una
+// tabella nel decompilato, ricostruita qui come tale.
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 // -------------------------------------------------------- piazzabili e edifici
 // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
@@ -1460,6 +1464,7 @@ function frame(now) {
   stepWeather(r12, dt, scene.name === "match");
   stepStormDamage(buildings, dt, r12);
   tickR12(r12, dt, buildings);
+  stepCalendar(r12, dt);
   stepCars(cars, dt, r12, night);
   carmakerT += dt;
   while (carmakerIdx < CARMAKER_SCHEDULE.length && carmakerT >= CARMAKER_SCHEDULE[carmakerIdx].at) {
@@ -1827,6 +1832,15 @@ function frame(now) {
   const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                  [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
   for (const [value, x] of stats) drawText(r, fontMini, String(value), barX + x, barY + 10, 1, 0x000000, 1);
+  // Data (mese + anno, game/src/state.js stepCalendar()) — [C] repre/
+  // DrawGUI.gml: il mese e' testo ("Jan".."Dec", da `repre.mon` — non
+  // r12, vedi state.js) a x=456/y=20+upp (stessa riga dell'icona, quindi
+  // qui `barY+0`), l'anno e' `r12.time` disegnato appena sotto a x=448/
+  // y=40+upp (`barY+20`) — stessi offset del decompilato, ribasati su
+  // `barY` come gia' fatto sopra per pop/olio/energia/denaro (offset - 20,
+  // la y a cui l'originale disegnava l'icona stessa).
+  drawText(r, fontMini, MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 0, 1, 0x000000, 1);
+  drawText(r, fontMini, String(Math.round(r12.time)), barX + 448, barY + 20, 1, 0x000000, 1);
 
   // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
   // ancora ricostruita (STUDIO.md §6/§9), e replica la struttura a tre
