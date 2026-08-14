@@ -29,16 +29,14 @@
 //    fluttua via verso l'alto (una vera action_set_gravity(90, 0.1):
 //    l'originale la fa "alleggerire" e accelerare verso l'alto una volta
 //    consegnato il pacco) per altri 1000 tick prima di sparire. Solo
-//    `mon_bil` e' cablata qui: e' quella che l'originale usa per `casa`
-//    (selec==1), `industria` (selec==2), `missile` (selec==3), `club`
-//    (selec==60), `solare` (selec==61), `gatling` (selec==62) e `villa`
-//    (selec==63) — sette dei piazzabili dal giocatore, tutti tranne
-//    `parco` (selec==7, non crea nessun pallone nel decompilato) e
-//    `laser` (selec==5, crea `mon_bbil` — la variante piu' grande, mai
-//    cablata: game/src/main.js riusa `mon_bil` anche per lui, stesso
-//    pallone piu' piccolo del dovuto invece di un secondo sprite/oggetto
-//    solo per questo). `mon_bbil` altrimenti serve solo a tipi non ancora
-//    ricostruiti (banca — STUDIO.md).
+//    `mon_bil` e' quella che l'originale usa per `casa` (selec==1),
+//    `industria` (selec==2), `missile` (selec==3), `club` (selec==60),
+//    `solare` (selec==61), `gatling` (selec==62), `villa` (selec==63) e
+//    `monum` (selec==71) — otto dei piazzabili dal giocatore, tutti tranne
+//    `parco` (selec==7, non crea nessun pallone nel decompilato). Solo
+//    `laser` (selec==5) e `banca` (selec==72) creano `mon_bbil`, la
+//    variante piu' grande — entrambe cablate (`spawnConstructionBalloon(x,
+//    y, big)`, main.js passa `big` per quei due soli tipi).
 //
 // [C] = letto nel decompilato. [I] = semplificato deliberatamente (dettagliato
 // punto per punto sotto).
@@ -263,18 +261,23 @@ const CONSTRUCTION_GRAVITY = 0.1;                // [C] action_set_gravity(90, 0
 const BOX_FALL_SPEED = 1;                        // [C] mon_box/Create.gml: action_move("010000000", 1)
 const BOX_LIFE = 120 * TICK;                     // [C] mon_box/Alarm_0.gml: action_set_alarm(120, 0)
 
-/** Solo `mon_bil` (vedi commento in cima al file): il pallone che consegna
- * `casa`/`industria` appena piazzate. */
-export function spawnConstructionBalloon(targetX, targetY) {
+/** `mon_bil` (default) o `mon_bbil` (`big: true` — [C] placeholder/
+ * Mouse_LeftReleased.gml, selec==5/72: laser e banca creano la variante
+ * grande, mai cablata finora — riusava sempre `mon_bil`, un pallone piu'
+ * piccolo del dovuto per i due edifici piu' cari del motore). Stessa
+ * fisica/tempistica per entrambe: solo lo sprite (e quello della cassa/
+ * del pallone vuoto, sotto) cambia prefisso. */
+export function spawnConstructionBalloon(targetX, targetY, big = false) {
+  const prefix = big ? "mon_bbild" : "mon_bild";
   return {
     x: targetX + CONSTRUCTION_OFFSET.dx, y: targetY + CONSTRUCTION_OFFSET.dy,
     vx: COS30 * CONSTRUCTION_SPEED, vy: -SIN30 * CONSTRUCTION_SPEED,
-    t: 0, dropped: false, spr: "mon_bild", depth: -3000,   // [C] _object.json: depth = -3000, mai ricalcolato
+    t: 0, dropped: false, spr: prefix, prefix, depth: -3000,   // [C] _object.json: depth = -3000, mai ricalcolato
   };
 }
 
-function spawnConstructionBox(x, y) {
-  return { x, y, t: 0, spr: "mon_bild_box", depth: -y - 200 };   // [C] mon_box/Step.gml: depth = -y - 200
+function spawnConstructionBox(x, y, prefix) {
+  return { x, y, t: 0, spr: `${prefix}_box`, depth: -y - 200 };   // [C] mon_box/Step.gml: depth = -y - 200
 }
 
 /** Avanza i palloni di cantiere: 225 tick a volo dritto portando la cassa,
@@ -287,8 +290,8 @@ export function stepConstructionBalloons(list, boxes, dt) {
     m.t += dt;
     if (!m.dropped && m.t >= CONSTRUCTION_CARRY) {
       m.dropped = true;
-      m.spr = "mon_bild_empty";                 // [C] action_sprite_set(mon_bild_empty, 0, 1)
-      boxes.push(spawnConstructionBox(m.x, m.y));
+      m.spr = `${m.prefix}_empty`;              // [C] action_sprite_set(mon_bild_empty, 0, 1)
+      boxes.push(spawnConstructionBox(m.x, m.y, m.prefix));
     }
     if (m.dropped) m.vy -= CONSTRUCTION_GRAVITY * 60 * dt;   // [C] gravita' applicata un tick alla volta
     m.x += m.vx * 60 * dt;

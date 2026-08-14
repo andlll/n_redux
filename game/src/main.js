@@ -552,21 +552,20 @@ function placeAt(placeholder, type) {
   const b = placeBuilding(type, anchorX, anchorY, def.fixedDepth ?? 0);
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
-  // [C] placeholder/Mouse_LeftReleased.gml: selec==1 (casa), selec==2
-  // (industria), selec==3 (missile), selec==60 (club), selec==61 (solare),
-  // selec==62 (gatling) e selec==63 (villa) creano `mon_bil` — i sette
-  // tipi piazzabili dal giocatore che lo fanno finora (`parco`, selec==7,
-  // non crea nessun pallone nel decompilato — game/src/balloons.js, in
-  // cima al file). `laser` (selec==5) crea invece `mon_bbil`, la variante
-  // piu' grande mai cablata (STUDIO.md/balloons.js: "serve solo a tipi non
-  // ancora ricostruiti") — riusa `mon_bil` come gli altri, stesso pallone
-  // piu' piccolo del dovuto invece di un secondo sprite/oggetto solo per
-  // questo. `eolico` (selec==4) crea `mon_bil` anche lui — [C]
-  // eoliplacer/Alarm_1.gml, ramo selec==4.
+  // [C] placeholder/Mouse_LeftReleased.gml, letto riga per riga: selec==1
+  // (casa), selec==2 (industria), selec==3 (missile), selec==60 (club),
+  // selec==61 (solare), selec==62 (gatling), selec==63 (villa), selec==71
+  // (monum) creano `mon_bil` — otto dei nove tipi piazzabili dal giocatore
+  // che ne creano uno (`parco`, selec==7, non crea nessun pallone). Solo
+  // `laser` (selec==5) e `banca` (selec==72) creano `mon_bbil`, la
+  // variante grande — ora davvero cablata (`big`, balloons.js/
+  // spawnConstructionBalloon()), non piu' sempre `mon_bil` per tutti.
+  // `eolico` (selec==4) crea `mon_bil` anche lui — [C] eoliplacer/
+  // Alarm_1.gml, ramo selec==4.
   if (type === "casa" || type === "industria" || type === "missile" || type === "solare"
     || type === "club" || type === "villa" || type === "gatling" || type === "laser" || type === "eolico"
     || type === "monum" || type === "banca") {
-    constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
+    constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y, type === "laser" || type === "banca"));
   }
   return null;
 }

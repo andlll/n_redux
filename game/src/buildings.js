@@ -1368,12 +1368,13 @@ export const BUILDING_TYPES = {
   // periodo fisso di 120 tick gia' cablato in `stepConsumption()`
   // moltiplicando per 120 (120/240), stesso risultato aggregato senza
   // toccare il motore per un singolo edificio.
-  // **[I]** Lo stesso blocco azzera anche `r12.spy` (il flag che sblocca le
+  // **[C]** Lo stesso blocco azzera anche `r12.spy` (il flag che sblocca le
   // mongolfiere spia dopo ~8 minuti, game/src/balloons.js) ogni tick a
-  // costruzione ultimata — un possibile effetto "il grattacielo blocca lo
-  // spionaggio" la cui semantica esatta (ordine di esecuzione fra oggetti
-  // nello stesso tick) non e' verificabile con sicurezza da qui: gap
-  // dichiarato, non riprodotto.
+  // costruzione ultimata — "il grattacielo blocca lo spionaggio" per
+  // davvero, non piu' un gap dichiarato: la condizione e' incondizionata e
+  // gira ogni tick (non un confronto sensibile all'ordine fra oggetti),
+  // quindi l'esito in regime non dipende da chi gira prima — vedi
+  // stepConsumption() sotto per l'implementazione.
   // **[C] Nessuna vita**: a differenza di OGNI altro edificio, `m3cant` non
   // ha ne' un `Destroy.gml` ne' una variabile `life` in nessun evento —
   // indistruttibile per davvero, non solo "senza fulmine" come `parco`.
@@ -1966,6 +1967,18 @@ export function stepConsumption(buildings, dt, r12, isNight) {
     const def = BUILDING_TYPES[b.type];
     const cons = def.consumption?.[b.level - 1];
     if (!cons) continue;
+    // [C] m3cant/Step.gml, ramo `phase>=14` (edificio finito): OGNI tick,
+    // se `r12.spy` e' 1 lo rimette a 0 — un grattacielo finito blocca le
+    // mongolfiere spia per sempre (STUDIO.md, "cosa non so ancora" lo
+    // segnava come "semantica non verificabile": rivisto, la condizione e'
+    // in realta' incondizionata e continua, non un singolo confronto
+    // sensibile all'ordine fra oggetti nello stesso tick — anche vincendo
+    // una sola volta la corsa con l'alarm che sblocca `spy`
+    // (balloons.js, SPY_UNLOCK_T), il tick successivo lo azzera comunque
+    // di nuovo, quindi l'esito in regime e' sempre lo stesso). Scritto qui
+    // fuori dal throttle `period` sotto (che scatta ogni 120 tick, non
+    // ogni tick) per restare fedele alla cadenza vera.
+    if (b.type === "grattacielo") r12.spy = 0;
     const rate = cons[Math.min(b.ava ?? 0, cons.length - 1)];
     b.consT = (b.consT ?? 0) + dt;
     const period = 120 * TICK;   // [C] casa1/Alarm_3.gml, fisso indipendentemente dallo stadio

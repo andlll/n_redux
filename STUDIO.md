@@ -2620,3 +2620,45 @@ paragrafo 8.
   sull'icona non riapre nulla finche' il prestito e' attivo, e dopo un
   mese simulato (`stepCalendar`, isolato dal clamp di debug) `mon` scende
   di 840 e `loanUno` di 1.
+
+- **Altri due gap dichiarati chiusi, continuando la stessa sessione.**
+  **Il grattacielo blocca lo spionaggio davvero**: una nota precedente
+  (STUDIO.md sopra, "il grattacielo blocca lo spionaggio non riprodotto")
+  la segnava come "semantica non verificabile perche' dipende dall'ordine
+  di esecuzione fra oggetti nello stesso tick" — riletta con calma,
+  `m3cant/Step.gml` (ramo `phase>=14`) non fa un confronto una tantum
+  sensibile a un ordine: azzera `r12.spy` OGNI tick, incondizionatamente,
+  finche' l'edificio esiste. Anche perdendo la corsa con l'alarm che
+  sblocca `spy` (balloons.js, `SPY_UNLOCK_T`) il tick successivo lo
+  azzera comunque di nuovo — l'esito in regime e' sempre lo stesso a
+  prescindere da chi gira prima. `stepConsumption()` (buildings.js) ora lo
+  fa per davvero, fuori dal throttle a 120 tick gia' li' (la condizione
+  originale gira ogni tick, non ogni 120). Verificato con un test diretto
+  (node, import ES module): `r12.spy` forzato a 1 prima della chiamata
+  torna 0 dopo, anche ripetendo la "corsa" piu' volte.
+  **`playbuttoner` investigato, non implementato**: la stessa nota
+  descriveva un "bottone play/pausa" che drena -5 ele/-5 mon PER TICK
+  durante il cantiere del grattacielo quando attivo (`m3cant/Step.gml`,
+  ramo `phase<14`) — **[C]** verificato leggendo `m3cant/Alarm_0.gml` (la
+  catena che avanza le 14 fasi del cantiere) riga per riga: NESSUN
+  riferimento a `playbuttoner`/`play` in nessuna fase, durate fisse
+  indipendenti. Il bottone non accelera nulla nel decompilato stesso —
+  drena risorse extra senza alcun beneficio reale, nonostante il nome
+  suggerisca un acceleratore. Lasciato fuori deliberatamente: implementare
+  un bottone che costa senza dare niente in cambio sarebbe una trappola
+  per il giocatore, non una funzionalita' mancante.
+  **Il pacco di cantiere grande per laser e banca**: **[C]** letto riga
+  per riga `placeholder/Mouse_LeftReleased.gml` per la lista esatta di chi
+  crea `mon_bil` (piccolo) contro `mon_bbil` (grande) — una nota
+  precedente li' elencava "banca, laser" come tipi che lo usano ma "non
+  ancora ricostruiti", superata da tempo (sono entrambi edifici veri da
+  diverse sessioni) senza che qualcuno tornasse a cablare la variante
+  giusta: `spawnConstructionBalloon()` (balloons.js) ora accetta un
+  parametro `big`, che sceglie il prefisso sprite (`mon_bild` contro
+  `mon_bbild`, sia per il pallone che per cassa/pallone-vuoto) — main.js
+  lo passa `true` solo per `laser`/`banca`, fedele alla lista letta.
+  Sprite aggiunti a `GAMEPLAY_SPRITES`: `mon_bbild`/`mon_bbild_empty`/
+  `mon_bbild_box` — atlas e blitplan rigenerati.
+  Verificato in browser (Playwright): piazzare un laser per davvero (menu
+  -> tocco su un placeholder) fa nascere un pallone `mon_bbild`, non piu'
+  `mon_bild`.
