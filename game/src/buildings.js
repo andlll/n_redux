@@ -759,13 +759,15 @@ export const BUILDING_TYPES = {
     label: "Mitragliatrice",
     placeCost: { mon: 10000 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==62
     turret: true,
-    // [I] `gatlinggun/Mouse_LeftPressed.gml` non spara affatto al tocco —
-    // imposta solo `spra=1` (la stessa posa di rinculo che Step.gml userebbe
-    // dopo uno sparo vero, MA senza crearne uno), un tocco a vuoto senza
-    // conseguenze. A differenza di missile/laser (vedi sotto) niente
-    // `manualFire` qui: un tocco su una mitragliatrice finita resta senza
-    // effetto (tryStartUpgrade in main.js risponde "livello massimo", non
-    // diverso da nessun tocco).
+    // [C] `gatlinggun/Mouse_LeftPressed.gml` nel decompilato non spara
+    // affatto al tocco — imposta solo `spra=1` (la stessa posa di rinculo
+    // che Step.gml userebbe dopo uno sparo vero, MA senza crearne uno), un
+    // tocco a vuoto senza conseguenze. [I] Segnalato dall'autore giocando
+    // ("clicco sul gatling e non spara"): qui `manualFire` e' comunque
+    // attivo, come per missile/laser — un tocco su una mitragliatrice
+    // finita spara per davvero invece di restare senza effetto, deviazione
+    // deliberata dal decompilato per coerenza con le altre due torrette.
+    manualFire: true,
     //
     // [C] gatlinggun/Step.gml: insegue il veicolo piu' vicino entro 550px
     // (un filo piu' lungo del raggio di missile); il fuoco vero (fireRange,
@@ -1853,8 +1855,20 @@ export function stepWindProduction(buildings, dt, r12) {
     b.windT = (b.windT ?? 0) + dt;
     const period = prod.every * TICK;
     while (b.windT >= period) { b.windT -= period; r12.ele += prod.ele; }
+    // [C] eoli/Create.gml: `action_sprite_set(eol, 0, 0.25)` — "eol" ha 8
+    // sottoimmagini vere (le pale in rotazione, non un singolo fotogramma
+    // statico) e GameMaker le scorre da solo a `image_speed` 0.25
+    // frame/step = 15 frame/s a 60fps. Segnalato dall'autore ("la pala
+    // gira ma l'animazione non si vede"): il motore non aveva ancora un
+    // ciclo continuo per nessuno sprite di edificio finito (solo animazioni
+    // "un colpo solo" con un contatore di fine, tipo soldfade/fica) — qui
+    // basta un timer che non si azzera mai, letto in main.js insieme al
+    // numero di frame reale dell'atlas per fare il modulo.
+    b.animT = (b.animT ?? 0) + dt;
   }
 }
+// [C] eoli/Create.gml: 0.25 frame/step * 60 step/s.
+export const WIND_ANIM_FPS = 15;
 
 /**
  * Avanza la crescita di popolazione degli edifici finiti che dichiarano

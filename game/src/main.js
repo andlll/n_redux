@@ -2,7 +2,7 @@ import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture 
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -142,6 +142,12 @@ function frameFor(sprName, frameIdx = 0) {
   const f = frames[Math.max(0, Math.min(frameIdx, frames.length - 1))];
   return { tex: pageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1,
            w: f.w, h: f.h, ox: f.ox, oy: f.oy };
+}
+// Quante sottoimmagini ha davvero uno sprite nell'atlas — serve solo a chi
+// deve fare il modulo per un'animazione che gira in loop invece di fermarsi
+// all'ultimo frame (vedi "eol"/WIND_ANIM_FPS piu' sotto, buildings.js).
+function frameCountFor(sprName) {
+  return atlas.sprites[sprName]?.length ?? 1;
 }
 // Alberi (STUDIO.md §5.3, src/objects/albe|albe2|albe3/Create.gml): a
 // Create l'originale sceglie a dado uno sprite finale diverso per istanza
@@ -500,7 +506,16 @@ function placeAt(placeholder, type) {
   // (parco, buildings.js — [I] segnalato dall'autore) e' l'eccezione: bassa
   // scenografia piatta, non un edificio solido, resta sempre "in fondo"
   // invece di competere per -y con cio' che le passa sopra.
-  const b = placeBuilding(type, placeholder.x, placeholder.y, def.fixedDepth ?? 0);
+  // `eolico` (def.multiTile): il centro visivo dev'essere quello del
+  // cluster intero (media dei 4 lotti), non quello del solo lotto toccato
+  // — segnalato dall'autore ("la pala nasce disallineata: il centro
+  // corrisponde al centro di UN placeholder, ma ne occupa 4"). Lo sprite
+  // "eol" e' disegnato grande apposta per coprire tutto il cluster; ancorarlo
+  // al lotto toccato (che puo' essere uno qualunque dei 4, non
+  // necessariamente quello centrale) lo faceva "sbilanciare" verso un lato.
+  const anchorX = def.multiTile ? cluster.reduce((s, p) => s + p.x, 0) / cluster.length : placeholder.x;
+  const anchorY = def.multiTile ? cluster.reduce((s, p) => s + p.y, 0) / cluster.length : placeholder.y;
+  const b = placeBuilding(type, anchorX, anchorY, def.fixedDepth ?? 0);
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
   // [C] placeholder/Mouse_LeftReleased.gml: selec==1 (casa), selec==2
@@ -647,7 +662,22 @@ function resolvePlacement(sx, sy) {
   // esattamente come ogni altro tipo — palazzoRd/museoRd non compaiono nel
   // menu (OTHER_BUILDINGS), solo qui.
   const concreteType = hit.axis === "rd" ? `${type}Rd` : type;
-  const b = placeBuilding(concreteType, buildSite.x, buildSite.y, 0);
+  // Depth: palazzo/museo nascono sul lotto con la y MAGGIORE (buildSite,
+  // sopra) ma lo sprite finale e' grande abbastanza da coprire visivamente
+  // ANCHE il lotto bloccato (blockedSite, y minore) accanto — se il depth
+  // si ordinasse come ogni altro edificio (-buildSite.y, il piu' vicino dei
+  // due alla camera) l'edificio vinceva il confronto per-y anche contro
+  // vicini genuinamente piu' vicini (y maggiore di buildSite ma ancora
+  // dentro l'ingombro visivo del suo sprite sovradimensionato) — segnalato
+  // dall'autore ("a volte si vedono sopra edifici che sono piu' in basso").
+  // [I] Nessun dato di "vera" altezza dello sprite per fare di meglio
+  // (STUDIO.md, "pepazzittecollider" mai ricostruito): la media fra i due
+  // lotti del cluster e' un compromesso, non l'ancoraggio a un singolo
+  // angolo (buildSite o blockedSite) — riduce il bias in avanti senza
+  // introdurre quello opposto (nascosto da vicini che dovrebbero stargli
+  // dietro).
+  const depthY = (buildSite.y + blockedSite.y) / 2;
+  const b = placeBuilding(concreteType, buildSite.x, buildSite.y, -depthY);
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));
   constructionBalloons.push(spawnConstructionBalloon(buildSite.x, buildSite.y));
@@ -1110,7 +1140,17 @@ for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; BUILDING_LABE
  * loop principale), cosi' entrambi i gesti danno la stessa risposta
  * visiva. */
 function collectCoinAt(item) {
-  coinPops.push({ x: item.x, y: item.y, t: 0 });
+  // `item.{x,y}` e' l'ancora dell'edificio (il piede del pin "soldico"/
+  // "soldfade", STUDIO.md coins.js — sprite a forma di segnaposto con
+  // l'origine in fondo, non al centro), ma il simbolo dei soldi vero e
+  // proprio sta nella testa TONDA del pin, in alto. Segnalato dall'autore
+  // ("la bolla dovrebbe essere centrata sul simbolo, quindi più in alto"):
+  // la testa e' un cerchio di diametro pari alla larghezza dello sprite
+  // (`f.w`), disegnato subito sotto al bordo superiore — il suo centro sta
+  // quindi a meta' larghezza sopra l'ancora, non sull'ancora stessa.
+  const f = frameFor(item.spr);
+  const bubbleY = f ? item.y - (f.oy - f.w / 2) : item.y;
+  coinPops.push({ x: item.x, y: bubbleY, t: 0 });
   collectCoin(coins, item, r12);
 }
 
@@ -1245,15 +1285,17 @@ input.onTap = (sx, sy) => {
       return;
     }
     // [C] rocket_launcher|lasergun/Mouse_LeftPressed.gml (`manualFire` in
-    // buildings.js — gatlinggun non ne ha uno vero): un tocco su una
-    // torretta finita non apre un cantiere (nessuna delle tre ha
-    // potenziamenti — tryStartUpgrade ci direbbe solo "livello massimo") —
-    // fa partire un colpo contro il bersaglio che il cannone sta gia'
-    // inseguendo (game/src/projectiles.js, fireTurretManual()). Sotto
-    // cantiere invece resta tryStartUpgrade come per qualunque edificio
-    // (che gia' risponderebbe da solo "cantiere gia' in corso").
+    // buildings.js — [I] ora attivo anche per gatlinggun, vedi il commento
+    // su `manualFire` li'): un tocco su una torretta finita non apre un
+    // cantiere (nessuna delle tre ha potenziamenti — tryStartUpgrade ci
+    // direbbe solo "livello massimo") — fa partire un colpo contro il
+    // bersaglio che il cannone sta gia' inseguendo (game/src/projectiles.js,
+    // fireTurretManual() — mongolfiera o minaccia vera, vedi il commento in
+    // cima a quel file). Sotto cantiere invece resta tryStartUpgrade come
+    // per qualunque edificio (che gia' risponderebbe da solo "cantiere gia'
+    // in corso").
     if (!b.construction && BUILDING_TYPES[b.type]?.manualFire) {
-      const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails);
+      const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails, balloons, loot);
       message = fired ? "fuoco!"
         : !b.aimTarget ? "nessun bersaglio in portata"
         : b.type === "laser" && r12.ele < 200 ? "energia insufficiente"
@@ -1441,8 +1483,12 @@ function frame(now) {
   // oggetti volanti, vedi il commento su stepTurretAim() in buildings.js.
   stepTurretAim(buildings, balloons, threats);
   // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
-  // gia' nella direzione appena calcolata (b.aimAngle).
-  stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails);
+  // gia' nella direzione appena calcolata (b.aimAngle). [I] Segnalato
+  // dall'autore: il grilletto automatico controllava solo `threats` (le
+  // minacce vere) per decidere se sparare — una mongolfiera vicina da sola
+  // non faceva mai partire un colpo, anche se il cannone la stava gia'
+  // inseguendo (`balloons` passato anche qui, non solo a stepTurretAim).
+  stepTurretFire(buildings, balloons, threats, dt, projectiles, explosions, r12, trails, loot);
   stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt);
   stepSmoko(trails, dt);
   if (messageT > 0) messageT -= dt;
@@ -1451,7 +1497,13 @@ function frame(now) {
   // esclusi) + edifici (sprite ricalcolato: cambia durante il cantiere) + decoro
   const dynamic = [];
   for (const b of buildings) {
-    dynamic.push({ obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
+    // `eolico` finito (b.animT, buildings.js/stepWindProduction): "eol" ha
+    // 8 sottoimmagini vere (le pale che girano), animate in loop invece che
+    // ferme al frame 0 — vedi il commento su WIND_ANIM_FPS in buildings.js.
+    // Ogni altro edificio resta un fotogramma fisso, come sempre.
+    const windFrames = (!b.construction && b.type === "eolico") ? frameCountFor(b.spr) : 1;
+    const buildingFrameIdx = windFrames > 1 ? Math.floor((b.animT ?? 0) * WIND_ANIM_FPS) % windFrames : 0;
+    dynamic.push({ obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr, buildingFrameIdx) });
     // Impalcatura in sovraimpressione + coperchio di fine cantiere (vedi
     // buildings.js): stessa x/y/depth dell'edificio, spinti sopra di lui
     // dall'ordine di inserimento (a parita' di depth+y l'array mantiene
@@ -1643,10 +1695,13 @@ function frame(now) {
   // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che
   // cresce e sfuma sul punto della moneta appena presa, in primo piano come
   // le monete stesse — niente tinta ambientale, per lo stesso motivo di
-  // `_selfLit` qui sopra.
+  // `_selfLit` qui sopra. Segnalato dall'autore ("troppo piccola"): la testa
+  // del pin "soldico" e' un cerchio di ~60px di diametro (STUDIO.md,
+  // coins.js) — la bolla partiva a 20px e finiva a 66px, appena piu' grande
+  // dell'icona invece di avvolgerla con margine. Range raddoppiato (36..130).
   for (const p of coinPops) {
     const k = p.t / COIN_POP_LIFE;
-    const size = 20 + k * 46;
+    const size = 36 + k * 94;
     r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, 0x4fc3f7, (1 - k) * 0.85);
   }
   // Linguetta di prezzo sul segnale di potenziamento (upsign) al passaggio

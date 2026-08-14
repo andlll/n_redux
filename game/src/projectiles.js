@@ -19,12 +19,26 @@
 // quando sono a tiro, cosi' `b.aimTarget` (e quindi il colpo) e' sempre
 // coerente con cio' che il cannone sta visibilmente inseguendo.
 //
+// [I] Segnalato dall'autore giocando: le torrette dovrebbero poter colpire
+// anche le mongolfiere (`targets` sotto — risorse E spie), non solo le
+// minacce vere. Missile/gatling lo facevano gia' per un colpo che le
+// incontra per strada (stepProjectiles() sotto controlla collisioni contro
+// `balloons` e `threats` insieme, da quando le spie si possono abbattere
+// "prima che riescano" — vedi il commento su stepProjectiles), ma il
+// grilletto di stepTurretFire scattava SOLO se una minaccia vera era in
+// `fireRange`: una mongolfiera da sola, per quanto vicina, non faceva mai
+// partire un colpo automatico. Ora il controllo di portata considera
+// entrambe le liste. Il laser (fascio istantaneo, niente proiettile: vedi
+// WEAPONS.laser sotto) non toccava proprio le mongolfiere — esteso allo
+// stesso modo di stepProjectiles() per restare coerente.
+//
 // Le tre torrette non sono varianti dello stesso cannone: `WEAPONS` sotto
 // tiene i dati che le differenziano (raggio, ricarica, munizioni, la forma
 // del colpo) mentre `fireFrom()` e' l'unico posto che li interpreta,
 // condiviso da fuoco automatico (stepTurretFire) e manuale al tap
-// (fireTurretManual, solo missile/laser — gatlinggun/Mouse_LeftPressed.gml
-// non spara affatto al tocco, vedi buildings.js).
+// (fireTurretManual — [I] segnalato dall'autore insieme al punto sopra:
+// anche gatlinggun ora risponde al tocco come missile/laser, invece di
+// restare senza effetto come nel decompilato — vedi buildings.js).
 //
 // [I] = semplificato deliberatamente, dettagliato punto per punto sotto.
 
@@ -235,7 +249,7 @@ function payAmmo(weapon, r12) {
  * proprie regole (stepTurretFire gia' sa che una minaccia vera e' in
  * portata, fireTurretManual no). `trails` riceve gli sbuffi di fumo di
  * scia (spawnSmoko sopra) quando l'arma ne crea uno alla bocca. */
-function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails) {
+function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targets, loot) {
   if (weapon.kind === "beam") {
     const off = bucketFor(weapon.muzzle, b.aimAngle);
     const mx = b.x + off.dx, my = b.y + off.dy;
@@ -254,6 +268,20 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails) {
       if (dx * dx + dy * dy > r2) continue;
       th.life -= DAMAGE.laser[th.type];
     }
+    // [I] Segnalato dall'autore: il fascio dovrebbe poter colpire anche le
+    // mongolfiere entro lo stesso raggio — un solo colpo le distrugge
+    // (nessuna `life`, stessa regola gia' vera per un proiettile che le
+    // incontra, vedi stepProjectiles() sotto), con la stessa cassa/loot che
+    // lascerebbero cadute comunque.
+    if (targets) for (let i = targets.length - 1; i >= 0; i--) {
+      const t = targets[i];
+      const dx = t.x - b.x, dy = t.y - b.y;
+      if (dx * dx + dy * dy > r2) continue;
+      targets.splice(i, 1);
+      explosions.push(spawnExplosion(t.x, t.y));
+      const def = BALLOON_TYPES[t.type];
+      if (def?.loot) loot.push(spawnLoot(def.loot, t.x, t.y));
+    }
     return;
   }
   const off = bucketFor(weapon.muzzle, b.aimAngle);
@@ -271,11 +299,13 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails) {
 
 /**
  * Fa sparare le torrette (missile/gatling/laser, tramite `def.aim`): per
- * ognuna, cerca se una minaccia vera e' entro `aim.fireRange`, e se il
- * cannone non e' in ricarica (ne' — solo per laser — a corto di energia)
- * fa partire un colpo verso il bersaglio gia' inseguito (fireFrom sopra).
+ * ognuna, cerca se una minaccia vera O una mongolfiera (`targets` — [I]
+ * segnalato dall'autore, vedi il commento in cima al file) e' entro
+ * `aim.fireRange`, e se il cannone non e' in ricarica (ne' — solo per laser
+ * — a corto di energia) fa partire un colpo verso il bersaglio gia'
+ * inseguito (fireFrom sopra).
  */
-export function stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails) {
+export function stepTurretFire(buildings, targets, threats, dt, projectiles, explosions, r12, trails, loot) {
   for (const b of buildings) {
     const weapon = WEAPONS[b.type];
     if (b.construction || !weapon) continue;
@@ -289,15 +319,20 @@ export function stepTurretFire(buildings, threats, dt, projectiles, explosions, 
       const dx = th.x - b.x, dy = th.y - b.y;
       if (dx * dx + dy * dy < r2) { inRange = true; break; }
     }
+    if (!inRange) for (const t of targets) {
+      const dx = t.x - b.x, dy = t.y - b.y;
+      if (dx * dx + dy * dy < r2) { inRange = true; break; }
+    }
     if (!inRange || !canFireAmmo(weapon, r12)) continue;
     b.fireT = 0;
-    fireFrom(b, weapon, projectiles, explosions, r12, threats, trails);
+    fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targets, loot);
   }
 }
 
 /**
  * Sparo manuale al tap — [C] rocket_launcher|lasergun/Mouse_LeftPressed.gml
- * (gatlinggun non ne ha uno vero, vedi buildings.js): un tocco sul cannone,
+ * ([I] esteso anche a gatlinggun, che nel decompilato non ne ha uno vero —
+ * vedi buildings.js e il commento in cima al file): un tocco sul cannone,
  * se non e' in ricarica e ha un bersaglio entro `aim.range` IN QUESTO
  * ISTANTE, fa partire un colpo — lo stesso `veicoli_target` piu' vicino che
  * il cannone insegue di continuo (`b.aimAngle`/`b.aimTarget`, calcolati
@@ -325,7 +360,7 @@ export function stepTurretFire(buildings, threats, dt, projectiles, explosions, 
  * manualFire`), e' in ricarica, non ha nessun bersaglio in portata adesso,
  * o (solo laser) l'energia non basta.
  */
-export function fireTurretManual(b, projectiles, explosions, r12, threats, trails) {
+export function fireTurretManual(b, projectiles, explosions, r12, threats, trails, targets, loot) {
   const weapon = WEAPONS[b.type];
   if (!weapon || !BUILDING_TYPES[b.type]?.manualFire) return false;
   if (b.aimAngle == null || !b.aimTarget) return false;
@@ -336,7 +371,7 @@ export function fireTurretManual(b, projectiles, explosions, r12, threats, trail
   }
   if ((b.fireT ?? 0) < weapon.cooldown || !canFireAmmo(weapon, r12)) return false;
   b.fireT = 0;
-  fireFrom(b, weapon, projectiles, explosions, r12, threats, trails);
+  fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targets, loot);
   return true;
 }
 
