@@ -2499,3 +2499,22 @@ paragrafo 8.
   supera il primo passo (accorciato) molto prima dei 390 tick normali;
   un'eolico ruspato scala 200000 mon, sparisce da `buildings`, e tutti e 4
   i lotti che occupava tornano piazzabili.
+
+- **Due piccolezze segnalate dall'autore.** (1) Il popup della ruspa
+  disegnava "Back"/"Yes!"/il cartellino a piena grandezza (scale 1),
+  visibilmente piu' grandi dei bottoni del selettore edificio (gia'
+  rimpiccioliti a `UI_SCALE`, 0.6 mobile/0.7 desktop) — `UI_SCALE` portata a
+  livello di modulo (game/src/main.js, prima era locale alla sola funzione
+  di disegno) cosi' anche il popup la riusa, offset scalati di conseguenza
+  per restare ravvicinati. (2) `DEBUG_INFINITE_RESOURCES`
+  (game/src/buildings.js, **[TEST] non comportamento dell'originale**,
+  segnalato esplicitamente come temporaneo): `canAfford()` non blocca piu'
+  niente per mancanza di mon/oil, ma la spesa/produzione VERA continua
+  intatta — `clampR12()` (state.js) accumula il delta genuino su
+  `r12.monReal`/`r12.oilReal` (seminati dai valori di partenza veri, 5500/
+  5000) prima di rialzare la soglia usabile a un valore comodo (999999 mon,
+  gia' il tetto esistente; 500000 di pavimento per l'olio, che non ne ha
+  uno fisso). I valori veri restano leggibili nell'HUD di debug ("[TEST
+  risorse infinite] reale: ..."), la barra vera mostra invece il valore
+  gonfiato. Verificato in browser: piazzata una casa (100 mon) con mon
+  visualizzato fermo a 999999, `r12.monReal` scende comunque di ~100.

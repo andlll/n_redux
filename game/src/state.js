@@ -10,12 +10,16 @@
 // (§6 "Cosa non so ancora": le regole vere dell'economia non sono note) e'
 // marcato [I]: plausibile, da rivedere quando studieremo gli edifici reali.
 
-import { BUILDING_TYPES } from "./buildings.js";
+import { BUILDING_TYPES, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 
 export function createR12() {
   return {
     oil: 5000,        // [C] r12/Create.gml, ramo match_easy
     mon: 5500,         // [C]
+    // [TEST] DEBUG_INFINITE_RESOURCES sopra: il valore genuino, tracciato a
+    // parte da clampR12() — inutile finche' il flag e' spento (resta uguale
+    // a oil/mon).
+    oilReal: 5000, monReal: 5500,
     pop: 0,             // [C]
     ele: 200,           // [C]
     time: 2914,         // [C] orologio di gioco, non il ciclo giorno/notte visivo
@@ -93,13 +97,43 @@ export function tickR12(r12, dt, buildings) {
   clampR12(r12, buildings);
 }
 
+// [TEST] DEBUG_INFINITE_RESOURCES: l'ultimo mon/oil "usabile" impostato da
+// clampR12() alla chiamata precedente — serve solo a misurare quanto la
+// simulazione VERA ha spostato mon/oil da allora (produzione/consumo/costi/
+// wewe, tutti gia' calcolati PRIMA che clampR12() giri), cosi' quel delta
+// genuino si accumula su r12.monReal/oilReal invece che sul valore gonfiato.
+let _lastMon = null, _lastOil = null;
+
 /** Clamp letti da `r12/Step.gml`: [C] tutti tranne il tetto dinamico dell'olio. */
 export function clampR12(r12, buildings) {
+  // [TEST] Va PRIMA dei clamp veri sotto: a questo punto r12.mon/r12.oil
+  // portano gia' tutta l'attivita' economica del giro (chiamate da un tap
+  // — placeAt/tryStartUpgrade/tryRuspaRebuild — o dal ciclo principale —
+  // tickR12/stepConsumption/stepProduction/...), non ancora i clamp veri
+  // qui sotto (ne' il rialzo del debug, che va dopo quelli — vedi sotto).
   r12.oil = Math.min(oilCap(buildings), Math.max(0, r12.oil));   // [C] oil>=0, [C] tetto per livello chies
   r12.crys = Math.min(99, r12.crys);                              // [C]
   r12.ele = Math.min(9999, Math.max(-100, r12.ele));              // [C]
   r12.mon = Math.min(999999, r12.mon);                            // [C]
   r12.pop = Math.max(0, r12.pop);                                 // [C]
+  if (DEBUG_INFINITE_RESOURCES) {
+    // A questo punto r12.mon/r12.oil sono i valori VERI di questo giro, gia'
+    // passati dai clamp reali sopra (compreso il tetto per livello chies
+    // dell'olio) — il delta da quanto valevano l'ultima volta che questa
+    // funzione e' girata (`_lastMon`/`_lastOil`, sotto rialzati insieme al
+    // rialzo del debug) si accumula su r12.monReal/oilReal invece che sul
+    // valore che sta per essere gonfiato.
+    if (_lastMon == null) { _lastMon = r12.mon; _lastOil = r12.oil; }
+    r12.monReal += r12.mon - _lastMon;
+    r12.oilReal += r12.oil - _lastOil;
+    // Lo stesso tetto di mon appena applicato sopra e' gia' un "infinito"
+    // pratico (nessun costo del motore si avvicina a 999999); l'olio non ha
+    // un tetto fisso equivalente (`oilCap()` dipende dal livello di chies,
+    // Infinity finche' resta sotto 2), quindi qui un pavimento dedicato.
+    r12.mon = 999999;
+    r12.oil = Math.max(r12.oil, 500000);
+    _lastMon = r12.mon; _lastOil = r12.oil;
+  }
 }
 
 // [C] r12/Alarm_2.gml, ramo `match` (non `match_easy`): ogni 60 tick, un

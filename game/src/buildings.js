@@ -1482,7 +1482,20 @@ export function placeBuilding(type, x, y, depth) {
   return b;
 }
 
+// [TEST] Richiesto dall'autore mentre si testano le meccaniche economiche
+// appena collegate (wewe/oil, costi della ruspa): con questo flag a `true`
+// nessun costo blocca piu' niente — NON e' comportamento dell'originale, va
+// tolto (o riportato a `false`) prima di considerare il bilanciamento
+// "vero". La spesa VERA continua comunque (`pay()`/`r12[k] -= cost[k]`
+// restano invariati, chiamati normalmente da chi supera questo controllo):
+// solo il blocco sparisce. game/src/state.js (clampR12()) tiene traccia a
+// parte di quanto mon/oil sarebbero DAVVERO in `r12.monReal`/`r12.oilReal`
+// (mostrati nell'HUD di debug da main.js) prima di rialzare la soglia
+// effettivamente usabile.
+export let DEBUG_INFINITE_RESOURCES = true;
+
 export function canAfford(r12, cost) {
+  if (DEBUG_INFINITE_RESOURCES) return true;
   for (const k in cost) if ((r12[k] ?? 0) < cost[k]) return false;
   return true;
 }
