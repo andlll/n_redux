@@ -732,6 +732,32 @@ function destroyBuilding(b) {
   ruins.push({ obj: "decor", x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr) });
 }
 
+/** Avvia un potenziamento e — [C] upcrc12/Mouse_LeftPressed.gml: `with
+ * (cddvd) { action_kill_object(); }` scatta SUBITO al tocco, insieme allo
+ * scalo dei costi e alla comparsa dell'impalcatura, non alla fine del
+ * cantiere — spegne il decoro del livello vecchio (le finestre illuminate,
+ * spawnDecor()/addDecor() sopra) invece di lasciarlo acceso sotto
+ * l'impalcatura fino al prossimo spawnDecor() a fine cantiere. Segnalato
+ * dall'autore ("le luci non devono accendersi mentre c'e' l'impalcatura
+ * sopra chies"): senza questo, il decoro del livello appena lasciato
+ * restava in `decorEntities` — mai rimosso da tryStartUpgrade(), solo
+ * RIMPIAZZATO da spawnDecor() al completamento — e stepLights() lo
+ * continuava ad accendere di notte per tutta la durata del cantiere. */
+function startUpgrade(b) {
+  const err = tryStartUpgrade(b, r12);
+  if (!err) decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
+  return err;
+}
+
+/** Stessa correzione di startUpgrade() sopra, per il cantiere riavviato
+ * dalla ruspa (tryRuspaRebuild() — un impalcatura torna comunque sopra
+ * all'edificio, con lo stesso decoro vecchio da spegnere subito). */
+function ruspaRebuild(b) {
+  const err = tryRuspaRebuild(b, r12);
+  if (!err) decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
+  return err;
+}
+
 /**
  * Il caso a parte della ruspa su `eolico` (`def.construct.ruspaDemolish`,
  * buildings.js): **[C]** `impavent_dem/Alarm_2.gml`, a differenza di OGNI
@@ -1301,7 +1327,7 @@ input.onTap = (sx, sy) => {
         : b.type === "laser" && r12.ele < 200 ? "energia insufficiente"
         : "cannone in ricarica";
     } else {
-      const err = tryStartUpgrade(b, r12);
+      const err = startUpgrade(b);
       message = err ?? "cantiere avviato";
     }
     messageT = 3;
@@ -1322,7 +1348,7 @@ input.onTap = (sx, sy) => {
         message = "demolita — lotti liberi";
       }
     } else {
-      const err = tryRuspaRebuild(b, r12);
+      const err = ruspaRebuild(b);
       message = err ?? "cantiere avviato (ruspa)";
     }
     ruspaPending = null;
@@ -1349,7 +1375,7 @@ input.onTap = (sx, sy) => {
     // gia' fa tap-ovunque-sull'edificio (tryStartUpgrade gia' controlla
     // soglia e costo) — qui e' solo il bersaglio VISIBILE e prioritario
     // quando il potenziamento e' davvero pronto.
-    const err = tryStartUpgrade(picked.ref, r12);
+    const err = startUpgrade(picked.ref);
     message = err ?? "cantiere avviato";
     messageT = 3;
     picked = null;
