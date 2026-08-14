@@ -2518,3 +2518,105 @@ paragrafo 8.
   risorse infinite] reale: ..."), la barra vera mostra invece il valore
   gonfiato. Verificato in browser: piazzata una casa (100 mon) con mon
   visualizzato fermo a 999999, `r12.monReal` scende comunque di ~100.
+
+- **Bug di sincronizzazione impalcatura/gru, e tre gap chiusi su richiesta
+  dell'autore: la faccina della felicita', i pannelli solari sopra un
+  parco, i prestiti bancari.** Diverse sessioni concentrate su rifiniture
+  segnalate giocando, non lette per la prima volta da capo.
+  **Impalcatura**: due bug distinti, entrambi segnalati dall'autore.
+  (1) Gru/topper transitori (`onSpawn` di `stepConstructions()`,
+  "gru1"/"toppers"/"topls") passavano per `addDecor()` con lo stesso
+  default `lit:true` del decoro FINALE (le finestre illuminate) — restavano
+  ad alpha 0 finche' non era notte con energia sufficiente, quasi sempre
+  per tutta la durata di un cantiere. `addConstructionSpawn()` (main.js) li
+  marca `lit:false`: impalcatura vera, sempre visibile. (2) L'edificio
+  finito (sprite/livello/pop/hap/decoro) scattava solo alla chiusura
+  dell'ultimo passo del cantiere, quando l'impalcatura spariva del tutto —
+  **[C]** nel decompilato la traccia "f" crea gia' l'edificio del livello
+  successivo mentre "r" e' ancora nella coda cosmetica finale (STUDIO.md,
+  "due semplificazioni"): `applyLevelFinish()` ora scatta all'INGRESSO
+  dell'ultimo passo (`c.finished`, stepConstructions()), la stessa finestra
+  in cui compare `up.cap` — l'impalcatura resta a schermo sopra un edificio
+  ormai gia' vero, non prima.
+  **Data in barra risorse**: **[C]** esisteva gia' nel decompilato ma su
+  due variabili mai lette — `r12/Alarm_3.gml` (l'anno, gia' `r12.time` ma
+  mai incrementato) e una variabile locale di `repre` chiamata anch'essa
+  "mon" (il mese, NON `r12.mon` — nome confuso apposta, oggetti diversi).
+  Mese ogni 300 tick (5s) Gen->Dic, anno ogni 3600 tick (60s, 12 mesi) —
+  due alarm indipendenti nell'originale, sincronizzate perche' partono
+  insieme, replicate cosi' in `stepCalendar()` (state.js). Testo disegnato
+  col font/pipeline gia' della barra (gotham_mini), stessi offset del
+  decompilato (`repre/DrawGUI.gml`).
+  **La faccina della felicita'** (`hapware`, mai letta prima): l'autore
+  giocando non si ricordava sommosse (una nota molto piu' sopra, gia'
+  superata dalla lettura vera di `coins.js`: la condizione e' `hap>=pop`,
+  non un'improbabile uguaglianza esatta, e produce una MONETA non dei
+  soldati) ma una "faccina che diventa triste sotto una soglia" — **[C]**
+  `hapware/Step.gml`: sprite `hap3` (sorriso) se `r12.hap>=r12.pop`, `hap1`
+  (broncio) altrimenti — la STESSA soglia gia' letta per bloccare le
+  monete blu, mancava solo l'icona. Bonus: `hapware/Create.gml` e' anche
+  dove l'originale imposta `global.upp` (l'offset mai identificato con
+  certezza per notch/status-bar) — Step.gml lo azzera comunque ad ogni
+  frame a prescindere dall'orientamento, confermando (non piu' solo
+  supponendo) che trattarlo come 0 ovunque in questo motore era gia'
+  corretto.
+  **Pannelli solari sopra un parco** (`overpark`/`oversolar`, letto da zero
+  su richiesta): **[C]** `parco/Mouse_LeftPressed.gml`, ramo selec==61 —
+  toccare un parco GIA' FINITO con "Pannelli solari" selezionato costruisce
+  il pannello direttamente sopra di lui (stesso 1000 mon del piazzamento
+  normale, nessun placeholder consumato, il parco resta li' com'e') —
+  `placeSolarOverPark()` (main.js). L'unico effetto a valle e' economico:
+  **[C]** `demobasia/Collision_sooool.gml` fa costare la ruspa sul pannello
+  2700 mon invece di 2000 se `overpark`; **[C]**
+  `demobasia/Collision_parco.gml` non ha PROPRIO un ramo per
+  `oversolar==1` — il parco sottostante diventa permanentemente non
+  ruspabile finche' il pannello resta li' sopra (`ruspaCostFor()` torna
+  `null`, stessa convenzione dei tipi mai ruspabili). Persistito in
+  save.js (`overpark`/`oversolar` sui due edifici, altrimenti un
+  salva/carica li avrebbe persi).
+  **Prestiti bancari** (`bankbuttoner`/`get_loan1..4`, sotto-sistema mai
+  indagato a fondo): **[C]** icona persistente ancorata alla banca appena
+  costruita (`banca1/Create.gml`, offset -50,-40), che apre un pannello
+  con 4 tagli fissi — 25000/50000/100000/250000 mon, tutti a 36 rate
+  mensili di 840/1680/3333/8400 (~20% di interesse totale, "20% interest
+  rate" mostrato dal pannello stesso — un prestito a rate fisse, non
+  composto come suggeriva una nota precedente mai verificata) — **[C]**
+  `repre/Alarm_0.gml`, la STESSA alarm del calendario: le rate scattano nel
+  medesimo tick del mese, ora nello stesso `stepCalendar()`. **[C]**
+  Solo un prestito alla volta: il pannello si riapre solo quando tutti e
+  quattro i contatori tornano a 0 (`loanActive()`, derivato invece di un
+  flag a parte che potrebbe disallinearsi). **[I]** Nel decompilato
+  `loanoscrino` (il pannello) su Android si ricentra sulla view ad ogni
+  Step — di fatto un modale fullscreen sul solo target mobile, replicato
+  qui come vero modale in spazio schermo (non ancorato al mondo come
+  farebbe pensare il punto di creazione relativo a `bankbuttoner`), con
+  scala calcolata invece di `UI_SCALE` fisso (il pannello nativo e' grande
+  quanto un'intera view, non un'iconcina). **[I]** I 4 bottoni prestito
+  nel decompilato si sovrappongono fisicamente (50px fra un centro e
+  l'altro, 88px di altezza ciascuno) — qui impilati senza sovrapposizioni.
+  **[I]** Nessun modo di annullare il pannello senza prendere un prestito
+  nel decompilato (`loanoscrino` si autodistrugge solo quando
+  `bankbuttoner.loaned` diventa 1) — qui un tocco fuori dai bottoni lo
+  chiude senza costo.
+  **Nota emersa testando**: `clampR12()` (state.js,
+  `DEBUG_INFINITE_RESOURCES`) traccia correttamente i cali di `r12.mon`
+  vero su `monReal` ma non gli AUMENTI che portano `mon` sopra 999999 —
+  il clamp generico (`Math.min(999999, mon)`, PRIMA del calcolo del delta)
+  azzera il guadagno prima che venga contato. Osservato prendendo un
+  prestito (mon gia' a 999999 per il debug): `monReal` non saliva.
+  Riguarda solo l'impalcatura di test (mai un problema a flag spento,
+  dove `mon` non e' mai pinnato), non corretto qui — segnalato per quando
+  quel flag verra' tolto.
+  Sprite aggiunti a `GAMEPLAY_SPRITES` (tools/23_atlas.py): `hap1`/`hap3`
+  (faccina, categoria gui — hap2/hap1hc/hap3hc, la variante hover mai
+  riprodotta, restano fuori), `bancobutt`/`loanscr`/`getlo1..4` (prestiti).
+  Verificato in browser (Playwright, `window.__nimbus`): forzando
+  `r12.pop` sopra `r12.hap` la faccina passa da sorriso a broncio;
+  toccare un parco finito con "Pannelli solari" selezionato crea un
+  secondo edificio co-locato (`overpark:true`), il parco diventa non
+  ruspabile (`ruspaCostFor` -> null), e la ruspa sul pannello finito costa
+  2700 invece di 2000; toccare l'icona banca apre il pannello, un tocco su
+  "25000 in 3 years" lo chiude e arma `loanUno=36`, un secondo tocco
+  sull'icona non riapre nulla finche' il prestito e' attivo, e dopo un
+  mese simulato (`stepCalendar`, isolato dal clamp di debug) `mon` scende
+  di 840 e `loanUno` di 1.

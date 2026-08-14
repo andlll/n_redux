@@ -519,13 +519,10 @@ export const BUILDING_TYPES = {
       finalSprite: "sool", life: 50,              // [C] sooool/Create.gml
       wewe: 10,                                    // [C] sooool/Create.gml: wewe += 10 — peso su `match`, state.js
       // [C] sooool/Mouse_LeftPressed.gml, ramo selec==11: 2000 mon SE il
-      // pannello non e' su un parco (`overpark`), 2700 se lo e' —
-      // **[I] `overpark`** (pannelli solari costruibili sopra un parco,
-      // `parco/Mouse_LeftPressed.gml` ramo selec==61) e' una meccanica a
-      // parte MAI ricostruita qui (nessun modo di piazzare solare su un
-      // parco esistente in questo motore): sempre il ramo normale, 2000.
-      // `impasoldem1r/Create.gml` arma il primo alarm a 30 tick, non 370
-      // come `impasolr`.
+      // pannello non e' su un parco, 2700 se lo e' (`overpark` — main.js,
+      // placeSolarOverPark(); il sovrapprezzo vero e proprio e' in
+      // ruspaCostFor() sopra, questo resta il costo base). `impasoldem1r/
+      // Create.gml` arma il primo alarm a 30 tick, non 370 come `impasolr`.
       ruspaCost: 2000, ruspaFirstStepDur: 30,
       // [C] sooool/Step.gml: create_object(ruinsol) — proprio rudere, un
       // solo dado a due vie (ruinsol/Create.gml: default "soolr1", 50% di
@@ -1654,8 +1651,19 @@ function currentLevelDef(b) {
 /** Il costo ruspa (demolizione/riparazione) dell'edificio al suo livello
  * attuale — `null` se il tipo/livello non e' ruspabile (chies/monum/banca/
  * grattacielo: nessuno dei loro oggetti nel decompilato ha un ramo
- * `Mouse_LeftPressed.gml` per selec==11). */
+ * `Mouse_LeftPressed.gml` per selec==11).
+ *
+ * `overpark`/`oversolar` (main.js, placeSolarOverPark()): **[C]**
+ * `demobasia/Collision_sooool.gml` legge il costo della ruspa su un
+ * pannello solare 2700 mon se `overpark`, 2000 altrimenti — un pannello
+ * costruito sopra un parco costa di piu' da smontare/riparare. **[C]**
+ * `demobasia/Collision_parco.gml` invece non ha PROPRIO un ramo per
+ * `oversolar==1` (solo per `oversolar==0`, 500 mon): un parco con un
+ * pannello sopra non e' affatto ruspabile finche' il pannello resta li'
+ * — `null`, stessa convenzione gia' usata per i tipi non ruspabili sopra. */
 export function ruspaCostFor(b) {
+  if (b.type === "parco" && b.oversolar) return null;
+  if (b.type === "solare" && b.overpark) return 2700;
   return currentLevelDef(b)?.ruspaCost ?? null;
 }
 

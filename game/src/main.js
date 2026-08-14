@@ -1,7 +1,7 @@
 import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
-import { createR12, tickR12, stepWeather, stepCalendar } from "./state.js";
+import { createR12, tickR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
@@ -348,6 +348,20 @@ let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 // ramo "building" di input.onTap piu' sotto per come si arma/si conferma.
 let ruspaPending = null;   // { buildingId, cost } — la posizione si legge da b.x/b.y quando serve, non duplicata qui
 
+// Il pannello prestiti (src/objects/loanoscrino + get_loan1..4, state.js
+// LOANS/loanActive/takeLoan): a differenza del popup della ruspa (ancorato
+// al mondo, vicino all'edificio) e' un vero modale in spazio schermo — [C]
+// `loanoscrino/Step.gml`, ramo `os_type==4` (Android, il nostro target):
+// si RICENTRA sulla view ad ogni Step, di fatto un overlay fullscreen sul
+// solo target mobile del decompilato, non ancorato al mondo come sembra
+// dal punto di creazione relativo a `bankbuttoner`. `true` = aperto (un
+// solo banca possibile per partita, STUDIO.md — nessun bisogno di un id).
+// `bankButtons` sono i rettangoli schermo dei 4 bottoni prestito,
+// ricalcolati ad ogni frame dal disegno (stesso schema di `uiButtons`),
+// letti da input.onTap sotto.
+let bankPanelOpen = false;
+let bankButtons = [];   // { x, y, w, h, index }
+
 // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
 // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
 // { action_kill_object(); }` dentro upcrc12/upcrc23, stesso schema per
@@ -554,6 +568,33 @@ function placeAt(placeholder, type) {
     || type === "monum" || type === "banca") {
     constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y));
   }
+  return null;
+}
+
+/**
+ * `parco/Mouse_LeftPressed.gml`, ramo selec==61: un secondo modo di
+ * piazzare `solare`, mai attraversato da `placeAt()` sopra (nessun
+ * placeholder coinvolto — l'edificio nasce esattamente sopra un `parco`
+ * gia' finito, che non viene ne' consumato ne' ucciso). **[C]** stesso
+ * costo del piazzamento normale (1000 mon, letto identico in entrambi i
+ * rami del decompilato) — l'UNICA differenza reale e' cosmetica/economica
+ * a valle: `overpark`/`oversolar` (impostati qui invece che da una vera
+ * collisione fisica, l'unico modo in cui i due potrebbero mai toccarsi)
+ * fanno costare di piu' la ruspa sul pannello (2700 invece di 2000,
+ * `ruspaCostFor()` in buildings.js) e disabilitano del tutto quella sul
+ * parco sottostante (nessun ramo per `oversolar==1` in
+ * `demobasia/Collision_parco.gml`: il parco non si puo' piu' demolire/
+ * riparare finche' il pannello resta li' sopra).
+ */
+function placeSolarOverPark(parco) {
+  const def = BUILDING_TYPES.solare;
+  if (!canAfford(r12, def.placeCost)) return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
+  for (const k in def.placeCost) r12[k] -= def.placeCost[k];
+  const b = placeBuilding("solare", parco.x, parco.y, 0);
+  b.overpark = true;
+  parco.oversolar = true;
+  buildings.push(b);
+  constructionBalloons.push(spawnConstructionBalloon(parco.x, parco.y));
   return null;
 }
 
@@ -1201,6 +1242,26 @@ function collectCoinAt(item) {
 }
 
 input.onTap = (sx, sy) => {
+  // Il pannello prestiti (bankPanelOpen sopra), quando aperto, e' un vero
+  // modale: intercetta il tocco PRIMA di ogni altra cosa (bottoni,
+  // piazzamento, mondo). Un tocco su uno dei 4 bottoni prende quel
+  // prestito; altrove lo chiude senza fare niente — [I] l'originale non ha
+  // un vero "annulla" (l'unico modo per chiudere `loanoscrino` e'
+  // prenderne uno, `loanoscrino/Step.gml` si autodistrugge solo quando
+  // `bankbuttoner.loaned` diventa 1): qui un tocco fuori dai bottoni
+  // chiude senza costo, piu' comodo di un pannello che non si puo' annullare.
+  if (bankPanelOpen) {
+    const hit = bankButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+    if (hit) {
+      takeLoan(r12, hit.index);
+      message = `prestito di ${LOANS[hit.index].amount} mon ottenuto`;
+    } else {
+      message = "";
+    }
+    bankPanelOpen = false;
+    messageT = 3;
+    return;
+  }
   // Un gesto di piazzamento a trascinamento e' gia' stato armato da
   // `input.onPointerDown` per lo stesso tocco (vedi sopra): il rilascio lo
   // risolve gia' `input.onPointerUp` (resolvePlacement()), che scatta
@@ -1252,7 +1313,8 @@ input.onTap = (sx, sy) => {
   // della ruspa, stesso depth) sono qui per lo stesso motivo.
   for (const it of frameList) {
     if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
-      && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo") continue;
+      && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo"
+      && it.obj !== "bankIcon") continue;
     // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
     // stessa ragione della raccolta hover piu' sotto. Tutto il resto
     // (edifici, casse, monete, segnale di potenziamento) resta sul
@@ -1311,6 +1373,20 @@ input.onTap = (sx, sy) => {
     messageT = 3;
   } else if (picked.obj === "building") {
     const b = picked.ref;
+    // [C] parco/Mouse_LeftPressed.gml, ramo selec==61: un tocco su un parco
+    // GIA' FINITO con "Pannelli solari" selezionato non richiede un
+    // placeholder libero — crea il pannello direttamente sopra il parco
+    // (stessa x/y, il parco resta li' com'e', mai ucciso). `placeSolarOverPark()`
+    // sotto marca `overpark`/`oversolar` sui due edifici, esattamente come
+    // le collisioni reciproche `sooool/Collision_parco.gml` +
+    // `parco/Collision_sooool.gml` dell'originale (qui non serve una vera
+    // collisione: e' l'UNICO modo in cui potrebbero mai toccarsi).
+    if (!b.construction && b.type === "parco" && r12.selec === 61) {
+      const err = placeSolarOverPark(b);
+      message = err ?? "pannelli solari piazzati sul parco (-1000 mon)";
+      messageT = 3;
+      return;
+    }
     // [C] casa1|industria1|.../Mouse_LeftPressed.gml, ramo selec==11 (la
     // ruspa, OTHER_BUILDINGS sotto): un tocco su un edificio FINITO arma il
     // popup si'/no invece di potenziare/sparare — `demobasia/Create.gml`
@@ -1397,6 +1473,17 @@ input.onTap = (sx, sy) => {
     // quando il potenziamento e' davvero pronto.
     const err = startUpgrade(picked.ref);
     message = err ?? "cantiere avviato";
+    messageT = 3;
+    picked = null;
+  } else if (picked.obj === "bankIcon") {
+    // [C] bankbuttoner/Mouse_LeftPressed.gml: apre il pannello solo se
+    // NESSUN prestito e' gia' attivo (`loaned==0` nel decompilato, qui
+    // `loanActive()` — vedi il commento li' per il perche').
+    if (loanActive(r12)) {
+      message = "prestito gia' attivo";
+    } else {
+      bankPanelOpen = true;
+    }
     messageT = 3;
     picked = null;
   }
@@ -1568,6 +1655,17 @@ function frame(now) {
       // segnale simbolico dell'interfaccia — deve restare leggibile anche di
       // notte, non scurirsi con la tinta ambientale come un edificio vero.
       dynamic.push({ obj: "upsign", ref: b, x: b.x, y: b.y, depth: UPSIGN_DEPTH, _f: frameFor("upico"), _selfLit: true });
+    }
+    // L'iconcina prestiti (obj: "bankIcon") — [C] banca1/Create.gml:
+    // `action_create_object(bankbuttoner, -50, -40)`, persistente per
+    // tutta la vita della banca (mai un cantiere in corso da aspettare:
+    // creata insieme all'edificio finito, uccisa insieme a lui —
+    // `banca1/Destroy.gml`, qui equivale a non pushare niente quando
+    // l'edificio sparisce da `buildings`, nessuna pulizia esplicita
+    // serve). Depth -9100, un filo davanti a upsign (-9001): [C]
+    // bankbuttoner/_object.json.
+    if (b.type === "banca" && !b.construction) {
+      dynamic.push({ obj: "bankIcon", ref: b, x: b.x - 50, y: b.y - 40, depth: -9100, _f: frameFor("bancobutt"), _selfLit: true });
     }
     // Popup si'/no della ruspa (ruspaPending, armato da input.onTap sotto)
     // — [C] demobasia/Create.gml: demobachia (annulla, sprite "demoback")
@@ -1841,6 +1939,25 @@ function frame(now) {
   // la y a cui l'originale disegnava l'icona stessa).
   drawText(r, fontMini, MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 0, 1, 0x000000, 1);
   drawText(r, fontMini, String(Math.round(r12.time)), barX + 448, barY + 20, 1, 0x000000, 1);
+  // La "faccina" della felicita' (src/objects/hapware — segnalata
+  // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
+  // che diventa triste quando la felicita' scende sotto una soglia" — la
+  // nota precedente su una sommossa con soldati era gia' stata corretta,
+  // vedi il commento su BUILDING_TYPES.casa in buildings.js, ma questa
+  // faccina non era mai stata letta prima d'ora). **[C]** hapware/Step.gml:
+  // `hap3` (sorriso) se `r12.hap>=r12.pop`, `hap1` (broncio) altrimenti —
+  // esattamente la stessa soglia gia' usata per bloccare le monete blu
+  // (coins.js, stepCoinSpawner: "hap<pop" salta la generazione), quindi
+  // "gli edifici non generano piu' soldi" e "la faccina diventa triste"
+  // sono gia' la STESSA condizione, solo la seconda meta' (l'icona) mancava.
+  // Posizione/scala **[C]** dirette da hapware/Create|Step.gml: scala 0.62
+  // fissa (mai moltiplicata per `global.sca`/UI_SCALE in questo motore,
+  // stesso trattamento gia' scelto per la barra risorse — STUDIO.md §9,
+  // "zero zoom" sulla UI), offset (520, 42) in coordinate GML ribasate su
+  // `barY` come pop/olio/energia/denaro/data sopra (barY corrisponde a
+  // GML y=20, quindi 42-20=22).
+  const hapFrame = frameFor(r12.hap >= r12.pop ? "hap3" : "hap1");
+  if (hapFrame) r.draw(hapFrame, barX + 520, barY + 22, 0.62, 0xffffff, 1);
 
   // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
   // ancora ricostruita (STUDIO.md §6/§9), e replica la struttura a tre
@@ -1977,6 +2094,36 @@ function frame(now) {
       r.draw(ainco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
     }
   }
+  // Il pannello prestiti (bankPanelOpen, state.js LOANS) — vero modale in
+  // spazio schermo (vedi il commento su bankPanelOpen piu' sopra per il
+  // perche'), disegnato per ultimo cosi' resta sempre sopra a tutto il
+  // resto della GUI. `loanscr`/`getlo1..4` hanno gia' l'origine al centro
+  // (data/sprites.json), quindi il centro schermo e' gia' il punto giusto,
+  // come "ainco" sopra. Scala calcolata invece di UI_SCALE fisso: "loanscr"
+  // (540x1086) e' grande quanto un'intera view, UI_SCALE (pensata per le
+  // iconcine da ~100px del resto della barra) lo lascerebbe enorme o
+  // minuscolo a seconda dello schermo — qui si adatta sempre a circa l'85%
+  // del piu' piccolo fra larghezza/altezza disponibili.
+  bankButtons = [];
+  if (bankPanelOpen) {
+    const bankScale = Math.min(canvas.clientWidth / 540, canvas.clientHeight / 1086) * 0.85;
+    const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
+    const panelFrame = frameFor("loanscr");
+    if (panelFrame) r.draw(panelFrame, cx, cy, bankScale, 0xffffff, 1);
+    // [I] I quattro bottoni nel decompilato stavano a (270,-200..-50) da
+    // `bankbuttoner`, 50px di distanza fra un centro e l'altro — meno dei
+    // loro stessi 88px di altezza, quindi si sovrapporrebbero. Qui invece
+    // impilati senza sovrapposizioni, centrati nell'area vuota del
+    // pannello fra il titolo e la nota sul tasso.
+    const offsets = [-165, -55, 55, 165];
+    for (let i = 0; i < LOANS.length; i++) {
+      const f = frameFor(`getlo${i + 1}`);
+      if (!f) continue;
+      const bx = cx, by = cy + offsets[i] * bankScale;
+      r.draw(f, bx, by, bankScale, 0xffffff, 1);
+      bankButtons.push({ x: bx - (f.w * bankScale) / 2, y: by - (f.h * bankScale) / 2, w: f.w * bankScale, h: f.h * bankScale, index: i });
+    }
+  }
   r.flush();
 
   // --- HUD testuale di debug: numeri e stato dettagliato per lo sviluppo,
@@ -2047,6 +2194,8 @@ window.__nimbus = {
   get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
   get aerSmoke() { return aerSmoke; }, get debris() { return debris; }, get ruins() { return ruins; },
   get blockedSlots() { return blockedSlots; }, get placeholders() { return placeholders; },
+  get bankPanelOpen() { return bankPanelOpen; }, setBankPanelOpen: (v) => { bankPanelOpen = v; },
+  get bankButtons() { return bankButtons; },
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,
