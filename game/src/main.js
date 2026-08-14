@@ -407,6 +407,22 @@ function addDecor(building, spawns) {
   }
 }
 
+/** `onSpawn` di stepConstructions() (buildings.js): le gru e i "topper"
+ * (toppers/topls) creati durante un cantiere — [C] gru1/toppers/Create.gml,
+ * nessuno dei due nel decompilato e' `notte_target`: sono impalcature vere,
+ * illuminate come il resto della scena dalla tinta ambientale, non un
+ * bagliore di finestra che ha bisogno di notte+corrente per comparire.
+ * Segnalato dall'autore ("non vedo mai il top delle impalcature"): passare
+ * `addDecor` diretto come `onSpawn` li faceva nascere con `lit:true` di
+ * default (lo stesso usato per il decoro FINALE, le finestre — vedi sopra),
+ * quindi restavano ad alpha 0 per tutta la durata tipica di un cantiere
+ * (mai una notte intera con energia sufficiente, la stessa soglia di
+ * stepLights()) — invisibili non per un bug di rendering ma perche' il
+ * motore li trattava come una luce mai accesa. */
+function addConstructionSpawn(building, spawns) {
+  addDecor(building, spawns.map((s) => ({ ...s, lit: false })));
+}
+
 // [C] parco/Create.gml: 7 posizioni fisse intorno al parco: ognuna, a dado
 // (1/`dice`), puo' diventare un albero o un lampione — mai entrambi, mai
 // garantito. `dice` e' la probabilita' che lo slot generi QUALCOSA; quale
@@ -1430,7 +1446,7 @@ function frame(now) {
   const dawn = isDawn(phaseT);
 
   // --- simulazione: cantieri, economia, meteo, traffico, luci
-  stepConstructions(buildings, dt, r12, spawnDecor, addDecor);
+  stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn);
   stepProduction(buildings, dt, r12);
   stepSolarProduction(buildings, dt, r12, night, dawn);
   stepWindProduction(buildings, dt, r12);

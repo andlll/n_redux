@@ -1687,12 +1687,75 @@ export function tryRuspaRebuild(b, r12) {
   return null;
 }
 
+/** Applica il salto di livello vero e proprio (pop/hap/wewe/vita/sprite
+ * finale/decoro/contatori azzerati) — estratto da stepConstructions() sotto
+ * perche' ora scatta in un punto diverso da quando `b.construction` viene
+ * tolto (vedi il commento li' per il perche'). */
+function applyLevelFinish(b, def, up, c, r12, onDecor) {
+  // hap (industria/parco, `up.hap`/`oldDef.hap` in BUILDING_TYPES sopra):
+  // l'originale distrugge l'istanza del livello vecchio e ne crea una
+  // nuova per il livello nuovo, ognuna con il proprio Create.gml/
+  // Destroy.gml — qui e' la STESSA istanza che continua, quindi il
+  // "destroy" del livello che si sta lasciando va applicato esplicitamente
+  // insieme al "create" di quello nuovo: i due non si annullano a vicenda
+  // (i numeri del decompilato non sono simmetrici, vedi industria sopra).
+  // Nessun effetto per i tipi che non dichiarano `hap` (casa, chies).
+  const oldDef = c.upgradeIndex === -1 ? null
+    : c.upgradeIndex === 0 ? def.construct : def.upgrades[c.upgradeIndex - 1];
+  if (oldDef?.hap?.destroy) r12.hap += oldDef.hap.destroy;
+  if (c.upgradeIndex === -1) b.level = 1; else b.level++;
+  if (up.hap?.create) r12.hap += up.hap.create;
+  // [C] `wewe` (peso della piattaforma su `match`, state.js): scritto
+  // alla nascita di ogni livello che lo dichiara, mai sottratto (nessun
+  // Destroy.gml del decompilato lo tocca — un edificio distrutto non
+  // "alleggerisce" la piattaforma, fedele com'e').
+  if (up.wewe) r12.wewe = (r12.wewe ?? 0) + up.wewe;
+  b.life = up.life ?? (b.life + (up.lifeBonus ?? 0));
+  if (up.grantPop) r12.pop += up.grantPop;   // [C] casa1|2|3/Create.gml: pop += N alla nascita del livello
+  if (up.variants) {
+    // Edifici a variante casuale (casa/parco/club: uniforme; villa: pesato
+    // — vedi pickVariant() sopra) — sprite+decoro scelti una volta e
+    // persistiti sull'istanza.
+    const v = pickVariant(up.variants);
+    b.spr = v.spr;
+    b.decorSpr = v.decor;
+    onDecor?.(b, [v.decor]);
+  } else {
+    b.spr = up.finalSprite;
+    onDecor?.(b, up.decor);
+  }
+  // [C] industria1|2|3/Create.gml + casa1|2|3/Create.gml: `makee`/`ava`
+  // partono da 0 ad ogni livello. Nell'originale ogni livello e' un
+  // oggetto diverso che riparte da zero; qui e' lo stesso building che
+  // continua, quindi i contatori vanno azzerati esplicitamente ad ogni
+  // salto (insieme ai timer che li accumulano, cosi' non scattano subito
+  // con un resto lasciato dal livello precedente).
+  b.makee = 0; b.prodT = 0;
+  b.ava = 0; b.growthT = 0; b.growthNext = null; b.consT = 0;
+  // [C] casa1|2|3/Create.gml: `action_set_alarm(600, 4)`, riarmato a ogni
+  // livello — il pulsante blu della moneta (game/src/coins.js) riparte
+  // da zero ad ogni salto, stessa ragione dei contatori sopra.
+  b.coinT = 0; b.coinNext = COIN_FIRST_DELAY;
+}
+
 /**
  * Avanza tutti i cantieri in corso di `dt` secondi.
  * `onDecor(b, sprites)` sostituisce il decoro finale dell'edificio (fine
  * cantiere). `onSpawn(b, [{spr,dx,dy}])` aggiunge decoro transitorio
  * (gru/macerie) che sparisce quando `onDecor` rimpiazza tutto a fine
  * cantiere.
+ *
+ * [I] Segnalato dall'autore: l'edificio finito deve comparire quando
+ * l'impalcatura ENTRA nell'ultimo passo (la fase di smontaggio — la stessa
+ * finestra in cui compare `up.cap`, sotto), non quando quel passo finisce.
+ * [C] Nel decompilato la traccia "f" (impalcatura in sovraimpressione, mai
+ * ricostruita per intero — STUDIO.md "due semplificazioni") crea gia'
+ * l'edificio del livello successivo MENTRE "r" e' ancora impegnata nella
+ * coda cosmetica finale, che qui e' un solo passo lungo invece della sua
+ * vera durata (11 tic mai portati): la costruzione vera e' gia' finita da
+ * quel momento, resta solo la scenografia dello smontaggio — `applyLevelFinish()`
+ * sopra ora scatta li' (`c.finished`), non piu' quando l'ultimo passo
+ * chiude e l'impalcatura sparisce per davvero.
  */
 export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
   for (const b of buildings) {
@@ -1704,6 +1767,10 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
     if (c.curSpr === undefined) {
       c.curSpr = pickSpr(cur.spr);
       if (cur.spawn) onSpawn?.(b, cur.spawn);
+      if (c.stepIndex === up.steps.length - 1 && !c.finished) {
+        applyLevelFinish(b, def, up, c, r12, onDecor);
+        c.finished = true;
+      }
     }
     if (up.drain) {
       c.drainT = (c.drainT ?? 0) + dt;
@@ -1711,7 +1778,11 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
       while (c.drainT >= period) { c.drainT -= period; r12.mon -= up.drain.mon; }
     }
     c.t += dt;
-    b.spr = c.curSpr;
+    // Finche' non e' l'ultimo passo lo sprite disegnato e' ancora il
+    // cantiere generico (`c.curSpr`); da quando applyLevelFinish() sopra ha
+    // gia' girato (`c.finished`) resta quello vero appena assegnato, non
+    // va piu' sovrascritto ogni frame.
+    if (!c.finished) b.spr = c.curSpr;
     b.frontSpr = frontSprFor(c.curSpr);
     // Il coperchio a gru (`up.cap`) compare durante l'ultimo passo: e'
     // sempre quello lungo ("l'edificio e' quasi finito", vedi steps sopra),
@@ -1732,53 +1803,16 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
       cur = up.steps[c.stepIndex];
       c.curSpr = pickSpr(cur.spr);
       if (cur.spawn) onSpawn?.(b, cur.spawn);
-    } else {
-      // hap (industria/parco, `up.hap`/`oldDef.hap` in BUILDING_TYPES sopra):
-      // l'originale distrugge l'istanza del livello vecchio e ne crea una
-      // nuova per il livello nuovo, ognuna con il proprio Create.gml/
-      // Destroy.gml — qui e' la STESSA istanza che continua, quindi il
-      // "destroy" del livello che si sta lasciando va applicato esplicitamente
-      // insieme al "create" di quello nuovo: i due non si annullano a vicenda
-      // (i numeri del decompilato non sono simmetrici, vedi industria sopra).
-      // Nessun effetto per i tipi che non dichiarano `hap` (casa, chies).
-      const oldDef = c.upgradeIndex === -1 ? null
-        : c.upgradeIndex === 0 ? def.construct : def.upgrades[c.upgradeIndex - 1];
-      if (oldDef?.hap?.destroy) r12.hap += oldDef.hap.destroy;
-      if (c.upgradeIndex === -1) b.level = 1; else b.level++;
-      if (up.hap?.create) r12.hap += up.hap.create;
-      // [C] `wewe` (peso della piattaforma su `match`, state.js): scritto
-      // alla nascita di ogni livello che lo dichiara, mai sottratto (nessun
-      // Destroy.gml del decompilato lo tocca — un edificio distrutto non
-      // "alleggerisce" la piattaforma, fedele com'e').
-      if (up.wewe) r12.wewe = (r12.wewe ?? 0) + up.wewe;
-      b.life = up.life ?? (b.life + (up.lifeBonus ?? 0));
-      if (up.grantPop) r12.pop += up.grantPop;   // [C] casa1|2|3/Create.gml: pop += N alla nascita del livello
-      if (up.variants) {
-        // Edifici a variante casuale (casa/parco/club: uniforme; villa: pesato
-        // — vedi pickVariant() sopra) — sprite+decoro scelti una volta e
-        // persistiti sull'istanza.
-        const v = pickVariant(up.variants);
-        b.spr = v.spr;
-        b.decorSpr = v.decor;
-        onDecor?.(b, [v.decor]);
-      } else {
-        b.spr = up.finalSprite;
-        onDecor?.(b, up.decor);
+      if (c.stepIndex === up.steps.length - 1 && !c.finished) {
+        applyLevelFinish(b, def, up, c, r12, onDecor);
+        c.finished = true;
       }
+    } else {
+      // L'edificio (livello/sprite/decoro/contatori) e' gia' stato
+      // finalizzato all'ingresso dell'ultimo passo, sopra — qui resta solo
+      // da far sparire l'impalcatura residua, smontata per davvero.
       b.construction = null;
       b.frontSpr = null; b.capSpr = null;
-      // [C] industria1|2|3/Create.gml + casa1|2|3/Create.gml: `makee`/`ava`
-      // partono da 0 ad ogni livello. Nell'originale ogni livello e' un
-      // oggetto diverso che riparte da zero; qui e' lo stesso building che
-      // continua, quindi i contatori vanno azzerati esplicitamente ad ogni
-      // salto (insieme ai timer che li accumulano, cosi' non scattano subito
-      // con un resto lasciato dal livello precedente).
-      b.makee = 0; b.prodT = 0;
-      b.ava = 0; b.growthT = 0; b.growthNext = null; b.consT = 0;
-      // [C] casa1|2|3/Create.gml: `action_set_alarm(600, 4)`, riarmato a ogni
-      // livello — il pulsante blu della moneta (game/src/coins.js) riparte
-      // da zero ad ogni salto, stessa ragione dei contatori sopra.
-      b.coinT = 0; b.coinNext = COIN_FIRST_DELAY;
     }
   }
 }
