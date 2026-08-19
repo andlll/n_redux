@@ -13,8 +13,9 @@ import {
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
-import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
-import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
+import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
+import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
+import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText, measureText } from "./font.js";
 
@@ -870,7 +871,7 @@ function destroyBuilding(b) {
  * RIMPIAZZATO da spawnDecor() al completamento — e stepLights() lo
  * continuava ad accendere di notte per tutta la durata del cantiere. */
 function startUpgrade(b) {
-  const err = tryStartUpgrade(b, r12);
+  const err = tryStartUpgrade(b, r12, buildings);
   if (!err) decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
   return err;
 }
@@ -1740,6 +1741,11 @@ function frame(now) {
   // duplicare la logica di disegno.
   if (!paused) {
     stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
+    // Impalcatura/gru rotanti del grattacielo (game/src/scaffold.js): un
+    // sotto-sistema di scenografia indipendente, non un `onSpawn`/`onFinish`
+    // di stepConstructions() sopra — vedi il commento in scaffold.js per il
+    // perche'.
+    stepGrattacieloScaffold(buildings, dt);
     stepProduction(buildings, dt, r12);
     stepSolarProduction(buildings, dt, r12, night, dawn);
     stepWindProduction(buildings, dt, r12);
@@ -1769,7 +1775,9 @@ function frame(now) {
     // cantiere che casa/industria si porta dietro (spawnato da placeAt(),
     // solo avanzato qui).
     stepBalloonSpawner(r12, balloons, dt, buildings);
-    stepBalloons(balloons, loot, dt, r12);
+    // onStruck: [C] Alarm_5.gml crea "esplo" prima di uccidersi per
+    // fulmine — vedi il commento in stepBalloons() (balloons.js).
+    stepBalloons(balloons, loot, dt, r12, (x, y) => explosions.push(spawnExplosion(x, y)));
     stepLoot(loot, dt);
     // I pulsanti blu delle monete (game/src/coins.js): casa1|2|3/Alarm_4.gml,
     // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
@@ -1796,7 +1804,9 @@ function frame(now) {
       if (coinPops[i].t >= COIN_POP_LIFE) coinPops.splice(i, 1);
     }
     stepConstructionBalloons(constructionBalloons, constructionBoxes, dt);
-    stepConstructionBoxes(constructionBoxes, dt);
+    // onLand: [C] mon_box|mon_bbox/Alarm_0.gml crea "smoko" prima di
+    // autodistruggersi — vedi il commento in stepConstructionBoxes() (balloons.js).
+    stepConstructionBoxes(constructionBoxes, dt, (x, y) => trails.push(spawnSmoko(x, y)));
     // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
     // bombardieri/zeppelin man mano che le spie ignorate si accumulano
     // (contatori alzati in stepBalloons() sopra), poi ognuno vola, bombarda,
@@ -1853,13 +1863,17 @@ function frame(now) {
     // l'ordine con cui e' stato costruito, STUDIO.md sopra su sortWorld).
     if (b.frontSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.frontSpr) });
     if (b.capSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.capSpr) });
+    // Impalcatura/gru rotanti del grattacielo (game/src/scaffold.js): decoro
+    // puro, si scurisce di notte come ogni altro (nessun `_selfLit`, vedi
+    // scaffoldParts()).
+    for (const p of scaffoldParts(b)) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
     // Il segnale verde di potenziamento (obj: "upsign") — [C] upsign12|23/
     // upcrc12|23/upind12|23, tutti la stessa icona "upico" (un pin verde
     // con una freccia in su): compare quando il potenziamento e' davvero
     // sbloccato (stessa soglia gia' letta da tryStartUpgrade()) e nessun
     // cantiere e' gia' in corso. Depth -9001, un filo piu' avanti delle
     // monete blu (-9000): [C] upsign12/_object.json, sempre in primo piano.
-    if (!b.construction && upgradeUnlocked(b, r12)) {
+    if (!b.construction && upgradeUnlocked(b, r12, buildings)) {
       // `_selfLit`: come le luci delle finestre (stepLights() sopra), un
       // segnale simbolico dell'interfaccia — deve restare leggibile anche di
       // notte, non scurirsi con la tinta ambientale come un edificio vero.
@@ -2066,7 +2080,7 @@ function frame(now) {
     const hw = cam.screenToWorld(input.hover.x, input.hover.y);
     const upicoFrame = frameFor("upico");
     if (upicoFrame) for (const b of buildings) {
-      if (b.construction || !upgradeUnlocked(b, r12)) continue;
+      if (b.construction || !upgradeUnlocked(b, r12, buildings)) continue;
       if (!inFrameRect(hw.x, hw.y, b.x, b.y, upicoFrame)) continue;
       const tagFrame = frameFor(costTagSprite(b.type, b.level - 1));
       if (tagFrame) {
@@ -2369,12 +2383,20 @@ function frame(now) {
     const g = BUILDING_TYPES[b.type].growth?.[b.level - 1];
     if (b.construction) status += `  [cantiere in corso]`;
     else if (up) {
-      if (upgradeUnlocked(b, r12)) {
+      if (upgradeUnlocked(b, r12, buildings)) {
         status += `  potenziamento pronto (${Object.entries(up.cost).map(([k, v]) => v + " " + k).join(", ")})`;
       } else if (up.atMakee != null) {
         status += `  prossimo potenziamento a ${up.atMakee} cicli di produzione (ora ${b.makee ?? 0})`;
       } else if (up.atAva != null) {
-        status += `  prossimo potenziamento a crescita completa (${b.ava ?? 0}/${up.atAva})`;
+        // [C] casa4s|d/Alarm_2.gml: ava==5 da solo non basta per palazzo —
+        // serve anche chies al livello 3 (up.requiresChiesLevel, letto sopra
+        // da upgradeUnlocked/tryStartUpgrade). Segnalato solo quando e'
+        // DAVVERO il gate mancante (crescita gia' completa), altrimenti resta
+        // il messaggio di crescita come per ogni altro edificio ad ava.
+        const avaDone = (b.ava ?? 0) >= up.atAva;
+        status += avaDone && up.requiresChiesLevel != null
+          ? `  serve la chiesa al livello ${up.requiresChiesLevel}`
+          : `  prossimo potenziamento a crescita completa (${b.ava ?? 0}/${up.atAva})`;
       } else {
         status += `  prossimo potenziamento a pop ${up.atPop}`;
       }

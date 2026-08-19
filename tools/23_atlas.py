@@ -182,7 +182,12 @@ GAMEPLAY_SPRITES = {
         "fd21", "fd22", "fd23", "fd24", "fd25", "fd26",
         "fd31", "fd32", "fd33", "fd34", "fd35", "fd36",
         "fd41", "fd42", "fd43", "fd44", "fd45", "fd46",
-        "topls",   # [C] tops4s/tops5s (src/objects), stesso topper per entrambi gli assi
+        # [Bug corretto] tops4s (asse "r"/"s") e tops4d (asse "rd"/"d") usano
+        # sprite DIVERSI nel decompilato — "topls"/"topld" — non lo stesso
+        # topper per entrambi come diceva questo commento (scoperto
+        # implementando il secondo livello, game/src/buildings.js
+        # BUILDING_TYPES.palazzoRd.construct, [Bug corretto]).
+        "topls", "topld",
         # palazzo: 10 varianti "dispari" (casa4s, asse "r") + 10 "pari"
         # (casa4d, asse "rd") — [C] casa4s|d/Create.gml, dado a 5 livelli.
         "c411s", "c411sl", "c413s", "c413sl",
@@ -195,6 +200,32 @@ GAMEPLAY_SPRITES = {
         "c432", "c432l", "c434", "c434l",
         "c442", "c442l", "c444", "c444l",
         "c452", "c452l", "c454", "c454l",
+        # Secondo livello di palazzo/palazzoRd (game/src/buildings.js,
+        # BUILDING_TYPES.palazzo/palazzoRd.upgrades[0]) — [C] impa5r/impa5f
+        # (asse "r": "sr51.."/"sf51..") e impa5rd/impa5fd (asse "rd": "rd51.."
+        # per i primi 10 gradini condivisi col livello 1, poi "dr51.."/
+        # "df51.." — un'incoerenza di nomi propria del decompilato, vedi
+        # frontSprFor() in buildings.js).
+        "sr51", "sr52", "sr53", "sr54", "sr61", "sr62", "sr63", "sr64",
+        "sr71", "sr72", "sr73", "sr74", "sr81", "sr82", "sr83", "sr84",
+        "sf51", "sf52", "sf53", "sf54", "sf61", "sf62", "sf63", "sf64",
+        "sf71", "sf72", "sf73", "sf74", "sf81", "sf82", "sf83", "sf84",
+        "dr51", "dr52", "dr53", "dr54", "dr61", "dr62", "dr63", "dr64",
+        "dr71", "dr72", "dr73", "dr74", "dr81", "dr82", "dr83", "dr84",
+        "df51", "df52", "df53", "df54", "df61", "df62", "df63", "df64",
+        "df71", "df72", "df73", "df74", "df81", "df82", "df83", "df84",
+        # casa5ss (asse "r", 10 varianti "pari") + casa5dd (asse "rd", 10
+        # "dispari" — invertito rispetto al livello 1, letto cosi' com'e').
+        "c512", "c512l", "c514", "c514l",
+        "c522", "c522l", "c524", "c524l",
+        "c532", "c532l", "c534", "c534l",
+        "c542", "c542l", "c544", "c544l",
+        "c552", "c552l", "c554", "c554l",
+        "c511", "c511l", "c513", "c513l",
+        "c521", "c521l", "c523", "c523l",
+        "c531", "c531l", "c533", "c533l",
+        "c541", "c541l", "c543", "c543l",
+        "c551", "c551l", "c553", "c553l",
         "ru41", "ru41d",   # [C] casa4s/d/Step.gml: rudere (ru41d anche per casa4d, non ru41)
         # museo: dado 50/50 fra due sprite finali, per asse — [C]
         # media1s|d/Create.gml. "med2"/"med2d" non hanno un "l" acceso
@@ -244,6 +275,31 @@ GAMEPLAY_SPRITES = {
         "m3x1", "m3x2", "m3x3", "m3x4", "m3x5", "m3x6", "m3x7",
         "m3x8", "m3x9", "m3x10", "m3x11", "m3x12", "m3x13", "m3x14",
         "m3l1", "m3l2", "m3l3", "m3l4", "m3l5", "m3l6", "m3l7", "m3l8", "m3l9", "m3rd",
+        # Impalcatura/gru del grattacielo (game/src/scaffold.js): [C]
+        # impa31r|f -> impa32r|f -> impa33r|f, tre pannelli a un solo frame
+        # ciascuno (sprite_index cambiato a mano, mai un'animazione vera) che
+        # "srotolano" in sequenza — sedicesima famiglia dell'atlas, prima mai
+        # letta (STUDIO.md, "gap dichiarato — cantiere/gru non ricostruiti").
+        "i3101f", "i3102f", "i3103f", "i3104f", "i3105f", "i3106f", "i3107f", "i3108f",
+        "i3109f", "i3110f", "i3111f", "i3112f", "i3113f", "i3114f", "i3115f", "i3116f", "i3117f", "i3118f",
+        "i3101r", "i3102r", "i3103r", "i3104r", "i3105r", "i3106r", "i3107r", "i3108r",
+        "i3109r", "i3110r", "i3111r", "i3112r", "i3113r", "i3114r", "i3115r", "i3116r", "i3117r", "i3118r",
+        "i3201f", "i3202f", "i3203f", "i3204f", "i3205f", "i3206f", "i3207f", "i3208f", "i3209f", "i3210f",
+        "i3211f", "i3212f", "i3213f", "i3214f", "i3215f", "i3216f", "i3217f", "i3218f", "i3219f", "i3220f",
+        "i3221f", "i3222f", "i3223f", "i3224f", "i3225f",
+        "i3201r", "i3202r", "i3203r", "i3204r", "i3205r", "i3206r", "i3207r", "i3208r", "i3209r", "i3210r",
+        "i3211r", "i3212r", "i3213r", "i3214r", "i3215r", "i3216r", "i3217r", "i3218r", "i3219r", "i3220r",
+        "i3221r", "i3222r", "i3223r", "i3224r", "i3225r",
+        "i3301f", "i3302f", "i3303f", "i3304f", "i3305f", "i3306f", "i3307f", "i3308f", "i3309f",
+        "i3310f", "i3311f", "i3312f", "i3313f", "i3314f", "i3315f", "i3316f", "i3317f", "i3318f",
+        "i3301r", "i3302r", "i3303r", "i3304r", "i3305r", "i3306r", "i3307r", "i3308r", "i3309r",
+        "i3310r", "i3311r", "i3312r", "i3313r", "i3314r", "i3315r", "i3316r", "i3317r", "i3318r",
+        # La gru fissa (impa3gru, 5 pose di crescita + una di riposo prima
+        # dello spawn) e le due gru rotanti che spawna a meta' (impa3gru1/2,
+        # 6 pose ciascuna, oscillano per sempre — game/src/scaffold.js).
+        "impm31", "impm32", "impm33", "impm34", "impm35", "impm36",
+        "grum311", "grum312", "grum313", "grum314", "grum315", "grum316",
+        "grum321", "grum322", "grum323", "grum324", "grum325", "grum326",
     ],
     # GUI vera (STUDIO.md §9 "GUI vera"): la barra risorse e' un'unica
     # immagine con le icone gia' disegnate dentro (src/objects/repre/

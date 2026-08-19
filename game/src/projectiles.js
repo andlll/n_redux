@@ -212,7 +212,7 @@ const WEAPONS = {
 // come qualunque altro decoro (STUDIO.md, coins/upsign).
 export const SMOKO_LIFE = 36 * TICK;   // [I] esportata per la dissolvenza in alpha, vedi stepSmoko() sotto
 const SMOKO_DEPTH = -9000;
-function spawnSmoko(x, y) {
+export function spawnSmoko(x, y) {
   const d = Math.random();
   const spr = d < 0.5 ? "c3" : d < 0.75 ? "c2" : "c1";
   return { x, y, t: 0, spr, depth: SMOKO_DEPTH };

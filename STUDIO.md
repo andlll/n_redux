@@ -2928,3 +2928,122 @@ paragrafo 8.
   simulazione riparte (la stessa auto si muove di nuovo); nessuna
   regressione sul rendering normale (fuori pausa) dopo il fix a
   `Renderer.flush()`; funziona anche su viewport stretto (mobile).
+
+- **Ricognizione dei gap rimasti, poi tre chiusi in una sessione sola.**
+  Riletto l'intero diario per ricostruire la lista aggiornata dei gap ancora
+  dichiaratamente aperti (molti dei precedenti risultano gia' chiusi da
+  voci successive: puruspa/ruspa, minacce vere, prestiti, spionaggio
+  bloccato dal grattacielo, recogn...). L'autore ha scelto quattro
+  priorita': fumo/esplosioni mancanti, secondo livello di palazzo, gru/
+  cantiere del grattacielo, e un riesame delle collisioni prima di
+  implementarle alla cieca.
+  **Fumo/esplosione del fulmine sulle mongolfiere e della cassa a terra**:
+  due gap distinti, non uno solo come la nota precedente lasciava intendere.
+  **[C]** `mon_box|mon_bbox/Alarm_0.gml` crea davvero `smoko` (gia'
+  implementato altrove per la scia di proiettili/gatling, mai riusato qui)
+  a offset relativo (0, 100) prima di autodistruggersi — la "cassa a terra".
+  **[C]** `monvo|mongo|monbo|monviolo|monspi|recogn/Alarm_5.gml` (il fulmine
+  sulle mongolfiere) invece NON crea `smoko`: crea `thunder` (cosmetico
+  puro, stessa scelta gia' fatta per il danno da fulmine degli edifici) +
+  `esplo` — quest'ultimo mai riprodotto, l'unica morte istantanea del
+  motore senza nessuna esplosione (air/bombar/dirig la hanno sempre,
+  spawnDeathEffect() di threats.js). `stepBalloons()`/`stepConstructionBoxes()`
+  (balloons.js) accettano ora un callback (`onStruck`/`onLand`, stesso
+  principio di `onFinish` di stepConstructions() — evita un giro di import
+  incrociati fra balloons.js/threats.js/projectiles.js, che gia' importano
+  da balloons.js) che main.js usa per pescare `spawnExplosion()`/
+  `spawnSmoko()` dai moduli giusti. Verificato con un test diretto (node):
+  entrambi i callback scattano al momento giusto con gli offset giusti.
+  **Secondo livello di palazzo** (`casa4s|d` -> `casa5ss|dd`, gate
+  `chies.level>=3` mai visto per nessun'altra `casa`): **[C]** letti
+  `casa4s|d/Alarm_2.gml` (il gate), `upsign45s|d` (costo 20000 mon),
+  `impa5r|rd/f|fd` (cantiere, troncato a tic 0..23 come il livello 1 — la
+  stessa coda cosmetica di smontaggio gia' tagliata altrove) e
+  `casa5ss|dd` (vita 700, +187 pop, +100 wewe, rudere `ru41|ru41d` — lo
+  STESSO rudere del livello 1, non uno nuovo). `upgradeUnlocked()`/
+  `tryStartUpgrade()` (buildings.js) ora accettano `buildings` e leggono un
+  nuovo campo opzionale `up.requiresChiesLevel`, verificato insieme al
+  normale `atAva` — nessun altro edificio combina i due gate.
+  **[Bug corretto]**, scoperto implementando: `casa4s|d/Alarm_4.gml`
+  (il bottone moneta blu di casa/villa, coins.js) esisteva anche per
+  palazzo (sold19..30) e non era mai stato letto — un gap non dichiarato,
+  il palazzo finito non regalava mai monete. `stepCoinSpawner()` ora tratta
+  anche `palazzo`/`palazzoRd` (periodo 1600 tick, non 3000; stessa
+  formula di casa ma con un "livello globale" `b.level+3`, verificata
+  contro tutti e 12 gli sprite `sold19..30`, 380..600 a passi di 20).
+  **[Bug corretto]** anche: l'atlas diceva "topls, stesso topper per
+  entrambi gli assi" — falso, `tops4d` (asse "rd", livello 1, gia' in
+  gioco da sessioni) usa "topld", uno sprite diverso mai disegnato prima
+  d'ora (il campo `spawn` di `palazzoRd.construct` puntava a "topls" per
+  errore). **[I]** dal tic11 del cantiere di livello 2 l'asse "rd" smette
+  di usare il prefisso "rd"/"fd" (esaurito a "rd46") e passa a "dr"/"df" —
+  un'incoerenza di nomi propria del decompilato (verificata riga per riga
+  su impa5rd/impa5fd), non un refuso di lettura: `frontSprFor()`
+  (buildings.js) riconosce ora anche questo prefisso. 85 sprite nuovi in
+  `GAMEPLAY_SPRITES` (tools/23_atlas.py) — atlas e blitplan rigenerati.
+  Verificato con un test diretto (node): un palazzo forzato a `ava:5` con
+  una `chies` di livello 1 non sblocca il potenziamento, con `chies` a
+  livello 3 si' — cantiere di livello 2 completato in 2111 tick (atteso
+  2110, il passo troncato dura 1200 tick invece dei ~35s reali dell'ultimo
+  passo dell'originale) con lo sprite finale/decoro/vita giusti, nessun
+  potenziamento successivo offerto (`nextUpgrade()` torna `null`, coerente
+  con `media1s/Alarm_2.gml` mai esistito per `museo` e con l'assenza di un
+  terzo salto per `casa4s|d` nel decompilato). Ripetuto per l'asse "rd" e
+  per `stepCoinSpawner()` (560 mon per un palazzo di livello 2 a `ava:3`,
+  esattamente `sold28`). Verificato anche in browser (Playwright,
+  `window.__nimbus`, cantiere forzato a completarsi in un colpo solo):
+  l'edificio di livello 2 si disegna per intero, piu' alto e con una
+  sagoma diversa dal livello 1, senza texture mancanti.
+  **Impalcatura/gru rotanti del grattacielo** (`impa31/32/33r|f` +
+  `impa3gru`/`impa3gru1`/`impa3gru2` — STUDIO.md, "gap dichiarato —
+  cantiere/gru non ricostruiti"): un sotto-sistema di scenografia
+  interamente separato dal vero cantiere di `m3cant` (nessun costo/tempo in
+  comune, verificato leggendo `m3cant/Step.gml`). **[C]** tre pannelli
+  d'impalcatura che si "srotolano" in sequenza (ognuno spawna il successivo
+  a `phase==18`, un numero fisso non legato al proprio totale di frame — 17
+  per il primo pannello, 25 per il secondo) + una gru fissa che ne spawna
+  due rotanti a meta' della propria crescita, ognuna con la propria
+  macchina a stati a oscillazione infinita (`phase`/`rota`, transcritta
+  1:1 dal decompilato — l'unica animazione di questo gap senza una vera
+  fine). **[I]** l'ultimo pannello nel decompilato arma da solo, 2400 tick
+  dopo aver finito di crescere, un timer di smontaggio mai seguito da
+  nessun altro pezzo della catena (ne' gli altri due pannelli ne' le gru):
+  trattato come rumore del decompilato (quasi certamente codice di
+  debug/test mai ripulito), qui l'intera impalcatura sparisce insieme alla
+  vera fine del cantiere, come gru/topper di ogni altro edificio. Nuovo
+  file dedicato (`game/src/scaffold.js`, `stepGrattacieloScaffold()`
+  chiamato subito dopo `stepConstructions()` in main.js — non un
+  `onSpawn`/`onFinish` di quest'ultimo, un sotto-sistema a parte con la
+  propria gerarchia di spawn) invece di infilarlo in buildings.js: cinque
+  timer indipendenti, tre chained fra loro, troppo per il modello
+  `steps[].spawn[]` gia' in uso (pensato per decoro istantaneo, non
+  animato). 137 sprite nuovi in `GAMEPLAY_SPRITES` — atlas e blitplan
+  rigenerati. Verificato con un test diretto (node, tempo simulato): i tre
+  pannelli e le due gru rotanti spawnano tutti agli istanti giusti (647,
+  647, 1087, 1147, 1294 tick dall'inizio del cantiere), l'oscillazione
+  delle gru resta sempre entro le 6 pose valide anche dopo migliaia di
+  tick, tutto lo stato scompare quando il cantiere finisce davvero.
+  Verificato anche in browser (Playwright): i due pannelli piu' vicini
+  renderizzano correttamente sovrapposti alla base della torre, nessuna
+  texture mancante.
+  **Le collisioni**: riesaminati i casi che oggi usano un'euristica a
+  raggio fisso invece di una vera collisione fisica (`pepazzittecollider`,
+  mai ricostruito) — distanza minima fra torrette, raggio del colpo delle
+  bombe, cluster di piazzamento multi-lotto, fumo delle centrali contro la
+  scenografia. Per i primi due un vero sistema di collisione non
+  cambierebbe l'esito percepito dal giocatore (stesso comportamento
+  pratico, solo un calcolo piu' complesso dietro), e il fumo decorativo e'
+  gia' dichiarato invisibile alla scala di un frame: costruire un sistema
+  di collisione generico per questi casi sarebbe lavoro speso senza un
+  beneficio di gioco reale, esattamente il rischio segnalato dall'autore.
+  Il terzo caso pero' nascondeva un bug vero, non solo un'approssimazione:
+  **[Bug corretto]** `grattacielo` (`multiTile`, buildings.js) non aveva
+  mai ricevuto l'`anchorOffset` che `eolico` aveva gia' guadagnato in una
+  sessione precedente per lo stesso identico difetto (STUDIO.md sopra,
+  "cantiere della turbina disallineato dai lotti") — restava ancorato al
+  centroide del cluster invece che al vero centro, solo che con un
+  edificio enorme il disallineamento passava inosservato. **[C]**
+  `eoliplacer/Alarm_1.gml`: `m3cant` nasce a offset relativo (0, 116) dallo
+  stesso `eoliplacer` che per il ramo eolico nasce a (98, 0) dal
+  placeholder toccato — il vero centro e' quindi `placeholder + (98, 116)`,
+  ora cablato allo stesso modo di `eolico`.
