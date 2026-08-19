@@ -2700,3 +2700,93 @@ paragrafo 8.
   20 spawn di recogn sono sempre 11° o 13°, mai altro. Verificato anche in
   browser (screenshot): lo sprite "reconspr" (un biplano rosso) si
   disegna correttamente sulla mappa.
+
+- **Quattro bug segnalati insieme dall'autore, tutti riletti da capo invece
+  di fidarsi delle note precedenti che li dicevano gia' chiusi** ("la
+  turbina eolica da finita continua a non girare", "non vedo i topper in
+  cima ai cantieri", "il cantiere della turbina continua ad essere
+  disallineato", "le gru spariscono subito invece di aspettare la fine del
+  cantiere", "il laser non spara"). Un commit precedente (952d8b3/502c510)
+  dichiarava gia' risolti turbina/topper/impalcatura, ma il codice attuale
+  li aveva ancora rotti — verificato tutto in browser (Playwright,
+  `window.__nimbus` + import diretto dei moduli) prima di toccare niente,
+  non fidandosi della documentazione.
+  **Topper/gru che spariscono all'istante** (due segnalazioni diverse,
+  stessa causa): **[Bug corretto]** `spawnDecor()` (main.js) — chiamata da
+  `applyLevelFinish()` quando l'edificio finito compare, che ora scatta
+  ALL'INGRESSO dell'ultimo passo del cantiere (STUDIO.md sopra,
+  "sincronizzazione impalcatura/gru") — rimpiazzava INDISCRIMINATAMENTE
+  ogni decoro dell'edificio, compreso il decoro TRANSITORIO (gru/topper,
+  `addConstructionSpawn()`) appena piazzato nello stesso istante o nei
+  passi precedenti: la fix precedente risolveva solo il caso "lit:true di
+  default" (STUDIO.md sopra), non questo. Risultato osservabile: i topper
+  (`toppers`/`topls`, spawnati proprio nell'ultimo passo insieme al decoro
+  finale) sparivano nello stesso frame in cui nascevano; le gru spawnate
+  prima (es. `gr21` di `impalaser_r` al tic 6) sparivano non alla vera fine
+  del cantiere ma nell'istante in cui l'edificio finito compariva a
+  schermo. Corretto separando le due categorie: `addDecor()` (main.js)
+  accetta ora un flag `transient`, settato da `addConstructionSpawn()`;
+  `spawnDecor()` filtra via SOLO il decoro non transitorio; un nuovo
+  callback `onFinish` di `stepConstructions()` (buildings.js — chiamato nel
+  ramo che azzera `b.construction` per davvero, non piu' un evento
+  "fantasma" mai raggiunto da questo lato) rimuove il transitorio alla vera
+  fine (`removeTransientDecor()`, main.js).
+  **Turbina eolica finita che non gira**: **[Bug corretto]** stesso principio
+  del bug sopra, causa diversa. `b.spr` mostra gia' "eol" (lo sprite
+  FINITO, pale comprese) fin dall'ingresso dell'ultimo passo del cantiere
+  (`impvent3`, 2200 tic ~37s) per la stessa ragione — ma
+  `stepWindProduction()`/il calcolo del frame in main.js gating
+  l'animazione su `!b.construction` (vera fine cantiere): per quei 37s la
+  turbina appariva GIA' finita ma restava ferma su un fotogramma fisso, poi
+  scattava a girare solo alla fine — proprio l'edificio senza impalcatura
+  in sovraimpressione (`frontSpr`, niente traccia "f" per `eolico`,
+  BUILDING_TYPES.eolico sopra) a nascondere quel "non ancora vivo", quindi
+  l'unico caso in cui il problema si vedeva a occhio nudo. Corretto
+  disaccoppiando l'animazione (cosmetica, ora segue `b.spr === "eol"`) dalla
+  produzione di energia (economica, resta fedele a `!b.construction` —
+  `eoli` nel decompilato nasce solo alla fine vera del cantiere).
+  **Cantiere della turbina disallineato dai lotti**: **[Bug corretto]**
+  letto `placeholder/Mouse_LeftReleased.gml` riga per riga: al tocco (ramo
+  selec==4) l'originale crea `eoliplacer` a offset FISSO `(98, 0)` dal
+  placeholder toccato, e l'intera catena successiva (`eoliplacer` ->
+  `impavent` -> `eoli`) eredita quella posizione con offset relativo zero,
+  mai piu' toccata — il centro vero e' sempre un numero fisso letto dal
+  codice. Il motore invece ancorava la pala al CENTROIDE del cluster di 4
+  lotti trovato da `findPlacementCluster()` (il tapped + i 3 vicini liberi
+  piu' vicini): un punto che si sposta a seconda di quali vicini vengono
+  scelti, quasi mai coincidente col vero centro — la griglia isometrica di
+  `match_easy` ha una spaziatura irregolare (48 placeholder, gap fra 1 e
+  100px), quindi il cluster scelto raramente formava un quadrato simmetrico
+  intorno al tocco. `BUILDING_TYPES.eolico.multiTile.anchorOffset` (nuovo
+  campo, buildings.js) porta l'offset (98,0); `placeAt()` (main.js) lo usa
+  per l'ancoraggio invece della media del cluster, che resta comunque
+  necessario per sapere QUALI lotti consumare/bloccare.
+  **Il laser non spara**: non era vero — verificato con un test diretto
+  (Playwright, `window.__nimbus`, torretta+minaccia ferma piazzate a mano):
+  munizioni scalate (`r12.ele` 200->0), danno applicato (`life` 10->8, la
+  soglia giusta per `dirig`), esattamente come da codice. **[Bug corretto]**
+  il colpo VERO partiva ma non produceva NESSUN effetto visibile a schermo:
+  `laserone`/`laserone_retro` nell'originale disegnano un fascio vero
+  (sprite "lasere", 2000x97, ruotato verso il bersaglio) mai riprodotto
+  perche' il renderer (gl.js) non sapeva disegnare uno sprite ruotato — solo
+  un piccolo lampo alla bocca del cannone, facile da non notare. Aggiunto
+  `Renderer.drawQuad()` (gl.js): un quad a quattro angoli espliciti invece
+  di x,y+scala assiale, non richiede rotazione di sprite (il chiamante
+  calcola gia' gli angoli) — usato per un fascio pieno (tinta ciano) da
+  bocca a fondo raggio (`aim.fireRange`, nella direzione di mira, non verso
+  un singolo bersaglio: il colpo stesso danneggia tutto cio' che e' in
+  portata, non un solo target). `spawnBeam()`/`stepBeams()`/`BEAM_LIFE`
+  (projectiles.js, chiamato da `fireFrom()` sul ramo beam) + `drawBeams()`
+  (main.js). Vita breve (20 tic, ~0.33s: un lampo visibile, non un fascio
+  persistente — la vera ricarica e' 85 tic).
+  Verificato in browser (Playwright): turbina animata (screenshot A/B a
+  frame diversi, pale visibilmente ruotate, anche durante la coda del
+  cantiere); topper/gru piazzati a meta' costruzione e ancora visibili al
+  passo successivo (prima sparivano subito); piazzamento vero della pala
+  eolica via menu+tap (non forzato da script) allineato esattamente a
+  `placeholder + (98,0)`, screenshot con impalcatura centrata sui 4 lotti
+  liberi; fascio del laser renderizzato correttamente (test diretto su
+  `drawQuad()` con un fascio finto — la cattura in tempo reale di uno
+  sparo automatico e' risultata troppo breve per lo screenshot via
+  Playwright, ma la stessa identica chiamata di disegno e' quella usata
+  dal fuoco vero).

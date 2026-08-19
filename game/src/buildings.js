@@ -867,19 +867,35 @@ export const BUILDING_TYPES = {
   // una vera maschera di collisione (STUDIO.md, "pepazzittecollider" mai
   // ricostruito — stessa scelta gia' fatta per `TURRET_MIN_DIST` sotto,
   // proprio sulla spaziatura di questa griglia) `multiTile` sotto e'
-  // un'approssimazione dichiarata: il placeholder toccato PIU' i suoi 3
-  // vicini liberi piu' vicini entro un raggio fisso — vedi
-  // `findPlacementCluster()`/`EOLICO_RADIUS` in main.js. [I] A differenza
-  // dell'originale (che fallisce IN SILENZIO se non trova 4 lotti — un
-  // singolo controllo a tempo fisso 3 tick dopo la nascita di
+  // un'approssimazione dichiarata per TROVARE i 4 lotti da consumare: il
+  // placeholder toccato PIU' i suoi 3 vicini liberi piu' vicini entro un
+  // raggio fisso — vedi `findPlacementCluster()` in main.js. [I] A
+  // differenza dell'originale (che fallisce IN SILENZIO se non trova 4
+  // lotti — un singolo controllo a tempo fisso 3 tick dopo la nascita di
   // `eoliplacer`, mai piu' ripetuto: sembra un meccanismo mai rifinito,
   // `fantoccio` che crea non fa letteralmente nulla, sprite vuoto, nessun
   // evento oltre un timer che lo autodistrugge) qui il giocatore riceve
   // sempre un messaggio, costruito o no.
+  //
+  // [Bug corretto] `anchorOffset` — il CENTRO VISIVO della pala, invece,
+  // NON e' la media del cluster trovato sopra (che main.js usava prima:
+  // un punto che si sposta a seconda di QUALI 3 vicini vengono scelti,
+  // spesso disallineato dai 4 lotti veri sotto — segnalato dall'autore,
+  // "il cantiere della turbina continua ad essere disallineato"). **[C]**
+  // letto `placeholder/Mouse_LeftReleased.gml` riga per riga: al tocco
+  // (ramo selec==4) l'originale crea `eoliplacer` a offset FISSO
+  // `(98, 0)` dal placeholder toccato (`action_create_object(eoliplacer,
+  // 98, 0)`), e la catena successiva (`eoliplacer` -> `impavent` -> `eoli`,
+  // tutte con `action_create_object(..., 0, 0)`, offset relativo zero)
+  // eredita quella stessa posizione senza piu' toccarla: il centro vero
+  // e' sempre `placeholder.x + 98, placeholder.y`, un numero fisso letto
+  // dal codice, non una media calcolata sui lotti liberi trovati.
   eolico: {
     label: "Pala eolica",
     placeCost: { mon: 50000 },   // [C] eoliplacer/Alarm_1.gml, ramo selec==4
-    multiTile: { count: 4, radius: 130 },
+    // [C] placeholder/Mouse_LeftReleased.gml: `anchorOffset` e' l'offset FISSO
+    // (98, 0) di eoliplacer dal placeholder toccato, vedi il commento sopra.
+    multiTile: { count: 4, radius: 130, anchorOffset: { dx: 98, dy: 0 } },
     // [C] eoli/Alarm_0.gml: ogni 30 tick, SEMPRE +110 ele — a differenza di
     // industria non consuma `oil` (un generatore vero, non una centrale a
     // combustibile) e non e' gated su niente: `stepWindProduction()` sotto,
@@ -1749,10 +1765,12 @@ function applyLevelFinish(b, def, up, c, r12, onDecor) {
 
 /**
  * Avanza tutti i cantieri in corso di `dt` secondi.
- * `onDecor(b, sprites)` sostituisce il decoro finale dell'edificio (fine
- * cantiere). `onSpawn(b, [{spr,dx,dy}])` aggiunge decoro transitorio
- * (gru/macerie) che sparisce quando `onDecor` rimpiazza tutto a fine
- * cantiere.
+ * `onDecor(b, sprites)` sostituisce il decoro FINALE dell'edificio (finestre/
+ * decoro per livello, chiamato da `applyLevelFinish()`). `onSpawn(b,
+ * [{spr,dx,dy}])` aggiunge decoro TRANSITORIO (gru/topper) durante un passo
+ * del cantiere. `onFinish(b)` avvisa quando l'impalcatura e' DAVVERO smontata
+ * (`b.construction` torna `null`) — e' il punto giusto per far sparire il
+ * decoro transitorio, non `onDecor`.
  *
  * [I] Segnalato dall'autore: l'edificio finito deve comparire quando
  * l'impalcatura ENTRA nell'ultimo passo (la fase di smontaggio — la stessa
@@ -1765,8 +1783,19 @@ function applyLevelFinish(b, def, up, c, r12, onDecor) {
  * quel momento, resta solo la scenografia dello smontaggio — `applyLevelFinish()`
  * sopra ora scatta li' (`c.finished`), non piu' quando l'ultimo passo
  * chiude e l'impalcatura sparisce per davvero.
+ *
+ * [Bug corretto] `onDecor` chiama `spawnDecor()` (main.js), che PRIMA
+ * rimpiazzava indiscriminatamente OGNI decoro dell'edificio — compreso il
+ * transitorio appena piazzato da `onSpawn` nello stesso passo (i topper
+ * "toppers"/"topls" nascono proprio nell'ultimo passo, insieme al decoro
+ * finale) o nei passi precedenti (le gru "gr21"/"gru1" di impalaser/impa*).
+ * Risultato: gru/topper sparivano nell'istante stesso in cui l'edificio
+ * finito compariva, invece di restare visibili fino alla vera fine
+ * dell'impalcatura. Ora `onDecor` tocca solo il decoro finale (main.js
+ * marca quello transitorio con `transient:true` e lo esclude dal filtro),
+ * e `onFinish` lo ripulisce quando l'impalcatura sparisce per davvero.
  */
-export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
+export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish) {
   for (const b of buildings) {
     const c = b.construction;
     if (!c) continue;
@@ -1819,9 +1848,17 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
     } else {
       // L'edificio (livello/sprite/decoro/contatori) e' gia' stato
       // finalizzato all'ingresso dell'ultimo passo, sopra — qui resta solo
-      // da far sparire l'impalcatura residua, smontata per davvero.
+      // da far sparire l'impalcatura residua, smontata per davvero. Il
+      // decoro TRANSITORIO (gru/topper, onSpawn sopra) va rimosso proprio
+      // qui, non da onDecor: onDecor sostituisce solo il decoro FINALE
+      // dell'edificio (finestre/decoro per livello) quando applyLevelFinish()
+      // gira, che ora e' l'INGRESSO dell'ultimo passo — se rimuovesse anche
+      // il transitorio a quel punto, gru/topper sparirebbero nell'istante in
+      // cui l'edificio finito compare invece che alla vera fine
+      // dell'impalcatura (bug segnalato dall'autore).
       b.construction = null;
       b.frontSpr = null; b.capSpr = null;
+      onFinish?.(b);
     }
   }
 }
@@ -1891,13 +1928,9 @@ export function stepSolarProduction(buildings, dt, r12, isNight, isDawn) {
  */
 export function stepWindProduction(buildings, dt, r12) {
   for (const b of buildings) {
-    if (b.construction) continue;
     const def = BUILDING_TYPES[b.type];
     const prod = def.windProduction;
     if (!prod) continue;
-    b.windT = (b.windT ?? 0) + dt;
-    const period = prod.every * TICK;
-    while (b.windT >= period) { b.windT -= period; r12.ele += prod.ele; }
     // [C] eoli/Create.gml: `action_sprite_set(eol, 0, 0.25)` — "eol" ha 8
     // sottoimmagini vere (le pale in rotazione, non un singolo fotogramma
     // statico) e GameMaker le scorre da solo a `image_speed` 0.25
@@ -1907,7 +1940,31 @@ export function stepWindProduction(buildings, dt, r12) {
     // "un colpo solo" con un contatore di fine, tipo soldfade/fica) — qui
     // basta un timer che non si azzera mai, letto in main.js insieme al
     // numero di frame reale dell'atlas per fare il modulo.
-    b.animT = (b.animT ?? 0) + dt;
+    //
+    // [Bug corretto] Prima l'animazione (come la produzione sotto) partiva
+    // solo a `!b.construction` — cioe' alla vera fine del cantiere,
+    // `impvent1+impvent2+impvent3` = 4540 tic. Ma `b.spr` mostra gia' "eol"
+    // (lo sprite FINITO) fin dall'ingresso dell'ultimo passo (impvent3,
+    // `applyLevelFinish()` in stepConstructions() sotto — la stessa scelta
+    // gia' fatta per ogni altro edificio, "l'edificio finito compare quando
+    // l'impalcatura entra nell'ultimo passo"). Per gli altri edifici questo
+    // e' invisibile: c'e' sempre un'impalcatura in sovraimpressione
+    // (`frontSpr`/`capSpr`) che copre il "non ancora vivo". `eolico` non ne
+    // ha (nessuna traccia "f", vedi BUILDING_TYPES.eolico sopra): restava
+    // quindi a schermo GIA' col suo aspetto finito ma completamente ferma
+    // per l'intera coda del passo "impvent3" (2200 tic, ~37s) — sembrava un
+    // secondo bug della stessa segnalazione ("la turbina finita non gira"),
+    // invece era solo l'animazione che partiva troppo tardi. L'animazione
+    // (puramente cosmetica) ora segue lo sprite mostrato a schermo, non lo
+    // stato del cantiere; la produzione di energia sotto resta invece
+    // fedele a `eoli/Alarm_0.gml` (l'oggetto "eoli" vero nasce solo alla
+    // fine del cantiere nel decompilato) e continua a richiedere
+    // `!b.construction`.
+    if (b.spr === def.construct.finalSprite) b.animT = (b.animT ?? 0) + dt;
+    if (b.construction) continue;
+    b.windT = (b.windT ?? 0) + dt;
+    const period = prod.every * TICK;
+    while (b.windT >= period) { b.windT -= period; r12.ele += prod.ele; }
   }
 }
 // [C] eoli/Create.gml: 0.25 frame/step * 60 step/s.

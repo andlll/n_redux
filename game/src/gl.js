@@ -139,6 +139,36 @@ export class Renderer {
     this.count++;
   }
 
+  /**
+   * Accoda un quad a partire dai quattro angoli espliciti, invece di
+   * x,y + scala assiale come draw() sopra: serve per forme non allineate
+   * agli assi — nel motore, l'unico caso e' il fascio del laser (game/src/
+   * projectiles.js), un quad sottile e lungo orientato verso il bersaglio.
+   * `draw()` non basta perche' costruisce sempre un rettangolo dritto;
+   * qui il chiamante calcola gia' i quattro angoli (in genere spostando
+   * `p0..p3` perpendicolarmente alla direzione del fascio).
+   */
+  drawQuad(frame, p0, p1, p2, p3, tint = 0xffffff, alpha = 1) {
+    if (frame.tex !== this.texture || this.count >= this.maxQuads) {
+      this.flush();
+      this.texture = frame.tex;
+    }
+    const r = ((tint >> 16) & 255) / 255;
+    const g = ((tint >> 8) & 255) / 255;
+    const b = (tint & 255) / 255;
+    const { u0, v0, u1, v1 } = frame;
+
+    let o = this.count * VERTS_PER_QUAD * FLOATS_PER_VERT;
+    const d = this.data;
+    const put = (px, py, pu, pv) => {
+      d[o++] = px; d[o++] = py; d[o++] = pu; d[o++] = pv;
+      d[o++] = r; d[o++] = g; d[o++] = b; d[o++] = alpha;
+    };
+    put(p0.x, p0.y, u0, v0); put(p1.x, p1.y, u1, v0); put(p2.x, p2.y, u1, v1);
+    put(p0.x, p0.y, u0, v0); put(p2.x, p2.y, u1, v1); put(p3.x, p3.y, u0, v1);
+    this.count++;
+  }
+
   flush() {
     if (!this.count || !this.texture) { this.count = 0; return; }
     const gl = this.gl;

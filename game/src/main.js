@@ -14,7 +14,7 @@ import {
 import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
-import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, SMOKO_LIFE } from "./projectiles.js";
+import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText } from "./font.js";
 
@@ -337,6 +337,11 @@ let projectiles = [];
 // la scia del razzo in volo + il singolo sbuffo alla bocca del gatling —
 // non il fumo delle centrali (quello e' `smoke`, game/src/smoke.js).
 let trails = [];
+// Fasci del laser (game/src/projectiles.js, spawnBeam/stepBeams): l'unico
+// colpo del motore che non e' un proiettile ne' un fotogramma di sprite —
+// un quad pieno disegnato da drawBeams() sotto, vedi il commento su
+// WEAPONS.laser in projectiles.js.
+let beams = [];
 let r12 = createR12();
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
@@ -369,7 +374,16 @@ let bankButtons = [];   // { x, y, w, h, index }
 // quell'edificio, incluso il decoro transitorio (gru/macerie) di un
 // cantiere in corso.
 function spawnDecor(building, decorSprites) {
-  decorEntities = decorEntities.filter((d) => d.buildingId !== building.id);
+  // `d.transient`: il decoro di cantiere (gru/topper, addConstructionSpawn()
+  // sotto) non va toccato qui — solo il decoro FINALE del livello
+  // precedente. Prima il filtro non distingueva i due, quindi rimpiazzare il
+  // decoro finale (che ora scatta all'INGRESSO dell'ultimo passo, vedi
+  // stepConstructions() in buildings.js) cancellava anche gru/topper appena
+  // piazzati, nello stesso istante in cui l'edificio finito compariva
+  // (bug segnalato dall'autore: "vedo le gru montarsi ma... spariscono
+  // subito"). Il decoro transitorio sparisce invece in removeTransientDecor()
+  // sotto, quando l'impalcatura e' DAVVERO smontata.
+  decorEntities = decorEntities.filter((d) => d.buildingId !== building.id || d.transient);
   // `parco` non ha un decoro fisso per livello come gli altri tre: il suo
   // e' uno scatter casuale di alberi/lampioni (vedi spawnParcoScatter() e
   // il commento su BUILDING_TYPES.parco in buildings.js) — intercettato
@@ -411,7 +425,7 @@ function spawnDecor(building, decorSprites) {
  * parco, vedi sotto) disattiva tutto questo: resta un decoro qualunque,
  * fermo alla y del suo edificio come un albero vero, tinto dal ciclo
  * giorno/notte come qualunque altro oggetto di mondo. */
-function addDecor(building, spawns) {
+function addDecor(building, spawns, { transient = false } = {}) {
   for (const { spr, dx, dy, lit = true, fadeTicks } of spawns) {
     const y = building.y + dy;
     decorEntities.push({
@@ -421,6 +435,10 @@ function addDecor(building, spawns) {
       // `fadeTicks` (grattacielo, buildings.js): dissolvenza propria invece
       // della LIGHT_FADE condivisa da tutti gli altri decori — vedi stepLights().
       ...(lit ? { _selfLit: true, _lightT: 0, _fadeTicks: fadeTicks } : {}),   // parte spento, come "empty" in originale (Create.gml)
+      // `transient` (addConstructionSpawn() sotto): decoro di cantiere
+      // (gru/topper), escluso dal filtro di spawnDecor() — sparisce solo in
+      // removeTransientDecor(), alla vera fine del cantiere.
+      ...(transient ? { transient: true } : {}),
     });
   }
 }
@@ -438,7 +456,16 @@ function addDecor(building, spawns) {
  * stepLights()) — invisibili non per un bug di rendering ma perche' il
  * motore li trattava come una luce mai accesa. */
 function addConstructionSpawn(building, spawns) {
-  addDecor(building, spawns.map((s) => ({ ...s, lit: false })));
+  addDecor(building, spawns.map((s) => ({ ...s, lit: false })), { transient: true });
+}
+
+/** `onFinish` di stepConstructions() (buildings.js): l'impalcatura e'
+ * DAVVERO smontata (`b.construction` torna `null`) — solo qui il decoro
+ * transitorio di cantiere (gru/topper, addConstructionSpawn() sopra) va
+ * ripulito. Prima spariva insieme al decoro finale, appena l'edificio finito
+ * compariva (spawnDecor() sopra, stesso bug commentato li'). */
+function removeTransientDecor(building) {
+  decorEntities = decorEntities.filter((d) => !(d.buildingId === building.id && d.transient));
 }
 
 // [C] parco/Create.gml: 7 posizioni fisse intorno al parco: ognuna, a dado
@@ -540,15 +567,22 @@ function placeAt(placeholder, type) {
   // (parco, buildings.js — [I] segnalato dall'autore) e' l'eccezione: bassa
   // scenografia piatta, non un edificio solido, resta sempre "in fondo"
   // invece di competere per -y con cio' che le passa sopra.
-  // `eolico` (def.multiTile): il centro visivo dev'essere quello del
-  // cluster intero (media dei 4 lotti), non quello del solo lotto toccato
-  // — segnalato dall'autore ("la pala nasce disallineata: il centro
-  // corrisponde al centro di UN placeholder, ma ne occupa 4"). Lo sprite
-  // "eol" e' disegnato grande apposta per coprire tutto il cluster; ancorarlo
-  // al lotto toccato (che puo' essere uno qualunque dei 4, non
-  // necessariamente quello centrale) lo faceva "sbilanciare" verso un lato.
-  const anchorX = def.multiTile ? cluster.reduce((s, p) => s + p.x, 0) / cluster.length : placeholder.x;
-  const anchorY = def.multiTile ? cluster.reduce((s, p) => s + p.y, 0) / cluster.length : placeholder.y;
+  // `eolico` (def.multiTile.anchorOffset): il centro visivo e' il
+  // placeholder TOCCATO piu' l'offset FISSO (98, 0) letto dal decompilato
+  // (BUILDING_TYPES.eolico in buildings.js — `placeholder/Mouse_
+  // LeftReleased.gml`, dove nasce `eoliplacer`), non la media dei 4 lotti
+  // del cluster trovato sopra. [Bug corretto] La media era un punto che si
+  // sposta a seconda di QUALI 3 vicini `findPlacementCluster()` sceglie
+  // (dipende dalla disposizione isometrica irregolare dei placeholder
+  // intorno al tocco) — quasi mai il punto vero, da cui il disallineamento
+  // segnalato piu' volte dall'autore ("il cantiere della turbina continua
+  // ad essere disallineato dalle caselle vuote sottostanti"). Il cluster
+  // trovato da `findPlacementCluster()` resta comunque necessario: serve a
+  // sapere QUALI 4 lotti liberi consumare/bloccare (sopra), solo il centro
+  // di disegno non dipende piu' da lui.
+  const off = def.multiTile?.anchorOffset;
+  const anchorX = off ? placeholder.x + off.dx : placeholder.x;
+  const anchorY = off ? placeholder.y + off.dy : placeholder.y;
   const b = placeBuilding(type, anchorX, anchorY, def.fixedDepth ?? 0);
   buildings.push(b);
   if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
@@ -1014,6 +1048,27 @@ function fadeAlpha(t, life) {
   return Math.max(0, Math.min(1, remaining / SMOKE_FADE_FRAC));
 }
 
+/** Il fascio del laser (game/src/projectiles.js, spawnBeam/stepBeams): un
+ * quad pieno da bocca a fondo raggio, l'unico VFX del motore che non e' uno
+ * sprite (Renderer.drawQuad(), gl.js — vedi il commento su WEAPONS.laser in
+ * projectiles.js per il perche'). Vita breve (BEAM_LIFE): sfuma verso la
+ * fine come le altre VFX transitorie gia' nel motore (fadeAlpha() sopra). */
+function drawBeams() {
+  const half = 7;   // meta' spessore del fascio, in px
+  for (const bm of beams) {
+    const dx = bm.x1 - bm.x0, dy = bm.y1 - bm.y0;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = (-dy / len) * half, ny = (dx / len) * half;
+    const alpha = fadeAlpha(bm.t, BEAM_LIFE);
+    r.drawQuad(
+      solidFrame(white, 1, 1),
+      { x: bm.x0 + nx, y: bm.y0 + ny }, { x: bm.x1 + nx, y: bm.y1 + ny },
+      { x: bm.x1 - nx, y: bm.y1 - ny }, { x: bm.x0 - nx, y: bm.y0 - ny },
+      0x5fd8ff, alpha,
+    );
+  }
+}
+
 /** Moltiplica una tinta 0xRRGGBB per una tinta ambientale [r,g,b] in 0..1. */
 function mulTint(base, rgb) {
   const r = Math.round(((base >> 16) & 255) * rgb[0]);
@@ -1416,7 +1471,7 @@ input.onTap = (sx, sy) => {
     // per qualunque edificio (che gia' risponderebbe da solo "cantiere gia'
     // in corso").
     if (!b.construction && BUILDING_TYPES[b.type]?.manualFire) {
-      const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails, balloons, loot);
+      const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails, balloons, loot, beams);
       message = fired ? "fuoco!"
         : !b.aimTarget ? "nessun bersaglio in portata"
         : b.type === "laser" && r12.ele < 200 ? "energia insufficiente"
@@ -1536,7 +1591,7 @@ function frame(now) {
   const dawn = isDawn(phaseT);
 
   // --- simulazione: cantieri, economia, meteo, traffico, luci
-  stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn);
+  stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
   stepProduction(buildings, dt, r12);
   stepSolarProduction(buildings, dt, r12, night, dawn);
   stepWindProduction(buildings, dt, r12);
@@ -1621,8 +1676,9 @@ function frame(now) {
   // minacce vere) per decidere se sparare — una mongolfiera vicina da sola
   // non faceva mai partire un colpo, anche se il cannone la stava gia'
   // inseguendo (`balloons` passato anche qui, non solo a stepTurretAim).
-  stepTurretFire(buildings, balloons, threats, dt, projectiles, explosions, r12, trails, loot);
+  stepTurretFire(buildings, balloons, threats, dt, projectiles, explosions, r12, trails, loot, beams);
   stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt);
+  stepBeams(beams, dt);
   stepSmoko(trails, dt);
   if (messageT > 0) messageT -= dt;
 
@@ -1630,11 +1686,16 @@ function frame(now) {
   // esclusi) + edifici (sprite ricalcolato: cambia durante il cantiere) + decoro
   const dynamic = [];
   for (const b of buildings) {
-    // `eolico` finito (b.animT, buildings.js/stepWindProduction): "eol" ha
-    // 8 sottoimmagini vere (le pale che girano), animate in loop invece che
+    // `eolico` (b.animT, buildings.js/stepWindProduction): "eol" ha 8
+    // sottoimmagini vere (le pale che girano), animate in loop invece che
     // ferme al frame 0 — vedi il commento su WIND_ANIM_FPS in buildings.js.
-    // Ogni altro edificio resta un fotogramma fisso, come sempre.
-    const windFrames = (!b.construction && b.type === "eolico") ? frameCountFor(b.spr) : 1;
+    // Ogni altro edificio resta un fotogramma fisso, come sempre. Non
+    // `!b.construction`: lo sprite finale "eol" e' gia' a schermo prima
+    // della vera fine del cantiere (STUDIO.md, "l'edificio finito compare
+    // quando l'impalcatura entra nell'ultimo passo") — l'animazione deve
+    // seguire lo sprite mostrato, non lo stato del cantiere (stessa
+    // correzione di stepWindProduction() in buildings.js).
+    const windFrames = (b.type === "eolico" && b.spr === BUILDING_TYPES.eolico.construct.finalSprite) ? frameCountFor(b.spr) : 1;
     const buildingFrameIdx = windFrames > 1 ? Math.floor((b.animT ?? 0) * WIND_ANIM_FPS) % windFrames : 0;
     dynamic.push({ obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr, buildingFrameIdx) });
     // Impalcatura in sovraimpressione + coperchio di fine cantiere (vedi
@@ -1870,6 +1931,7 @@ function frame(now) {
       break;
     }
   }
+  drawBeams();
   r.flush();
 
   // --- layer GUI: spazio schermo, dimensione costante, nessuna tinta
@@ -2191,6 +2253,7 @@ window.__nimbus = {
   get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
   get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
   get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
+  get beams() { return beams; },
   get aerSmoke() { return aerSmoke; }, get debris() { return debris; }, get ruins() { return ruins; },
   get blockedSlots() { return blockedSlots; }, get placeholders() { return placeholders; },
   get bankPanelOpen() { return bankPanelOpen; }, setBankPanelOpen: (v) => { bankPanelOpen = v; },
