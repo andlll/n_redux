@@ -168,21 +168,29 @@ const WEAPONS = {
   // non si muove mai (resta alla punta del cannone, ruotato verso il
   // bersaglio) — nel gioco originale e' il suo SPRITE, un fascio disegnato
   // lungo, a raggiungere il bersaglio lontano; il nostro renderer
-  // (game/src/gl.js) non supporta la rotazione di uno sprite (mai servita
+  // (game/src/gl.js) non sapeva disegnare uno sprite ruotato (mai servito
   // finora: ogni sprite direzionale del motore e' gia' un fotogramma
   // separato per direzione, non uno ruotato a runtime), quindi il fascio
-  // vero e proprio non si disegna. [I] Sostituito con un colpo secco e
-  // istantaneo (hitscan): tutte le minacce vere entro `aim.fireRange`
-  // vengono danneggiate in un colpo solo (vedi fireFrom sotto — [C] fedele
-  // nello spirito, non alla lettera: `laserone`/`laserone_retro` non
-  // uccidono mai se stessi contro `bombar`, quindi tecnicamente
-  // trafiggono solo lui e non air/dirig, che invece lo fermano — una
-  // distinzione che richiederebbe una vera geometria di collisione lungo
-  // il fascio, non solo un raggio dal cannone: qui semplificata a "colpisce
-  // tutto cio' che e' in portata"), con un lampo alla bocca del cannone e
-  // un'esplosione su ciascun bersaglio effettivamente distrutto — non
-  // garantito al primo colpo, il danno per tipo (DAMAGE.laser sopra) non
-  // sempre basta da solo (air si', bombar/dirig no).
+  // vero e proprio non si disegnava affatto — il colpo partiva comunque
+  // (munizioni scalate, bersaglio danneggiato) ma senza NESSUN effetto
+  // visibile a schermo oltre un piccolo lampo alla bocca: segnalato
+  // dall'autore ("il laser non spara") anche se in realta' sparava, solo
+  // invisibile. Ora un quad pieno (Renderer.drawQuad(), gl.js — un
+  // rettangolo qualunque non richiede rotazione di sprite, solo i suoi
+  // quattro angoli calcolati a mano) disegna un fascio vero da bocca a
+  // fondo raggio, vedi spawnBeam()/stepBeams() sotto e drawBeams() in
+  // main.js. [I] Sostituito con un colpo secco e istantaneo (hitscan):
+  // tutte le minacce vere entro `aim.fireRange` vengono danneggiate in un
+  // colpo solo (vedi fireFrom sotto — [C] fedele nello spirito, non alla
+  // lettera: `laserone`/`laserone_retro` non uccidono mai se stessi contro
+  // `bombar`, quindi tecnicamente trafiggono solo lui e non air/dirig, che
+  // invece lo fermano — una distinzione che richiederebbe una vera
+  // geometria di collisione lungo il fascio, non solo un raggio dal
+  // cannone: qui semplificata a "colpisce tutto cio' che e' in portata"),
+  // con un lampo alla bocca del cannone e un'esplosione su ciascun
+  // bersaglio effettivamente distrutto — non garantito al primo colpo, il
+  // danno per tipo (DAMAGE.laser sopra) non sempre basta da solo (air si',
+  // bombar/dirig no).
   laser: {
     kind: "beam", muzzle: LASER_MUZZLE,
     cooldown: 85 * TICK,                  // [C] launching=2, action_set_alarm(85, 1) -> Alarm_1 rimette launching = 0
@@ -208,6 +216,32 @@ function spawnSmoko(x, y) {
   const d = Math.random();
   const spr = d < 0.5 ? "c3" : d < 0.75 ? "c2" : "c1";
   return { x, y, t: 0, spr, depth: SMOKO_DEPTH };
+}
+
+// [I] Il fascio del laser (`laserone`/`laserone_retro`, sprite "lasere",
+// 2000x97, disegnato ruotato verso il bersaglio): il nostro renderer non
+// sapeva disegnare uno sprite ruotato (WEAPONS.laser sopra, "il fascio vero
+// e proprio non si disegna" — solo il lampo alla bocca del cannone). Senza
+// di lui uno sparo VERO (munizioni scalate, bersaglio danneggiato — vedi
+// fireFrom sotto) non produceva alcun effetto visibile a schermo: segnalato
+// dall'autore ("il laser non spara"), ma il colpo partiva davvero, solo
+// invisibile. Non serve una texture ruotata per risolverlo: un quad pieno
+// (tinta ciano, coerente col colore delle mongolfiere/UI "attive" del
+// motore) da bocca a bersaglio e' un rettangolo qualunque, calcolabile
+// negli angoli direttamente (game/src/main.js, drawBeams()) senza toccare
+// gl.js oltre al nuovo Renderer.drawQuad() generico. Vita breve (un lampo,
+// non un fascio persistente): la ricarica vera e' 85 tic (~1.4s, WEAPONS.
+// laser.cooldown sopra), un fascio che durasse quanto quella sarebbe piu'
+// invasivo di quanto serva solo per "vedere che ha sparato".
+export const BEAM_LIFE = 20 * TICK;
+export function spawnBeam(x0, y0, x1, y1) {
+  return { x0, y0, x1, y1, t: 0 };
+}
+export function stepBeams(beams, dt) {
+  for (let i = beams.length - 1; i >= 0; i--) {
+    beams[i].t += dt;
+    if (beams[i].t >= BEAM_LIFE) beams.splice(i, 1);
+  }
 }
 
 /** Avanza/scarta gli sbuffi di fumo di scia (missile/gatling — vedi
@@ -249,7 +283,7 @@ function payAmmo(weapon, r12) {
  * proprie regole (stepTurretFire gia' sa che una minaccia vera e' in
  * portata, fireTurretManual no). `trails` riceve gli sbuffi di fumo di
  * scia (spawnSmoko sopra) quando l'arma ne crea uno alla bocca. */
-function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targets, loot) {
+function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targets, loot, beams) {
   if (weapon.kind === "beam") {
     const off = bucketFor(weapon.muzzle, b.aimAngle);
     const mx = b.x + off.dx, my = b.y + off.dy;
@@ -263,6 +297,16 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targ
     // prossimo frame, non qui.
     const fireRange = BUILDING_TYPES[b.type].aim.fireRange;
     const r2 = fireRange * fireRange;
+    // Effetto visivo (spawnBeam sopra): un raggio lungo `fireRange` nella
+    // direzione di mira — non verso un singolo bersaglio, perche' il colpo
+    // stesso non ne ha uno solo (danneggia tutto cio' che e' entro il
+    // raggio, vedi sopra). `beams` e' opzionale (`?.`) solo per non
+    // spezzare eventuali test/chiamate dirette a fireFrom() che non lo
+    // passano.
+    if (beams) {
+      const rad = (b.aimAngle * Math.PI) / 180;
+      beams.push(spawnBeam(mx, my, mx + Math.cos(rad) * fireRange, my - Math.sin(rad) * fireRange));
+    }
     for (const th of threats) {
       const dx = th.x - b.x, dy = th.y - b.y;
       if (dx * dx + dy * dy > r2) continue;
@@ -305,7 +349,7 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targ
  * — a corto di energia) fa partire un colpo verso il bersaglio gia'
  * inseguito (fireFrom sopra).
  */
-export function stepTurretFire(buildings, targets, threats, dt, projectiles, explosions, r12, trails, loot) {
+export function stepTurretFire(buildings, targets, threats, dt, projectiles, explosions, r12, trails, loot, beams) {
   for (const b of buildings) {
     const weapon = WEAPONS[b.type];
     if (b.construction || !weapon) continue;
@@ -325,7 +369,7 @@ export function stepTurretFire(buildings, targets, threats, dt, projectiles, exp
     }
     if (!inRange || !canFireAmmo(weapon, r12)) continue;
     b.fireT = 0;
-    fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targets, loot);
+    fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targets, loot, beams);
   }
 }
 
@@ -360,7 +404,7 @@ export function stepTurretFire(buildings, targets, threats, dt, projectiles, exp
  * manualFire`), e' in ricarica, non ha nessun bersaglio in portata adesso,
  * o (solo laser) l'energia non basta.
  */
-export function fireTurretManual(b, projectiles, explosions, r12, threats, trails, targets, loot) {
+export function fireTurretManual(b, projectiles, explosions, r12, threats, trails, targets, loot, beams) {
   const weapon = WEAPONS[b.type];
   if (!weapon || !BUILDING_TYPES[b.type]?.manualFire) return false;
   if (b.aimAngle == null || !b.aimTarget) return false;
@@ -371,7 +415,7 @@ export function fireTurretManual(b, projectiles, explosions, r12, threats, trail
   }
   if ((b.fireT ?? 0) < weapon.cooldown || !canFireAmmo(weapon, r12)) return false;
   b.fireT = 0;
-  fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targets, loot);
+  fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targets, loot, beams);
   return true;
 }
 

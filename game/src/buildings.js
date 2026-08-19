@@ -867,19 +867,35 @@ export const BUILDING_TYPES = {
   // una vera maschera di collisione (STUDIO.md, "pepazzittecollider" mai
   // ricostruito — stessa scelta gia' fatta per `TURRET_MIN_DIST` sotto,
   // proprio sulla spaziatura di questa griglia) `multiTile` sotto e'
-  // un'approssimazione dichiarata: il placeholder toccato PIU' i suoi 3
-  // vicini liberi piu' vicini entro un raggio fisso — vedi
-  // `findPlacementCluster()`/`EOLICO_RADIUS` in main.js. [I] A differenza
-  // dell'originale (che fallisce IN SILENZIO se non trova 4 lotti — un
-  // singolo controllo a tempo fisso 3 tick dopo la nascita di
+  // un'approssimazione dichiarata per TROVARE i 4 lotti da consumare: il
+  // placeholder toccato PIU' i suoi 3 vicini liberi piu' vicini entro un
+  // raggio fisso — vedi `findPlacementCluster()` in main.js. [I] A
+  // differenza dell'originale (che fallisce IN SILENZIO se non trova 4
+  // lotti — un singolo controllo a tempo fisso 3 tick dopo la nascita di
   // `eoliplacer`, mai piu' ripetuto: sembra un meccanismo mai rifinito,
   // `fantoccio` che crea non fa letteralmente nulla, sprite vuoto, nessun
   // evento oltre un timer che lo autodistrugge) qui il giocatore riceve
   // sempre un messaggio, costruito o no.
+  //
+  // [Bug corretto] `anchorOffset` — il CENTRO VISIVO della pala, invece,
+  // NON e' la media del cluster trovato sopra (che main.js usava prima:
+  // un punto che si sposta a seconda di QUALI 3 vicini vengono scelti,
+  // spesso disallineato dai 4 lotti veri sotto — segnalato dall'autore,
+  // "il cantiere della turbina continua ad essere disallineato"). **[C]**
+  // letto `placeholder/Mouse_LeftReleased.gml` riga per riga: al tocco
+  // (ramo selec==4) l'originale crea `eoliplacer` a offset FISSO
+  // `(98, 0)` dal placeholder toccato (`action_create_object(eoliplacer,
+  // 98, 0)`), e la catena successiva (`eoliplacer` -> `impavent` -> `eoli`,
+  // tutte con `action_create_object(..., 0, 0)`, offset relativo zero)
+  // eredita quella stessa posizione senza piu' toccarla: il centro vero
+  // e' sempre `placeholder.x + 98, placeholder.y`, un numero fisso letto
+  // dal codice, non una media calcolata sui lotti liberi trovati.
   eolico: {
     label: "Pala eolica",
     placeCost: { mon: 50000 },   // [C] eoliplacer/Alarm_1.gml, ramo selec==4
-    multiTile: { count: 4, radius: 130 },
+    // [C] placeholder/Mouse_LeftReleased.gml: `anchorOffset` e' l'offset FISSO
+    // (98, 0) di eoliplacer dal placeholder toccato, vedi il commento sopra.
+    multiTile: { count: 4, radius: 130, anchorOffset: { dx: 98, dy: 0 } },
     // [C] eoli/Alarm_0.gml: ogni 30 tick, SEMPRE +110 ele — a differenza di
     // industria non consuma `oil` (un generatore vero, non una centrale a
     // combustibile) e non e' gated su niente: `stepWindProduction()` sotto,
@@ -893,6 +909,17 @@ export const BUILDING_TYPES = {
       // e' lo stesso `{mon, every}`, qui `every:1` lo riproduce esatto.
       drain: { mon: 1, every: 1 },
       finalSprite: "eol", life: 800,             // [C] eoli/Create.gml
+      // [Bug corretto] Nessuna traccia "f" (frontSprFor() sopra non
+      // riconosce "impvent*"): senza impalcatura a coprirlo, "svelarsi"
+      // prima come ogni altro edificio (STUDIO.md, "l'edificio finito
+      // compare quando l'impalcatura entra nell'ultimo passo") mostrerebbe
+      // "eol" — gia' finito e animato — per l'intero ultimo passo
+      // (`impvent3`, 37s), nascondendo l'animazione di montaggio vera
+      // (steps sotto). `revealAtEnd` (stepConstructions(), buildings.js)
+      // rimanda `applyLevelFinish()` alla vera fine del cantiere per
+      // questo tipo soltanto — fedele all'originale anche qui (`eoli`
+      // nasce solo a fine cantiere, `impavent/Alarm_2.gml`).
+      revealAtEnd: true,
       // [C] eoli/Create.gml: wewe += 200 — di gran lunga il piu' pesante fra
       // tutti gli edifici (il secondo, media1s/d, si ferma a 150): una pala
       // eolica intera sulla piattaforma volante, fedele al nome "wewe"
@@ -915,19 +942,55 @@ export const BUILDING_TYPES = {
       hap: { create: -20, destroy: 20 },   // [C] eoli/Create.gml + Destroy.gml — l'unico simmetrico fra tutti i tipi con `hap`
       // [C] impavent/Create.gml + Alarm_0/1.gml: tre sprite in sequenza,
       // 1740+600+2200 = 4540 tick (~76s, il cantiere piu' lungo del motore —
-      // coerente con un costo di 50000 mon). `impavent/Alarm_3.gml` a tic
-      // 300 reimposta lo stesso sprite "impvent1" gia' attivo (un riavvio
-      // dell'animazione senza effetto visibile su sprite statici): fuso nel
-      // primo passo invece di un passo a parte, stesso principio gia' scelto
-      // per le code cosmetiche di industria/casa (STUDIO.md, "due
-      // semplificazioni"). Nessuna traccia "f" qui (`frontSprFor()` sotto
-      // non riconosce "impvent*", niente impalcatura in sovraimpressione:
-      // [C] fedele, questi sprite sono gia' l'illustrazione progressiva del
-      // cantiere, non una fondamenta "ir1x" condivisa).
+      // coerente con un costo di 50000 mon). Nessuna traccia "f" qui
+      // (`frontSprFor()` sotto non riconosce "impvent*", niente impalcatura
+      // in sovraimpressione): [C] fedele, questi sprite sono gia'
+      // l'illustrazione progressiva del cantiere, non una fondamenta "ir1x"
+      // condivisa.
+      //
+      // [Bug corretto] "sprite fermo per finta durata, poi sprite diverso"
+      // non basta qui: **[C]** verificato in `data/sprites.json`, "impvent1"
+      // ha DAVVERO 15 sottoimmagini e "impvent3" 22 (ir1x/if1x/sr4x/rd4x/m3x*
+      // di ogni altro cantiere del motore sono invece tutti a un solo
+      // frame — l'unico caso reale nel motore) — l'originale li anima con
+      // `action_sprite_set(sprite, 0, spd)`, non con `image_speed` a zero
+      // come ogni altro passo di cantiere. Segnalato dall'autore
+      // ("l'impalcatura/la pala dovrebbe montarsi/smontarsi con
+      // un'animazione, non si vede nulla"): il motore sceglieva sempre il
+      // frame 0 di qualunque sprite, ignorando le sottoimmagini vere.
+      // `spd` (nuovo campo per passo, frame/tic — lo stesso "frame/step" di
+      // GameMaker) fa lo stesso conto gia' usato per "eol" finito
+      // (WIND_ANIM_FPS/frameCountFor, main.js), generalizzato a QUALUNQUE
+      // sprite di cantiere invece che solo allo sprite finale.
+      // `impvent2` resta senza `spd` (un solo frame, l'`image_speed=1`
+      // dell'originale non farebbe comunque nessuna differenza visibile).
+      // `impvent3`: **[C]** `impavent/Alarm_1.gml`, `action_sprite_set
+      // (impvent3, 0, 0.01)` — 0.01 frame/tic * 2200 tic di durata = 22
+      // frame, ESATTAMENTE un ciclo completo dei 22 frame veri dello
+      // sprite: la velocita' non e' arbitraria, e' tarata apposta perche'
+      // l'animazione (la pala che prende forma) finisca proprio quando
+      // finisce il passo.
+      // `impvent1`: **[C]** `impavent/Create.gml` lo crea FERMO
+      // (`action_sprite_set(impvent1, 0, 0)`), poi `impavent/Alarm_3.gml` a
+      // tic 300 lo riarma a 0.01 frame/tic — non un riavvio "senza
+      // effetto" come letto in una nota precedente (che assumeva sprite
+      // statici, smentita ora che si sa che hanno sottoimmagini vere): il
+      // passo (1740 tic) e' percio' spezzato in due qui, stessa identica
+      // sagoma "impvent1" ma durata/velocita' diverse — 300 tic fermo sul
+      // frame 0, poi 1440 tic a 0.01 frame/tic = 14.4 frame, di nuovo quasi
+      // un ciclo completo dei 15 frame veri, stessa logica di impvent3.
+      // Spezzare il passo non cambia costi/durate totali (300+1440=1740,
+      // identico) ne' texto/messaggi (stesso sprite mostrato, `pickSpr()`
+      // sotto lo rivaluta ma "impvent1" e' una stringa singola, non un
+      // array a dado) — l'unico effetto e' il timer di animazione
+      // (`c.t`, si azzera ad ogni passo) che riparte da 0 al secondo
+      // sotto-passo, esattamente il momento in cui l'originale stesso lo
+      // riarma.
       steps: [
-        { spr: "impvent1", dur: 1740 },
+        { spr: "impvent1", dur: 300, spd: 0 },
+        { spr: "impvent1", dur: 1740 - 300, spd: 0.01 },
         { spr: "impvent2", dur: 600 },
-        { spr: "impvent3", dur: 2200 },
+        { spr: "impvent3", dur: 2200, spd: 0.01 },
       ],
     },
   },
@@ -1749,10 +1812,12 @@ function applyLevelFinish(b, def, up, c, r12, onDecor) {
 
 /**
  * Avanza tutti i cantieri in corso di `dt` secondi.
- * `onDecor(b, sprites)` sostituisce il decoro finale dell'edificio (fine
- * cantiere). `onSpawn(b, [{spr,dx,dy}])` aggiunge decoro transitorio
- * (gru/macerie) che sparisce quando `onDecor` rimpiazza tutto a fine
- * cantiere.
+ * `onDecor(b, sprites)` sostituisce il decoro FINALE dell'edificio (finestre/
+ * decoro per livello, chiamato da `applyLevelFinish()`). `onSpawn(b,
+ * [{spr,dx,dy}])` aggiunge decoro TRANSITORIO (gru/topper) durante un passo
+ * del cantiere. `onFinish(b)` avvisa quando l'impalcatura e' DAVVERO smontata
+ * (`b.construction` torna `null`) — e' il punto giusto per far sparire il
+ * decoro transitorio, non `onDecor`.
  *
  * [I] Segnalato dall'autore: l'edificio finito deve comparire quando
  * l'impalcatura ENTRA nell'ultimo passo (la fase di smontaggio — la stessa
@@ -1765,8 +1830,19 @@ function applyLevelFinish(b, def, up, c, r12, onDecor) {
  * quel momento, resta solo la scenografia dello smontaggio — `applyLevelFinish()`
  * sopra ora scatta li' (`c.finished`), non piu' quando l'ultimo passo
  * chiude e l'impalcatura sparisce per davvero.
+ *
+ * [Bug corretto] `onDecor` chiama `spawnDecor()` (main.js), che PRIMA
+ * rimpiazzava indiscriminatamente OGNI decoro dell'edificio — compreso il
+ * transitorio appena piazzato da `onSpawn` nello stesso passo (i topper
+ * "toppers"/"topls" nascono proprio nell'ultimo passo, insieme al decoro
+ * finale) o nei passi precedenti (le gru "gr21"/"gru1" di impalaser/impa*).
+ * Risultato: gru/topper sparivano nell'istante stesso in cui l'edificio
+ * finito compariva, invece di restare visibili fino alla vera fine
+ * dell'impalcatura. Ora `onDecor` tocca solo il decoro finale (main.js
+ * marca quello transitorio con `transient:true` e lo esclude dal filtro),
+ * e `onFinish` lo ripulisce quando l'impalcatura sparisce per davvero.
  */
-export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
+export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish) {
   for (const b of buildings) {
     const c = b.construction;
     if (!c) continue;
@@ -1775,8 +1851,13 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
     let cur = up.steps[c.stepIndex];
     if (c.curSpr === undefined) {
       c.curSpr = pickSpr(cur.spr);
+      // `c.curSpd` (frame/tic dello sprite di QUESTO passo, main.js lo legge
+      // per animare "impvent1"/"impvent3" — commento su BUILDING_TYPES.eolico
+      // sopra): 0 per ogni altro passo di ogni altro edificio (tutti a un
+      // solo frame vero, l'animazione non farebbe differenza).
+      c.curSpd = cur.spd ?? 0;
       if (cur.spawn) onSpawn?.(b, cur.spawn);
-      if (c.stepIndex === up.steps.length - 1 && !c.finished) {
+      if (c.stepIndex === up.steps.length - 1 && !c.finished && !up.revealAtEnd) {
         applyLevelFinish(b, def, up, c, r12, onDecor);
         c.finished = true;
       }
@@ -1811,17 +1892,47 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn) {
     if (c.stepIndex < up.steps.length) {
       cur = up.steps[c.stepIndex];
       c.curSpr = pickSpr(cur.spr);
+      // `c.curSpd` (frame/tic dello sprite di QUESTO passo, main.js lo legge
+      // per animare "impvent1"/"impvent3" — commento su BUILDING_TYPES.eolico
+      // sopra): 0 per ogni altro passo di ogni altro edificio (tutti a un
+      // solo frame vero, l'animazione non farebbe differenza).
+      c.curSpd = cur.spd ?? 0;
       if (cur.spawn) onSpawn?.(b, cur.spawn);
-      if (c.stepIndex === up.steps.length - 1 && !c.finished) {
+      if (c.stepIndex === up.steps.length - 1 && !c.finished && !up.revealAtEnd) {
         applyLevelFinish(b, def, up, c, r12, onDecor);
         c.finished = true;
       }
     } else {
       // L'edificio (livello/sprite/decoro/contatori) e' gia' stato
       // finalizzato all'ingresso dell'ultimo passo, sopra — qui resta solo
-      // da far sparire l'impalcatura residua, smontata per davvero.
+      // da far sparire l'impalcatura residua, smontata per davvero. Il
+      // decoro TRANSITORIO (gru/topper, onSpawn sopra) va rimosso proprio
+      // qui, non da onDecor: onDecor sostituisce solo il decoro FINALE
+      // dell'edificio (finestre/decoro per livello) quando applyLevelFinish()
+      // gira, che ora e' l'INGRESSO dell'ultimo passo — se rimuovesse anche
+      // il transitorio a quel punto, gru/topper sparirebbero nell'istante in
+      // cui l'edificio finito compare invece che alla vera fine
+      // dell'impalcatura (bug segnalato dall'autore).
+      // `up.revealAtEnd` (**[Bug corretto]**, solo `eolico` finora): buildings
+      // con un'impalcatura vera in sovraimpressione (`frontSprFor()` sopra)
+      // possono "svelarsi" prima — lo sprite finito e' comunque coperto
+      // dallo scaffold fino alla fine vera. `eolico` NON ha nessuna traccia
+      // "f" (BUILDING_TYPES.eolico sopra): senza `revealAtEnd` mostrava gia'
+      // "eol" (la pala finita, GIA' animata dopo la correzione sopra) per
+      // l'intero ultimo passo (`impvent3`, 37s) — il giocatore vedeva una
+      // pala completa e rotante MOLTO prima che il cantiere finisse
+      // davvero, e l'animazione di montaggio vera (`impvent3`, 22 frame,
+      // appena aggiunta sopra) non si vedeva mai perche' `b.spr` non era
+      // piu' "impvent3". Qui applyLevelFinish() gira solo ora, alla vera
+      // fine, per i tipi che lo dichiarano — fedele all'originale anche per
+      // eolico (`eoli` nasce solo a fine cantiere, `impavent/Alarm_2.gml`).
+      if (up.revealAtEnd && !c.finished) {
+        applyLevelFinish(b, def, up, c, r12, onDecor);
+        c.finished = true;
+      }
       b.construction = null;
       b.frontSpr = null; b.capSpr = null;
+      onFinish?.(b);
     }
   }
 }
@@ -1891,13 +2002,9 @@ export function stepSolarProduction(buildings, dt, r12, isNight, isDawn) {
  */
 export function stepWindProduction(buildings, dt, r12) {
   for (const b of buildings) {
-    if (b.construction) continue;
     const def = BUILDING_TYPES[b.type];
     const prod = def.windProduction;
     if (!prod) continue;
-    b.windT = (b.windT ?? 0) + dt;
-    const period = prod.every * TICK;
-    while (b.windT >= period) { b.windT -= period; r12.ele += prod.ele; }
     // [C] eoli/Create.gml: `action_sprite_set(eol, 0, 0.25)` — "eol" ha 8
     // sottoimmagini vere (le pale in rotazione, non un singolo fotogramma
     // statico) e GameMaker le scorre da solo a `image_speed` 0.25
@@ -1907,7 +2014,30 @@ export function stepWindProduction(buildings, dt, r12) {
     // "un colpo solo" con un contatore di fine, tipo soldfade/fica) — qui
     // basta un timer che non si azzera mai, letto in main.js insieme al
     // numero di frame reale dell'atlas per fare il modulo.
-    b.animT = (b.animT ?? 0) + dt;
+    //
+    // [Bug corretto] Prima l'animazione partiva solo a `!b.construction` —
+    // cioe' alla vera fine del cantiere. All'epoca `b.spr` mostrava gia'
+    // "eol" (lo sprite FINITO) fin dall'ingresso dell'ultimo passo (stessa
+    // scelta di ogni altro edificio, "l'edificio finito compare quando
+    // l'impalcatura entra nell'ultimo passo"): per gli altri edifici questo
+    // e' invisibile (un'impalcatura in sovraimpressione copre il "non
+    // ancora vivo"), ma `eolico` non ne ha nessuna (BUILDING_TYPES.eolico
+    // sopra) — la turbina restava a schermo GIA' col suo aspetto finito ma
+    // completamente ferma per l'intera coda del cantiere (~37s), poi
+    // scattava a girare solo alla fine. Corretto da due lati insieme:
+    // `revealAtEnd` (BUILDING_TYPES.eolico/stepConstructions() sopra) fa si'
+    // che "eol" compaia solo alla VERA fine, come nell'originale; qui
+    // l'animazione resta condizionata a `b.spr` (non a `!b.construction`
+    // direttamente) solo perche' e' lo stesso identico istante per questo
+    // tipo — piu' diretto e resistente a un futuro cambio di `revealAtEnd`.
+    // La produzione di energia sotto resta fedele a `eoli/Alarm_0.gml`
+    // (l'oggetto "eoli" vero nasce solo alla fine del cantiere nel
+    // decompilato) e continua a richiedere `!b.construction`.
+    if (b.spr === def.construct.finalSprite) b.animT = (b.animT ?? 0) + dt;
+    if (b.construction) continue;
+    b.windT = (b.windT ?? 0) + dt;
+    const period = prod.every * TICK;
+    while (b.windT >= period) { b.windT -= period; r12.ele += prod.ele; }
   }
 }
 // [C] eoli/Create.gml: 0.25 frame/step * 60 step/s.

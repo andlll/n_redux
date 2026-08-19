@@ -2700,3 +2700,231 @@ paragrafo 8.
   20 spawn di recogn sono sempre 11° o 13°, mai altro. Verificato anche in
   browser (screenshot): lo sprite "reconspr" (un biplano rosso) si
   disegna correttamente sulla mappa.
+
+- **Quattro bug segnalati insieme dall'autore, tutti riletti da capo invece
+  di fidarsi delle note precedenti che li dicevano gia' chiusi** ("la
+  turbina eolica da finita continua a non girare", "non vedo i topper in
+  cima ai cantieri", "il cantiere della turbina continua ad essere
+  disallineato", "le gru spariscono subito invece di aspettare la fine del
+  cantiere", "il laser non spara"). Un commit precedente (952d8b3/502c510)
+  dichiarava gia' risolti turbina/topper/impalcatura, ma il codice attuale
+  li aveva ancora rotti — verificato tutto in browser (Playwright,
+  `window.__nimbus` + import diretto dei moduli) prima di toccare niente,
+  non fidandosi della documentazione.
+  **Topper/gru che spariscono all'istante** (due segnalazioni diverse,
+  stessa causa): **[Bug corretto]** `spawnDecor()` (main.js) — chiamata da
+  `applyLevelFinish()` quando l'edificio finito compare, che ora scatta
+  ALL'INGRESSO dell'ultimo passo del cantiere (STUDIO.md sopra,
+  "sincronizzazione impalcatura/gru") — rimpiazzava INDISCRIMINATAMENTE
+  ogni decoro dell'edificio, compreso il decoro TRANSITORIO (gru/topper,
+  `addConstructionSpawn()`) appena piazzato nello stesso istante o nei
+  passi precedenti: la fix precedente risolveva solo il caso "lit:true di
+  default" (STUDIO.md sopra), non questo. Risultato osservabile: i topper
+  (`toppers`/`topls`, spawnati proprio nell'ultimo passo insieme al decoro
+  finale) sparivano nello stesso frame in cui nascevano; le gru spawnate
+  prima (es. `gr21` di `impalaser_r` al tic 6) sparivano non alla vera fine
+  del cantiere ma nell'istante in cui l'edificio finito compariva a
+  schermo. Corretto separando le due categorie: `addDecor()` (main.js)
+  accetta ora un flag `transient`, settato da `addConstructionSpawn()`;
+  `spawnDecor()` filtra via SOLO il decoro non transitorio; un nuovo
+  callback `onFinish` di `stepConstructions()` (buildings.js — chiamato nel
+  ramo che azzera `b.construction` per davvero, non piu' un evento
+  "fantasma" mai raggiunto da questo lato) rimuove il transitorio alla vera
+  fine (`removeTransientDecor()`, main.js).
+  **Turbina eolica finita che non gira**: **[Bug corretto]** stesso principio
+  del bug sopra, causa diversa. `b.spr` mostra gia' "eol" (lo sprite
+  FINITO, pale comprese) fin dall'ingresso dell'ultimo passo del cantiere
+  (`impvent3`, 2200 tic ~37s) per la stessa ragione — ma
+  `stepWindProduction()`/il calcolo del frame in main.js gating
+  l'animazione su `!b.construction` (vera fine cantiere): per quei 37s la
+  turbina appariva GIA' finita ma restava ferma su un fotogramma fisso, poi
+  scattava a girare solo alla fine — proprio l'edificio senza impalcatura
+  in sovraimpressione (`frontSpr`, niente traccia "f" per `eolico`,
+  BUILDING_TYPES.eolico sopra) a nascondere quel "non ancora vivo", quindi
+  l'unico caso in cui il problema si vedeva a occhio nudo. Corretto
+  disaccoppiando l'animazione (cosmetica, ora segue `b.spr === "eol"`) dalla
+  produzione di energia (economica, resta fedele a `!b.construction` —
+  `eoli` nel decompilato nasce solo alla fine vera del cantiere).
+  **Cantiere della turbina disallineato dai lotti**: **[Bug corretto]**
+  letto `placeholder/Mouse_LeftReleased.gml` riga per riga: al tocco (ramo
+  selec==4) l'originale crea `eoliplacer` a offset FISSO `(98, 0)` dal
+  placeholder toccato, e l'intera catena successiva (`eoliplacer` ->
+  `impavent` -> `eoli`) eredita quella posizione con offset relativo zero,
+  mai piu' toccata — il centro vero e' sempre un numero fisso letto dal
+  codice. Il motore invece ancorava la pala al CENTROIDE del cluster di 4
+  lotti trovato da `findPlacementCluster()` (il tapped + i 3 vicini liberi
+  piu' vicini): un punto che si sposta a seconda di quali vicini vengono
+  scelti, quasi mai coincidente col vero centro — la griglia isometrica di
+  `match_easy` ha una spaziatura irregolare (48 placeholder, gap fra 1 e
+  100px), quindi il cluster scelto raramente formava un quadrato simmetrico
+  intorno al tocco. `BUILDING_TYPES.eolico.multiTile.anchorOffset` (nuovo
+  campo, buildings.js) porta l'offset (98,0); `placeAt()` (main.js) lo usa
+  per l'ancoraggio invece della media del cluster, che resta comunque
+  necessario per sapere QUALI lotti consumare/bloccare.
+  **Il laser non spara**: non era vero — verificato con un test diretto
+  (Playwright, `window.__nimbus`, torretta+minaccia ferma piazzate a mano):
+  munizioni scalate (`r12.ele` 200->0), danno applicato (`life` 10->8, la
+  soglia giusta per `dirig`), esattamente come da codice. **[Bug corretto]**
+  il colpo VERO partiva ma non produceva NESSUN effetto visibile a schermo:
+  `laserone`/`laserone_retro` nell'originale disegnano un fascio vero
+  (sprite "lasere", 2000x97, ruotato verso il bersaglio) mai riprodotto
+  perche' il renderer (gl.js) non sapeva disegnare uno sprite ruotato — solo
+  un piccolo lampo alla bocca del cannone, facile da non notare. Aggiunto
+  `Renderer.drawQuad()` (gl.js): un quad a quattro angoli espliciti invece
+  di x,y+scala assiale, non richiede rotazione di sprite (il chiamante
+  calcola gia' gli angoli) — usato per un fascio pieno (tinta ciano) da
+  bocca a fondo raggio (`aim.fireRange`, nella direzione di mira, non verso
+  un singolo bersaglio: il colpo stesso danneggia tutto cio' che e' in
+  portata, non un solo target). `spawnBeam()`/`stepBeams()`/`BEAM_LIFE`
+  (projectiles.js, chiamato da `fireFrom()` sul ramo beam) + `drawBeams()`
+  (main.js). Vita breve (20 tic, ~0.33s: un lampo visibile, non un fascio
+  persistente — la vera ricarica e' 85 tic).
+  Verificato in browser (Playwright): turbina animata (screenshot A/B a
+  frame diversi, pale visibilmente ruotate, anche durante la coda del
+  cantiere); topper/gru piazzati a meta' costruzione e ancora visibili al
+  passo successivo (prima sparivano subito); piazzamento vero della pala
+  eolica via menu+tap (non forzato da script) allineato esattamente a
+  `placeholder + (98,0)`, screenshot con impalcatura centrata sui 4 lotti
+  liberi; fascio del laser renderizzato correttamente (test diretto su
+  `drawQuad()` con un fascio finto — la cattura in tempo reale di uno
+  sparo automatico e' risultata troppo breve per lo screenshot via
+  Playwright, ma la stessa identica chiamata di disegno e' quella usata
+  dal fuoco vero).
+
+- **Due segnalazioni successive dell'autore sulla stessa sessione: la
+  turbina eolica "finita" comparsa troppo presto nascondeva la vera
+  animazione di montaggio, e i pannelli solari si potevano impilare
+  all'infinito sullo stesso parco.**
+  **Impalcatura/pala che dovrebbero montarsi/smontarsi gradualmente**:
+  **[Bug corretto]**, causa diversa dal bug precedente sulla stessa sessione
+  (l'animazione delle pale di "eol" finito). Verificato in `data/
+  sprites.json`: "impvent1" ha DAVVERO 15 sottoimmagini e "impvent3" 22 —
+  l'UNICO caso reale nel motore (`ir1x`/`if1x`/`sr4x`/`rd4x`/`m3x*` di ogni
+  altro cantiere sono tutti a un solo frame vero) — **[C]**
+  `impavent/Alarm_0|1|3.gml`/`Create.gml`: l'originale li anima con
+  `action_sprite_set(sprite, 0, spd)` a velocita' non standard (0 poi 0.01
+  per impvent1, 0.01 per impvent3), non a `image_speed` fermo come ogni
+  altro passo di cantiere del motore. Il motore sceglieva sempre il frame 0
+  di qualunque sprite, ignorando le sottoimmagini vere: `c.curSpd` (nuovo
+  campo per passo, `stepConstructions()`) + `constructionFrameIdx()`
+  (main.js) applicano lo stesso conto gia' usato per "eol" finito
+  (WIND_ANIM_FPS/frameCountFor), generalizzato a QUALUNQUE sprite di
+  cantiere. Le velocita' non sono arbitrarie: 0.01 frame/tic * 2200 tic
+  (durata di impvent3) = 22 frame, ESATTAMENTE un ciclo completo dei 22
+  frame veri — la pala compare e si assembla proprio mentre il passo
+  scorre, non prima ne' dopo. `impvent1` (1740 tic) e' spezzato in due
+  passi identici (stesso sprite, `pickSpr()` non cambia mai stringa fra i
+  due) per riprodurre il dettaglio letto nel decompilato: **[C]** i primi
+  300 tic sono DAVVERO fermi (`action_sprite_set(impvent1,0,0)` a Create),
+  poi `Alarm_3` a tic 300 riarma la stessa sprite a 0.01 frame/tic per i
+  restanti 1440 tic — 1440*0.01=14.4 frame, di nuovo quasi un ciclo intero
+  dei 15 frame veri. Nessun cambio di costo/durata totale (300+1440=1740,
+  identico), solo il timer di animazione (`c.t`, si azzera ad ogni passo)
+  che riparte da 0 al punto giusto.
+  **Scoperto testando questa correzione**: durante l'ultimo passo
+  (`impvent3`) l'edificio mostrava GIA' "eol" (lo sprite FINITO, gia'
+  animato dopo la correzione precedente sulla stessa sessione) invece di
+  "impvent3" — la stessa scelta "l'edificio finito compare quando
+  l'impalcatura entra nell'ultimo passo" gia' fatta per ogni altro
+  edificio (STUDIO.md sopra, "sincronizzazione impalcatura/gru"), che per
+  gli altri e' invisibile (un'impalcatura in sovraimpressione copre il
+  "non ancora vivo") ma per `eolico` — l'UNICO senza traccia "f" — rendeva
+  la neonata animazione di `impvent3` codice morto: il giocatore vedeva
+  la pala GIA' completa e rotante per l'intero ultimo passo (~37s) invece
+  del montaggio progressivo. **[Bug corretto]**: nuovo flag
+  `up.revealAtEnd` (BUILDING_TYPES.eolico.construct, letto da
+  `stepConstructions()`) rimanda `applyLevelFinish()` alla vera fine del
+  cantiere SOLO per questo tipo — fedele all'originale anche qui (`eoli`
+  nasce solo a fine cantiere, `impavent/Alarm_2.gml`), diverso da ogni
+  altro edificio (che continua a "svelarsi" prima, scelta corretta li'
+  perche' hanno tutti un'impalcatura vera a coprirli).
+  Verificato in browser (Playwright, `window.__nimbus`): forzato un
+  eolico su "impvent3" dall'inizio del passo — screenshot a t=0 mostra
+  l'impalcatura vuota (sagoma metallica, nessuna pala), screenshot a
+  t=12s (circa a meta' del ciclo di 22 frame) mostra le pale gia' visibili
+  e in fase di montaggio sopra la stessa impalcatura — la vera animazione
+  progressiva, mai vista prima. Verificato anche che `b.spr` resta
+  "impvent3" (mai "eol") per l'intera durata del passo, e che
+  `b.construction`/`b.life`/`b.spr` scattano tutti insieme solo al vero
+  completamento del cantiere.
+  **Pannelli solari impilabili all'infinito sullo stesso parco**:
+  **[Bug corretto]** — verificato che il decompilato stesso
+  (`parco/Mouse_LeftPressed.gml`, ramo selec==61) non controlla MAI
+  `oversolar` prima di creare un altro `impasolr`: solo `mon>=1000`, un
+  difetto vero dell'originale (lo stesso file legge gia' `oversolar` in
+  un altro ramo, selec==11/ruspa, per bloccare la demolizione — un flag
+  esistente ma mai usato per bloccare anche il piazzamento). Segnalato
+  dall'autore giocando: si poteva pagare 1000 mon ripetutamente e impilare
+  un pannello sopra l'altro nello stesso identico punto. `placeSolarOverPark()`
+  (main.js) ora controlla `parco.oversolar` prima di scalare il costo/
+  creare l'edificio, restituendo un messaggio invece di un secondo
+  piazzamento silenzioso.
+  Verificato in browser (Playwright): un parco finito, due tap consecutivi
+  con "Pannelli solari" selezionato — il primo crea il pannello (-1000
+  mon, `buildings.filter(solare).length` passa a 1), il secondo non crea
+  nulla (resta a 1, mon invariato, messaggio "c'e' gia' un pannello solare
+  su questo parco").
+
+- **Funzione pausa, richiesta esplicitamente dall'autore — nessun
+  equivalente nel decompilato.** Bottone in basso a destra (bottone di
+  pausa "II", sempre presente, sopra ogni altro elemento della UI — anche
+  scorciatoia `[P]` da tastiera) che apre un menu con Riprendi/Salva
+  partita/Carica partita (riusa `doSave()`/`doLoad()`, gia' esistenti per
+  S/L) sopra il mondo, congelato e sfumato.
+  **Congelamento**: l'intero blocco di simulazione di `frame()` (main.js —
+  cantieri, economia, meteo, traffico, torrette, minacce...) e' avvolto in
+  `if (!paused) { ... }`; il disegno resta FUORI da quel controllo (ridisegna
+  lo stesso identico stato ogni frame, nessun costo visibile percepibile dal
+  giocatore) — cosi' il blur puo' restare un post-processo puro invece di
+  dover duplicare la logica di disegno per lo stato "in pausa".
+  **Blur**: nuova classe `PauseBlur` (game/src/gl.js), isolata dal
+  `Renderer` principale (proprio shader/VAO/framebuffer, non tocca il batch
+  sprite di ogni giorno) — cattura il canvas gia' disegnato
+  (`gl.copyTexImage2D`), lo sottocampiona a un quarto di lato (piu'
+  economico E visivamente piu' morbido a parita' di raggio del kernel) e lo
+  sfuma con un blur gaussiano separabile a 5 campioni, due iterazioni
+  orizzontale+verticale. Tre bug distinti scoperti mettendolo in piedi,
+  tutti col sintomo "niente si vede" (nessuna eccezione JS, `gl.getError()`
+  0 quasi sempre) invece di un crash:
+  1. Il contesto e' creato con `alpha:false` (Renderer, canvas sempre
+     opaco): catturare il framebuffer di default con `copyTexImage2D`
+     usando internalformat `gl.RGBA` (invece di `gl.RGB`, l'unico
+     compatibile con un framebuffer senza alpha vero) faceva scattare
+     `GL_INVALID_OPERATION` — silenzioso finche' non si controlla
+     `gl.getError()` a mano, il sintomo visibile era un rettangolo bianco
+     al posto del blur.
+  2. Il blur sottoscala (`_pass()`) lascia `gl.viewport` sulla risoluzione
+     ridotta dell'ultimo passo interno — senza ripristinarlo esplicitamente
+     a fine `blurScreen()`, ogni disegno successivo del chiamante
+     (oscuramento, pannello, testo) finiva compresso in quel piccolo
+     rettangolo invece di coprire lo schermo intero.
+  3. Il piu' subdolo: `_pass()` cambia `gl.useProgram()` al programma del
+     blur (un secondo shader, layout attributi/uniform diverso da quello
+     principale) e non lo ripristina mai — `Renderer.flush()` non
+     richiamava `gl.useProgram()` ad ogni chiamata (solo `beginFrame()`,
+     una volta a inizio frame), quindi il PRIMO `flush()` dopo un blur
+     disegnava ancora col programma sbagliato: geometria calcolata da
+     attributi letti col layout sbagliato, sintomo "meta' schermo sparito"
+     (un confine di clipping esatto a meta' larghezza/altezza — coincidenza
+     che ha richiesto piu' isolamento del previsto per essere ricondotta
+     alla causa vera). Corretto rendendo `flush()` autosufficiente
+     (richiama sempre `gl.useProgram(this.prog)`), invece di affidarsi
+     all'ordine delle chiamate per restare coerente — piu' robusto anche
+     per qualunque futuro secondo shader.
+  `v0`/`v1` scambiati nel quad finale (main.js, `drawPauseOverlay()`):
+  `copyTexImage2D` cattura dal framebuffer di default, che ha l'origine in
+  basso a sinistra (convenzione GL) — l'opposto della convenzione "v0=alto"
+  che ogni sprite caricato da `loadTexture()` usa nel resto del motore
+  (`UNPACK_FLIP_Y_WEBGL=false`).
+  **Input**: mentre `paused`, drag/zoom/piazzamento a trascinamento/scroll
+  del selettore edifici sono tutti disabilitati (guardie in cima a ognuno
+  degli handler di `input.js` in main.js) — solo il bottone di pausa
+  stesso (sempre attivo, controllato per primo in `onTap`, prima persino
+  del pannello prestiti) e i tre bottoni del menu rispondono.
+  Verificato in browser (Playwright): tap reale sul bottone -> mondo
+  visibilmente sfumato e oscurato, pannello leggibile; posizione di
+  un'auto identica prima/dopo 800ms in pausa (congelamento vero); Salva
+  funziona restando in pausa; Riprendi torna allo stato normale e la
+  simulazione riparte (la stessa auto si muove di nuovo); nessuna
+  regressione sul rendering normale (fuori pausa) dopo il fix a
+  `Renderer.flush()`; funziona anche su viewport stretto (mobile).
