@@ -149,6 +149,22 @@ function frameFor(sprName, frameIdx = 0) {
 function frameCountFor(sprName) {
   return atlas.sprites[sprName]?.length ?? 1;
 }
+/** Frame corrente per uno sprite di CANTIERE con sottoimmagini vere
+ * ("impvent1"/"impvent3" della pala eolica — `c.curSpd`, buildings.js/
+ * BUILDING_TYPES.eolico: 0 per ogni altro passo di ogni altro edificio,
+ * quindi qui sempre 0). `c.t` (il timer del passo corrente, si azzera ad
+ * ogni cambio passo) fa da orologio dell'animazione — stesso principio di
+ * `b.animT`/WIND_ANIM_FPS per lo sprite FINITO, generalizzato a qualunque
+ * sprite di cantiere invece che solo all'ultimo. Segnalato dall'autore:
+ * senza questo l'impalcatura/la pala restavano ferme sul frame 0 per
+ * tutta la durata del passo, "nessuna animazione di montaggio/smontaggio"
+ * anche dopo aver corretto b.animT per lo sprite finito sopra. */
+function constructionFrameIdx(b) {
+  const c = b.construction;
+  if (!c?.curSpd) return 0;
+  const frames = frameCountFor(b.spr);
+  return frames > 1 ? Math.floor(c.t * 60 * c.curSpd) % frames : 0;
+}
 // Alberi (STUDIO.md §5.3, src/objects/albe|albe2|albe3/Create.gml): a
 // Create l'originale sceglie a dado uno sprite finale diverso per istanza
 // (in albe, se nessun dado va a buon fine resta il default "a1" della
@@ -620,6 +636,17 @@ function placeAt(placeholder, type) {
  * riparare finche' il pannello resta li' sopra).
  */
 function placeSolarOverPark(parco) {
+  // [Bug corretto] Il decompilato stesso (`parco/Mouse_LeftPressed.gml`,
+  // ramo selec==61) non controlla MAI `oversolar` prima di creare
+  // `impasolr`: solo `mon>=1000`, un'unica volta guardato altrove nello
+  // stesso file (ramo selec==11, per decidere se la ruspa puo' aprirsi —
+  // gia' letto sopra, STUDIO.md "pannelli solari sopra un parco"). Un
+  // difetto vero dell'originale, non una scelta di design: senza questo
+  // controllo si poteva impilare un pannello sopra l'altro, stesso punto,
+  // pagando 1000 mon ogni volta — segnalato dall'autore giocando. `parco`
+  // resta un solo `oversolar` booleano (nessuna lista): un secondo tocco
+  // con un pannello gia' presente non deve costare ne' creare nulla.
+  if (parco.oversolar) return "c'e' gia' un pannello solare su questo parco";
   const def = BUILDING_TYPES.solare;
   if (!canAfford(r12, def.placeCost)) return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
   for (const k in def.placeCost) r12[k] -= def.placeCost[k];
@@ -1689,14 +1716,14 @@ function frame(now) {
     // `eolico` (b.animT, buildings.js/stepWindProduction): "eol" ha 8
     // sottoimmagini vere (le pale che girano), animate in loop invece che
     // ferme al frame 0 — vedi il commento su WIND_ANIM_FPS in buildings.js.
-    // Ogni altro edificio resta un fotogramma fisso, come sempre. Non
-    // `!b.construction`: lo sprite finale "eol" e' gia' a schermo prima
-    // della vera fine del cantiere (STUDIO.md, "l'edificio finito compare
-    // quando l'impalcatura entra nell'ultimo passo") — l'animazione deve
-    // seguire lo sprite mostrato, non lo stato del cantiere (stessa
-    // correzione di stepWindProduction() in buildings.js).
+    // Ogni altro edificio resta un fotogramma fisso, come sempre. Il
+    // controllo su `b.spr` (non `!b.construction` direttamente) resta lo
+    // stesso di stepWindProduction() in buildings.js: "eol" compare solo
+    // alla vera fine del cantiere (`revealAtEnd`, BUILDING_TYPES.eolico),
+    // quindi qui sono equivalenti — ma il pareggio con lo sprite mostrato
+    // resta piu' diretto.
     const windFrames = (b.type === "eolico" && b.spr === BUILDING_TYPES.eolico.construct.finalSprite) ? frameCountFor(b.spr) : 1;
-    const buildingFrameIdx = windFrames > 1 ? Math.floor((b.animT ?? 0) * WIND_ANIM_FPS) % windFrames : 0;
+    const buildingFrameIdx = windFrames > 1 ? Math.floor((b.animT ?? 0) * WIND_ANIM_FPS) % windFrames : constructionFrameIdx(b);
     dynamic.push({ obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr, buildingFrameIdx) });
     // Impalcatura in sovraimpressione + coperchio di fine cantiere (vedi
     // buildings.js): stessa x/y/depth dell'edificio, spinti sopra di lui

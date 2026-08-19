@@ -2790,3 +2790,77 @@ paragrafo 8.
   sparo automatico e' risultata troppo breve per lo screenshot via
   Playwright, ma la stessa identica chiamata di disegno e' quella usata
   dal fuoco vero).
+
+- **Due segnalazioni successive dell'autore sulla stessa sessione: la
+  turbina eolica "finita" comparsa troppo presto nascondeva la vera
+  animazione di montaggio, e i pannelli solari si potevano impilare
+  all'infinito sullo stesso parco.**
+  **Impalcatura/pala che dovrebbero montarsi/smontarsi gradualmente**:
+  **[Bug corretto]**, causa diversa dal bug precedente sulla stessa sessione
+  (l'animazione delle pale di "eol" finito). Verificato in `data/
+  sprites.json`: "impvent1" ha DAVVERO 15 sottoimmagini e "impvent3" 22 —
+  l'UNICO caso reale nel motore (`ir1x`/`if1x`/`sr4x`/`rd4x`/`m3x*` di ogni
+  altro cantiere sono tutti a un solo frame vero) — **[C]**
+  `impavent/Alarm_0|1|3.gml`/`Create.gml`: l'originale li anima con
+  `action_sprite_set(sprite, 0, spd)` a velocita' non standard (0 poi 0.01
+  per impvent1, 0.01 per impvent3), non a `image_speed` fermo come ogni
+  altro passo di cantiere del motore. Il motore sceglieva sempre il frame 0
+  di qualunque sprite, ignorando le sottoimmagini vere: `c.curSpd` (nuovo
+  campo per passo, `stepConstructions()`) + `constructionFrameIdx()`
+  (main.js) applicano lo stesso conto gia' usato per "eol" finito
+  (WIND_ANIM_FPS/frameCountFor), generalizzato a QUALUNQUE sprite di
+  cantiere. Le velocita' non sono arbitrarie: 0.01 frame/tic * 2200 tic
+  (durata di impvent3) = 22 frame, ESATTAMENTE un ciclo completo dei 22
+  frame veri — la pala compare e si assembla proprio mentre il passo
+  scorre, non prima ne' dopo. `impvent1` (1740 tic) e' spezzato in due
+  passi identici (stesso sprite, `pickSpr()` non cambia mai stringa fra i
+  due) per riprodurre il dettaglio letto nel decompilato: **[C]** i primi
+  300 tic sono DAVVERO fermi (`action_sprite_set(impvent1,0,0)` a Create),
+  poi `Alarm_3` a tic 300 riarma la stessa sprite a 0.01 frame/tic per i
+  restanti 1440 tic — 1440*0.01=14.4 frame, di nuovo quasi un ciclo intero
+  dei 15 frame veri. Nessun cambio di costo/durata totale (300+1440=1740,
+  identico), solo il timer di animazione (`c.t`, si azzera ad ogni passo)
+  che riparte da 0 al punto giusto.
+  **Scoperto testando questa correzione**: durante l'ultimo passo
+  (`impvent3`) l'edificio mostrava GIA' "eol" (lo sprite FINITO, gia'
+  animato dopo la correzione precedente sulla stessa sessione) invece di
+  "impvent3" — la stessa scelta "l'edificio finito compare quando
+  l'impalcatura entra nell'ultimo passo" gia' fatta per ogni altro
+  edificio (STUDIO.md sopra, "sincronizzazione impalcatura/gru"), che per
+  gli altri e' invisibile (un'impalcatura in sovraimpressione copre il
+  "non ancora vivo") ma per `eolico` — l'UNICO senza traccia "f" — rendeva
+  la neonata animazione di `impvent3` codice morto: il giocatore vedeva
+  la pala GIA' completa e rotante per l'intero ultimo passo (~37s) invece
+  del montaggio progressivo. **[Bug corretto]**: nuovo flag
+  `up.revealAtEnd` (BUILDING_TYPES.eolico.construct, letto da
+  `stepConstructions()`) rimanda `applyLevelFinish()` alla vera fine del
+  cantiere SOLO per questo tipo — fedele all'originale anche qui (`eoli`
+  nasce solo a fine cantiere, `impavent/Alarm_2.gml`), diverso da ogni
+  altro edificio (che continua a "svelarsi" prima, scelta corretta li'
+  perche' hanno tutti un'impalcatura vera a coprirli).
+  Verificato in browser (Playwright, `window.__nimbus`): forzato un
+  eolico su "impvent3" dall'inizio del passo — screenshot a t=0 mostra
+  l'impalcatura vuota (sagoma metallica, nessuna pala), screenshot a
+  t=12s (circa a meta' del ciclo di 22 frame) mostra le pale gia' visibili
+  e in fase di montaggio sopra la stessa impalcatura — la vera animazione
+  progressiva, mai vista prima. Verificato anche che `b.spr` resta
+  "impvent3" (mai "eol") per l'intera durata del passo, e che
+  `b.construction`/`b.life`/`b.spr` scattano tutti insieme solo al vero
+  completamento del cantiere.
+  **Pannelli solari impilabili all'infinito sullo stesso parco**:
+  **[Bug corretto]** — verificato che il decompilato stesso
+  (`parco/Mouse_LeftPressed.gml`, ramo selec==61) non controlla MAI
+  `oversolar` prima di creare un altro `impasolr`: solo `mon>=1000`, un
+  difetto vero dell'originale (lo stesso file legge gia' `oversolar` in
+  un altro ramo, selec==11/ruspa, per bloccare la demolizione — un flag
+  esistente ma mai usato per bloccare anche il piazzamento). Segnalato
+  dall'autore giocando: si poteva pagare 1000 mon ripetutamente e impilare
+  un pannello sopra l'altro nello stesso identico punto. `placeSolarOverPark()`
+  (main.js) ora controlla `parco.oversolar` prima di scalare il costo/
+  creare l'edificio, restituendo un messaggio invece di un secondo
+  piazzamento silenzioso.
+  Verificato in browser (Playwright): un parco finito, due tap consecutivi
+  con "Pannelli solari" selezionato — il primo crea il pannello (-1000
+  mon, `buildings.filter(solare).length` passa a 1), il secondo non crea
+  nulla (resta a 1, mon invariato, messaggio "c'e' gia' un pannello solare
+  su questo parco").
