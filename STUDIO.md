@@ -2864,3 +2864,67 @@ paragrafo 8.
   mon, `buildings.filter(solare).length` passa a 1), il secondo non crea
   nulla (resta a 1, mon invariato, messaggio "c'e' gia' un pannello solare
   su questo parco").
+
+- **Funzione pausa, richiesta esplicitamente dall'autore — nessun
+  equivalente nel decompilato.** Bottone in basso a destra (bottone di
+  pausa "II", sempre presente, sopra ogni altro elemento della UI — anche
+  scorciatoia `[P]` da tastiera) che apre un menu con Riprendi/Salva
+  partita/Carica partita (riusa `doSave()`/`doLoad()`, gia' esistenti per
+  S/L) sopra il mondo, congelato e sfumato.
+  **Congelamento**: l'intero blocco di simulazione di `frame()` (main.js —
+  cantieri, economia, meteo, traffico, torrette, minacce...) e' avvolto in
+  `if (!paused) { ... }`; il disegno resta FUORI da quel controllo (ridisegna
+  lo stesso identico stato ogni frame, nessun costo visibile percepibile dal
+  giocatore) — cosi' il blur puo' restare un post-processo puro invece di
+  dover duplicare la logica di disegno per lo stato "in pausa".
+  **Blur**: nuova classe `PauseBlur` (game/src/gl.js), isolata dal
+  `Renderer` principale (proprio shader/VAO/framebuffer, non tocca il batch
+  sprite di ogni giorno) — cattura il canvas gia' disegnato
+  (`gl.copyTexImage2D`), lo sottocampiona a un quarto di lato (piu'
+  economico E visivamente piu' morbido a parita' di raggio del kernel) e lo
+  sfuma con un blur gaussiano separabile a 5 campioni, due iterazioni
+  orizzontale+verticale. Tre bug distinti scoperti mettendolo in piedi,
+  tutti col sintomo "niente si vede" (nessuna eccezione JS, `gl.getError()`
+  0 quasi sempre) invece di un crash:
+  1. Il contesto e' creato con `alpha:false` (Renderer, canvas sempre
+     opaco): catturare il framebuffer di default con `copyTexImage2D`
+     usando internalformat `gl.RGBA` (invece di `gl.RGB`, l'unico
+     compatibile con un framebuffer senza alpha vero) faceva scattare
+     `GL_INVALID_OPERATION` — silenzioso finche' non si controlla
+     `gl.getError()` a mano, il sintomo visibile era un rettangolo bianco
+     al posto del blur.
+  2. Il blur sottoscala (`_pass()`) lascia `gl.viewport` sulla risoluzione
+     ridotta dell'ultimo passo interno — senza ripristinarlo esplicitamente
+     a fine `blurScreen()`, ogni disegno successivo del chiamante
+     (oscuramento, pannello, testo) finiva compresso in quel piccolo
+     rettangolo invece di coprire lo schermo intero.
+  3. Il piu' subdolo: `_pass()` cambia `gl.useProgram()` al programma del
+     blur (un secondo shader, layout attributi/uniform diverso da quello
+     principale) e non lo ripristina mai — `Renderer.flush()` non
+     richiamava `gl.useProgram()` ad ogni chiamata (solo `beginFrame()`,
+     una volta a inizio frame), quindi il PRIMO `flush()` dopo un blur
+     disegnava ancora col programma sbagliato: geometria calcolata da
+     attributi letti col layout sbagliato, sintomo "meta' schermo sparito"
+     (un confine di clipping esatto a meta' larghezza/altezza — coincidenza
+     che ha richiesto piu' isolamento del previsto per essere ricondotta
+     alla causa vera). Corretto rendendo `flush()` autosufficiente
+     (richiama sempre `gl.useProgram(this.prog)`), invece di affidarsi
+     all'ordine delle chiamate per restare coerente — piu' robusto anche
+     per qualunque futuro secondo shader.
+  `v0`/`v1` scambiati nel quad finale (main.js, `drawPauseOverlay()`):
+  `copyTexImage2D` cattura dal framebuffer di default, che ha l'origine in
+  basso a sinistra (convenzione GL) — l'opposto della convenzione "v0=alto"
+  che ogni sprite caricato da `loadTexture()` usa nel resto del motore
+  (`UNPACK_FLIP_Y_WEBGL=false`).
+  **Input**: mentre `paused`, drag/zoom/piazzamento a trascinamento/scroll
+  del selettore edifici sono tutti disabilitati (guardie in cima a ognuno
+  degli handler di `input.js` in main.js) — solo il bottone di pausa
+  stesso (sempre attivo, controllato per primo in `onTap`, prima persino
+  del pannello prestiti) e i tre bottoni del menu rispondono.
+  Verificato in browser (Playwright): tap reale sul bottone -> mondo
+  visibilmente sfumato e oscurato, pannello leggibile; posizione di
+  un'auto identica prima/dopo 800ms in pausa (congelamento vero); Salva
+  funziona restando in pausa; Riprendi torna allo stato normale e la
+  simulazione riparte (la stessa auto si muove di nuovo); nessuna
+  regressione sul rendering normale (fuori pausa) dopo il fix a
+  `Renderer.flush()`; funziona anche su viewport stretto (mobile).

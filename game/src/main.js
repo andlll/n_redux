@@ -1,4 +1,4 @@
-import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture } from "./gl.js";
+import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture, PauseBlur } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan } from "./state.js";
@@ -16,7 +16,7 @@ import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./sm
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load } from "./save.js";
-import { loadFont, drawText } from "./font.js";
+import { loadFont, drawText, measureText } from "./font.js";
 
 const canvas = document.getElementById("view");
 const hud = document.getElementById("hud");
@@ -46,6 +46,11 @@ const white = makeSolidTexture(gl);
 // prevede (nessun sistema di particelle in questo motore, STUDIO.md), e'
 // puramente nostra.
 const bubbleTex = makeCircleTexture(gl, 64);
+// Il blur del menu di pausa (vedi drawPauseOverlay() piu' sotto): render-
+// to-texture + blur separabile, l'unico posto nel motore che ne ha
+// bisogno — isolato nella propria classe (game/src/gl.js) invece che nel
+// Renderer principale, che resta il solo batch di sprite di ogni giorno.
+const pauseBlur = new PauseBlur(gl);
 const cam = new Camera();
 const input = new Input(canvas);
 
@@ -971,6 +976,10 @@ window.addEventListener("keydown", (e) => {
     message = ok ? "partita caricata" : "nessun salvataggio";
     messageT = 3;
   }
+  // Scorciatoia da tastiera per lo stesso bottone di pausa in basso a
+  // destra (vedi `paused` sopra) — comoda su desktop, dove il bottone
+  // resta comunque toccabile col mouse come su touch.
+  if (e.key === "p" || e.key === "P") paused = !paused;
 });
 
 // ------------------------------------------------- ciclo giorno/notte
@@ -1096,6 +1105,63 @@ function drawBeams() {
   }
 }
 
+/**
+ * Menu di pausa (`paused`, sopra): cattura il canvas gia' disegnato per
+ * questo frame (il mondo, congelato — la simulazione non e' avanzata) e lo
+ * sfuma con `PauseBlur.blurScreen()` (game/src/gl.js), poi ci disegna sopra
+ * un oscuramento leggero + un pannello con titolo e tre bottoni
+ * (Riprendi/Salva/Carica, riusando `doSave()`/`doLoad()` gia' esistenti per
+ * S/L da tastiera). Nessun equivalente nel decompilato (STUDIO.md,
+ * `paused` sopra): puramente nostro.
+ *
+ * Chiamata FUORI dal batch GUI appena chiuso (`r.flush()` prima di questa
+ * chiamata, nel ciclo di frame): `pauseBlur.blurScreen()` legge il
+ * framebuffer di default con `gl.copyTexImage2D`, che vede solo quello che
+ * e' GIA' stato consegnato alla GPU — se il batch fosse ancora aperto (dati
+ * accodati ma non `flush()`ati) la cattura vedrebbe un frame vecchio o a
+ * meta'.
+ */
+function drawPauseOverlay() {
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+  // `v0`/`v1` scambiati rispetto alla convenzione usuale (v0=alto, ogni
+  // sprite caricato da loadTexture() ha UNPACK_FLIP_Y_WEBGL=false):
+  // `gl.copyTexImage2D` cattura dal framebuffer di default, che ha
+  // l'origine in basso a sinistra (convenzione GL) — l'opposto. Senza lo
+  // scambio l'immagine sfumata apparirebbe capovolta.
+  r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
+  // Oscuramento extra sopra lo sfumato — lo stesso rettangolo pieno gia'
+  // usato per la vignetta fuori mappa (main.js sopra), qui semitrasparente:
+  // il blur da solo non basta a far leggere bene un pannello chiaro sopra
+  // un mondo comunque colorato/luminoso.
+  r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+
+  const panelW = Math.min(360, cw - 40), panelH = 260;
+  const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+  r.draw(solidFrame(white, panelW, panelH), px, py, 1, 0x20242c, 0.95);
+
+  const titleScale = 2.4;
+  const title = "PAUSA";
+  drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 22, titleScale, 0xffffff, 1);
+
+  pauseMenuButtons = [];
+  const rows = [
+    { label: "Riprendi", action: "resume" },
+    { label: "Salva partita", action: "save" },
+    { label: "Carica partita", action: "load" },
+  ];
+  const btnW = panelW - 60, btnH = 46, btnGap = 14, textScale = 1.3;
+  let by = py + 96;
+  for (const row of rows) {
+    const bx = px + (panelW - btnW) / 2;
+    r.draw(solidFrame(white, btnW, btnH), bx, by, 1, 0x3a4152, 0.95);
+    drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, 0xffffff, 1);
+    pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+    by += btnH + btnGap;
+  }
+  r.flush();
+}
+
 /** Moltiplica una tinta 0xRRGGBB per una tinta ambientale [r,g,b] in 0..1. */
 function mulTint(base, rgb) {
   const r = Math.round(((base >> 16) & 255) * rgb[0]);
@@ -1133,7 +1199,7 @@ function inFrameDiamond(wx, wy, x, y, f) {
 // del gesto di piazzamento a trascinamento — qui basta ignorare `onDrag`
 // finche' `armedPlacement` e' vivo, invece di introdurre un vero stato
 // "scrolling disabilitato" nella camera.
-input.onDrag = (dx, dy) => { if (armedPlacement) return; userMoved = true; cam.panByScreen(dx, dy); };
+input.onDrag = (dx, dy) => { if (paused || armedPlacement) return; userMoved = true; cam.panByScreen(dx, dy); };
 // Piazzamento a trascinamento (palazzo/museo, armPlacement()/resolvePlacement()
 // sopra): arma alla PRESSIONE (non al tocco — `onTap` scatta solo al
 // rilascio, e qui l'origine e il lotto diagonale distano ~100px, ben oltre
@@ -1141,7 +1207,7 @@ input.onDrag = (dx, dy) => { if (armedPlacement) return; userMoved = true; cam.p
 // tocco che comincia sopra la UI (bottoni del selettore) non deve armare
 // niente sotto di essa — stesso spirito di `uiHitTest` per il pan.
 input.onPointerDown = (sx, sy) => {
-  if (armedPlacement) return;
+  if (paused || armedPlacement) return;
   for (const btn of uiButtons) {
     if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) return;
   }
@@ -1154,7 +1220,7 @@ input.onPointerDown = (sx, sy) => {
   message = err ?? "trascina verso un lotto libero adiacente";
   messageT = 3;
 };
-input.onPointerUp = (sx, sy) => resolvePlacement(sx, sy);
+input.onPointerUp = (sx, sy) => { if (!paused) resolvePlacement(sx, sy); };
 // Il fattore si applica a `targetZoom`, non a `zoom` (che insegue con un
 // filo di ritardo, vedi Camera.update()): cosi' una rotellata mentre lo
 // zoom sta ancora animando accumula sul bersaglio invece di "strappare"
@@ -1164,7 +1230,7 @@ input.onPointerUp = (sx, sy) => resolvePlacement(sx, sy);
 // generato da un mouse — non toccano piu' la camera, che resta fissa al
 // suo zoom pixel-perfect impostato in resize().
 if (isMobile) {
-  input.onZoom = (f, ax, ay) => { userMoved = true; cam.setZoom(cam.targetZoom * f, ax, ay); };
+  input.onZoom = (f, ax, ay) => { if (paused) return; userMoved = true; cam.setZoom(cam.targetZoom * f, ax, ay); };
 }
 // Selettore edificio scorrevole: su schermi stretti in portrait la riga di
 // bottoni (fino a 13 nel menu "edifici", vedi OTHER_BUILDINGS piu' sotto) e'
@@ -1178,19 +1244,35 @@ if (isMobile) {
 let uiScrollX = 0;
 let uiRowBounds = null;
 if (isMobile) {
-  input.uiHitTest = (sx, sy) => !!uiRowBounds
+  input.uiHitTest = (sx, sy) => !paused && !!uiRowBounds
     && sx >= uiRowBounds.x0 && sx <= uiRowBounds.x1
     && sy >= uiRowBounds.y0 && sy <= uiRowBounds.y1;
-  input.onUIDrag = (dx) => { uiScrollX -= dx; };
+  input.onUIDrag = (dx) => { if (!paused) uiScrollX -= dx; };
 }
 let picked = null;
 let message = "";
 let messageT = 0;
+// Pausa (bottone in basso a destra + tasto P, vedi drawPauseOverlay() e il
+// resto dei riferimenti a `paused` piu' sotto): congela l'intero blocco di
+// simulazione (frame(), sopra) e mostra il mondo — gia' disegnato,
+// semplicemente non piu' aggiornato — sfumato sotto un menu con
+// "Riprendi"/"Salva"/"Carica". Non esiste nel decompilato (nessun
+// `playbuttoner`/pausa vera nell'originale, STUDIO.md "playbuttoner
+// investigato" — quello era un acceleratore del grattacielo, non una
+// pausa globale): puramente nostro, richiesto dall'autore.
+let paused = false;
 // Gesto di piazzamento a trascinamento in corso (palazzo/museo, buildings.js
 // `def.diagonalPlacement`) — vedi armPlacement()/resolvePlacement() sotto.
 // null quando nessun gesto e' armato (il caso comune, per ogni altro tipo).
 let armedPlacement = null;   // { type, origin, targets: [{placeholder, axis}] }
 let uiButtons = [];   // { x, y, w, h, type }, ricalcolati ad ogni frame dal disegno del selettore
+// Bottone di pausa (sempre presente, in basso a destra) + bottoni del
+// relativo menu (solo quando `paused`): stesso schema di `uiButtons` sopra
+// (ricalcolati ogni frame dal disegno, letti da input.onTap sotto), ma
+// tenuti separati perche' il bottone di pausa deve restare toccabile ANCHE
+// mentre il resto della UI e' bloccato dal menu (vedi onTap).
+let pauseBtnRect = null;   // { x, y, w, h }
+let pauseMenuButtons = [];   // { x, y, w, h, action }
 
 // [C] placeholder/Mouse_LeftReleased.gml: `r12.selec` e' il vero selettore
 // di modalita' piazzamento nell'originale (1 = casa, 2 = industria, ...).
@@ -1323,6 +1405,36 @@ function collectCoinAt(item) {
 }
 
 input.onTap = (sx, sy) => {
+  // Il bottone di pausa intercetta PRIMA di ogni altra cosa, modale
+  // (bankPanelOpen sotto) incluso — deve restare toccabile sempre, in
+  // entrambi gli stati (avvia/toglie la pausa), altrimenti una volta
+  // pausato non ci sarebbe piu' modo di uscirne se un altro modale fosse
+  // aperto sopra di lui.
+  if (pauseBtnRect && sx >= pauseBtnRect.x && sx <= pauseBtnRect.x + pauseBtnRect.w
+    && sy >= pauseBtnRect.y && sy <= pauseBtnRect.y + pauseBtnRect.h) {
+    paused = !paused;
+    return;
+  }
+  // Mentre e' in pausa il resto del mondo (mondo, UI, altri modali) resta
+  // bloccato — solo i bottoni del menu di pausa rispondono. Stesso schema
+  // "modale" di bankPanelOpen sotto, controllato PRIMA di lui apposta:
+  // se il pannello prestiti fosse gia' aperto quando si preme pausa,
+  // restare bloccati su quello invece che sul menu di pausa sarebbe
+  // confuso (e comunque quel pannello non e' piu' disegnato sopra il blur).
+  if (paused) {
+    const hit = pauseMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+    if (hit?.action === "resume") {
+      paused = false;
+    } else if (hit?.action === "save") {
+      doSave();
+      message = "partita salvata"; messageT = 3;
+    } else if (hit?.action === "load") {
+      const ok = doLoad();
+      if (ok) picked = null;
+      message = ok ? "partita caricata" : "nessun salvataggio"; messageT = 3;
+    }
+    return;
+  }
   // Il pannello prestiti (bankPanelOpen sopra), quando aperto, e' un vero
   // modale: intercetta il tocco PRIMA di ogni altra cosa (bottoni,
   // piazzamento, mondo). Un tocco su uno dei 4 bottoni prende quel
@@ -1618,96 +1730,106 @@ function frame(now) {
   const dawn = isDawn(phaseT);
 
   // --- simulazione: cantieri, economia, meteo, traffico, luci
-  stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
-  stepProduction(buildings, dt, r12);
-  stepSolarProduction(buildings, dt, r12, night, dawn);
-  stepWindProduction(buildings, dt, r12);
-  // Fumo delle centrali (game/src/smoke.js): dopo stepProduction(), cosi'
-  // "oil>0" gia' rispecchia il consumo di questo frame, come per le monete
-  // blu sotto (stesso ordine gia' scelto per stepCoinSpawner()).
-  stepSmokeSpawner(buildings, smoke, dt, r12);
-  stepSmoke(smoke, dt);
-  stepGrowth(buildings, dt, r12, (b) => pedestrians.push(spawnPedestrian(b.x, b.y)));
-  stepConsumption(buildings, dt, r12, night);
-  stepWeather(r12, dt, scene.name === "match");
-  stepStormDamage(buildings, dt, r12);
-  tickR12(r12, dt, buildings);
-  stepCalendar(r12, dt);
-  stepCars(cars, dt, r12, night);
-  carmakerT += dt;
-  while (carmakerIdx < CARMAKER_SCHEDULE.length && carmakerT >= CARMAKER_SCHEDULE[carmakerIdx].at) {
-    cars.push(spawnCar(CARMAKER_SCHEDULE[carmakerIdx].type, night));
-    carmakerIdx++;
-  }
-  stepLights(decorEntities, dt, night, r12);
-  stepSemaphores(semaphores, dt);
-  stepAtmosphere(atmo, dt, !!r12.storm);
-  stepPedestrians(pedestrians, dt);
-  // Mongolfiere (game/src/balloons.js): risorse/spia a intervalli regolari
-  // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
-  // cantiere che casa/industria si porta dietro (spawnato da placeAt(),
-  // solo avanzato qui).
-  stepBalloonSpawner(r12, balloons, dt, buildings);
-  stepBalloons(balloons, loot, dt, r12);
-  stepLoot(loot, dt);
-  // I pulsanti blu delle monete (game/src/coins.js): casa1|2|3/Alarm_4.gml,
-  // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
-  stepCoinSpawner(buildings, coins, dt, r12);
-  stepCoins(coins, dt, r12);
-  // Raccolta al passaggio del mouse — [C] sold*/soldbio/Mouse_MouseEnter.gml
-  // usa davvero un hover, non un click (coins.js, collectCoin() sopra il tap
-  // esplicito per touch/desktop): un vero hover pero' esiste solo col mouse
-  // fermo, non trascinando col dito (`hoverPointerType`, game/src/input.js) —
-  // altrimenti panoramicare la mappa col dito raccoglierebbe monete di
-  // striscio, un gesto che l'originale non prevede su touch.
-  if (input.hover && input.hoverPointerType === "mouse") {
-    const hw = cam.screenToWorld(input.hover.x, input.hover.y);
-    for (let i = coins.length - 1; i >= 0; i--) {
-      const c = coins[i];
-      const f = frameFor(c.spr);
-      if (!f) continue;
-      const x0 = c.x - f.ox, y0 = c.y - f.oy;
-      if (hw.x >= x0 && hw.x <= x0 + f.w && hw.y >= y0 && hw.y <= y0 + f.h) collectCoinAt(c);
+  // `paused` (bottone di pausa in basso a destra, sotto): l'intero blocco
+  // usa `dt` per avanzare stato — a differenza del resto del motore (che
+  // non ha mai avuto un concetto di "in pausa"), qui basta saltarlo del
+  // tutto per congelare la partita. Il disegno sotto NON e' condizionato:
+  // ridisegna lo stesso identico stato ogni frame (nessun costo visibile,
+  // il mondo non cambia), cosi' il blur di pausa (vedi drawPauseOverlay()
+  // in fondo al file) puo' restare un post-processo puro invece di dover
+  // duplicare la logica di disegno.
+  if (!paused) {
+    stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
+    stepProduction(buildings, dt, r12);
+    stepSolarProduction(buildings, dt, r12, night, dawn);
+    stepWindProduction(buildings, dt, r12);
+    // Fumo delle centrali (game/src/smoke.js): dopo stepProduction(), cosi'
+    // "oil>0" gia' rispecchia il consumo di questo frame, come per le monete
+    // blu sotto (stesso ordine gia' scelto per stepCoinSpawner()).
+    stepSmokeSpawner(buildings, smoke, dt, r12);
+    stepSmoke(smoke, dt);
+    stepGrowth(buildings, dt, r12, (b) => pedestrians.push(spawnPedestrian(b.x, b.y)));
+    stepConsumption(buildings, dt, r12, night);
+    stepWeather(r12, dt, scene.name === "match");
+    stepStormDamage(buildings, dt, r12);
+    tickR12(r12, dt, buildings);
+    stepCalendar(r12, dt);
+    stepCars(cars, dt, r12, night);
+    carmakerT += dt;
+    while (carmakerIdx < CARMAKER_SCHEDULE.length && carmakerT >= CARMAKER_SCHEDULE[carmakerIdx].at) {
+      cars.push(spawnCar(CARMAKER_SCHEDULE[carmakerIdx].type, night));
+      carmakerIdx++;
     }
+    stepLights(decorEntities, dt, night, r12);
+    stepSemaphores(semaphores, dt);
+    stepAtmosphere(atmo, dt, !!r12.storm);
+    stepPedestrians(pedestrians, dt);
+    // Mongolfiere (game/src/balloons.js): risorse/spia a intervalli regolari
+    // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
+    // cantiere che casa/industria si porta dietro (spawnato da placeAt(),
+    // solo avanzato qui).
+    stepBalloonSpawner(r12, balloons, dt, buildings);
+    stepBalloons(balloons, loot, dt, r12);
+    stepLoot(loot, dt);
+    // I pulsanti blu delle monete (game/src/coins.js): casa1|2|3/Alarm_4.gml,
+    // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
+    stepCoinSpawner(buildings, coins, dt, r12);
+    stepCoins(coins, dt, r12);
+    // Raccolta al passaggio del mouse — [C] sold*/soldbio/Mouse_MouseEnter.gml
+    // usa davvero un hover, non un click (coins.js, collectCoin() sopra il tap
+    // esplicito per touch/desktop): un vero hover pero' esiste solo col mouse
+    // fermo, non trascinando col dito (`hoverPointerType`, game/src/input.js) —
+    // altrimenti panoramicare la mappa col dito raccoglierebbe monete di
+    // striscio, un gesto che l'originale non prevede su touch.
+    if (input.hover && input.hoverPointerType === "mouse") {
+      const hw = cam.screenToWorld(input.hover.x, input.hover.y);
+      for (let i = coins.length - 1; i >= 0; i--) {
+        const c = coins[i];
+        const f = frameFor(c.spr);
+        if (!f) continue;
+        const x0 = c.x - f.ox, y0 = c.y - f.oy;
+        if (hw.x >= x0 && hw.x <= x0 + f.w && hw.y >= y0 && hw.y <= y0 + f.h) collectCoinAt(c);
+      }
+    }
+    for (let i = coinPops.length - 1; i >= 0; i--) {
+      coinPops[i].t += dt;
+      if (coinPops[i].t >= COIN_POP_LIFE) coinPops.splice(i, 1);
+    }
+    stepConstructionBalloons(constructionBalloons, constructionBoxes, dt);
+    stepConstructionBoxes(constructionBoxes, dt);
+    // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
+    // bombardieri/zeppelin man mano che le spie ignorate si accumulano
+    // (contatori alzati in stepBalloons() sopra), poi ognuno vola, bombarda,
+    // e sparisce da solo.
+    stepThreatSpawner(r12, threats, dt);
+    stepThreats(threats, bombs, explosions, dt, r12, aerSmoke, debris);
+    stepAerSmoke(aerSmoke, dt);
+    stepDebris(debris, explosions, dt);
+    stepBombs(bombs, explosions, buildings, dt, r12);
+    stepExplosions(explosions, dt);
+    // Unico controllo per tutte le fonti di danno di questo frame (fulmini,
+    // STUDIO.md "le tempeste diventano reali" + bombe appena sganciate sopra).
+    for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
+    if (r12.alertT > 0) r12.alertT -= dt;
+    // Torrette (game/src/buildings.js, stepTurretAim): inseguono l'oggetto
+    // volante piu' vicino fra le mongolfiere di risorse/spia (`balloons`,
+    // game/src/balloons.js — non il pacco di cantiere ne' le casse/avanzi) e
+    // le minacce vere (`threats`: aerei/bombardieri/zeppelin, game/src/
+    // threats.js) — [I] non piu' le auto decorative (`cars`): non sono
+    // oggetti volanti, vedi il commento su stepTurretAim() in buildings.js.
+    stepTurretAim(buildings, balloons, threats);
+    // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
+    // gia' nella direzione appena calcolata (b.aimAngle). [I] Segnalato
+    // dall'autore: il grilletto automatico controllava solo `threats` (le
+    // minacce vere) per decidere se sparare — una mongolfiera vicina da sola
+    // non faceva mai partire un colpo, anche se il cannone la stava gia'
+    // inseguendo (`balloons` passato anche qui, non solo a stepTurretAim).
+    stepTurretFire(buildings, balloons, threats, dt, projectiles, explosions, r12, trails, loot, beams);
+    stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt);
+    stepBeams(beams, dt);
+    stepSmoko(trails, dt);
+    if (messageT > 0) messageT -= dt;
   }
-  for (let i = coinPops.length - 1; i >= 0; i--) {
-    coinPops[i].t += dt;
-    if (coinPops[i].t >= COIN_POP_LIFE) coinPops.splice(i, 1);
-  }
-  stepConstructionBalloons(constructionBalloons, constructionBoxes, dt);
-  stepConstructionBoxes(constructionBoxes, dt);
-  // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
-  // bombardieri/zeppelin man mano che le spie ignorate si accumulano
-  // (contatori alzati in stepBalloons() sopra), poi ognuno vola, bombarda,
-  // e sparisce da solo.
-  stepThreatSpawner(r12, threats, dt);
-  stepThreats(threats, bombs, explosions, dt, r12, aerSmoke, debris);
-  stepAerSmoke(aerSmoke, dt);
-  stepDebris(debris, explosions, dt);
-  stepBombs(bombs, explosions, buildings, dt, r12);
-  stepExplosions(explosions, dt);
-  // Unico controllo per tutte le fonti di danno di questo frame (fulmini,
-  // STUDIO.md "le tempeste diventano reali" + bombe appena sganciate sopra).
-  for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
-  if (r12.alertT > 0) r12.alertT -= dt;
-  // Torrette (game/src/buildings.js, stepTurretAim): inseguono l'oggetto
-  // volante piu' vicino fra le mongolfiere di risorse/spia (`balloons`,
-  // game/src/balloons.js — non il pacco di cantiere ne' le casse/avanzi) e
-  // le minacce vere (`threats`: aerei/bombardieri/zeppelin, game/src/
-  // threats.js) — [I] non piu' le auto decorative (`cars`): non sono
-  // oggetti volanti, vedi il commento su stepTurretAim() in buildings.js.
-  stepTurretAim(buildings, balloons, threats);
-  // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
-  // gia' nella direzione appena calcolata (b.aimAngle). [I] Segnalato
-  // dall'autore: il grilletto automatico controllava solo `threats` (le
-  // minacce vere) per decidere se sparare — una mongolfiera vicina da sola
-  // non faceva mai partire un colpo, anche se il cannone la stava gia'
-  // inseguendo (`balloons` passato anche qui, non solo a stepTurretAim).
-  stepTurretFire(buildings, balloons, threats, dt, projectiles, explosions, r12, trails, loot, beams);
-  stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt);
-  stepBeams(beams, dt);
-  stepSmoko(trails, dt);
-  if (messageT > 0) messageT -= dt;
 
   // --- lista di disegno di questo frame: mondo statico (placeholder consumati
   // esclusi) + edifici (sprite ricalcolato: cambia durante il cantiere) + decoro
@@ -2212,7 +2334,30 @@ function frame(now) {
       bankButtons.push({ x: bx - (f.w * bankScale) / 2, y: by - (f.h * bankScale) / 2, w: f.w * bankScale, h: f.h * bankScale, index: i });
     }
   }
+  // Bottone di pausa — sempre presente (l'unico modo di entrare/uscire dal
+  // menu di pausa, vedi drawPauseOverlay() sotto e onTap sopra), in basso a
+  // destra, ultimo disegnato in questo batch cosi' resta sempre sopra a
+  // ogni altro elemento della UI. Nessuno sprite dell'originale (il
+  // decompilato non ha una vera pausa, STUDIO.md "playbuttoner" era
+  // tutt'altro): un quadrato pieno scuro con un'icona "II", stessi
+  // rettangoli pieni gia' usati altrove per elementi puramente nostri
+  // (bolla monete, vignetta fuori mappa).
+  const PB_SIZE = 48;
+  const pbX = canvas.clientWidth - UI_MARGIN - PB_SIZE, pbY = canvas.clientHeight - UI_MARGIN - PB_SIZE;
+  pauseBtnRect = { x: pbX, y: pbY, w: PB_SIZE, h: PB_SIZE };
+  r.draw(solidFrame(white, PB_SIZE, PB_SIZE), pbX, pbY, 1, 0x1c1c22, 0.72);
+  const pbBarW = 6, pbBarH = 20, pbGap = 8;
+  const pbBarY = pbY + (PB_SIZE - pbBarH) / 2;
+  r.draw(solidFrame(white, pbBarW, pbBarH), pbX + PB_SIZE / 2 - pbGap / 2 - pbBarW, pbBarY, 1, 0xffffff, 0.95);
+  r.draw(solidFrame(white, pbBarW, pbBarH), pbX + PB_SIZE / 2 + pbGap / 2, pbBarY, 1, 0xffffff, 0.95);
   r.flush();
+
+  // Menu di pausa: sfuma quello che e' appena stato disegnato (il mondo,
+  // congelato — la simulazione sopra non e' avanzata, vedi `if (!paused)`)
+  // e ci disegna sopra un pannello con i tre bottoni. Post-processo puro,
+  // FUORI dal batch appena chiuso: legge il framebuffer di default con
+  // `pauseBlur.blurScreen()` DOPO che tutto il resto e' gia' li' dentro.
+  if (paused) drawPauseOverlay();
 
   // --- HUD testuale di debug: numeri e stato dettagliato per lo sviluppo,
   // sovrapposto in DOM. La barra sopra e' la UI "vera", in canvas.
@@ -2260,7 +2405,7 @@ function frame(now) {
     (DEBUG_INFINITE_RESOURCES ? `[TEST risorse infinite] reale: ${r12.monReal.toFixed(0)} mon, ${r12.oilReal.toFixed(0)} oil\n` : "") +
     (status ? status + "\n" : "") +
     (messageT > 0 ? message + "\n" : "") +
-    `trascina, rotella/pinch, tap — [S] salva [L] carica`;
+    `trascina, rotella/pinch, tap — [S] salva [L] carica [P] pausa`;
 
   hideLoading();
 
@@ -2272,6 +2417,8 @@ requestAnimationFrame(frame);
 window.__nimbus = {
   cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
   get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
+  get paused() { return paused; }, setPaused: (v) => { paused = v; }, get pauseBtnRect() { return pauseBtnRect; },
+  get pauseMenuButtons() { return pauseMenuButtons; },
   get uiScrollX() { return uiScrollX; }, setUiScrollX: (x) => { uiScrollX = x; },
   get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
   atmo, get pedestrians() { return pedestrians; },

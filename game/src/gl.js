@@ -172,6 +172,14 @@ export class Renderer {
   flush() {
     if (!this.count || !this.texture) { this.count = 0; return; }
     const gl = this.gl;
+    // Ri-attivato ad ogni flush, non solo in beginFrame(): PauseBlur
+    // (main.js/gl.js, il blur del menu di pausa) usa un secondo programma
+    // shader fra un frame e l'altro — senza questo, il primo flush() dopo
+    // un blur disegnerebbe ancora col programma del blur invece del nostro,
+    // con layout attributi/uniform incompatibili (il sintomo era meta'
+    // schermo che spariva, geometria calcolata da dati letti col layout
+    // sbagliato). Costa una chiamata GL in piu' per flush, trascurabile.
+    gl.useProgram(this.prog);
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     const used = this.count * VERTS_PER_QUAD * FLOATS_PER_VERT;
@@ -225,6 +233,163 @@ export function makeCircleTexture(gl, size = 64) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return t;
+}
+
+// -------------------------------------------------------- blur di pausa
+// Sfoca il canvas gia' disegnato per il menu di pausa (main.js) — l'unico
+// posto nel motore che ha bisogno di render-to-texture: tenerlo qui,
+// isolato con il proprio shader/VAO invece che dentro Renderer, non
+// complica il batch sprite di ogni giorno (Renderer sopra), usato per
+// tutto il resto.
+const BLUR_VERT = `#version 300 es
+layout(location=0) in vec2 a_pos;      // NDC diretti, -1..1: un quad a
+                                        // schermo intero non ha bisogno
+                                        // della proiezione mondo/schermo
+                                        // di VERT sopra.
+layout(location=1) in vec2 a_uv;
+out vec2 v_uv;
+void main() {
+  v_uv = a_uv;
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}`;
+
+// Blur gaussiano a 5 campioni, separabile (una direzione per chiamata,
+// orizzontale/verticale) — i pesi/offset sono la classica approssimazione
+// "a 3 texture fetch" (due campioni combinano ciascuno una coppia di texel
+// gaussiani grazie al campionamento LINEAR, invece di 5 fetch veri):
+// economica, gia' abbastanza morbida per uno sfondo di menu.
+const BLUR_FRAG = `#version 300 es
+precision mediump float;
+in vec2 v_uv;
+uniform sampler2D u_tex;
+uniform vec2 u_dir;                    // passo in texel, gia' moltiplicato per il raggio
+out vec4 outColor;
+void main() {
+  vec4 c = texture(u_tex, v_uv) * 0.2270270270;
+  c += texture(u_tex, v_uv + u_dir * 1.3846153846) * 0.3162162162;
+  c += texture(u_tex, v_uv - u_dir * 1.3846153846) * 0.3162162162;
+  c += texture(u_tex, v_uv + u_dir * 3.2307692308) * 0.0702702703;
+  c += texture(u_tex, v_uv - u_dir * 3.2307692308) * 0.0702702703;
+  outColor = c;
+}`;
+
+/**
+ * `blurScreen(w, h)` cattura il framebuffer di default (gia' disegnato da
+ * Renderer per QUESTO frame, `w`/`h` in pixel device — stessi di
+ * `canvas.width/height`) e ne restituisce una texture sfumata, sottoscala
+ * (un quarto di lato: piu' economico E visivamente piu' morbido a parita'
+ * di raggio del kernel — lo stesso trucco di ogni "blur pesante a costo
+ * leggero") passata due volte per il blur separabile (orizzontale poi
+ * verticale, ripetuto due volte). Il chiamante la disegna di nuovo a piena
+ * dimensione con Renderer.draw() — l'ingrandimento bilineare (gia' LINEAR
+ * su MIN/MAG sotto) aggiunge morbidezza extra, gratis.
+ */
+export class PauseBlur {
+  constructor(gl) {
+    this.gl = gl;
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, BLUR_VERT));
+    gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, BLUR_FRAG));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      throw new Error("blur link: " + gl.getProgramInfoLog(prog));
+    }
+    this.prog = prog;
+    this.uTex = gl.getUniformLocation(prog, "u_tex");
+    this.uDir = gl.getUniformLocation(prog, "u_dir");
+
+    this.vao = gl.createVertexArray();
+    gl.bindVertexArray(this.vao);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      -1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1,
+      -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1,
+    ]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
+    gl.bindVertexArray(null);
+
+    // `capture`: cattura a risoluzione piena (copyTexImage2D non puo'
+    // sottocampionare da solo). `pingA`/`pingB`: le due texture di lavoro
+    // del blur, a un quarto di lato — riallocate solo quando cambiano
+    // davvero (resize finestra), non ad ogni frame di pausa.
+    this.capture = gl.createTexture();
+    this.pingA = gl.createTexture();
+    this.pingB = gl.createTexture();
+    for (const t of [this.capture, this.pingA, this.pingB]) {
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    }
+    this.fboA = gl.createFramebuffer();
+    this.fboB = gl.createFramebuffer();
+    this.pw = 0; this.ph = 0;
+  }
+
+  _ensureSize(pw, ph) {
+    if (this.pw === pw && this.ph === ph) return;
+    this.pw = pw; this.ph = ph;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.pingA);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, pw, ph, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindTexture(gl.TEXTURE_2D, this.pingB);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, pw, ph, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboA);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.pingA, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboB);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.pingB, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  _pass(srcTex, dstFbo, pw, ph, dirX, dirY) {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dstFbo);
+    gl.viewport(0, 0, pw, ph);
+    gl.useProgram(this.prog);
+    gl.bindVertexArray(this.vao);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, srcTex);
+    gl.uniform1i(this.uTex, 0);
+    gl.uniform2f(this.uDir, dirX, dirY);
+    gl.disable(gl.BLEND);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+
+  blurScreen(w, h) {
+    const gl = this.gl;
+    const pw = Math.max(1, Math.round(w / 4)), ph = Math.max(1, Math.round(h / 4));
+    this._ensureSize(pw, ph);
+    gl.bindTexture(gl.TEXTURE_2D, this.capture);
+    // `gl.RGB`, non `gl.RGBA`: il contesto e' creato con `alpha:false`
+    // (Renderer sopra — il canvas e' sempre opaco, nessun bisogno di
+    // comporsi sopra la pagina), quindi il framebuffer di default non ha
+    // un canale alpha vero — copiarlo con internalformat RGBA fa scattare
+    // GL_INVALID_OPERATION (formato incompatibile), silenzioso finche' non
+    // si controlla `gl.getError()` a mano: il sintomo era un rettangolo
+    // bianco/vuoto al posto del blur, nessuna eccezione JS.
+    gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGB, 0, 0, w, h, 0);
+    // Primo passo: legge `capture` a piena risoluzione ma scrive nel
+    // framebuffer sottoscala — sottocampiona e sfuma insieme, un solo passo.
+    this._pass(this.capture, this.fboA, pw, ph, 1.2 / pw, 0);
+    this._pass(this.pingA, this.fboB, pw, ph, 0, 1.2 / ph);
+    this._pass(this.pingB, this.fboA, pw, ph, 1.2 / pw, 0);
+    this._pass(this.pingA, this.fboB, pw, ph, 0, 1.2 / ph);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // `_pass()` sopra lascia il viewport sulla risoluzione sottoscala
+    // (`pw`/`ph`) dell'ultimo passo — senza ripristinarlo qui, OGNI disegno
+    // successivo del chiamante (main.js, drawPauseOverlay(): oscuramento,
+    // pannello, bottoni, testo) finirebbe compresso in quel piccolo
+    // rettangolo invece di coprire lo schermo intero (il sintomo era
+    // proprio un piccolo rettangolo fuori posto invece del menu).
+    gl.viewport(0, 0, w, h);
+    gl.enable(gl.BLEND);
+    return this.pingB;
+  }
 }
 
 export async function loadTexture(gl, url) {
