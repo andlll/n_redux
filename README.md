@@ -112,8 +112,10 @@ L'unico passo che serve prima è generare gli atlas per room.
 
 ```bash
 python3 -m pip install pillow    # unica dipendenza esterna della toolchain
-python3 tools/23_atlas.py match_easy
-python3 tools/24_blit.py match_easy
+for room in match_easy match title; do
+  python3 tools/23_atlas.py "$room"
+  python3 tools/24_blit.py "$room"
+done
 ```
 
 `24_blit.py` è la versione Python/Pillow — cross-platform — di
@@ -127,7 +129,11 @@ Poi un server statico qualsiasi:
 python3 -m http.server 5173 --directory game
 ```
 
-E si apre `http://127.0.0.1:5173/`.
+E si apre `http://127.0.0.1:5173/title.html` — la schermata di scelta
+(Match/Match Facile/Tutorial, il vecchio layout del decompilato). `index.html`
+resta raggiungibile diretto (default `match_easy`) e accetta `?room=match|
+match_easy` + `?autoload=1` (STUDIO.md, game/src/title.js) per chi vuole
+saltare il menu.
 
 ### Deploy come sito statico
 

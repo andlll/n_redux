@@ -74,8 +74,24 @@ const isMobile = matchMedia("(pointer: coarse)").matches;
 // che disegna i bottoni) puo' riusarla invece di un secondo numero scollegato.
 const UI_SCALE = isMobile ? 0.6 : 0.7;
 
+// ---------------------------------------------------------------- room
+// Quale room caricare — [C] `standma`/`easma`/`me3` (src/objects, la room
+// "title") mandano al gioco vero con `action_load_game("nimsav"|"nimsav_
+// eas")`, non un semplice `room_goto`: qui equivale a `game/title.html`
+// che naviga qui con `?room=match|match_easy` (STUDIO.md, game/src/
+// title.js) — `autoload=1` in piu' quando arriva DAVVERO da un bottone
+// della title screen (non da un link/refresh qualunque), cosi' un
+// caricamento diretto di questa pagina resta a stato vuoto com'era prima
+// (STUDIO.md: l'autoload silenzioso ad ogni apertura pagina fu tolto
+// apposta perche' mascherava le modifiche appena fatte durante lo
+// sviluppo) — vedi `doLoad()` piu' sotto, chiamato una sola volta all'avvio
+// solo con questo flag.
+const params = new URLSearchParams(location.search);
+const roomName = params.get("room") === "match" ? "match" : "match_easy";
+const autoloadOnBoot = params.get("autoload") === "1";
+
 // ---------------------------------------------------------------- scena
-const scene = await fetch("./data/match_easy.scene.json").then((x) => x.json());
+const scene = await fetch(`./data/${roomName}.scene.json`).then((x) => x.json());
 cam.bounds = { left: 0, top: 0, right: scene.width, bottom: scene.height };
 cam.x = scene.width / 2;
 cam.y = scene.height / 2;
@@ -131,7 +147,7 @@ const staticWorld = scene.instances.slice().sort(sortWorld);
 // L'atlas include anche gli sprite di gameplay (edifici, cantieri: vedi
 // GAMEPLAY_SPRITES in 23_atlas.py) che non stanno ferme in nessuna room
 // perche' e' il giocatore a farle comparire.
-const atlas = await fetch("./data/match_easy.atlas.json").then((x) => x.json());
+const atlas = await fetch(`./data/${roomName}.atlas.json`).then((x) => x.json());
 const pageTex = await Promise.all(
   atlas.pages.map((p) => loadTexture(gl, "./assets/" + p.file))
 );
@@ -266,6 +282,49 @@ for (const name of ["honda_facile_1", "honda_facile_2"]) {
   if (idx >= 0) staticWorld.splice(idx, 1);
 }
 
+// La base volante di `match` (`r120`, sprite "baa12") — [C] r12/Create.gml,
+// ramo `match` (flag 736==0, mai preso finora: il motore caricava solo
+// match_easy). Tutto decoro STATICO (nessuno step per frame: r120 non si
+// muove mai nel decompilato, a differenza del nome "base volante" che
+// suggerirebbe — resta ferma dove nasce), quindi entra in `staticWorld`
+// com'e', stesso trattamento di ogni albero/auto gia' in scena.
+if (roomName === "match") {
+  // Le 56 istanze statiche "albe" della room (quelle A TERRA) vengono
+  // uccise incondizionatamente su questo ramo — sostituite dalle 14 sotto,
+  // appese alla piattaforma invece che al terreno.
+  for (let i = staticWorld.length - 1; i >= 0; i--) {
+    if (staticWorld[i].obj === "albe") staticWorld.splice(i, 1);
+  }
+  const R120_X = 1170, R120_Y = 346;
+  staticWorld.push({ obj: "r120", x: R120_X, y: R120_Y, depth: 1, spr: "baa12" });
+  // [C] r12/Create.gml, `with (r120) { instance_create(x+dx, y+dy, albe) }`
+  // — 14 offset letti uno per uno, nessun pattern regolare.
+  const R120_TREES = [
+    [282, 794], [439, 783], [379, 748], [518, 750], [565, 700], [463, 695],
+    [538, 646], [637, 609], [699, 556], [758, 524], [816, 559], [724, 617],
+    [672, 659], [739, 651],
+  ];
+  for (const [dx, dy] of R120_TREES) {
+    staticWorld.push({ obj: "albe", x: R120_X + dx, y: R120_Y + dy, depth: 0, spr: "a1" });
+  }
+  // [C] stesso Create.gml, DOPO che `action_set_relative` torna a 0:
+  // posizioni ASSOLUTE nella room, indipendenti da r120 (moto/fari/mudr2
+  // sono scenografia fissa della mappa, non agganciata alla piattaforma).
+  const R120_FIXED = [
+    { obj: "moto11", x: 1951, y: 858, spr: "motor11", depth: 0 },
+    { obj: "moto11", x: 1632, y: 1037, spr: "motor11", depth: 0 },
+    { obj: "moto11", x: 656, y: 1231, spr: "motor11", depth: 0 },
+    { obj: "moto12", x: 198, y: 217, spr: "motor12", depth: 0 },
+    { obj: "moto12", x: 514, y: 34, spr: "motor12", depth: 0 },
+    { obj: "moto13", x: 44, y: 876, spr: "motor13", depth: 0 },
+    { obj: "moto13", x: 1015, y: 1142, spr: "motor13", depth: 0 },
+    { obj: "faro1", x: 616, y: 1100, spr: "f1b", depth: 0 },
+    { obj: "faro2", x: 1655, y: 1111, spr: "f2b", depth: 0 },
+    { obj: "mudr2", x: 769, y: 845, spr: "moor12", depth: -1055 },   // [C] mudr2/_object.json: depth fisso, non -y
+  ];
+  for (const it of R120_FIXED) staticWorld.push(it);
+}
+
 // Semafori (game/src/semaphores.js, STUDIO.md): `object8` ("se", il palo —
 // mai rinominato dall'autore originale) resta in staticWorld com'e', un
 // oggetto di mondo fermo come un albero; il tappo colorato che lampeggia
@@ -364,7 +423,7 @@ let trails = [];
 // un quad pieno disegnato da drawBeams() sotto, vedi il commento su
 // WEAPONS.laser in projectiles.js.
 let beams = [];
-let r12 = createR12();
+let r12 = createR12(roomName === "match");
 let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
 // La ruspa (`puruspa`, `selec===11`, STUDIO.md/OTHER_BUILDINGS sotto): tocco
@@ -968,6 +1027,11 @@ function doLoad() {
   return true;
 }
 seedChies();
+// [C] standma|easma/Mouse_LeftPressed.gml: `action_load_game(...)` scatta
+// SUBITO al tap del bottone, prima ancora che il gioco vero appaia — qui
+// equivale a questa singola chiamata all'avvio, solo quando si arriva
+// davvero dalla title screen (vedi il commento su `autoloadOnBoot` sopra).
+if (autoloadOnBoot) doLoad();
 
 window.addEventListener("keydown", (e) => {
   if (e.key === "s" || e.key === "S") { doSave(); message = "partita salvata"; messageT = 3; }

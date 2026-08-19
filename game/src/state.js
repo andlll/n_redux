@@ -12,14 +12,21 @@
 
 import { BUILDING_TYPES, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 
-export function createR12() {
+/**
+ * `isMatch`: **[C]** `r12/Create.gml` da' un oil/hap di partenza diverso a
+ * seconda della room — `oil=7500`/`hap=400` di default (il ramo `match`),
+ * SOVRASCRITTI a `oil=5000`/`hap=600` solo se `action_if_number(736,1,0)`
+ * (match_easy). Stesso flag gia' letto altrove nel motore (stepWeather()
+ * sotto, save.js) — qui main.js passa `scene.name === "match"`.
+ */
+export function createR12(isMatch = false) {
   return {
-    oil: 5000,        // [C] r12/Create.gml, ramo match_easy
+    oil: isMatch ? 7500 : 5000,   // [C] r12/Create.gml
     mon: 5500,         // [C]
     // [TEST] DEBUG_INFINITE_RESOURCES sopra: il valore genuino, tracciato a
     // parte da clampR12() — inutile finche' il flag e' spento (resta uguale
     // a oil/mon).
-    oilReal: 5000, monReal: 5500,
+    oilReal: isMatch ? 7500 : 5000, monReal: 5500,
     pop: 0,             // [C]
     ele: 200,           // [C]
     time: 2914,         // [C] orologio di gioco, non il ciclo giorno/notte visivo — l'ANNO (vedi stepCalendar sotto)
@@ -30,7 +37,7 @@ export function createR12() {
     // r12 (l'unico stato "orologio" del motore, come `time` sopra) ma con un
     // nome che non collide con `mon` (i soldi) — `month`, 1..12.
     month: 1,
-    hap: 600,           // [C] 400 base + 200 del ramo match_easy
+    hap: isMatch ? 400 : 600,   // [C] r12/Create.gml: 400 base, +200 solo su match_easy
     crys: 0, storm: 0, stormT: 0, stormeasy: 0, biotech: 0, autocore: 0,
     allerta: 0, selec: 0,
     // [C] pu1/Create.gml: contatore caccia (`air`, non bombar/dirig)

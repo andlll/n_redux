@@ -3047,3 +3047,91 @@ paragrafo 8.
   stesso `eoliplacer` che per il ramo eolico nasce a (98, 0) dal
   placeholder toccato — il vero centro e' quindi `placeholder + (98, 116)`,
   ora cablato allo stesso modo di `eolico`.
+
+- **La mappa difficile (`match`, "quella con la base volante") diventa
+  raggiungibile per la prima volta — insieme alla title screen vera, il
+  "vecchio layout" del decompilato che l'autore ha chiesto di riusare
+  invece di inventarne uno nuovo.** Confermato dall'autore: il secondo
+  livello di `museo` (STUDIO.md sopra) e' davvero codice morto, copiato da
+  palazzo e mai finito — nessun lavoro da fare li'.
+  **Ricognizione**: il motore era gia' sorprendentemente pronto. `state.js`
+  aveva gia' `stepWeather(r12, dt, isMatch)` con lo scalo di petrolio dal
+  peso (`wewOilDrain`) e la tempesta vera, entrambi scritti e commentati
+  "il motore carica solo match_easy, pronto per quando quella room
+  esistera'"; `save.js` aveva gia' gli slot "nimsav"/"nimsav_eas"; `doSave`/
+  `doLoad`/`stepWeather` in main.js leggevano gia' `scene.name` invece di
+  un nome fisso. Mancavano solo tre cose: i due `fetch` della scena/atlas,
+  hardcoded a "match_easy"; le statistiche iniziali (`createR12()` non
+  aveva mai un ramo `match`); e la vera title screen (il motore avviava
+  sempre il gioco direttamente, nessun menu).
+  **`main.js` ora legge la room da `?room=match|match_easy` in URL**
+  (default `match_easy`, comportamento invariato per chi apre `index.html`
+  diretto) — le uniche due righe cambiate sono i due `fetch`. `createR12()`
+  (state.js) accetta ora `isMatch`: **[C]** `r12/Create.gml` parte da
+  `oil=7500`/`hap=400` di default (il ramo `match`), sovrascritti a
+  `oil=5000`/`hap=600` solo su match_easy — letto cosi' com'e' (il "facile"
+  ha piu' felicita' iniziale ma MENO petrolio, non il contrario che il nome
+  suggerirebbe).
+  **`r120`, la base volante**: **[C]** `r12/Create.gml`, ramo `match` (flag
+  736==0, mai preso finora): rimuove le 56 istanze statiche `albe` (gli
+  alberi A TERRA della room) e crea `r120` (sprite "baa12", una piattaforma
+  con turbina/piloni sotto) a (1170, 346) con 14 `albe` agganciati a lei
+  con offset fissi — letti uno per uno, nessun pattern — invece che al
+  terreno; poi, con `action_set_relative` tornato a 0, 10 pezzi di
+  scenografia fissa INDIPENDENTI da `r120` a posizioni assolute (3x
+  `moto11`, 2x `moto12`, 2x `moto13`, `faro1`, `faro2`, `mudr2`). Tutto
+  statico (nessuno step per frame: `r120` non si muove mai nel decompilato,
+  nonostante il nome) — entra in `staticWorld` (main.js) esattamente come
+  ogni albero/auto gia' in scena, stesso trattamento, nessun codice nuovo
+  per disegnarlo. 7 sprite nuovi in `GAMEPLAY_SPRITES` (categoria
+  "platform", tools/23_atlas.py) — atlas rigenerato per `match` (anche
+  stale rispetto a tutte le sessioni recenti: mai piu' toccato da
+  "Stato piro per le minacce aeree...", agosto).
+  **La title screen** (`game/title.html` + `game/src/title.js`, nuovi):
+  **[C]** `src/rooms/title.json` — mai estratta prima d'ora
+  (`tools/22_scene.py title`) — ha tre bottoni cliccabili (`standma`/"Match"
+  sprite "newga", `easma`/"Match Facile" sprite "newgaeas", `me3`/"Tutorial"
+  sprite "tutoriae") piu' un banner laterale (`gogirrra`) e un logo animato
+  (`eddaie`, sprite "provamose" — **[C]** 193 sottoimmagini vere,
+  `action_sprite_set(provamose, 0, 0.5)`, stesso principio delle
+  esplosioni/della scia di fumo: un loop vero, non un fotogramma fisso).
+  **[C]** `standma|easma/Mouse_LeftPressed.gml`: il tap arma un fade nero
+  (`disba`) e 30 tick dopo chiama `action_load_game("nimsav"|"nimsav_
+  eas")` — non un semplice cambio room, un CARICAMENTO: il gioco vero
+  riparte da un salvataggio se esiste, altrimenti da zero. Qui equivale a
+  navigare su `index.html?room=match|match_easy&autoload=1` — `autoload`
+  e' il flag in piu' che fa scattare `doLoad()` una sola volta all'avvio
+  (main.js), cosi' un `index.html` aperto diretto (senza passare dalla
+  title) resta a stato vuoto com'era prima: l'autoload silenzioso ad ogni
+  apertura pagina fu tolto apposta in una sessione precedente perche'
+  mascherava le modifiche appena fatte durante lo sviluppo, e questo non
+  lo reintroduce (scatta solo dietro un'azione esplicita del bottone, non
+  ad ogni apertura). Camera FISSA (nessun pan/zoom interattivo: la title
+  screen non e' un mondo da esplorare), tarata sulla fetta verticale che
+  la room stessa dichiara (`views[0]`, 540x1086) centrata sulla colonna di
+  bottoni. **[I]** `me3`/"Tutorial" nel decompilato va a `action_another_
+  room(tutorial)` — un'intera modalita' a parte (room "tutorial", mai letta)
+  fuori scopo per questo giro: il bottone resta al suo posto (il layout lo
+  vuole) ma il tap si limita a un messaggio "non ancora implementato"
+  invece di rompere o fingere. **[I]** lo sfondo vero della room (background
+  GameMaker, non uno sprite) non e' stato estratto — sostituito dal solo
+  colore (`bgColor`, gia' nel JSON) per restare nello scopo di questo giro.
+  Verificato con un test diretto (Playwright): il tap sul primo bottone
+  naviga a `?room=match&autoload=1`, sul secondo a `?room=match_easy&
+  autoload=1`, sul terzo mostra il messaggio senza navigare; un salvataggio
+  scritto su `match` (`monReal` forzato, poi `save()`) sopravvive a un
+  ricarico con `autoload=1` (stesso valore letto indietro) e resta separato
+  dallo slot `match_easy` (nessuna contaminazione incrociata). Screenshot:
+  `r120` visibile con turbina/piloni sotto la piattaforma e cielo notturno
+  con nuvole oltre il bordo (la citta' e' davvero sospesa); title screen
+  con i tre bottoni, il banner e il logo animato, tutti nella posizione
+  esatta del decompilato.
+  **Gap dichiarati, deliberatamente non affrontati in questo giro**
+  (l'autore ha scelto "solo caricamento + base volante", rimandando il
+  resto): `nifast`, `mud`, `baura` (oggetti di `match` mai letti, funzione
+  ignota); `honda1`/`honda2` (i "veicoli_target" di `match` — cars.js oggi
+  riconosce solo `honda_facile_1|2` di match_easy, quindi su `match` le
+  auto iniziali non compaiono finche' questi due non vengono letti); la
+  room "tutorial" stessa (una terza modalita' completa, non solo un
+  bottone). `.github/workflows/deploy-pages.yml` e README.md aggiornati per
+  rigenerare/documentare anche la room "title".

@@ -481,13 +481,28 @@ GAMEPLAY_SPRITES = {
     # "cc2"/"cc3" le due varianti a dado di Create.gml — non serve
     # distinguere smoke_ind da smoke_ind_2, condividono lo stesso sprite).
     "smoke": ["cc1", "cc2", "cc3"],
+    # La base volante di `match` (r12/Create.gml, ramo `match` — flag 736==0,
+    # STUDIO.md): `r120` (sprite "baa12") non e' un'istanza statica della
+    # room ma creata via codice, come ogni altro decoro runtime qui sopra.
+    # "a1" (l'albero appeso alla piattaforma) e' GIA' coperto — match.scene.
+    # json ha gia' 56 istanze statiche `albe`/"a1" (quelle A TERRA, uccise a
+    # runtime su `match`; quelle appese a `r120` sono le STESSE 14 istanze
+    # dello stesso sprite, create con offset diversi — nessuno sprite nuovo).
+    "platform": ["baa12", "motor11", "motor12", "motor13", "f1b", "f2b", "moor12"],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
+# Solo le due room di gioco vero (match/match_easy) fanno mai comparire un
+# edificio: la title screen (e le altre room di servizio, mai ancora
+# ricostruite) non ha bisogno di nessuno dei ~950 sprite di GAMEPLAY_SPRITES
+# — includerli comunque vorrebbe dire ~35 pagine di atlas sprecate solo per
+# disegnare tre bottoni.
+GAMEPLAY_ROOMS = {"match", "match_easy"}
 
 # ---------------------------------------------------------------- raccolta
 rects = []                               # frame da sistemare
-used = sorted({i["spr"] for i in scene["instances"] if "spr" in i} | set(EXTRA_SPRITES))
+used = sorted({i["spr"] for i in scene["instances"] if "spr" in i}
+              | (set(EXTRA_SPRITES) if room_name in GAMEPLAY_ROOMS else set()))
 for name in used:
     s = spr_by_name.get(name)
     if not s:
