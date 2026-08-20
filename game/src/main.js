@@ -14,7 +14,10 @@ import {
 import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
-import { applyMatchPlatform } from "./platform.js";
+import {
+  applyMatchPlatform, createFaroState, stepFaroChain, faroDecor,
+  clickFaroButton, clickWaveSignal, clickDockerSignal,
+} from "./platform.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load } from "./save.js";
@@ -289,7 +292,11 @@ for (const name of INITIAL_CAR_TYPES) {
 // La base volante di `match` (game/src/platform.js, applyMatchPlatform()):
 // solo su `match`, mai su `match_easy` — condivisa con lo sfondo sfocato
 // della title screen (game/src/title.js), stessa `match.scene.json`.
-if (roomName === "match") applyMatchPlatform(staticWorld);
+if (roomName === "match") applyMatchPlatform(staticWorld, { interactive: true });
+// Catena fari -> seconda piattaforma (game/src/platform.js): solo su
+// `match`, come r120/applyMatchPlatform() sopra — `match_easy` non ha ne'
+// la base volante ne' `chies` a livello 2 (STUDIO.md, gap dichiarati).
+let platformState = roomName === "match" ? createFaroState() : null;
 
 // Semafori (game/src/semaphores.js, STUDIO.md): `object8` ("se", il palo —
 // mai rinominato dall'autore originale) resta in staticWorld com'e', un
@@ -958,12 +965,13 @@ function demolishMultiTile(b) {
 // pagina e' quindi una partita nuova, come il primissimo avvio. S/L restano
 // per salvare/ricaricare a mano DENTRO la stessa sessione di test, se
 // serve, ma non sopravvivono piu' da soli a un refresh.
-function doSave() { save(scene.name, r12, buildings, ruins, blockedSlots); }
+function doSave() { save(scene.name, r12, buildings, ruins, blockedSlots, platformState); }
 function doLoad() {
   const data = load(scene.name);
   if (!data) return false;
   r12 = data.r12;
   buildings = data.buildings;
+  if (platformState) platformState = data.platformState ?? createFaroState();
   decorEntities = [];
   const usedIds = new Set();
   for (const b of buildings) {
@@ -1563,7 +1571,8 @@ input.onTap = (sx, sy) => {
   for (const it of frameList) {
     if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
       && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo"
-      && it.obj !== "bankIcon") continue;
+      && it.obj !== "bankIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
+      && it.obj !== "faroDockerSignal") continue;
     // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
     // stessa ragione della raccolta hover piu' sotto. Tutto il resto
     // (edifici, casse, monete, segnale di potenziamento) resta sul
@@ -1735,6 +1744,23 @@ input.onTap = (sx, sy) => {
     }
     messageT = 3;
     picked = null;
+  } else if (picked.obj === "faroButton") {
+    // [C] upfaro1/Mouse_LeftPressed.gml (game/src/platform.js): -2000 mon,
+    // faro1 si accende e compare il segnale successivo (wavesig1).
+    message = clickFaroButton(platformState, r12) ?? "";
+    messageT = 3;
+    picked = null;
+  } else if (picked.obj === "faroWaveSignal") {
+    // [C] wavesig1/Mouse_LeftReleased.gml: attivo solo di notte, -20 crys.
+    message = clickWaveSignal(platformState, r12, isNight(phaseT)) ?? "";
+    messageT = 3;
+    picked = null;
+  } else if (picked.obj === "faroDockerSignal") {
+    // [C] dockersig1/Mouse_LeftPressed.gml: -5000 mon -9000 oil, avvia
+    // l'attracco (~14s) che finisce nella seconda piattaforma (`r32`).
+    message = clickDockerSignal(platformState, r12) ?? "";
+    messageT = 3;
+    picked = null;
   }
 };
 
@@ -1849,6 +1875,10 @@ function frame(now) {
     // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
     stepCoinSpawner(buildings, coins, dt, r12);
     stepCoins(coins, dt, r12);
+    if (platformState) {
+      const chiesLevel = buildings.find((b) => b.type === "chies")?.level ?? 0;
+      stepFaroChain(platformState, r12, coins, dt, chiesLevel);
+    }
     // Raccolta al passaggio del mouse — [C] sold*/soldbio/Mouse_MouseEnter.gml
     // usa davvero un hover, non un click (coins.js, collectCoin() sopra il tap
     // esplicito per touch/desktop): un vero hover pero' esiste solo col mouse
@@ -2030,6 +2060,17 @@ function frame(now) {
     // dell'interfaccia, non un oggetto di mondo, deve restare visibile
     // anche di notte invece di scurirsi con la tinta ambientale.
     dynamic.push({ obj: "coin", ref: c, x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr, frameIdx), _selfLit: true });
+  }
+  // Catena fari -> seconda piattaforma (game/src/platform.js): fari,
+  // segnali cliccabili (upfaro1/wavesig1/dockersig1) e, a piattaforma
+  // espansa, la scenografia fissa di `r32`. `_selfLit` solo sui segnali
+  // (stesso motivo di "upsign" sopra): i fari veri e la nuova scenografia
+  // restano invece soggetti alla tinta giorno/notte come ogni decoro.
+  if (platformState) {
+    for (const it of faroDecor(platformState)) {
+      const selfLit = it.obj === "faroButton" || it.obj === "faroWaveSignal" || it.obj === "faroDockerSignal";
+      dynamic.push({ ...it, _f: frameFor(it.spr), _selfLit: selfLit || undefined });
+    }
   }
   for (const m of constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
   for (const bx of constructionBoxes) dynamic.push({ obj: "decor", x: bx.x, y: bx.y, depth: bx.depth, _f: frameFor(bx.spr) });
@@ -2486,6 +2527,7 @@ function frame(now) {
     `zoom ${cam.zoom.toFixed(2)}  camera ${cam.x.toFixed(0)},${cam.y.toFixed(0)}\n` +
     `fase ${amb.label}  edifici ${buildings.length}` +
     (r12.storm ? `  ⛈ tempesta (${r12.stormT.toFixed(0)}s)\n` : `\n`) +
+    (platformState ? `cristalli ${r12.crys}  piattaforma: ${platformState.stage}\n` : "") +
     // [TEST] DEBUG_INFINITE_RESOURCES (buildings.js): mon/oil in barra sono
     // gonfiati apposta — questa riga e' l'unico punto dove restano visibili
     // i valori veri (r12.monReal/oilReal, state.js), per non perderli di
@@ -2523,4 +2565,5 @@ window.__nimbus = {
   setPhase: (t) => { phaseT = t; },
   phases: PHASES,
   save: doSave, load: doLoad,
+  get platformState() { return platformState; },
 };

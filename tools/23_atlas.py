@@ -489,6 +489,21 @@ GAMEPLAY_SPRITES = {
     # runtime su `match`; quelle appese a `r120` sono le STESSE 14 istanze
     # dello stesso sprite, create con offset diversi — nessuno sprite nuovo).
     "platform": ["baa12", "motor11", "motor12", "motor13", "f1b", "f2b", "moor12"],
+    # Catena fari -> seconda piattaforma (STUDIO.md, chies.level>=2 ->
+    # upfaro1 -> wavesig1 -> farolux -> dockersig1 -> r32): "f1" e' faro1
+    # acceso (contro "f1b" spento, gia' sopra), "f1lux" il fascio di luce
+    # vero, "wavesin"/"bridgesin" le icone dei due segnali cliccabili
+    # (wavesig1/dockersig1), "nimbuscluster1" l'effetto nuvola durante
+    # l'attracco (n_cluster1), "monviola_bar" il gettone di cristalli
+    # raccoglibile (barviola). "baa31"/"f3b" sono la base e il terzo faro
+    # (spento, mai potenziato in questo giro) della piattaforma nuova,
+    # "bridr1"/"bridl1"/"moor31..34"/"robbobase"/"motor2" la sua scenografia
+    # fissa (ponti, moli, il palo "robbobaseobj").
+    "platform2": [
+        "f1", "f1lux", "wavesin", "bridgesin", "nimbuscluster1", "monviola_bar",
+        "baa31", "f3b", "bridr1", "bridl1", "moor31", "moor32", "moor33", "moor34",
+        "robbobase", "motor2",
+    ],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
