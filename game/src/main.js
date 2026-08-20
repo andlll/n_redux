@@ -1167,7 +1167,13 @@ function drawPauseOverlay() {
   // un mondo comunque colorato/luminoso.
   r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
-  const panelW = Math.min(360, cw - 40), panelH = 260;
+  const rows = [
+    { label: "Riprendi", action: "resume" },
+    { label: "Salva partita", action: "save" },
+    { label: "Carica partita", action: "load" },
+    { label: "Torna al menu", action: "title" },
+  ];
+  const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
   const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
   r.draw(solidFrame(white, panelW, panelH), px, py, 1, 0x20242c, 0.95);
 
@@ -1176,11 +1182,6 @@ function drawPauseOverlay() {
   drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 22, titleScale, 0xffffff, 1);
 
   pauseMenuButtons = [];
-  const rows = [
-    { label: "Riprendi", action: "resume" },
-    { label: "Salva partita", action: "save" },
-    { label: "Carica partita", action: "load" },
-  ];
   const btnW = panelW - 60, btnH = 46, btnGap = 14, textScale = 1.3;
   let by = py + 96;
   for (const row of rows) {
@@ -1463,6 +1464,8 @@ input.onTap = (sx, sy) => {
       const ok = doLoad();
       if (ok) picked = null;
       message = ok ? "partita caricata" : "nessun salvataggio"; messageT = 3;
+    } else if (hit?.action === "title") {
+      location.href = "./title.html";
     }
     return;
   }
