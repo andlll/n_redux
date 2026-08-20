@@ -14,6 +14,7 @@ import {
 import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
+import { applyMatchPlatform } from "./platform.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load } from "./save.js";
@@ -271,59 +272,24 @@ const chiesScene = chiesIndex >= 0 ? staticWorld.splice(chiesIndex, 1)[0] : null
 const pu1Index = staticWorld.findIndex((it) => it.obj === "pu1");
 if (pu1Index >= 0) staticWorld.splice(pu1Index, 1);
 
-// `honda_facile_1`/`honda_facile_2` sono anche loro gia' istanze vere nella
-// room (STUDIO.md §5.3 "veicoli_target"): nell'originale non stanno ferme,
-// guidano avanti e indietro lungo un percorso fisso finche' l'olio non
-// finisce (game/src/cars.js). Tolte da staticWorld — altrimenti resterebbero
-// due comparse immobili sotto alle auto vere che si muovono sopra di loro —
-// e sostituite dalle istanze simulate in `cars` piu' sotto.
-for (const name of ["honda_facile_1", "honda_facile_2"]) {
+// `honda_facile_1`/`honda_facile_2` (match_easy) o `honda1`/`honda2`
+// (match — STUDIO.md, letti dopo la prima sessione su questa room) sono
+// anche loro gia' istanze vere nella room (STUDIO.md §5.3 "veicoli_
+// target"): nell'originale non stanno ferme, guidano avanti e indietro
+// lungo un percorso fisso finche' l'olio non finisce (game/src/cars.js).
+// Tolte da staticWorld — altrimenti resterebbero due comparse immobili
+// sotto alle auto vere che si muovono sopra di loro — e sostituite dalle
+// istanze simulate in `cars` piu' sotto.
+const INITIAL_CAR_TYPES = roomName === "match" ? ["honda1", "honda2"] : ["honda_facile_1", "honda_facile_2"];
+for (const name of INITIAL_CAR_TYPES) {
   const idx = staticWorld.findIndex((it) => it.obj === name);
   if (idx >= 0) staticWorld.splice(idx, 1);
 }
 
-// La base volante di `match` (`r120`, sprite "baa12") — [C] r12/Create.gml,
-// ramo `match` (flag 736==0, mai preso finora: il motore caricava solo
-// match_easy). Tutto decoro STATICO (nessuno step per frame: r120 non si
-// muove mai nel decompilato, a differenza del nome "base volante" che
-// suggerirebbe — resta ferma dove nasce), quindi entra in `staticWorld`
-// com'e', stesso trattamento di ogni albero/auto gia' in scena.
-if (roomName === "match") {
-  // Le 56 istanze statiche "albe" della room (quelle A TERRA) vengono
-  // uccise incondizionatamente su questo ramo — sostituite dalle 14 sotto,
-  // appese alla piattaforma invece che al terreno.
-  for (let i = staticWorld.length - 1; i >= 0; i--) {
-    if (staticWorld[i].obj === "albe") staticWorld.splice(i, 1);
-  }
-  const R120_X = 1170, R120_Y = 346;
-  staticWorld.push({ obj: "r120", x: R120_X, y: R120_Y, depth: 1, spr: "baa12" });
-  // [C] r12/Create.gml, `with (r120) { instance_create(x+dx, y+dy, albe) }`
-  // — 14 offset letti uno per uno, nessun pattern regolare.
-  const R120_TREES = [
-    [282, 794], [439, 783], [379, 748], [518, 750], [565, 700], [463, 695],
-    [538, 646], [637, 609], [699, 556], [758, 524], [816, 559], [724, 617],
-    [672, 659], [739, 651],
-  ];
-  for (const [dx, dy] of R120_TREES) {
-    staticWorld.push({ obj: "albe", x: R120_X + dx, y: R120_Y + dy, depth: 0, spr: "a1" });
-  }
-  // [C] stesso Create.gml, DOPO che `action_set_relative` torna a 0:
-  // posizioni ASSOLUTE nella room, indipendenti da r120 (moto/fari/mudr2
-  // sono scenografia fissa della mappa, non agganciata alla piattaforma).
-  const R120_FIXED = [
-    { obj: "moto11", x: 1951, y: 858, spr: "motor11", depth: 0 },
-    { obj: "moto11", x: 1632, y: 1037, spr: "motor11", depth: 0 },
-    { obj: "moto11", x: 656, y: 1231, spr: "motor11", depth: 0 },
-    { obj: "moto12", x: 198, y: 217, spr: "motor12", depth: 0 },
-    { obj: "moto12", x: 514, y: 34, spr: "motor12", depth: 0 },
-    { obj: "moto13", x: 44, y: 876, spr: "motor13", depth: 0 },
-    { obj: "moto13", x: 1015, y: 1142, spr: "motor13", depth: 0 },
-    { obj: "faro1", x: 616, y: 1100, spr: "f1b", depth: 0 },
-    { obj: "faro2", x: 1655, y: 1111, spr: "f2b", depth: 0 },
-    { obj: "mudr2", x: 769, y: 845, spr: "moor12", depth: -1055 },   // [C] mudr2/_object.json: depth fisso, non -y
-  ];
-  for (const it of R120_FIXED) staticWorld.push(it);
-}
+// La base volante di `match` (game/src/platform.js, applyMatchPlatform()):
+// solo su `match`, mai su `match_easy` — condivisa con lo sfondo sfocato
+// della title screen (game/src/title.js), stessa `match.scene.json`.
+if (roomName === "match") applyMatchPlatform(staticWorld);
 
 // Semafori (game/src/semaphores.js, STUDIO.md): `object8` ("se", il palo —
 // mai rinominato dall'autore originale) resta in staticWorld com'e', un
@@ -361,7 +327,7 @@ let blockedSlots = [];
 // Auto decorative gia' in marcia da subito, come nella room originale
 // (phaseT parte da 0 = fase "giorno" in PHASES piu' sotto, quindi mai
 // notte alla nascita: nessun tint fanali sulle due iniziali).
-let cars = [spawnCar("honda_facile_1", false), spawnCar("honda_facile_2", false)];
+let cars = INITIAL_CAR_TYPES.map((t) => spawnCar(t, false));
 // `carmaker` (game/src/cars.js, CARMAKER_SCHEDULE): non e' un edificio ne'
 // un'istanza di scena, e' un timer che r12 avvia incondizionatamente in
 // ogni room — ogni 60s di gioco arriva un'altra auto (honda3..honda9),

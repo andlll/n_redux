@@ -1,103 +1,178 @@
 // La title screen — [C] src/rooms/title.json: tre bottoni (`standma`/
 // "Match", `easma`/"Match Facile", `me3`/"Tutorial") + un banner laterale
-// (`gogirrra`) + un piccolo logo animato (`eddaie`, 193 sottoimmagini vere,
-// STUDIO.md — stesso principio delle esplosioni/del fumo: image_speed reale,
-// non un fotogramma statico). L'autore: "c'era gia' una schermata di avvio
-// nel codice base... usa il vecchio layout coi pulsanti esistenti".
-//
-// [C] standma|easma/Mouse_LeftPressed.gml: il tap arma un `disba` (fade nero
-// a schermo intero) e 30 tick dopo chiama `action_load_game("nimsav"|
-// "nimsav_eas")` — non un semplice `room_goto`: il gioco vero riparte da un
-// salvataggio se esiste, altrimenti da zero. Qui equivale a navigare su
-// `index.html?room=match|match_easy&autoload=1` (game/src/main.js legge
-// `autoload` e chiama `doLoad()` una sola volta all'avvio, save.js gia'
-// mappa "nimsav"/"nimsav_eas" sugli stessi due slot). [C] `me3/Mouse_
-// LeftPressed.gml` invece va dritto alla room "tutorial" (`action_another_
-// room`), un'intera modalita' a parte mai ricostruita: fuori scopo per
-// questo giro (STUDIO.md), il bottone resta presente (il layout lo vuole)
-// ma il tap si limita a un messaggio.
-import { Renderer, loadTexture, makeSolidTexture, solidFrame } from "./gl.js";
-import { Camera } from "./camera.js";
+// (`gogirrra`). Lo sfondo NON e' piu' `eddaie` (il logo animato del
+// decompilato, 193 sottoimmagini — pesante da impacchettare e, detto
+// dall'autore, "fa un po' cagare"): al suo posto un vero ritaglio di
+// `match` (la mappa difficile, non `match_easy`) che gira per davvero
+// dietro il menu — auto, aerei/dirigibili, semafori, ciclo giorno/notte —
+// sfumato con lo stesso `PauseBlur` (game/src/gl.js) gia' usato per il
+// menu di pausa in game/src/main.js. Nessuna combattimento: nessuna
+// torretta esiste qui, quindi aerei/dirigibili volano/sganciano bombe
+// (che detonano a vuoto, `buildings: []`) senza che nulla li abbatta —
+// esattamente "vivi ma non in guerra", come richiesto.
+import { Renderer, loadTexture, makeSolidTexture, solidFrame, PauseBlur } from "./gl.js";
+import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
+import { applyMatchPlatform } from "./platform.js";
+import { spawnCar, stepCars } from "./cars.js";
+import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
+import { createSemaphore, stepSemaphores } from "./semaphores.js";
+import {
+  stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT,
+  stepAerSmoke, AER_SMOKE_FRAME_COUNT, stepDebris,
+} from "./threats.js";
 
+const TICK = 1 / 60;
 const canvas = document.getElementById("view");
 const r = new Renderer(canvas);
 const gl = r.gl;
-const cam = new Camera();
 const input = new Input(canvas);
+const pauseBlur = new PauseBlur(gl);
 const SOLID = solidFrame(makeSolidTexture(gl), 1, 1);
 
+// ---------------------------------------------------------------- title UI
 const scene = await fetch("./data/title.scene.json").then((x) => x.json());
 const atlas = await fetch("./data/title.atlas.json").then((x) => x.json());
 const pageTex = await Promise.all(atlas.pages.map((p) => loadTexture(gl, "./assets/" + p.file)));
-
 function frameFor(sprName, frameIdx = 0) {
   const frames = atlas.sprites[sprName];
   if (!frames || !frames.length) return null;
   const f = frames[Math.max(0, Math.min(frameIdx, frames.length - 1))];
   return { tex: pageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1, w: f.w, h: f.h, ox: f.ox, oy: f.oy };
 }
-function frameCountFor(sprName) { return atlas.sprites[sprName]?.length ?? 1; }
 
-// [C] eddaie/Create.gml: `action_sprite_set(provamose, 0, 0.5)` — 193 frame
-// veri a mezza velocita' (STUDIO.md, stesso principio di esplosioni/scia di
-// fumo: `Math.floor(t*speed) % frameCount`, un loop vero non un solo frame).
-const EDDAIE_FPS = 0.5 * 60;
-const eddaieFrameCount = frameCountFor("provamose");
-
-// Bottoni cliccabili — solo quelli con un'azione reale (standma/easma/me3).
-// Il rettangolo di hit-test usa lo stesso ox/oy/w/h gia' nel JSON (origine
-// del pulsante, non il centro): coerente con inFrameRect() di main.js.
 const BUTTONS = scene.instances.filter((it) => ["standma", "easma", "me3"].includes(it.obj));
 for (const b of BUTTONS) b._f = frameFor(b.spr);
-const OTHER = scene.instances.filter((it) => !["standma", "easma", "me3"].includes(it.obj));
-for (const it of OTHER) it._f = frameFor(it.spr);
+const BANNER = scene.instances.find((it) => it.obj === "gogirrra");
+BANNER._f = frameFor(BANNER.spr);
 
-// [C] title.json, views[0]: (967,0,540,1086) — una fetta verticale della
-// room 2560x1440, centrata sulla colonna di bottoni (tutti a x≈1235). La
-// title screen non si panna/zooma mai: una camera fissa, tarata sulla
-// stessa fetta invece di inseguire la finestra reale come cam.resize() fa
-// nel gioco vero.
-cam.bounds = { left: 0, top: 0, right: scene.width, bottom: scene.height };
-cam.x = 1235;
-cam.y = 543;
-cam.minZoom = cam.maxZoom = 1;
+const camUI = new Camera();
+camUI.bounds = { left: 0, top: 0, right: scene.width, bottom: scene.height };
+camUI.x = 1235; camUI.y = 543;
 
+// ------------------------------------------------------------- sfondo: match
+const mScene = await fetch("./data/match.scene.json").then((x) => x.json());
+const mAtlas = await fetch("./data/match.atlas.json").then((x) => x.json());
+const mPageTex = await Promise.all(mAtlas.pages.map((p) => loadTexture(gl, "./assets/" + p.file)));
+function mFrameFor(sprName, frameIdx = 0) {
+  const frames = mAtlas.sprites[sprName];
+  if (!frames || !frames.length) return null;
+  const f = frames[Math.max(0, Math.min(frameIdx, frames.length - 1))];
+  return { tex: mPageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1, w: f.w, h: f.h, ox: f.ox, oy: f.oy };
+}
+
+// [C] stessa variante a dado di main.js (albe/albe2/albe3/Create.gml): un
+// solo giro, una volta al caricamento della scena — vedi il commento li'.
+function dice(n) { return Math.random() < 1 / n; }
+function treeVariant(obj) {
+  if (obj === "albe") { if (dice(5)) return dice(2) ? "a2" : "a5"; if (dice(2)) return dice(2) ? "a3" : "a4"; return null; }
+  return null;
+}
+// [I] `placeholder` (il rombo viola "phold", STUDIO.md main.js) resta
+// nascosto finche' non e' sotto hover nel gioco vero: qui non c'e' nessun
+// input di piazzamento, quindi va tolto invece di restare sempre acceso a
+// coprire mezza mappa (172 istanze su `match`).
+const worldStatic = mScene.instances.filter((it) => it.obj !== "placeholder");
+applyMatchPlatform(worldStatic);   // la base volante — STUDIO.md, game/src/platform.js
+// honda1/honda2 (le due auto "gia' in marcia" di `match`, game/src/cars.js)
+// sostituite dalle istanze simulate sotto — stesso motivo della rimozione
+// in main.js.
+for (let i = worldStatic.length - 1; i >= 0; i--) {
+  if (worldStatic[i].obj === "honda1" || worldStatic[i].obj === "honda2") worldStatic.splice(i, 1);
+}
+for (const it of worldStatic) {
+  const v = treeVariant(it.obj);
+  if (v) it.spr = v;
+  it._f = mFrameFor(it.spr);
+}
+const semaphorePoles = worldStatic.filter((it) => it.obj === "object8");
+const semaphores = semaphorePoles.map((it) => createSemaphore(it.x, it.y));
+
+function effDepth(it) { return it.depth === 0 ? -it.y : it.depth; }
+const sortWorld = (a, b) => effDepth(b) - effDepth(a);
+
+const camWorld = new Camera();
+camWorld.bounds = { left: 0, top: 0, right: mScene.width, bottom: mScene.height };
+camWorld.minZoom = camWorld.maxZoom = 1.6;
+camWorld.setZoomImmediate(1.6);
+// Un ritaglio intorno a r120 (la base volante, STUDIO.md): si vede sia la
+// citta' sopra sia la turbina/i piloni sotto — la stessa inquadratura del
+// primo screenshot di verifica di r120. Deriva leggermente nel tempo (vedi
+// updateCamera() sotto), non fermo ne' agganciato all'input.
+const CAM_CENTER = { x: 1450, y: 750 };
+const CAM_DRIFT = { x: 420, y: 90 };
+const CAM_PERIOD = 42;   // secondi per un giro completo della deriva
+
+// ------------------------------------------------------------- simulazione
+let cars = [spawnCar("honda1", false), spawnCar("honda2", false)];
+let atmo = createAtmosphere();
+let threats = [], bombs = [], explosions = [], aerSmoke = [], debris = [];
+// Stub minimo di r12: solo i campi che stepThreatSpawner/stepThreats
+// leggono davvero. `ondan`/`bombn`/`diron` vengono rialimentati piu' sotto
+// (updateThreats()) invece di lasciarli decadere a zero come farebbe la
+// vera partita — qui non c'e' nessuna spia che li fa salire, quindi la
+// "rifornitura" e' la stessa scelta [I] gia' presa altrove in questo
+// motore quando manca il sistema a monte (STUDIO.md).
+const fakeR12 = { ondan: 0, bombn: 0, diron: 0, storm: 0, distrutti: 0 };
+
+// [C] PHASES/ambientAt() di main.js, stesso schema — [I] accelerato: un
+// giro giorno/notte completo ogni 36 minuti veri sarebbe invisibile su una
+// title screen, qui dura CYCLE_SECONDS.
+const PHASES = [
+  { rgb: [1.00, 1.00, 1.00], dur: 14 }, { rgb: [1.00, 0.82, 0.62], dur: 5 },
+  { rgb: [0.45, 0.52, 0.82], dur: 12 }, { rgb: [0.92, 0.80, 0.78], dur: 5 },
+];
+const CYCLE_SECONDS = 50;
+const PHASE_TOTAL = PHASES.reduce((s, p) => s + p.dur, 0);
+function ambientAt(tSec) {
+  let u = (tSec / CYCLE_SECONDS) * PHASE_TOTAL % PHASE_TOTAL;
+  let i = 0;
+  while (u > PHASES[i].dur) { u -= PHASES[i].dur; i = (i + 1) % PHASES.length; }
+  const k = u / PHASES[i].dur;
+  const a = PHASES[i].rgb, b = PHASES[(i + 1) % PHASES.length].rgb;
+  return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+}
+
+function updateThreats(dt) {
+  // Mantiene un rifornimento costante cosi' aerei/bombardieri/dirigibili
+  // continuano ad arrivare per tutto il tempo che il menu resta a schermo,
+  // invece di esaurirsi dopo le prime ondate come farebbe r12 vero senza
+  // spie a rialimentarli.
+  fakeR12.ondan = 3; fakeR12.bombn = 1; fakeR12.diron = 1;
+  stepThreatSpawner(fakeR12, threats, dt);
+  stepThreats(threats, bombs, explosions, dt, fakeR12, aerSmoke, debris);
+  stepBombs(bombs, explosions, [], dt, fakeR12);
+  stepExplosions(explosions, dt);
+  stepAerSmoke(aerSmoke, dt);
+  stepDebris(debris, explosions, dt);
+}
+
+// ---------------------------------------------------------------- resize
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = Math.round(canvas.clientWidth * dpr);
   const h = Math.round(canvas.clientHeight * dpr);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-  cam.resize(canvas.clientWidth, canvas.clientHeight);
-  // Adatta lo zoom cosi' la colonna di bottoni (alta ~1086px, com'era la
-  // vista originale) entri sempre nell'altezza disponibile, con un margine.
-  const fitZoom = 1086 / cam.viewH;
-  cam.minZoom = cam.maxZoom = fitZoom * 1.08;
-  cam.setZoomImmediate(cam.minZoom);
+  camUI.resize(canvas.clientWidth, canvas.clientHeight);
+  const fitZoom = 1086 / camUI.viewH;
+  camUI.minZoom = camUI.maxZoom = fitZoom * 1.08;
+  camUI.setZoomImmediate(camUI.minZoom);
+  camWorld.resize(canvas.clientWidth, canvas.clientHeight);
 }
 window.addEventListener("resize", resize);
 resize();
 
-/** true se il punto MONDO (wx,wy) cade dentro il rettangolo del bottone. */
+// ---------------------------------------------------------------- input
 function hitButton(b, wx, wy) {
   const f = b._f;
   if (!f) return false;
   return wx >= b.x - f.ox && wx <= b.x - f.ox + f.w && wy >= b.y - f.oy && wy <= b.y - f.oy + f.h;
 }
-
-let message = "";
-let messageT = 0;
-// Fade nero verso il gioco vero — [C] disba/Create.gml: cresce a schermo
-// intero e resta 30 tick prima di far scattare il caricamento (qui la
-// navigazione vera). `navigateTo`: null finche' nessun bottone e' stato
-// toccato.
-let fadeT = 0;
+let message = "", messageT = 0, fadeT = 0, navigateTo = null;
 const FADE_DUR = 0.5;
-let navigateTo = null;
-
 input.onTap = (sx, sy) => {
-  if (navigateTo) return;   // gia' in transizione, ignora altri tocchi
-  const w = cam.screenToWorld(sx, sy);
+  if (navigateTo) return;
+  const w = camUI.screenToWorld(sx, sy);
   for (const b of BUTTONS) {
     if (!hitButton(b, w.x, w.y)) continue;
     if (b.obj === "standma") { navigateTo = "index.html?room=match&autoload=1"; fadeT = 0; }
@@ -107,10 +182,30 @@ input.onTap = (sx, sy) => {
   }
 };
 
+// ---------------------------------------------------------------- loop
+// [I] Il mondo sfocato dietro il menu non ha bisogno di aggiornarsi a 60fps
+// quanto i bottoni: **[misurato]** su questa macchina (rendering software,
+// nessuna vera GPU) l'intera pipeline di blur — una `copyTexImage2D` a
+// piena risoluzione + 4 passate gaussiane, PauseBlur, game/src/gl.js —
+// costava da sola ~37ms/frame (18fps totali) ripetuta ogni frame, contro
+// i 16.6ms/frame (60fps) del solo disegno del mondo senza sfumatura.
+// Ricatturare/risfumare il mondo solo ogni BG_INTERVAL secondi (auto/aerei/
+// semafori continuano comunque ad avanzare ogni frame in JS, cosi'
+// riprendono da dove erano quando tocca il prossimo aggiornamento — nessun
+// salto visibile a ~6Hz, un mondo gia' sfocato non ha bisogno di un refresh
+// ad alta frequenza per sembrare vivo) e ridisegnare il risultato gia'
+// sfumato (una texture GPU che resta valida finche' non la si ricattura)
+// dimezza abbondantemente il costo per frame rispetto al blur continuo.
+const BG_INTERVAL = 1 / 6;
+let bgT = BG_INTERVAL;   // forza un aggiornamento al primissimo frame
+let blurTex = null;
+
 let last = performance.now();
+let elapsed = 0;
 function frame(now) {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
   last = now;
+  elapsed += dt;
 
   if (navigateTo) {
     fadeT += dt;
@@ -118,38 +213,81 @@ function frame(now) {
   }
   if (messageT > 0) messageT -= dt;
 
+  stepCars(cars, dt, { oil: 1 }, false);   // { oil: 1 }: sempre "c'e' ancora olio", rinasce sempre
+  stepAtmosphere(atmo, dt, false);
+  stepSemaphores(semaphores, dt);
+  updateThreats(dt);
+
+  camWorld.x = CAM_CENTER.x + Math.sin((elapsed / CAM_PERIOD) * Math.PI * 2) * CAM_DRIFT.x;
+  camWorld.y = CAM_CENTER.y + Math.cos((elapsed / CAM_PERIOD) * Math.PI * 2) * CAM_DRIFT.y;
+
   r.beginFrame(canvas.width, canvas.height);
+  bgT += dt;
+  if (bgT >= BG_INTERVAL || !blurTex) {
+    bgT = 0;
+    // --- layer mondo (sfumato dopo) ---
+    const amb = ambientAt(elapsed);
+    r.setAmbient(amb[0], amb[1], amb[2]);
+    r.setProjection(camWorld.projection());
+    const dynamic = [];
+    for (const s of semaphores) if (s.spr) dynamic.push({ obj: "decor", x: s.x, y: s.y, depth: s.depth, _f: mFrameFor(s.spr) });
+    for (const c of atmo.clouds) dynamic.push({ obj: "decor", x: c.x, y: c.y, depth: c.depth, _f: mFrameFor(c.spr) });
+    for (const b of atmo.birds) dynamic.push({ obj: "decor", x: b.x, y: b.y, depth: b.depth, _f: mFrameFor(b.spr) });
+    for (const c of cars) dynamic.push({ obj: "decor", x: c.x, y: c.y, depth: c.depth, _f: mFrameFor(c.spr, Math.floor(c.frame)), _tint: c.tint });
+    for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: mFrameFor(th.spr), _scale: th.scale });
+    for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y, _f: mFrameFor(bm.spr) });
+    for (const d of debris) dynamic.push({ obj: "decor", x: d.x, y: d.y, depth: -d.y, _f: mFrameFor(d.spr) });
+    for (const ex of explosions) {
+      const fi = Math.min(EXPLOSION_FRAME_COUNT - 1, Math.floor(ex.t / TICK));
+      dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: mFrameFor(ex.spr, fi), _scale: ex.scale });
+    }
+    for (const p of aerSmoke) {
+      const fi = Math.min(AER_SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
+      dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: mFrameFor(p.spr, fi), _scale: p.scale });
+    }
+    const frameList = worldStatic.concat(dynamic).sort(sortWorld);
+    const vw = camWorld.worldW, vh = camWorld.worldH;
+    const l = camWorld.x - vw / 2, t = camWorld.y - vh / 2, rt = l + vw, bt = t + vh;
+    for (const it of frameList) {
+      const f = it._f;
+      if (!f) continue;
+      const x0 = it.x - f.ox, y0 = it.y - f.oy;
+      if (x0 > rt || y0 > bt || x0 + f.w < l || y0 + f.h < t) continue;
+      r.draw(f, it.x, it.y, it._scale ?? 1, it._tint ?? 0xffffff, 1);
+    }
+    r.flush();
+    // PauseBlur (game/src/gl.js) — stesso identico effetto del menu di
+    // pausa in game/src/main.js. `pingB` (la texture restituita) resta
+    // valida in GPU finche' `blurScreen()` non viene richiamato di nuovo,
+    // motivo per cui i frame saltati sopra possono continuare a ridisegnarla.
+    blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+  }
+
   r.setAmbient(1, 1, 1);
-  r.setProjection(cam.projection());
-  const eddaieIdx = Math.floor((now / 1000) * EDDAIE_FPS) % eddaieFrameCount;
-  for (const it of OTHER) {
-    if (!it._f) continue;
-    const f = it.obj === "eddaie" ? frameFor(it.spr, eddaieIdx) : it._f;
-    r.draw(f, it.x, it.y, 1, 0xffffff, 1);
-  }
-  for (const b of BUTTONS) {
-    if (!b._f) continue;
-    r.draw(b._f, b.x, b.y, 1, 0xffffff, 1);
-  }
+  r.setProjection(screenProjection(canvas.clientWidth, canvas.clientHeight));
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  // v0/v1 scambiati: copyTexImage2D cattura dal framebuffer di default,
+  // origine in basso a sinistra — stesso motivo di drawPauseOverlay() in
+  // main.js.
+  r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
+  r.draw(solidFrame(SOLID.tex, cw, ch), 0, 0, 1, 0x000000, 0.35);
+  r.flush();
+
+  r.setProjection(camUI.projection());
+  if (BANNER._f) r.draw(BANNER._f, BANNER.x, BANNER.y, 1, 0xffffff, 1);
+  for (const b of BUTTONS) if (b._f) r.draw(b._f, b.x, b.y, 1, 0xffffff, 1);
   if (fadeT > 0) {
     const k = Math.min(1, fadeT / FADE_DUR);
-    // Un quad pieno che copre tutta la vista, in spazio mondo (la camera e'
-    // fissa, quindi coincide comunque con lo schermo) — stesso principio di
-    // `disba` (base ingrandita 200x, un rettangolo nero pieno).
-    const hw = cam.worldW / 2, hh = cam.worldH / 2;
-    r.drawQuad(SOLID, { x: cam.x - hw, y: cam.y - hh }, { x: cam.x + hw, y: cam.y - hh },
-      { x: cam.x + hw, y: cam.y + hh }, { x: cam.x - hw, y: cam.y + hh }, 0x000000, k);
+    const hw = camUI.worldW / 2, hh = camUI.worldH / 2;
+    r.drawQuad(SOLID, { x: camUI.x - hw, y: camUI.y - hh }, { x: camUI.x + hw, y: camUI.y - hh },
+      { x: camUI.x + hw, y: camUI.y + hh }, { x: camUI.x - hw, y: camUI.y + hh }, 0x000000, k);
   }
   r.flush();
+
   requestAnimationFrame(frame);
 }
-
 requestAnimationFrame(frame);
 
-// Messaggio "tutorial non ancora implementato" — riusa lo stesso <div id
-// ="hud"> del gioco vero non esiste qui (title.html non lo dichiara): un
-// piccolo overlay DOM dedicato, piu' semplice di un secondo font bitmap
-// caricato solo per tre parole.
 const msgEl = document.createElement("div");
 msgEl.style.cssText = "position:fixed;left:0;right:0;bottom:10%;text-align:center;" +
   "font:16px/1.4 ui-monospace,monospace;color:#fff;text-shadow:0 1px 3px #000;" +

@@ -3135,3 +3135,63 @@ paragrafo 8.
   room "tutorial" stessa (una terza modalita' completa, non solo un
   bottone). `.github/workflows/deploy-pages.yml` e README.md aggiornati per
   rigenerare/documentare anche la room "title".
+  **Sfondo vivo per la title screen, al posto del logo animato.**
+  L'autore, dopo aver visto il logo `eddaie` (193 sottoimmagini, sopra) a
+  schermo, l'ha giudicato pesante e "fa un po' cagare" — proposta accettata:
+  invece del logo, un vero ritaglio della room `match` (non `match_easy`)
+  che gira per davvero dietro il menu, sfumato con lo stesso `PauseBlur`
+  (`game/src/gl.js`) gia' usato per il menu di pausa in main.js — "vivo ma
+  non in guerra" come richiesto: auto, aerei/dirigibili volano/sganciano
+  bombe ma **[I]** `stepBombs(..., buildings: [], ...)` le fa detonare a
+  vuoto, nessuna torretta esiste in questa scena quindi nulla li abbatte.
+  **[C]** `honda1`/`honda2` (i due "veicoli_target" di `match`, dichiarati
+  gap nell'entry sopra) estratti da `Create.gml`/`Alarm_0-6.gml` e aggiunti
+  a `CAR_TYPES` (`game/src/cars.js`): stesso formato dati di ogni altra auto
+  gia' presente (spawn/life/spr/schedule), nessun codice nuovo necessario —
+  ne beneficia anche `match` vero (main.js), non solo la title screen, che
+  prima li ometteva del tutto. La base volante (`r120`) estratta in
+  `game/src/platform.js` (`applyMatchPlatform()`, prima inline in main.js)
+  cosi' main.js e title.js condividono la stessa logica invece di
+  duplicarla. `worldStatic` = istanze di `match.scene.json` **meno**
+  `placeholder` (il rombo "phold", nascosto finche' non e' sotto hover nel
+  gioco vero — qui non c'e' hover, quindi va tolto invece di restare sempre
+  acceso, stesso principio del filtro gia' visto altrove) e meno
+  `honda1`/`honda2` statiche (sostituite dalle istanze simulate). Camera
+  dedicata (`camWorld`, zoom fisso 1.6) che deriva lentamente in un'ellisse
+  intorno a `r120` (42s per giro) — non fissa come `camUI` (i bottoni,
+  invariata), non libera come in partita: sempre in movimento ma mai sotto
+  input. Ciclo giorno/notte riusa lo schema `PHASES`/`ambientAt()` di
+  main.js ma **[I]** accelerato (50s per giro intero: un giro vero da 36
+  minuti sarebbe invisibile su una title screen).
+  **Prestazioni — il vero costo era il blur, non il logo.** Misurato
+  (Playwright, rendering software senza vera GPU — l'ambiente di test):
+  ~53ms/frame (~18.7fps) con blur ricatturato ogni singolo frame, contro
+  ~16.6ms/frame (~60fps) disegnando lo stesso mondo senza sfumatura —
+  confermato isolando `PauseBlur.blurScreen()` (una `copyTexImage2D` a
+  piena risoluzione + 4 passate gaussiane) come lo step da solo piu' caro
+  della pipeline. **[I]** Corretto con un throttle a tempo (`BG_INTERVAL`
+  in `title.js`): il mondo si ricattura/risfuma solo ogni ~167ms (~6Hz),
+  mentre auto/aerei/semafori/deriva della camera avanzano comunque ogni
+  frame in JS (quindi ripartono da dove erano, nessun salto visibile) e la
+  texture gia' sfumata dell'ultimo aggiornamento resta disegnata nel
+  frattempo (economico: un solo quad). Risultato misurato: ~33ms/frame
+  (~30fps) in questo stesso ambiente software — su hardware reale con GPU
+  vera il costo dovrebbe scendere molto di piu', visto che `copyTexImage2D`
+  + shader multi-passata sono esattamente il genere di operazione che una
+  GPU accelera bene e un rasterizzatore software no.
+  **Bug corretto en passant in `gl.js`, non specifico alla title screen:**
+  `Renderer.flush()` riattivava `gl.useProgram(this.prog)` solo se c'era
+  davvero un batch da disegnare (`this.count`) — ma `setProjection()`/
+  `setAmbient()` chiamano `flush()` anche a batch vuoto (per svuotarlo
+  prima di cambiare uniform), es. proprio dopo `PauseBlur.blurScreen()`
+  (che lascia attivo il SUO programma). In quel caso preciso `flush()` si
+  fermava subito senza riattivare `this.prog`, quindi le uniform venivano
+  scritte sul programma sbagliato (scartate silenziosamente da WebGL, solo
+  un warning "location is not from the associated program" in console) e
+  la proiezione restava quella del giro precedente. Innocuo finora perche'
+  main.js non chiama mai `setProjection()`/`setAmbient()` con un batch
+  vuoto subito dopo il blur — la sequenza nuova della title screen (blur
+  poi disegno a schermo intero) lo faceva sistematicamente. Corretto
+  spostando `gl.useProgram(this.prog)` prima del controllo `count`, cosi'
+  il programma giusto e' sempre attivo indipendentemente da cosa c'e' in
+  coda.
