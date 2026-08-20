@@ -170,16 +170,24 @@ export class Renderer {
   }
 
   flush() {
-    if (!this.count || !this.texture) { this.count = 0; return; }
     const gl = this.gl;
-    // Ri-attivato ad ogni flush, non solo in beginFrame(): PauseBlur
-    // (main.js/gl.js, il blur del menu di pausa) usa un secondo programma
-    // shader fra un frame e l'altro — senza questo, il primo flush() dopo
-    // un blur disegnerebbe ancora col programma del blur invece del nostro,
-    // con layout attributi/uniform incompatibili (il sintomo era meta'
-    // schermo che spariva, geometria calcolata da dati letti col layout
-    // sbagliato). Costa una chiamata GL in piu' per flush, trascurabile.
+    // Ri-attivato ad ogni flush, PRIMA del controllo `count` sotto e non
+    // solo quando c'e' davvero un batch da disegnare: PauseBlur (gl.js
+    // sotto) usa un secondo programma shader fra un frame e l'altro, e
+    // setProjection()/setAmbient() chiamano flush() (per svuotare il batch
+    // prima di cambiare uniform) anche quando il batch e' vuoto — es. giusto
+    // dopo blurScreen(), prima ancora di accodare un quad. Se in quel caso
+    // flush() si fermasse subito senza riattivare `this.prog`, le successive
+    // gl.uniformMatrix3fv(u_proj)/gl.uniform4f(u_ambient) scriverebbero su
+    // un programma diverso da quello attivo (silenzioso, solo un warning
+    // "location is not from the associated program" in console) e
+    // verrebbero scartate: la proiezione restava quella del giro
+    // precedente, con geometria disegnata completamente fuori posto (il
+    // sintomo era lo sfondo/i bottoni della title screen deformati in una
+    // macchia irriconoscibile). Costa una chiamata GL in piu' per flush,
+    // trascurabile.
     gl.useProgram(this.prog);
+    if (!this.count || !this.texture) { this.count = 0; return; }
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     const used = this.count * VERTS_PER_QUAD * FLOATS_PER_VERT;

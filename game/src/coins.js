@@ -21,6 +21,17 @@
 // letti direttamente da "mon = mon + N" di ciascun sold* nel decompilato
 // (una progressione lineare pulita, non serve una tabella).
 //
+// [C] casa4s|d/Alarm_4.gml (palazzo, entrambi gli assi) + casa5ss|dd/
+// Alarm_4.gml (il suo secondo livello): STESSA condizione/formula di casa,
+// solo un periodo diverso (1600 tic, non 3000) e sprite "sold19..30" invece
+// di "sold1..18" — mai letti finora (un gap non dichiarato: il palazzo
+// finito non regalava mai monete). La formula sopra generalizza pulita
+// anche qui, usando il "livello globale" del decompilato invece di
+// `b.level` (che qui riparte da 1 per palazzo, non da 4): sold19 (`ava`0,
+// livello reale 4) = 20*((4-1)*6+0+1) = 380, esattamente il valore letto —
+// `b.level+3` sotto e' quella correzione, verificata su tutti e 12 gli
+// sprite (sold19..30, 380..600 a passi di 20).
+//
 // [C] sold*/Create.gml: SOLO se esiste una `chies` di livello 3, la moneta
 // diventa "soldfade" (stessa icona, ma con una dissolvenza vera a 20 frame,
 // `image_speed` reale come le svolte delle auto — STUDIO.md) e si
@@ -35,6 +46,7 @@
 
 const TICK = 1 / 60;
 const COIN_PERIOD = 3000 * TICK;    // [C] casa1|2|3/Alarm_4.gml: action_set_alarm(3000, 4), riarmato ad ogni scatto
+const PALAZZO_COIN_PERIOD = 1600 * TICK;   // [C] casa4s|d/casa5ss|dd/Alarm_4.gml: action_set_alarm(1600, 4)
 const COIN_AUTO_LIFE = 20 * TICK;   // [C] sold1../Alarm_0.gml: action_set_alarm(20, 0)
 export const COIN_DEPTH = -9000;    // [C] sold1../_object.json: depth = -9000, sempre in primo piano su tutto
 
@@ -56,15 +68,21 @@ function maxChiesLevel(buildings) {
 export function stepCoinSpawner(buildings, coins, dt, r12) {
   const chiesLv3 = maxChiesLevel(buildings) >= 3;
   for (const b of buildings) {
-    if (b.level < 1 || (b.type !== "casa" && b.type !== "villa")) continue;
+    const isPalazzo = b.type === "palazzo" || b.type === "palazzoRd";
+    if (b.level < 1 || (b.type !== "casa" && b.type !== "villa" && !isPalazzo)) continue;
+    const period = isPalazzo ? PALAZZO_COIN_PERIOD : COIN_PERIOD;
     b.coinT = (b.coinT ?? 0) + dt;
-    while (b.coinT >= (b.coinNext ?? COIN_PERIOD)) {
-      b.coinT -= b.coinNext ?? COIN_PERIOD;
-      b.coinNext = COIN_PERIOD;
-      if (b.type === "casa") {
+    while (b.coinT >= (b.coinNext ?? period)) {
+      b.coinT -= b.coinNext ?? period;
+      b.coinNext = period;
+      if (b.type === "casa" || isPalazzo) {
         if (r12.hap < r12.pop) continue;    // [C] action_if_variable(hap, pop, 4): "hap >= pop"
         if (r12.ele <= 0) continue;         // [C] action_if_variable(ele, 0, 2): "ele > 0"
-        const amount = 20 * ((b.level - 1) * 6 + (b.ava ?? 0) + 1);
+        // [C] palazzo e' "livello 4/5" nella numerazione globale del
+        // decompilato (casa4s/casa5ss) anche se qui `b.level` riparte da 1
+        // per il suo primo livello — vedi il commento sopra la funzione.
+        const effLevel = isPalazzo ? b.level + 3 : b.level;
+        const amount = 20 * ((effLevel - 1) * 6 + (b.ava ?? 0) + 1);
         coins.push({
           buildingId: b.id, x: b.x, y: b.y, depth: COIN_DEPTH, amount, kind: "mon", t: 0,
           spr: chiesLv3 ? "soldfade" : "soldico", auto: chiesLv3,

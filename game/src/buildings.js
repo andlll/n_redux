@@ -1044,16 +1044,15 @@ export const BUILDING_TYPES = {
   // ("cantiere che sopravvive al proprio edificio") che questo motore non
   // modella da nessuna parte — troncare e' coerente col resto del file.
   //
-  // **[I] Solo un livello portato**: nel decompilato palazzo continua con
-  // un secondo salto (`casa4s|d/Alarm_2.gml`, ava==5 — MA solo se
-  // `chies.level>=3`, un gate mai visto per nessun'altra `casa`: crea
-  // `upsign45s|d` -> `impa5r|rd` -> `casa5ss|dd`, STUDIO.md sotto). Un
-  // secondo livello richiederebbe un gate nuovo (soglia di sblocco legata a
-  // un ALTRO edificio, non solo pop/makee/ava come `upgradeProgress()`
-  // conosce oggi) fuori dallo scopo di questo giro — stesso genere di
-  // "fermata prima del massimo del decompilato" gia' accettato per `casa`
-  // (che nell'originale arriva anch'essa a un quarto/quinto livello mai
-  // portato qui, STUDIO.md §9).
+  // **Secondo livello ora portato** (`upgrades[0]` sotto): nel decompilato
+  // palazzo continua con un secondo salto (`casa4s|d/Alarm_2.gml`, ava==5 —
+  // MA solo se `chies.level>=3`, un gate mai visto per nessun'altra `casa`:
+  // crea `upsign45s|d` -> `impa5r|rd` -> `casa5ss|dd`). Il gate nuovo
+  // (soglia legata a un ALTRO edificio, non solo pop/makee/ava come
+  // `upgradeProgress()` conosceva finora) e' `requiresChiesLevel`, letto da
+  // `upgradeUnlocked()`/`tryStartUpgrade()` sotto insieme al normale
+  // `atAva` — stesso genere di gate gia' scelto per `chies` stessa
+  // (`atPop`), solo su un edificio diverso da se stesso.
   palazzo: {
     label: "Palazzo",
     placeCost: { mon: 6000 },   // [C] placeholder/Mouse_LeftPressed.gml, ramo selec==6
@@ -1100,15 +1099,99 @@ export const BUILDING_TYPES = {
         { spr: "sr46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170 }] },
       ],
     },
+    // **Secondo livello, ora portato**: casa4s/Alarm_2.gml continua oltre
+    // ava==5 con un gate mai visto per nessun'altra `casa` — **[C]** solo se
+    // `chies.level>=3` crea `upsign45s` (altrimenti ripolla ogni 600 tick
+    // finche' non lo e'); qui e' `upgrades[0].requiresChiesLevel`, letto da
+    // upgradeUnlocked()/tryStartUpgrade() sopra insieme al normale `atAva`
+    // (nessun altro edificio combina i due). **[C]** upsign45s/Mouse_
+    // LeftPressed.gml: costo 20000 mon, crea `impa5r` (stessa posizione
+    // relativa (0,0) del segnale, come upcrc12/upind12 per chies/industria).
+    upgrades: [
+      {
+        atAva: 5, requiresChiesLevel: 3, cost: { mon: 20000 },
+        // [C] impa5r/Alarm_10.gml: stesso drain di impa4r, nessun cambio.
+        drain: { mon: 3, every: 20 },
+        life: 700, deathPop: -320,               // [C] casa5ss/Create.gml + Destroy.gml
+        wewe: 100,                                // [C] casa5ss/Create.gml: wewe += 100
+        // [C] casa5ss/Mouse_LeftPressed.gml, ramo selec==11: 50000 mon.
+        // impa5r_demo/Create.gml arma il primo alarm a 30 tick, come impa5r.
+        ruspaCost: 50000, ruspaFirstStepDur: 30,
+        grantPop: 187,                            // [C] casa5ss/Create.gml: r12.pop += 187 alla nascita
+        ruin: ["ru41"],                           // [C] casa5ss/Step.gml: create_object(ruin4s) — stesso rudere del livello 1
+        // [C] casa5ss/Create.gml: stesso albero bilanciato di casa4s, 10
+        // varianti "pari" (suffisso 2/4 — sr51 e' r, non l'asse di sprite:
+        // qui e' solo la numerazione delle varianti che cambia da 411../451.
+        // a 512../554.).
+        variants: [
+          { spr: "c512", decor: "c512l" }, { spr: "c514", decor: "c514l" },
+          { spr: "c522", decor: "c522l" }, { spr: "c524", decor: "c524l" },
+          { spr: "c532", decor: "c532l" }, { spr: "c534", decor: "c534l" },
+          { spr: "c542", decor: "c542l" }, { spr: "c544", decor: "c544l" },
+          { spr: "c552", decor: "c552l" }, { spr: "c554", decor: "c554l" },
+        ],
+        // [C] impa5r/Create.gml + Alarm_0.gml, tic 0..23 (STUDIO.md "due
+        // semplificazioni" — stessa coda cosmetica gia' tagliata per il
+        // livello 1: l'originale continua a tic 46, mirror simmetrico dei
+        // tic 24..45 che smonta la gru senza alcun effetto di gioco).
+        // `casa5ss` nasce dalla traccia "f" (impa5f/Alarm_5.gml) allo stesso
+        // istante in cui "r" entra nel suo passo finale (tic23, il topper +
+        // 1200 tic di pausa) — stessa scelta gia' fatta per il livello 1.
+        // Le 22 sprite intermedie (tic1..22) ripetono lo stesso schema a
+        // dado di tic0 (una coppia/quaterna equiprobabile per gradino), letto
+        // riga per riga: **[C]** i 5 "grubig" al tic4 sono uno sprite piu'
+        // grande di "gru1" (usato dal livello 1), stessi 5 offset esatti.
+        steps: [
+          { spr: ["sr11", "sr12", "sr13", "sr14"], dur: 30 },
+          { spr: "sr15", dur: 40 }, { spr: "sr16", dur: 40 },
+          { spr: ["sr21", "sr22", "sr23", "sr24"], dur: 40 },
+          { spr: "sr25", dur: 40, spawn: [
+            { spr: "grubig", dx: 80, dy: 50 }, { spr: "grubig", dx: 80, dy: -50 },
+            { spr: "grubig", dx: -12, dy: -112 }, { spr: "grubig", dx: -80, dy: 50 },
+            { spr: "grubig", dx: -172, dy: -114 },
+          ] },
+          { spr: "sr26", dur: 40 },
+          { spr: ["sr31", "sr32", "sr33", "sr34"], dur: 40 },
+          { spr: "sr35", dur: 40 }, { spr: "sr36", dur: 40 },
+          { spr: ["sr41", "sr42", "sr43", "sr44"], dur: 40 },
+          { spr: "sr45", dur: 40 }, { spr: "sr46", dur: 40 },
+          { spr: ["sr51", "sr52"], dur: 40 },
+          { spr: "sr53", dur: 40 }, { spr: "sr54", dur: 40 },
+          { spr: ["sr61", "sr62"], dur: 40 },
+          { spr: "sr63", dur: 40 }, { spr: "sr64", dur: 40 },
+          { spr: ["sr71", "sr72"], dur: 40 },
+          { spr: "sr73", dur: 40 }, { spr: "sr74", dur: 40 },
+          { spr: ["sr81", "sr82"], dur: 40 },
+          { spr: "sr83", dur: 40 },
+          { spr: "sr84", dur: 1200, spawn: [{ spr: "tops5s", dx: 0, dy: -340 }] },
+        ],
+      },
+    ],
     // [C] casa4s/Alarm_2.gml: primo intervallo 2000, poi dado uniforme fra
     // 4 valori — stesso schema di villa/casa, +37 pop per stadio (0..5).
-    growth: [{ firstInterval: 2000, intervals: [9000, 13231, 15846, 9912], popPerStage: 37, maxAva: 5 }],
-    // [C] casa4s/Alarm_3.gml, ogni 120 tic, per stadio ava 0..5.
-    consumption: [[
-      { day: 6, night: 15 }, { day: 11, night: 24 }, { day: 17, night: 31 },
-      { day: 23, night: 42 }, { day: 33, night: 50 }, { day: 38, night: 55 },
-    ]],
-    storm: [{ dice: 108, loss: 50 }],   // [C] casa4s/Alarm_5.gml (crea anche "thunder", non riprodotto — stessa scelta di eolico/laser)
+    // Il secondo elemento (livello 2, casa5ss/Alarm_2.gml) ha lo stesso
+    // schema, +72 pop per stadio, un solo intervallo diverso (24000 invece
+    // di 15846 — letto cosi' com'e', non "raddrizzato").
+    growth: [
+      { firstInterval: 2000, intervals: [9000, 13231, 15846, 9912], popPerStage: 37, maxAva: 5 },
+      { firstInterval: 2000, intervals: [15000, 23000, 24000, 24500], popPerStage: 72, maxAva: 5 },
+    ],
+    // [C] casa4s/Alarm_3.gml, ogni 120 tic, per stadio ava 0..5. Il secondo
+    // elemento e' casa5ss/Alarm_3.gml, stesso schema, numeri piu' alti.
+    consumption: [
+      [
+        { day: 6, night: 15 }, { day: 11, night: 24 }, { day: 17, night: 31 },
+        { day: 23, night: 42 }, { day: 33, night: 50 }, { day: 38, night: 55 },
+      ],
+      [
+        { day: 13, night: 29 }, { day: 20, night: 47 }, { day: 35, night: 60 },
+        { day: 44, night: 81 }, { day: 65, night: 99 }, { day: 77, night: 109 },
+      ],
+    ],
+    // [C] casa4s/Alarm_5.gml (livello 1) + casa5ss/Alarm_5.gml (livello 2,
+    // dado 1/76 invece di 1/108) — entrambi creano anche "thunder", non
+    // riprodotto (stessa scelta di eolico/laser).
+    storm: [{ dice: 108, loss: 50 }, { dice: 76, loss: 50 }],
   },
 
   // Stessa entry di `palazzo` sopra, asse "rd" (dir2/dir4) — **[C]**
@@ -1150,15 +1233,92 @@ export const BUILDING_TYPES = {
         { spr: "rd35", dur: 40 }, { spr: "rd36", dur: 40 },
         { spr: ["rd41", "rd42", "rd43", "rd44"], dur: 40 },
         { spr: "rd45", dur: 40 },
-        { spr: "rd46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170 }] },
+        // [Bug corretto] **[C]** tops4d/_object.json: sprite "topld", non
+        // "topls" — scoperto implementando il topper del livello 2
+        // (tops5d, stesso sprite "topld") e controllando anche l'oggetto
+        // del livello 1 per coerenza: erano gia' diversi nel decompilato
+        // (topls per l'asse "s"/dir1-3, topld per "d"/dir2-4), il commento
+        // dell'atlas che li diceva "uguali per entrambi gli assi" era letto
+        // male. Puramente cosmetico (topper mai controllato da vicino sui
+        // due assi fianco a fianco), corretto qui.
+        { spr: "rd46", dur: 700, spawn: [{ spr: "topld", dx: 0, dy: -170 }] },
       ],
     },
-    growth: [{ firstInterval: 2000, intervals: [9000, 13231, 14464, 9912], popPerStage: 37, maxAva: 5 }],   // [C] casa4d/Alarm_2.gml: unico ramo diverso da casa4s (14464 invece di 15846)
-    consumption: [[
-      { day: 6, night: 15 }, { day: 11, night: 24 }, { day: 17, night: 31 },
-      { day: 23, night: 42 }, { day: 33, night: 50 }, { day: 38, night: 55 },
-    ]],
-    storm: [{ dice: 108, loss: 50 }],
+    // **Secondo livello** — stessa entry di palazzo sopra, asse "rd": [C]
+    // casa4d/Alarm_2.gml ha lo stesso gate (ava==5 + chies.level>=3) e crea
+    // upsign45d -> impa5rd invece di upsign45s -> impa5r.
+    upgrades: [
+      {
+        atAva: 5, requiresChiesLevel: 3, cost: { mon: 20000 },
+        drain: { mon: 3, every: 20 },
+        life: 700, deathPop: -320,               // [C] casa5dd/Create.gml + Destroy.gml
+        wewe: 100,
+        ruspaCost: 50000, ruspaFirstStepDur: 30,
+        grantPop: 187,
+        ruin: ["ru41d"],                          // [C] casa5dd/Step.gml: create_object(ruin4d)
+        // [C] casa5dd/Create.gml: 10 varianti "dispari" (suffisso 1/3) —
+        // invertito rispetto al livello 1, dove l'asse "d" usa le pari:
+        // letto cosi' com'e', non "raddrizzato".
+        variants: [
+          { spr: "c511", decor: "c511l" }, { spr: "c513", decor: "c513l" },
+          { spr: "c521", decor: "c521l" }, { spr: "c523", decor: "c523l" },
+          { spr: "c531", decor: "c531l" }, { spr: "c533", decor: "c533l" },
+          { spr: "c541", decor: "c541l" }, { spr: "c543", decor: "c543l" },
+          { spr: "c551", decor: "c551l" }, { spr: "c553", decor: "c553l" },
+        ],
+        // [C] impa5rd/Create.gml + Alarm_0.gml, tic 0..23 — stessa
+        // troncatura del livello 1/dell'asse "r" sopra. **[I]** dal tic11 in
+        // poi il decompilato smette di usare il prefisso "rd"/"fd" (gia'
+        // esaurito a "rd46" del livello 1) e passa a "dr"/"df" — un'
+        // incoerenza di nomi propria del decompilato (non un refuso di
+        // lettura, verificato riga per riga sia su impa5rd che su impa5fd):
+        // `frontSprFor()` sotto riconosce ora anche questo prefisso.
+        // I 5 "grubig" del tic4 hanno offset SPECULARI rispetto all'asse
+        // "r" (coerente con l'asse diagonale opposto).
+        steps: [
+          { spr: ["rd11", "rd12", "rd13", "rd14"], dur: 30 },
+          { spr: "rd15", dur: 40 }, { spr: "rd16", dur: 40 },
+          { spr: ["rd21", "rd22", "rd23", "rd24"], dur: 40 },
+          { spr: "rd25", dur: 40, spawn: [
+            { spr: "grubig", dx: 80, dy: 50 }, { spr: "grubig", dx: -80, dy: -50 },
+            { spr: "grubig", dx: -80, dy: 50 }, { spr: "grubig", dx: 12, dy: -112 },
+            { spr: "grubig", dx: 172, dy: -114 },
+          ] },
+          { spr: "rd26", dur: 40 },
+          { spr: ["rd31", "rd32", "rd33", "rd34"], dur: 40 },
+          { spr: "rd35", dur: 40 }, { spr: "rd36", dur: 40 },
+          { spr: ["rd41", "rd42", "rd43", "rd44"], dur: 40 },
+          { spr: "rd45", dur: 40 }, { spr: "rd46", dur: 40 },
+          { spr: ["dr51", "dr52"], dur: 40 },
+          { spr: "dr53", dur: 40 }, { spr: "dr54", dur: 40 },
+          { spr: ["dr61", "dr62"], dur: 40 },
+          { spr: "dr63", dur: 40 }, { spr: "dr64", dur: 40 },
+          { spr: ["dr71", "dr72"], dur: 40 },
+          { spr: "dr73", dur: 40 }, { spr: "dr74", dur: 40 },
+          { spr: ["dr81", "dr82"], dur: 40 },
+          { spr: "dr83", dur: 40 },
+          { spr: "dr84", dur: 1200, spawn: [{ spr: "tops5d", dx: 0, dy: -340 }] },
+        ],
+      },
+    ],
+    // [C] casa4d/Alarm_2.gml (livello 1, unico ramo diverso da casa4s:
+    // 14464 invece di 15846) + casa5dd/Alarm_2.gml (livello 2, tre
+    // intervalli diversi da casa5ss: 21000/23000 invece di 23000/24000).
+    growth: [
+      { firstInterval: 2000, intervals: [9000, 13231, 14464, 9912], popPerStage: 37, maxAva: 5 },
+      { firstInterval: 2000, intervals: [15000, 21000, 23000, 24500], popPerStage: 72, maxAva: 5 },
+    ],
+    consumption: [
+      [
+        { day: 6, night: 15 }, { day: 11, night: 24 }, { day: 17, night: 31 },
+        { day: 23, night: 42 }, { day: 33, night: 50 }, { day: 38, night: 55 },
+      ],
+      [
+        { day: 13, night: 29 }, { day: 20, night: 47 }, { day: 35, night: 60 },
+        { day: 44, night: 81 }, { day: 65, night: 99 }, { day: 77, night: 109 },
+      ],
+    ],
+    storm: [{ dice: 108, loss: 50 }, { dice: 76, loss: 50 }],
   },
 
   // `museo` (`pumediat`/`selec==70`) — **[C]** unico livello, nessuna
@@ -1406,17 +1566,16 @@ export const BUILDING_TYPES = {
   // sprite mostrato E' gia' l'edificio finito (`finalSprite` sotto coincide
   // col l'ultimo passo, non e' un errore di battitura). Cantiere totale
   // 7560 tick (~126s) — il piu' lungo del motore, coerente con 200000 mon.
-  // **[I] Gap dichiarato — cantiere/gru non ricostruiti**: l'originale
+  // **Impalcatura/gru ora ricostruite (game/src/scaffold.js)**: l'originale
   // affianca a `m3cant` un secondo oggetto (`impa31f`, creato dal suo
   // stesso `Create.gml`) che a sua volta genera `impa31r` e un'intera
   // catena `impa31/32/33r|f` + tre gru rotanti dedicate (`impa3gru`/
   // `impa3gru1`/`impa3gru2`, ognuna con la propria macchina a stati a
-  // oscillazione) — impalcatura/scenografia allo stesso titolo delle code
-  // "f" gia' semplificate per industria/casa/palazzo (STUDIO.md §9, "due
-  // semplificazioni"), qui pero' un intero sotto-sistema invece di un
-  // singolo passo troncato: non porta nessun costo o tempo in piu' (letti
-  // entrambi direttamente da `m3cant`), quindi un gap dichiarato invece di
-  // una ricostruzione parziale rischiosa.
+  // oscillazione) — un intero sotto-sistema di scenografia SENZA alcun
+  // effetto su costo/tempo del cantiere (letti entrambi direttamente da
+  // `m3cant`, mai da questi oggetti): `stepGrattacieloScaffold()` lo avanza
+  // in parallelo a stepConstructions() (main.js), letto e verificato punto
+  // per punto (timing/offset/sprite) nel file dedicato.
   // **[C] Consumo** (`m3cant/Step.gml`, letto con gli operatori confermati
   // altrove in questo progetto — 4=">=", non "!="` come una prima lettura
   // aveva capito): PRIMA di finire (`phase<14`) il cantiere non consuma
@@ -1458,7 +1617,17 @@ export const BUILDING_TYPES = {
   grattacielo: {
     label: "Grattacielo",
     placeCost: { mon: 200000 },   // [C] eoliplacer/Alarm_1.gml, ramo selec==82
-    multiTile: { count: 4, radius: 130 },   // stessa maschera "phold" di eolico, STUDIO.md
+    // [Bug corretto] stessa maschera "phold" di eolico (STUDIO.md), ma
+    // finora senza il suo `anchorOffset` — quindi ancorato al centroide del
+    // cluster di 4 lotti come eolico PRIMA del fix (STUDIO.md, "cantiere
+    // della turbina disallineato dai lotti"): stesso difetto, mai
+    // corretto qui perche' passava inosservato dietro un edificio enorme
+    // che coprirebbe comunque il lotto sbagliato. **[C]**
+    // `eoliplacer/Alarm_1.gml`: `m3cant` nasce a offset relativo (0, 116) da
+    // `eoliplacer` — che a sua volta nasce a (98, 0) dal placeholder toccato
+    // (STUDIO.md, stessa istanza condivisa col ramo eolico): il vero centro
+    // e' quindi `placeholder + (98, 116)`, non la media del cluster.
+    multiTile: { count: 4, radius: 130, anchorOffset: { dx: 98, dy: 116 } },
     construct: {
       finalSprite: "m3x14", life: 99999,   // [C] m3cant/Alarm_0.gml fase 13; [I] indistruttibile, vedi sopra
       decor: [
@@ -1518,12 +1687,17 @@ function pickVariant(variants) {
  * museoRd) sono la stessa idea con un prefisso diverso — **[C]**
  * impa4r/impa4f: stessa sequenza a tic, sprite "sr*"/"sf*" (diff riga per
  * riga: solo il prefisso cambia); impa4rd/impa4fd: "rd*"/"fd*" per l'asse
- * opposto (dir2/dir4).
+ * opposto (dir2/dir4). Il secondo livello di palazzoRd (impa5rd/impa5fd,
+ * BUILDING_TYPES.palazzoRd.upgrades[0]) esaurisce "rd46" e continua con un
+ * prefisso DIVERSO, "dr*"/"df*" — un'incoerenza propria del decompilato,
+ * non un errore di lettura (STUDIO.md, commento sopra ai `steps` di
+ * palazzoRd.upgrades[0]).
  */
 function frontSprFor(spr) {
   if (spr.startsWith("ir")) return "if" + spr.slice(2);
   if (spr.startsWith("sr")) return "sf" + spr.slice(2);
   if (spr.startsWith("rd")) return "fd" + spr.slice(2);
+  if (spr.startsWith("dr")) return "df" + spr.slice(2);
   return null;
 }
 
@@ -1670,11 +1844,26 @@ function upgradeProgress(b, up, r12) {
   return { done: r12.pop, needed: up.atPop, kind: "pop" };
 }
 
-export function upgradeUnlocked(b, r12) {
+// [C] casa4s|d/Alarm_2.gml: l'unico gate di potenziamento agganciato al
+// livello di UN ALTRO edificio, mai visto per nessun'altra `casa` (industria/
+// casa/villa/club/palazzo primo livello dipendono solo da se stessi o da
+// r12.pop) — usato solo da palazzo/palazzoRd sotto (`upgrades[0].
+// requiresChiesLevel`). Duplica `maxChiesLevel()` di balloons.js invece di
+// condividerla: stessa scelta gia' fatta per `dice()` in ogni modulo che ne
+// ha bisogno, un helper di 3 righe non vale un giro di import incrociati.
+function maxChiesLevel(buildings) {
+  let lvl = 0;
+  for (const b of buildings) if (b.type === "chies") lvl = Math.max(lvl, b.level);
+  return lvl;
+}
+
+export function upgradeUnlocked(b, r12, buildings) {
   const up = nextUpgrade(b);
   if (!up) return false;
   const p = upgradeProgress(b, up, r12);
-  return p.done >= p.needed;
+  if (p.done < p.needed) return false;
+  if (up.requiresChiesLevel != null && maxChiesLevel(buildings) < up.requiresChiesLevel) return false;
+  return true;
 }
 
 /**
@@ -1683,7 +1872,7 @@ export function upgradeUnlocked(b, r12) {
  * messaggio per la HUD — null se ha avviato il cantiere, altrimenti il
  * motivo per cui no.
  */
-export function tryStartUpgrade(b, r12) {
+export function tryStartUpgrade(b, r12, buildings) {
   if (b.construction) return "cantiere gia' in corso";
   const up = nextUpgrade(b);
   if (!up) return "livello massimo";
@@ -1692,6 +1881,9 @@ export function tryStartUpgrade(b, r12) {
     if (p.kind === "makee") return `servono ${p.needed} cicli di produzione (ora ${p.done})`;
     if (p.kind === "ava") return `serve crescita completa (${p.done}/${p.needed})`;
     return `serve popolazione ${p.needed} (ora ${p.done.toFixed(0)})`;
+  }
+  if (up.requiresChiesLevel != null && maxChiesLevel(buildings) < up.requiresChiesLevel) {
+    return `serve la chiesa al livello ${up.requiresChiesLevel}`;
   }
   if (!canAfford(r12, up.cost)) {
     const need = Object.entries(up.cost).map(([k, v]) => `${v} ${k}`).join(", ");

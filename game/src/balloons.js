@@ -218,7 +218,7 @@ export function stepBalloonSpawner(r12, balloons, dt, buildings) {
  * l'avviso (`r12.alertT`, disegnato in main.js come il banner "ATTACK
  * INCOMING" di src/objects/aincom).
  */
-export function stepBalloons(balloons, loot, dt, r12) {
+export function stepBalloons(balloons, loot, dt, r12, onStruck) {
   for (let i = balloons.length - 1; i >= 0; i--) {
     const b = balloons[i];
     const def = BALLOON_TYPES[b.type];
@@ -238,6 +238,17 @@ export function stepBalloons(balloons, loot, dt, r12) {
 
     if (struck) {
       balloons.splice(i, 1);
+      // [C] monvo|mongo|monbo|monviolo|monspi|recogn/Alarm_5.gml creano
+      // sempre "thunder" (il fulmine stesso, cosmetico puro — stessa
+      // scelta gia' fatta per il danno da fulmine degli edifici,
+      // buildings.js stepStormDamage) + "esplo" PRIMA di uccidersi: senza
+      // nessun effetto qui la mongolfiera spariva nel nulla, l'unico caso
+      // di morte istantanea del motore senza un'esplosione (air/bombar/
+      // dirig la hanno sempre, threats.js spawnDeathEffect). onStruck(x,y)
+      // lascia a chi chiama la scelta di COSA disegnare (spawnExplosion di
+      // threats.js), per non importare threats.js qui dentro (gia'
+      // importa da balloons.js — un ciclo).
+      onStruck?.(b.x, b.y);
       if (def.loot) loot.push(spawnLoot(def.loot, b.x, b.y));   // [C] Destroy.gml scatta comunque
       continue;
     }
@@ -340,15 +351,21 @@ export function stepConstructionBalloons(list, boxes, dt) {
 
 /** La cassa sganciata: cade a terra, recalcola il proprio depth ogni Step
  * come nel decompilato (per finire dietro/davanti agli edifici in base a
- * dove arriva), poi sparisce (senza lo sbuffo di fumo `smoko` — puramente
- * cosmetico, stesso gap gia' dichiarato per il fumo di industria,
- * STUDIO.md). */
-export function stepConstructionBoxes(boxes, dt) {
+ * dove arriva), poi sparisce — [C] mon_box|mon_bbox/Alarm_0.gml crea
+ * `smoko` a offset relativo (0, 100) prima di autodistruggersi, lo sbuffo
+ * di fumo della "cassa a terra" (STUDIO.md, mai riprodotto). `onLand(x,y)`
+ * lascia a chi chiama la scelta di COSA disegnare (spawnSmoko di
+ * projectiles.js), per non importare projectiles.js qui dentro (gia'
+ * importa da balloons.js — un ciclo). */
+export function stepConstructionBoxes(boxes, dt, onLand) {
   for (let i = boxes.length - 1; i >= 0; i--) {
     const bx = boxes[i];
     bx.t += dt;
     bx.y += BOX_FALL_SPEED * 60 * dt;
     bx.depth = -bx.y - 200;
-    if (bx.t >= BOX_LIFE) boxes.splice(i, 1);
+    if (bx.t >= BOX_LIFE) {
+      boxes.splice(i, 1);
+      onLand?.(bx.x, bx.y + 100);
+    }
   }
 }

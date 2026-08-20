@@ -51,6 +51,45 @@ export const CAR_TYPES = {
     ],
   },
 
+  // honda1/honda2: le stesse "gia' istanziate dall'inizio" di honda_facile_1/2
+  // sopra, ma per `match` (la mappa difficile) invece di `match_easy` — [C]
+  // honda1|2/Create.gml, catena piu' ricca di honda_facile_1/2 (che invece
+  // non svolta mai): entrambe girano avanti/indietro fra due direzioni
+  // prima di rientrare, esattamente come honda3..9 sotto, solo che ci sono
+  // gia' dall'inizio invece di essere fatte arrivare da `carmaker`. depth
+  // `-y - 2` come honda_facile_1/2 (non `-16` come honda3..9, STUDIO.md
+  // sotto): **[C]** honda1|2/Step.gml, letto riga per riga.
+  honda1: {
+    spawn: { x: 605, y: 835 },              // [C] honda1/Alarm_6.gml (rientro) — match.scene.json lo piazza a (604,837), stesso punto
+    life: 426,                               // [C] 256 + 170 (Alarm_5 arma alarm(170,6))
+    spr: "v_ad",                             // [C] sprite di default (_object.json)
+    initial: { dir: 150, spd: 3 },           // [C] action_set_motion(150, 3) in Create
+    depthOffset: 2,
+    schedule: [
+      { at: 85, dir: 30, spd: 2, spr: "v_ad_as" },   // [C] Alarm_0
+      { at: 104, dir: 150, spd: 2 },                  // [C] Alarm_1 (armato da Create)
+      { at: 123, dir: 150, spd: 3, spr: "v_as" },     // [C] Alarm_2 (85+38)
+      { at: 218, dir: 150, spd: 2, spr: "v_as_ad" },  // [C] Alarm_3 (123+95)
+      { at: 237, dir: 30, spd: 2 },                    // [C] Alarm_4 (123+114)
+      { at: 256, dir: 30, spd: 3, spr: "v_ad" },       // [C] Alarm_5 (218+38)
+    ],
+  },
+  honda2: {
+    spawn: { x: 1105, y: 835 },             // [C] honda2/Alarm_6.gml (rientro) — match.scene.json lo piazza a (1103,834), stesso punto
+    life: 721,                               // [C] 551 + 170 (Alarm_5 arma alarm(170,6))
+    spr: "r_as",                             // [C] sprite di default (_object.json)
+    initial: { dir: 150, spd: 3 },           // [C] action_set_motion(150, 3) in Create
+    depthOffset: 2,
+    schedule: [
+      { at: 290, dir: 150, spd: 2, spr: "r_as_ad" },  // [C] Alarm_0
+      { at: 309, dir: 30, spd: 2 },                    // [C] Alarm_1 (armato da Create)
+      { at: 328, dir: 30, spd: 3, spr: "r_ad" },       // [C] Alarm_2 (290+38)
+      { at: 513, dir: 30, spd: 2, spr: "r_ad_bd" },    // [C] Alarm_3 (328+185)
+      { at: 532, dir: 330, spd: 2 },                    // [C] Alarm_4 (328+204)
+      { at: 551, dir: 330, spd: 3, spr: "r_bd" },       // [C] Alarm_5 (513+38)
+    ],
+  },
+
   // honda3..honda9: le auto che `carmaker` fa arrivare col tempo (vedi
   // CARMAKER_SCHEDULE piu' sotto) — non ci sono dall'inizio come
   // honda_facile_1/2, compaiono una alla volta ogni 60s di gioco. Stesso

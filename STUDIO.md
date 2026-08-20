@@ -2928,3 +2928,270 @@ paragrafo 8.
   simulazione riparte (la stessa auto si muove di nuovo); nessuna
   regressione sul rendering normale (fuori pausa) dopo il fix a
   `Renderer.flush()`; funziona anche su viewport stretto (mobile).
+
+- **Ricognizione dei gap rimasti, poi tre chiusi in una sessione sola.**
+  Riletto l'intero diario per ricostruire la lista aggiornata dei gap ancora
+  dichiaratamente aperti (molti dei precedenti risultano gia' chiusi da
+  voci successive: puruspa/ruspa, minacce vere, prestiti, spionaggio
+  bloccato dal grattacielo, recogn...). L'autore ha scelto quattro
+  priorita': fumo/esplosioni mancanti, secondo livello di palazzo, gru/
+  cantiere del grattacielo, e un riesame delle collisioni prima di
+  implementarle alla cieca.
+  **Fumo/esplosione del fulmine sulle mongolfiere e della cassa a terra**:
+  due gap distinti, non uno solo come la nota precedente lasciava intendere.
+  **[C]** `mon_box|mon_bbox/Alarm_0.gml` crea davvero `smoko` (gia'
+  implementato altrove per la scia di proiettili/gatling, mai riusato qui)
+  a offset relativo (0, 100) prima di autodistruggersi — la "cassa a terra".
+  **[C]** `monvo|mongo|monbo|monviolo|monspi|recogn/Alarm_5.gml` (il fulmine
+  sulle mongolfiere) invece NON crea `smoko`: crea `thunder` (cosmetico
+  puro, stessa scelta gia' fatta per il danno da fulmine degli edifici) +
+  `esplo` — quest'ultimo mai riprodotto, l'unica morte istantanea del
+  motore senza nessuna esplosione (air/bombar/dirig la hanno sempre,
+  spawnDeathEffect() di threats.js). `stepBalloons()`/`stepConstructionBoxes()`
+  (balloons.js) accettano ora un callback (`onStruck`/`onLand`, stesso
+  principio di `onFinish` di stepConstructions() — evita un giro di import
+  incrociati fra balloons.js/threats.js/projectiles.js, che gia' importano
+  da balloons.js) che main.js usa per pescare `spawnExplosion()`/
+  `spawnSmoko()` dai moduli giusti. Verificato con un test diretto (node):
+  entrambi i callback scattano al momento giusto con gli offset giusti.
+  **Secondo livello di palazzo** (`casa4s|d` -> `casa5ss|dd`, gate
+  `chies.level>=3` mai visto per nessun'altra `casa`): **[C]** letti
+  `casa4s|d/Alarm_2.gml` (il gate), `upsign45s|d` (costo 20000 mon),
+  `impa5r|rd/f|fd` (cantiere, troncato a tic 0..23 come il livello 1 — la
+  stessa coda cosmetica di smontaggio gia' tagliata altrove) e
+  `casa5ss|dd` (vita 700, +187 pop, +100 wewe, rudere `ru41|ru41d` — lo
+  STESSO rudere del livello 1, non uno nuovo). `upgradeUnlocked()`/
+  `tryStartUpgrade()` (buildings.js) ora accettano `buildings` e leggono un
+  nuovo campo opzionale `up.requiresChiesLevel`, verificato insieme al
+  normale `atAva` — nessun altro edificio combina i due gate.
+  **[Bug corretto]**, scoperto implementando: `casa4s|d/Alarm_4.gml`
+  (il bottone moneta blu di casa/villa, coins.js) esisteva anche per
+  palazzo (sold19..30) e non era mai stato letto — un gap non dichiarato,
+  il palazzo finito non regalava mai monete. `stepCoinSpawner()` ora tratta
+  anche `palazzo`/`palazzoRd` (periodo 1600 tick, non 3000; stessa
+  formula di casa ma con un "livello globale" `b.level+3`, verificata
+  contro tutti e 12 gli sprite `sold19..30`, 380..600 a passi di 20).
+  **[Bug corretto]** anche: l'atlas diceva "topls, stesso topper per
+  entrambi gli assi" — falso, `tops4d` (asse "rd", livello 1, gia' in
+  gioco da sessioni) usa "topld", uno sprite diverso mai disegnato prima
+  d'ora (il campo `spawn` di `palazzoRd.construct` puntava a "topls" per
+  errore). **[I]** dal tic11 del cantiere di livello 2 l'asse "rd" smette
+  di usare il prefisso "rd"/"fd" (esaurito a "rd46") e passa a "dr"/"df" —
+  un'incoerenza di nomi propria del decompilato (verificata riga per riga
+  su impa5rd/impa5fd), non un refuso di lettura: `frontSprFor()`
+  (buildings.js) riconosce ora anche questo prefisso. 85 sprite nuovi in
+  `GAMEPLAY_SPRITES` (tools/23_atlas.py) — atlas e blitplan rigenerati.
+  Verificato con un test diretto (node): un palazzo forzato a `ava:5` con
+  una `chies` di livello 1 non sblocca il potenziamento, con `chies` a
+  livello 3 si' — cantiere di livello 2 completato in 2111 tick (atteso
+  2110, il passo troncato dura 1200 tick invece dei ~35s reali dell'ultimo
+  passo dell'originale) con lo sprite finale/decoro/vita giusti, nessun
+  potenziamento successivo offerto (`nextUpgrade()` torna `null`, coerente
+  con `media1s/Alarm_2.gml` mai esistito per `museo` e con l'assenza di un
+  terzo salto per `casa4s|d` nel decompilato). Ripetuto per l'asse "rd" e
+  per `stepCoinSpawner()` (560 mon per un palazzo di livello 2 a `ava:3`,
+  esattamente `sold28`). Verificato anche in browser (Playwright,
+  `window.__nimbus`, cantiere forzato a completarsi in un colpo solo):
+  l'edificio di livello 2 si disegna per intero, piu' alto e con una
+  sagoma diversa dal livello 1, senza texture mancanti.
+  **Impalcatura/gru rotanti del grattacielo** (`impa31/32/33r|f` +
+  `impa3gru`/`impa3gru1`/`impa3gru2` — STUDIO.md, "gap dichiarato —
+  cantiere/gru non ricostruiti"): un sotto-sistema di scenografia
+  interamente separato dal vero cantiere di `m3cant` (nessun costo/tempo in
+  comune, verificato leggendo `m3cant/Step.gml`). **[C]** tre pannelli
+  d'impalcatura che si "srotolano" in sequenza (ognuno spawna il successivo
+  a `phase==18`, un numero fisso non legato al proprio totale di frame — 17
+  per il primo pannello, 25 per il secondo) + una gru fissa che ne spawna
+  due rotanti a meta' della propria crescita, ognuna con la propria
+  macchina a stati a oscillazione infinita (`phase`/`rota`, transcritta
+  1:1 dal decompilato — l'unica animazione di questo gap senza una vera
+  fine). **[I]** l'ultimo pannello nel decompilato arma da solo, 2400 tick
+  dopo aver finito di crescere, un timer di smontaggio mai seguito da
+  nessun altro pezzo della catena (ne' gli altri due pannelli ne' le gru):
+  trattato come rumore del decompilato (quasi certamente codice di
+  debug/test mai ripulito), qui l'intera impalcatura sparisce insieme alla
+  vera fine del cantiere, come gru/topper di ogni altro edificio. Nuovo
+  file dedicato (`game/src/scaffold.js`, `stepGrattacieloScaffold()`
+  chiamato subito dopo `stepConstructions()` in main.js — non un
+  `onSpawn`/`onFinish` di quest'ultimo, un sotto-sistema a parte con la
+  propria gerarchia di spawn) invece di infilarlo in buildings.js: cinque
+  timer indipendenti, tre chained fra loro, troppo per il modello
+  `steps[].spawn[]` gia' in uso (pensato per decoro istantaneo, non
+  animato). 137 sprite nuovi in `GAMEPLAY_SPRITES` — atlas e blitplan
+  rigenerati. Verificato con un test diretto (node, tempo simulato): i tre
+  pannelli e le due gru rotanti spawnano tutti agli istanti giusti (647,
+  647, 1087, 1147, 1294 tick dall'inizio del cantiere), l'oscillazione
+  delle gru resta sempre entro le 6 pose valide anche dopo migliaia di
+  tick, tutto lo stato scompare quando il cantiere finisce davvero.
+  Verificato anche in browser (Playwright): i due pannelli piu' vicini
+  renderizzano correttamente sovrapposti alla base della torre, nessuna
+  texture mancante.
+  **Le collisioni**: riesaminati i casi che oggi usano un'euristica a
+  raggio fisso invece di una vera collisione fisica (`pepazzittecollider`,
+  mai ricostruito) — distanza minima fra torrette, raggio del colpo delle
+  bombe, cluster di piazzamento multi-lotto, fumo delle centrali contro la
+  scenografia. Per i primi due un vero sistema di collisione non
+  cambierebbe l'esito percepito dal giocatore (stesso comportamento
+  pratico, solo un calcolo piu' complesso dietro), e il fumo decorativo e'
+  gia' dichiarato invisibile alla scala di un frame: costruire un sistema
+  di collisione generico per questi casi sarebbe lavoro speso senza un
+  beneficio di gioco reale, esattamente il rischio segnalato dall'autore.
+  Il terzo caso pero' nascondeva un bug vero, non solo un'approssimazione:
+  **[Bug corretto]** `grattacielo` (`multiTile`, buildings.js) non aveva
+  mai ricevuto l'`anchorOffset` che `eolico` aveva gia' guadagnato in una
+  sessione precedente per lo stesso identico difetto (STUDIO.md sopra,
+  "cantiere della turbina disallineato dai lotti") — restava ancorato al
+  centroide del cluster invece che al vero centro, solo che con un
+  edificio enorme il disallineamento passava inosservato. **[C]**
+  `eoliplacer/Alarm_1.gml`: `m3cant` nasce a offset relativo (0, 116) dallo
+  stesso `eoliplacer` che per il ramo eolico nasce a (98, 0) dal
+  placeholder toccato — il vero centro e' quindi `placeholder + (98, 116)`,
+  ora cablato allo stesso modo di `eolico`.
+
+- **La mappa difficile (`match`, "quella con la base volante") diventa
+  raggiungibile per la prima volta — insieme alla title screen vera, il
+  "vecchio layout" del decompilato che l'autore ha chiesto di riusare
+  invece di inventarne uno nuovo.** Confermato dall'autore: il secondo
+  livello di `museo` (STUDIO.md sopra) e' davvero codice morto, copiato da
+  palazzo e mai finito — nessun lavoro da fare li'.
+  **Ricognizione**: il motore era gia' sorprendentemente pronto. `state.js`
+  aveva gia' `stepWeather(r12, dt, isMatch)` con lo scalo di petrolio dal
+  peso (`wewOilDrain`) e la tempesta vera, entrambi scritti e commentati
+  "il motore carica solo match_easy, pronto per quando quella room
+  esistera'"; `save.js` aveva gia' gli slot "nimsav"/"nimsav_eas"; `doSave`/
+  `doLoad`/`stepWeather` in main.js leggevano gia' `scene.name` invece di
+  un nome fisso. Mancavano solo tre cose: i due `fetch` della scena/atlas,
+  hardcoded a "match_easy"; le statistiche iniziali (`createR12()` non
+  aveva mai un ramo `match`); e la vera title screen (il motore avviava
+  sempre il gioco direttamente, nessun menu).
+  **`main.js` ora legge la room da `?room=match|match_easy` in URL**
+  (default `match_easy`, comportamento invariato per chi apre `index.html`
+  diretto) — le uniche due righe cambiate sono i due `fetch`. `createR12()`
+  (state.js) accetta ora `isMatch`: **[C]** `r12/Create.gml` parte da
+  `oil=7500`/`hap=400` di default (il ramo `match`), sovrascritti a
+  `oil=5000`/`hap=600` solo su match_easy — letto cosi' com'e' (il "facile"
+  ha piu' felicita' iniziale ma MENO petrolio, non il contrario che il nome
+  suggerirebbe).
+  **`r120`, la base volante**: **[C]** `r12/Create.gml`, ramo `match` (flag
+  736==0, mai preso finora): rimuove le 56 istanze statiche `albe` (gli
+  alberi A TERRA della room) e crea `r120` (sprite "baa12", una piattaforma
+  con turbina/piloni sotto) a (1170, 346) con 14 `albe` agganciati a lei
+  con offset fissi — letti uno per uno, nessun pattern — invece che al
+  terreno; poi, con `action_set_relative` tornato a 0, 10 pezzi di
+  scenografia fissa INDIPENDENTI da `r120` a posizioni assolute (3x
+  `moto11`, 2x `moto12`, 2x `moto13`, `faro1`, `faro2`, `mudr2`). Tutto
+  statico (nessuno step per frame: `r120` non si muove mai nel decompilato,
+  nonostante il nome) — entra in `staticWorld` (main.js) esattamente come
+  ogni albero/auto gia' in scena, stesso trattamento, nessun codice nuovo
+  per disegnarlo. 7 sprite nuovi in `GAMEPLAY_SPRITES` (categoria
+  "platform", tools/23_atlas.py) — atlas rigenerato per `match` (anche
+  stale rispetto a tutte le sessioni recenti: mai piu' toccato da
+  "Stato piro per le minacce aeree...", agosto).
+  **La title screen** (`game/title.html` + `game/src/title.js`, nuovi):
+  **[C]** `src/rooms/title.json` — mai estratta prima d'ora
+  (`tools/22_scene.py title`) — ha tre bottoni cliccabili (`standma`/"Match"
+  sprite "newga", `easma`/"Match Facile" sprite "newgaeas", `me3`/"Tutorial"
+  sprite "tutoriae") piu' un banner laterale (`gogirrra`) e un logo animato
+  (`eddaie`, sprite "provamose" — **[C]** 193 sottoimmagini vere,
+  `action_sprite_set(provamose, 0, 0.5)`, stesso principio delle
+  esplosioni/della scia di fumo: un loop vero, non un fotogramma fisso).
+  **[C]** `standma|easma/Mouse_LeftPressed.gml`: il tap arma un fade nero
+  (`disba`) e 30 tick dopo chiama `action_load_game("nimsav"|"nimsav_
+  eas")` — non un semplice cambio room, un CARICAMENTO: il gioco vero
+  riparte da un salvataggio se esiste, altrimenti da zero. Qui equivale a
+  navigare su `index.html?room=match|match_easy&autoload=1` — `autoload`
+  e' il flag in piu' che fa scattare `doLoad()` una sola volta all'avvio
+  (main.js), cosi' un `index.html` aperto diretto (senza passare dalla
+  title) resta a stato vuoto com'era prima: l'autoload silenzioso ad ogni
+  apertura pagina fu tolto apposta in una sessione precedente perche'
+  mascherava le modifiche appena fatte durante lo sviluppo, e questo non
+  lo reintroduce (scatta solo dietro un'azione esplicita del bottone, non
+  ad ogni apertura). Camera FISSA (nessun pan/zoom interattivo: la title
+  screen non e' un mondo da esplorare), tarata sulla fetta verticale che
+  la room stessa dichiara (`views[0]`, 540x1086) centrata sulla colonna di
+  bottoni. **[I]** `me3`/"Tutorial" nel decompilato va a `action_another_
+  room(tutorial)` — un'intera modalita' a parte (room "tutorial", mai letta)
+  fuori scopo per questo giro: il bottone resta al suo posto (il layout lo
+  vuole) ma il tap si limita a un messaggio "non ancora implementato"
+  invece di rompere o fingere. **[I]** lo sfondo vero della room (background
+  GameMaker, non uno sprite) non e' stato estratto — sostituito dal solo
+  colore (`bgColor`, gia' nel JSON) per restare nello scopo di questo giro.
+  Verificato con un test diretto (Playwright): il tap sul primo bottone
+  naviga a `?room=match&autoload=1`, sul secondo a `?room=match_easy&
+  autoload=1`, sul terzo mostra il messaggio senza navigare; un salvataggio
+  scritto su `match` (`monReal` forzato, poi `save()`) sopravvive a un
+  ricarico con `autoload=1` (stesso valore letto indietro) e resta separato
+  dallo slot `match_easy` (nessuna contaminazione incrociata). Screenshot:
+  `r120` visibile con turbina/piloni sotto la piattaforma e cielo notturno
+  con nuvole oltre il bordo (la citta' e' davvero sospesa); title screen
+  con i tre bottoni, il banner e il logo animato, tutti nella posizione
+  esatta del decompilato.
+  **Gap dichiarati, deliberatamente non affrontati in questo giro**
+  (l'autore ha scelto "solo caricamento + base volante", rimandando il
+  resto): `nifast`, `mud`, `baura` (oggetti di `match` mai letti, funzione
+  ignota); `honda1`/`honda2` (i "veicoli_target" di `match` — cars.js oggi
+  riconosce solo `honda_facile_1|2` di match_easy, quindi su `match` le
+  auto iniziali non compaiono finche' questi due non vengono letti); la
+  room "tutorial" stessa (una terza modalita' completa, non solo un
+  bottone). `.github/workflows/deploy-pages.yml` e README.md aggiornati per
+  rigenerare/documentare anche la room "title".
+  **Sfondo vivo per la title screen, al posto del logo animato.**
+  L'autore, dopo aver visto il logo `eddaie` (193 sottoimmagini, sopra) a
+  schermo, l'ha giudicato pesante e "fa un po' cagare" — proposta accettata:
+  invece del logo, un vero ritaglio della room `match` (non `match_easy`)
+  che gira per davvero dietro il menu, sfumato con lo stesso `PauseBlur`
+  (`game/src/gl.js`) gia' usato per il menu di pausa in main.js — "vivo ma
+  non in guerra" come richiesto: auto, aerei/dirigibili volano/sganciano
+  bombe ma **[I]** `stepBombs(..., buildings: [], ...)` le fa detonare a
+  vuoto, nessuna torretta esiste in questa scena quindi nulla li abbatte.
+  **[C]** `honda1`/`honda2` (i due "veicoli_target" di `match`, dichiarati
+  gap nell'entry sopra) estratti da `Create.gml`/`Alarm_0-6.gml` e aggiunti
+  a `CAR_TYPES` (`game/src/cars.js`): stesso formato dati di ogni altra auto
+  gia' presente (spawn/life/spr/schedule), nessun codice nuovo necessario —
+  ne beneficia anche `match` vero (main.js), non solo la title screen, che
+  prima li ometteva del tutto. La base volante (`r120`) estratta in
+  `game/src/platform.js` (`applyMatchPlatform()`, prima inline in main.js)
+  cosi' main.js e title.js condividono la stessa logica invece di
+  duplicarla. `worldStatic` = istanze di `match.scene.json` **meno**
+  `placeholder` (il rombo "phold", nascosto finche' non e' sotto hover nel
+  gioco vero — qui non c'e' hover, quindi va tolto invece di restare sempre
+  acceso, stesso principio del filtro gia' visto altrove) e meno
+  `honda1`/`honda2` statiche (sostituite dalle istanze simulate). Camera
+  dedicata (`camWorld`, zoom fisso 1.6) che deriva lentamente in un'ellisse
+  intorno a `r120` (42s per giro) — non fissa come `camUI` (i bottoni,
+  invariata), non libera come in partita: sempre in movimento ma mai sotto
+  input. Ciclo giorno/notte riusa lo schema `PHASES`/`ambientAt()` di
+  main.js ma **[I]** accelerato (50s per giro intero: un giro vero da 36
+  minuti sarebbe invisibile su una title screen).
+  **Prestazioni — il vero costo era il blur, non il logo.** Misurato
+  (Playwright, rendering software senza vera GPU — l'ambiente di test):
+  ~53ms/frame (~18.7fps) con blur ricatturato ogni singolo frame, contro
+  ~16.6ms/frame (~60fps) disegnando lo stesso mondo senza sfumatura —
+  confermato isolando `PauseBlur.blurScreen()` (una `copyTexImage2D` a
+  piena risoluzione + 4 passate gaussiane) come lo step da solo piu' caro
+  della pipeline. **[I]** Corretto con un throttle a tempo (`BG_INTERVAL`
+  in `title.js`): il mondo si ricattura/risfuma solo ogni ~167ms (~6Hz),
+  mentre auto/aerei/semafori/deriva della camera avanzano comunque ogni
+  frame in JS (quindi ripartono da dove erano, nessun salto visibile) e la
+  texture gia' sfumata dell'ultimo aggiornamento resta disegnata nel
+  frattempo (economico: un solo quad). Risultato misurato: ~33ms/frame
+  (~30fps) in questo stesso ambiente software — su hardware reale con GPU
+  vera il costo dovrebbe scendere molto di piu', visto che `copyTexImage2D`
+  + shader multi-passata sono esattamente il genere di operazione che una
+  GPU accelera bene e un rasterizzatore software no.
+  **Bug corretto en passant in `gl.js`, non specifico alla title screen:**
+  `Renderer.flush()` riattivava `gl.useProgram(this.prog)` solo se c'era
+  davvero un batch da disegnare (`this.count`) — ma `setProjection()`/
+  `setAmbient()` chiamano `flush()` anche a batch vuoto (per svuotarlo
+  prima di cambiare uniform), es. proprio dopo `PauseBlur.blurScreen()`
+  (che lascia attivo il SUO programma). In quel caso preciso `flush()` si
+  fermava subito senza riattivare `this.prog`, quindi le uniform venivano
+  scritte sul programma sbagliato (scartate silenziosamente da WebGL, solo
+  un warning "location is not from the associated program" in console) e
+  la proiezione restava quella del giro precedente. Innocuo finora perche'
+  main.js non chiama mai `setProjection()`/`setAmbient()` con un batch
+  vuoto subito dopo il blur — la sequenza nuova della title screen (blur
+  poi disegno a schermo intero) lo faceva sistematicamente. Corretto
+  spostando `gl.useProgram(this.prog)` prima del controllo `count`, cosi'
+  il programma giusto e' sempre attivo indipendentemente da cosa c'e' in
+  coda.
