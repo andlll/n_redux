@@ -175,8 +175,8 @@ input.onTap = (sx, sy) => {
   const w = camUI.screenToWorld(sx, sy);
   for (const b of BUTTONS) {
     if (!hitButton(b, w.x, w.y)) continue;
-    if (b.obj === "standma") { navigateTo = "index.html?room=match&autoload=1"; fadeT = 0; }
-    else if (b.obj === "easma") { navigateTo = "index.html?room=match_easy&autoload=1"; fadeT = 0; }
+    if (b.obj === "standma") { navigateTo = "play.html?room=match&autoload=1"; fadeT = 0; }
+    else if (b.obj === "easma") { navigateTo = "play.html?room=match_easy&autoload=1"; fadeT = 0; }
     else { message = "tutorial non ancora implementato"; messageT = 2.5; }
     break;
   }

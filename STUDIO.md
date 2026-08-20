@@ -3195,3 +3195,56 @@ paragrafo 8.
   spostando `gl.useProgram(this.prog)` prima del controllo `count`, cosi'
   il programma giusto e' sempre attivo indipendentemente da cosa c'e' in
   coda.
+
+- **Navigazione fra i livelli: prima si poteva entrare in `match_easy` ma
+  non uscirne.** Segnalato dall'autore: la title screen sapeva gia'
+  mandare a `match`/`match_easy` (entry sopra), ma una volta dentro la
+  partita il menu di pausa (`drawPauseOverlay()`, main.js) offriva solo
+  Riprendi/Salva/Carica — nessuna via indietro verso la title screen.
+  **Puramente nostro, nessun equivalente nel decompilato** (STUDIO.md,
+  stesso spirito del menu di pausa stesso): aggiunto un quarto bottone
+  "Torna al menu" che naviga a `index.html` (vedi sotto per il perche' non
+  e' piu' `title.html`). `panelH` ora si calcola da `rows.length` invece di
+  un valore fisso, cosi' il pannello resta proporzionato qualunque sia il
+  numero di righe.
+  **La home del sito era la partita diretta, non la title screen.**
+  `game/index.html` (il gioco vero) e `game/title.html` (il menu) erano
+  entrambi raggiungibili, ma un sito statico serve `index.html` come
+  radice per convenzione: chi apriva l'URL del sito senza un percorso
+  esplicito atterrava sempre dritto su `match_easy`, saltando il menu
+  senza saperlo — la causa a monte dello stesso ticket. Scambiati i due
+  file (`git mv`): la vecchia `title.html` e' ora `game/index.html` (la
+  vera home), la vecchia `index.html` e' ora `game/play.html` (resta
+  raggiungibile diretta con `?room=match|match_easy&autoload=1` per chi
+  vuole saltare il menu, stesso comportamento di prima — solo il nome e'
+  cambiato). Aggiornati i riferimenti: i bottoni di `title.js` navigano a
+  `play.html?...`, il nuovo bottone "Torna al menu" di main.js naviga a
+  `./index.html`.
+  **Bordi su mobile in verticale.** Segnalato dall'autore insieme a
+  quanto sopra: aprendo `match`/`match_easy` da telefono in portrait
+  restavano grosse fasce vuote sopra e sotto la mappa. Causa: le room
+  giocabili sono orizzontali (`match_easy` 1920x1086, `match` 3900x2090 —
+  entrambe piu' larghe che alte), lo schermo di un telefono in portrait e'
+  l'opposto (stretto e alto); `resize()` (main.js, ramo mobile) calcolava
+  `fitZoom = Math.max(scene.width/viewW, scene.height/viewH)` per
+  garantire che la room intera entrasse nella vista ("contain": si vede
+  tutta la mappa, mai ritagliata) — su portrait il rapporto vincolante era
+  quasi sempre quello della larghezza, lasciando l'altezza ampiamente
+  sovrabbondante rispetto alla room, cioe' i bordi. Cambiato in
+  `Math.min` ("cover": lo schermo resta sempre coperto, si ritaglia
+  l'eccesso invece di lasciare spazio vuoto) — l'asse corto della room
+  (l'altezza) finisce cosi' per coincidere esattamente con l'asse lungo
+  del telefono, niente piu' bordi; il resto della mappa (l'eccesso in
+  larghezza) resta raggiungibile scorrendo, `clamp()` (camera.js, gia'
+  esistente) lo gestisce senza modifiche. Verificato con Playwright
+  (viewport iPhone 13, 390x664): prima e dopo su `match_easy`, zoom sceso
+  da 4.92 a 1.64 e la mappa ora riempie lo schermo per intero. Il ramo
+  desktop (`pixelPerfectZoom()`, non toccato) non e' interessato dal
+  problema: lo zoom li' non insegue mai un fit-to-screen frazionario.
+  **[I]** `match` mostra ancora perlopiu' cielo/nuvole al primo avvio,
+  telefono o desktop — la camera parte centrata sul centro geometrico
+  della room (`scene.width/2, scene.height/2`) invece che sull'area
+  effettivamente costruita (mediana della y delle istanze molto piu' in
+  alto del centro dichiarato); comportamento gia' presente prima di questo
+  giro (riprodotto anche su desktop, zoom pixel-perfect) e non e' un
+  bordo — resta un gap dichiarato, non affrontato qui.

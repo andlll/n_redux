@@ -1,0 +1,35 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<!-- Il gioco e' ancora in sviluppo attivo: il sito statico non deve
+     "ricordarsi" una build precedente. Lo stato di gioco non persiste piu'
+     da solo fra un caricamento e l'altro (game/src/main.js, seedChies()
+     sempre), e questi header spingono anche il browser a non tenersi in
+     cache l'HTML stesso invece di riservare la versione vecchia finche' la
+     cache non scade da sola. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>NIMBUS</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b1020; overflow: hidden;
+               touch-action: none; overscroll-behavior: none; }
+  #view { display: block; width: 100vw; height: 100vh; }
+  #hud { position: fixed; left: 8px; top: 56px; font: 12px/1.5 ui-monospace, monospace;
+         color: #9fb4d8; pointer-events: none; white-space: pre; text-shadow: 0 1px 2px #000; }
+  /* Schermata di caricamento: sfondo nero pieno-schermo col logo Mount Fuji
+     Software (tools/26_logo.py) centrato. Il logo va in dissolvenza appena
+     lo script parte (main.js aggiunge "show"); tutta l'overlay va in
+     dissolvenza quando il caricamento asset e' completo e il primo frame e'
+     stato disegnato (main.js aggiunge "hide") — vedi main.js, hideLoading(). */
+  #loading { position: fixed; inset: 0; z-index: 10; background: #000;
+             display: flex; align-items: center; justify-content: center;
+             pointer-events: none; transition: opacity 0.6s ease; }
+  #loading.hide { opacity: 0; }
+  #loading img { width: min(45vw, 340px); height: auto; opacity: 0;
+                 transition: opacity 0.8s ease; }
+  #loading.show img { opacity: 1; }
+</style>
+<canvas id="view"></canvas>
+<div id="hud"></div>
+<div id="loading"><img src="./assets/mount_logo.png" alt="Mount Fuji Software"></div>
+<script type="module" src="./src/main.js"></script>

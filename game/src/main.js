@@ -23,7 +23,7 @@ import { loadFont, drawText, measureText } from "./font.js";
 const canvas = document.getElementById("view");
 const hud = document.getElementById("hud");
 
-// Schermata di caricamento (index.html #loading): il gioco e' diventato
+// Schermata di caricamento (play.html #loading): il gioco e' diventato
 // pesante lato asset (atlas per-room + font bitmap, tutti fetchati prima
 // del primo frame, vedi gli "await fetch"/loadTexture/loadFont piu' sotto),
 // quindi copriamo quell'attesa con logo + sfondo nero invece di uno schermo
@@ -78,10 +78,10 @@ const UI_SCALE = isMobile ? 0.6 : 0.7;
 // ---------------------------------------------------------------- room
 // Quale room caricare — [C] `standma`/`easma`/`me3` (src/objects, la room
 // "title") mandano al gioco vero con `action_load_game("nimsav"|"nimsav_
-// eas")`, non un semplice `room_goto`: qui equivale a `game/title.html`
-// che naviga qui con `?room=match|match_easy` (STUDIO.md, game/src/
-// title.js) — `autoload=1` in piu' quando arriva DAVVERO da un bottone
-// della title screen (non da un link/refresh qualunque), cosi' un
+// eas")`, non un semplice `room_goto`: qui equivale a `game/index.html`
+// (la title screen, game/src/title.js) che naviga qui con
+// `?room=match|match_easy` — `autoload=1` in piu' quando arriva DAVVERO da
+// un bottone della title screen (non da un link/refresh qualunque), cosi' un
 // caricamento diretto di questa pagina resta a stato vuoto com'era prima
 // (STUDIO.md: l'autoload silenzioso ad ogni apertura pagina fu tolto
 // apposta perche' mascherava le modifiche appena fatte durante lo
@@ -1465,7 +1465,7 @@ input.onTap = (sx, sy) => {
       if (ok) picked = null;
       message = ok ? "partita caricata" : "nessun salvataggio"; messageT = 3;
     } else if (hit?.action === "title") {
-      location.href = "./title.html";
+      location.href = "./index.html";
     }
     return;
   }
@@ -1732,11 +1732,22 @@ function resize() {
     cam.minZoom = cam.maxZoom = pixelPerfectZoom();
     cam.setZoomImmediate(cam.minZoom);
   } else if (canvas.clientWidth > 0) {
-    const fitZoom = Math.max(scene.width / cam.viewW, scene.height / cam.viewH);
-    // Non ha senso allontanarsi molto oltre "si vede tutta la mappa": un
-    // margine per respirare, non lo zoom libero di prima (arrivava a 8,
-    // ben oltre i bordi della room — da li' i bordi "strappati" invece di
-    // un margine pulito, vedi sotto).
+    // `Math.min`, non `Math.max`: la room e' quasi sempre piu' larga che
+    // alta (match_easy 1920x1086, match 3900x2090 — orizzontali) mentre lo
+    // schermo di un telefono in portrait e' l'opposto (stretto e alto).
+    // Inquadrare l'intera larghezza (il vecchio Math.max, che sceglie il
+    // rapporto piu' vincolante per contenere TUTTA la room) lascia allora
+    // l'altezza sovrabbondante — fasce vuote sopra/sotto, il bordo
+    // segnalato dall'autore. `Math.min` fa l'opposto: sceglie il rapporto
+    // meno vincolante, cosi' l'asse corto della room (l'altezza) coincide
+    // esattamente con l'asse lungo dello schermo (l'altezza del telefono in
+    // portrait) — schermo coperto senza bordi, al costo di non vedere piu'
+    // tutta la larghezza della mappa in un colpo solo (si scorre lateralmente,
+    // clamp() sotto gestisce gia' il pan quando il mondo e' piu' stretto
+    // della room).
+    const fitZoom = Math.min(scene.width / cam.viewW, scene.height / cam.viewH);
+    // Stesso motivo di prima (non allontanarsi troppo oltre il fit), solo
+    // ricalcolato sul nuovo fitZoom "cover".
     cam.maxZoom = fitZoom * 1.3;
     if (!userMoved) {
       cam.setZoomImmediate(fitZoom);
