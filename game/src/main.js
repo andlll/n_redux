@@ -1014,15 +1014,37 @@ window.addEventListener("keydown", (e) => {
 });
 
 // ------------------------------------------------- ciclo giorno/notte
-// Nell'originale: 8 alarm che ricoloravano ~24 gruppi di oggetti uno per uno.
-// Qui: una fase, un colore, moltiplicato per ogni sprite nel ciclo di
-// disegno (non piu' un uniform di shader globale, vedi sotto su
-// `stepLights()`/mulTint(): i decori "luce" devono poter saltarlo).
+// **[C]** `aura`, gli 8 alarm che si richiamano a catena (STUDIO.md §5.2):
+// ogni fase dura un tot di TICK (non secondi) prima di passare alla
+// successiva, letti da ogni `action_set_alarm` della catena —
+// 290/200/290/900/290/100/290/900, ciclo totale 3260 tick. Qui una fase,
+// un colore, moltiplicato per ogni sprite nel ciclo di disegno (non piu'
+// un uniform di shader globale, vedi sotto su `stepLights()`/mulTint(): i
+// decori "luce" devono poter saltarlo).
+// **[C]** Solo due tinte vere: `night` (0xF9B9B9 — azzurro chiaro, NON il
+// blu scuro saturo usato qui prima) e `dawn` (0xE7F2FF — bianco caldo
+// pallido), quest'ultima riusata IDENTICA sia prima che dopo la notte —
+// non esiste un colore "tramonto" separato nel decompilato, tolto.
+// Il resto del ciclo (`amb00`/`ambtr1`/`ambst`) cambia solo lo sprite di
+// sfondo, mai la tinta: resta bianco/`giorno` a tutti gli effetti di
+// gameplay (`aura.night`/`aura.dawn`, letti da `isNight()`/`isDawn()`).
+// **[I]** Secondi = tick / 60: `match` ha davvero room_speed 60 nel
+// data.win, ma `match_easy` ne ha 600 (dieci volte piu' veloce — **[?]**
+// intenzionale o un residuo di test mai tolto prima della spedizione).
+// Deciso con l'autore di usare lo stesso passo di `match` per entrambe le
+// mappe invece di riprodurre le 600 tick/s cosi' come stanno: un ciclo da
+// ~5s invece che ~54s avrebbe cambiato il ritmo di tutto il resto scandito
+// ad alarm in quella room, non solo il cielo.
+const TICKS_PER_SEC = 60;
 const PHASES = [
-  { name: "giorno", rgb: [1.00, 1.00, 1.00], dur: 14 },
-  { name: "tramonto", rgb: [1.00, 0.82, 0.62], dur: 5 },
-  { name: "notte", rgb: [0.45, 0.52, 0.82], dur: 12 },
-  { name: "alba", rgb: [0.92, 0.80, 0.78], dur: 5 },
+  { name: "giorno", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
+  { name: "alba", rgb: [1, 0.949, 0.906], dur: 200 / TICKS_PER_SEC },
+  { name: "giorno", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
+  { name: "notte", rgb: [0.725, 0.725, 0.976], dur: 900 / TICKS_PER_SEC },
+  { name: "giorno", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
+  { name: "alba", rgb: [1, 0.949, 0.906], dur: 100 / TICKS_PER_SEC },
+  { name: "giorno", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
+  { name: "giorno", rgb: [1, 1, 1], dur: 900 / TICKS_PER_SEC },
 ];
 let phaseT = 0;
 function phaseIndexAt(t) {
