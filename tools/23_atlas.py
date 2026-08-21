@@ -387,6 +387,36 @@ GAMEPLAY_SPRITES = {
         "g_bs_bd", "g_bd", "g_bd_ad", "g_ad", "g_ad_as",             # honda8
         "p_as_ad", "p_ad_bd", "p_bd_bs", "p_bs", "p_bs_as",          # honda9 (p_as/p_ad gia' sopra)
     ],
+    # honda21..25(+a/b) e honda31..34(+a/b), il traffico periodico di r32/r22
+    # (game/src/cars.js, game/src/platform.js) — STESSO schema di honda3..9
+    # sopra, solo su una piattaforma diversa. Alcuni di questi mancavano
+    # all'appello anche per honda1/2 stessi ("v_ad_as", mai incluso finora:
+    # un gap preesistente, non introdotto qui — la svolta di honda1 saltava
+    # silenziosamente quel frame, frameFor() restituisce null su uno sprite
+    # assente e main.js si limita a non disegnarlo).
+    "cars2": [
+        "c_ad", "c_ad_bd", "c_as_bs", "c_bd", "c_bd_ad",
+        "g_ad_bd", "g_as_ad",
+        "p_ad_as", "p_as", "p_as_bs", "p_bs_bd",
+        "r_ad_as", "r_as_bs", "r_bs_bd",
+        "v_ad_as", "v_as_bs", "v_bs_bd",
+        "c_bs_bd",   # honda_br13, il traffico dei ponti (game/src/cars.js) sotto
+    ],
+    # Ponti levatoi (bridge_des/bridge_sin/bridge_des2, game/src/bridges.js)
+    # + la nave cargo che ci passa sotto quando sono aperti (cargomaker ->
+    # cargo1..4, STUDIO.md — scambiata per "camion" e scartata come codice
+    # morto in una sessione precedente: e' un cargo vero, ben visibile
+    # ritagliando l'atlas). "bridr1mo"/"brid1mo" sono l'impalcato che si
+    # solleva (6 frame, impacchettati tutti — non solo il primo, a
+    # differenza delle svolte auto: qui l'animazione si vede per davvero).
+    # "bridr1over"/"bridl1over" sono la balaustra in primo piano (sparisce
+    # insieme all'impalcato mentre e' aperto); "bridr1_sin"/"bridr1_des"
+    # le due meta' sollevate di bridge_des2 (l'unico ponte a due battenti,
+    # quello con la nave).
+    "bridges": [
+        "bridr1mo", "brid1mo", "bridr1over", "bridl1over", "bridr1_sin", "bridr1_des",
+        "cargo1p", "cargo1v", "cargo2p", "cargo2v", "cargo3v", "cargo4p", "cargo4v",
+    ],
     # Luci (STUDIO.md §5.3 "notte_target", cddvd/d1NN/di11b — le "luci" che
     # non funzionavano): l'originale anima la transizione con uno sprite "x"
     # dedicato, un frame per tick (es. "crclx", 200 frame per 200 tick —
@@ -489,6 +519,29 @@ GAMEPLAY_SPRITES = {
     # runtime su `match`; quelle appese a `r120` sono le STESSE 14 istanze
     # dello stesso sprite, create con offset diversi — nessuno sprite nuovo).
     "platform": ["baa12", "motor11", "motor12", "motor13", "f1b", "f2b", "moor12"],
+    # Catena fari -> seconda piattaforma (STUDIO.md, chies.level>=2 ->
+    # upfaro1 -> wavesig1 -> farolux -> dockersig1 -> r32): "f1" e' faro1
+    # acceso (contro "f1b" spento, gia' sopra), "f1lux" il fascio di luce
+    # vero, "wavesin"/"bridgesin" le icone dei due segnali cliccabili
+    # (wavesig1/dockersig1), "nimbuscluster1" l'effetto nuvola durante
+    # l'attracco (n_cluster1), "monviola_bar" il gettone di cristalli
+    # raccoglibile (barviola). "baa31"/"f3b" sono la base e il terzo faro
+    # (spento, mai potenziato in questo giro) della piattaforma nuova,
+    # "bridr1"/"bridl1"/"moor31..34"/"robbobase"/"motor2" la sua scenografia
+    # fissa (ponti, moli, il palo "robbobaseobj").
+    "platform2": [
+        "f1", "f1lux", "wavesin", "bridgesin", "nimbuscluster1", "monviola_bar", "monviola",
+        "baa31", "f3b", "f3", "bridr1", "bridl1", "moor31", "moor32", "moor33", "moor34",
+        "robbobase", "motor2", "baa21", "moor21",
+        # "baa22"/"baa32": la SECONDA meta' di r32/r22 (r320/r220, creati
+        # relativi dentro r32|r22/Create.gml) — un pezzo di sprite mancante
+        # nella prima versione di questo file: r220/r320 erano trattati
+        # come controller puramente invisibili (solo i pali dei semafori),
+        # ma hanno `visible: 1` con un proprio sprite nel decompilato
+        # (_object.json), disegnato automaticamente dal runtime GameMaker
+        # — qui va fatto a mano.
+        "baa22", "baa32",
+    ],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})

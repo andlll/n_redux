@@ -25,7 +25,12 @@ export function saveSlotFor(sceneName) {
 // bloccato: senza salvarli esplicitamente un ciclo salva/carica li
 // libererebbe di nuovo (doLoad() li rilegge come `buildings`/`ruins`, ma
 // questi lotti non compaiono in nessuno dei due).
-export function save(sceneName, r12, buildings, ruins, blockedSlots) {
+// `platformState` (game/src/platform.js, catena fari -> seconda
+// piattaforma): solo `match` la passa, `match_easy` resta `undefined` —
+// `data.platformState` sara' quindi assente nel suo salvataggio, letto con
+// `?? createFaroState()` da doLoad() in main.js come ogni altro campo
+// opzionale qui sopra.
+export function save(sceneName, r12, buildings, ruins, blockedSlots, platformState) {
   const data = {
     v: 1,
     r12,
@@ -39,6 +44,7 @@ export function save(sceneName, r12, buildings, ruins, blockedSlots) {
     })),
     ruins: ruins.map((r) => ({ x: r.x, y: r.y, spr: r.spr })),
     blockedSlots: blockedSlots.map((s) => ({ x: s.x, y: s.y })),
+    platformState,
   };
   localStorage.setItem(saveSlotFor(sceneName), JSON.stringify(data));
 }

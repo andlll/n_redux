@@ -244,6 +244,585 @@ export const CAR_TYPES = {
       { at: 1247, dir: 150, spd: 2 },                     // [C] Alarm_10 (1038+209)
     ],
   },
+
+  // ------------------------------------------------------------------
+  // honda21..25(+a/b) e honda31..34(+a/b): il traffico periodico di r32/r22
+  // (game/src/platform.js, seconda/terza piattaforma — STUDIO.md) — stesso
+  // schema di honda3..9 sopra (`carmaker`), solo scandito da un alarm
+  // dentro `r32`/`r22` stessi invece che dal controller globale (STUDIO.md
+  // "maghene": r32|r22/Alarm_4.gml, ogni 8750 tick fa comparire il tipo
+  // successivo, ciclando finche' non sono finiti). Le posizioni sono quelle
+  // passate da `action_create_object` in quell'Alarm_4 (nessun nudge: quel
+  // ramo del +21,-26 si applica solo su `match_easy`, mai vero su `match`).
+  // R32_MAGHENE_SCHEDULE/R22_MAGHENE_SCHEDULE piu' sotto, dopo
+  // CARMAKER_SCHEDULE, leggono queste chiavi nello stesso ordine del ciclo.
+
+  honda21: {
+    spawn: { x: 472, y: 1959 },
+    life: 400,
+    spr: "v_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 70, dir: 30, spd: 2, spr: "v_ad_as" },
+      { at: 99, dir: 150, spd: 2 },
+      { at: 108, dir: 150, spd: 3, spr: "v_as" },
+      { at: 192, dir: 150, spd: 2, spr: "v_as_ad" },
+      { at: 211, dir: 30, spd: 2 },
+      { at: 230, dir: 30, spd: 3, spr: "v_ad" },
+    ],
+  },
+  honda22: {
+    spawn: { x: 966, y: 2008 },
+    life: 421,
+    spr: "c_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 205, dir: 30, spd: 2, spr: "c_ad_as" },
+      { at: 224, dir: 150, spd: 2 },
+      { at: 243, dir: 150, spd: 3, spr: "c_as" },
+      { at: 313, dir: 150, spd: 2, spr: "c_as_ad" },
+      { at: 328, dir: 30, spd: 2 },
+      { at: 351, dir: 30, spd: 3, spr: "c_ad" },
+    ],
+  },
+  honda23: {
+    spawn: { x: 976, y: 1998 },
+    life: 736,
+    spr: "r_as",
+    initial: { dir: 150, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 410, dir: 150, spd: 2, spr: "r_as_ad" },
+      { at: 429, dir: 30, spd: 2 },
+      { at: 448, dir: 30, spd: 3, spr: "r_ad" },
+      { at: 528, dir: 30, spd: 2, spr: "r_ad_bd" },
+      { at: 547, dir: 330, spd: 2 },
+      { at: 566, dir: 330, spd: 3, spr: "r_bd" },
+    ],
+  },
+  honda24: {
+    spawn: { x: 2614, y: 1406 },
+    life: 751,
+    spr: "g_bs",
+    initial: { dir: 210, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 285, dir: 210, spd: 2, spr: "g_bs_as" },
+      { at: 304, dir: 150, spd: 2 },
+      { at: 323, dir: 150, spd: 3, spr: "g_as" },
+      { at: 513, dir: 150, spd: 2, spr: "g_as_bs" },
+      { at: 532, dir: 210, spd: 2 },
+      { at: 551, dir: 210, spd: 3, spr: "g_bs" },
+    ],
+  },
+  honda25: {
+    spawn: { x: 135, y: 1222 },
+    life: 294,
+    spr: "p_bd",
+    initial: { dir: 330, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 196, dir: 330, spd: 2, spr: "p_bd_ad" },
+      { at: 215, dir: 30, spd: 2 },
+      { at: 234, dir: 30, spd: 3, spr: "p_ad" },
+    ],
+  },
+  honda21a: {
+    spawn: { x: 472, y: 1959 },
+    life: 400,
+    spr: "g_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 70, dir: 30, spd: 2, spr: "g_ad_as" },
+      { at: 99, dir: 150, spd: 2 },
+      { at: 108, dir: 150, spd: 3, spr: "g_as" },
+      { at: 192, dir: 150, spd: 2, spr: "g_as_ad" },
+      { at: 211, dir: 30, spd: 2 },
+      { at: 230, dir: 30, spd: 3, spr: "g_ad" },
+    ],
+  },
+  honda22a: {
+    spawn: { x: 966, y: 2008 },
+    life: 421,
+    spr: "p_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 205, dir: 30, spd: 2, spr: "p_ad_as" },
+      { at: 224, dir: 150, spd: 2 },
+      { at: 243, dir: 150, spd: 3, spr: "p_as" },
+      { at: 313, dir: 150, spd: 2, spr: "p_as_ad" },
+      { at: 328, dir: 30, spd: 2 },
+      { at: 351, dir: 30, spd: 3, spr: "p_ad" },
+    ],
+  },
+  honda23a: {
+    spawn: { x: 976, y: 1998 },
+    life: 736,
+    spr: "g_as",
+    initial: { dir: 150, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 410, dir: 150, spd: 2, spr: "g_as_ad" },
+      { at: 429, dir: 30, spd: 2 },
+      { at: 448, dir: 30, spd: 3, spr: "g_ad" },
+      { at: 528, dir: 30, spd: 2, spr: "g_ad_bd" },
+      { at: 547, dir: 330, spd: 2 },
+      { at: 566, dir: 330, spd: 3, spr: "g_bd" },
+    ],
+  },
+  honda24a: {
+    spawn: { x: 2614, y: 1406 },
+    life: 751,
+    spr: "v_bs",
+    initial: { dir: 210, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 285, dir: 210, spd: 2, spr: "v_bs_as" },
+      { at: 304, dir: 150, spd: 2 },
+      { at: 323, dir: 150, spd: 3, spr: "v_as" },
+      { at: 513, dir: 150, spd: 2, spr: "v_as_bs" },
+      { at: 532, dir: 210, spd: 2 },
+      { at: 551, dir: 210, spd: 3, spr: "v_bs" },
+    ],
+  },
+  honda25a: {
+    spawn: { x: 135, y: 1222 },
+    life: 294,
+    spr: "c_bd",
+    initial: { dir: 330, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 196, dir: 330, spd: 2, spr: "c_bd_ad" },
+      { at: 215, dir: 30, spd: 2 },
+      { at: 234, dir: 30, spd: 3, spr: "c_ad" },
+    ],
+  },
+  honda21b: {
+    spawn: { x: 472, y: 1959 },
+    life: 400,
+    spr: "r_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 70, dir: 30, spd: 2, spr: "r_ad_as" },
+      { at: 99, dir: 150, spd: 2 },
+      { at: 108, dir: 150, spd: 3, spr: "r_as" },
+      { at: 192, dir: 150, spd: 2, spr: "r_as_ad" },
+      { at: 211, dir: 30, spd: 2 },
+      { at: 230, dir: 30, spd: 3, spr: "r_ad" },
+    ],
+  },
+  honda22b: {
+    spawn: { x: 966, y: 2008 },
+    life: 421,
+    spr: "v_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 205, dir: 30, spd: 2, spr: "v_ad_as" },
+      { at: 224, dir: 150, spd: 2 },
+      { at: 243, dir: 150, spd: 3, spr: "v_as" },
+      { at: 313, dir: 150, spd: 2, spr: "v_as_ad" },
+      { at: 328, dir: 30, spd: 2 },
+      { at: 351, dir: 30, spd: 3, spr: "v_ad" },
+    ],
+  },
+  honda23b: {
+    spawn: { x: 976, y: 1998 },
+    life: 736,
+    spr: "c_as",
+    initial: { dir: 150, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 410, dir: 150, spd: 2, spr: "c_as_ad" },
+      { at: 429, dir: 30, spd: 2 },
+      { at: 448, dir: 30, spd: 3, spr: "c_ad" },
+      { at: 528, dir: 30, spd: 2, spr: "c_ad_bd" },
+      { at: 547, dir: 330, spd: 2 },
+      { at: 566, dir: 330, spd: 3, spr: "c_bd" },
+    ],
+  },
+  honda24b: {
+    spawn: { x: 2614, y: 1406 },
+    life: 751,
+    spr: "r_bs",
+    initial: { dir: 210, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 285, dir: 210, spd: 2, spr: "r_bs_as" },
+      { at: 304, dir: 150, spd: 2 },
+      { at: 323, dir: 150, spd: 3, spr: "r_as" },
+      { at: 513, dir: 150, spd: 2, spr: "r_as_bs" },
+      { at: 532, dir: 210, spd: 2 },
+      { at: 551, dir: 210, spd: 3, spr: "r_bs" },
+    ],
+  },
+  honda25b: {
+    spawn: { x: 135, y: 1222 },
+    life: 294,
+    spr: "g_bd",
+    initial: { dir: 330, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 196, dir: 330, spd: 2, spr: "g_bd_ad" },
+      { at: 215, dir: 30, spd: 2 },
+      { at: 234, dir: 30, spd: 3, spr: "g_ad" },
+    ],
+  },
+  honda31: {
+    spawn: { x: 1909, y: 447 },
+    life: 458,
+    spr: "p_bd",
+    initial: { dir: 330, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 300, dir: 330, spd: 2, spr: "p_bd_ad" },
+      { at: 319, dir: 30, spd: 2 },
+      { at: 338, dir: 30, spd: 3, spr: "p_ad" },
+    ],
+  },
+  honda32y: {
+    spawn: { x: 2713, y: 565 },
+    life: 507,
+    spr: "r_as",
+    initial: { dir: 150, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 190, dir: 150, spd: 2, spr: "r_as_ad" },
+      { at: 209, dir: 30, spd: 2 },
+      { at: 228, dir: 30, spd: 3, spr: "r_ad" },
+      { at: 299, dir: 30, spd: 2, spr: "r_ad_bd" },
+      { at: 318, dir: 330, spd: 2 },
+      { at: 337, dir: 330, spd: 3, spr: "r_bd" },
+    ],
+  },
+  honda33: {
+    spawn: { x: 2417, y: 755 },
+    life: 421,
+    spr: "v_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 85, dir: 30, spd: 2, spr: "v_ad_as" },
+      { at: 104, dir: 150, spd: 2 },
+      { at: 123, dir: 150, spd: 3, spr: "v_as" },
+      { at: 308, dir: 150, spd: 2, spr: "v_as_bs" },
+      { at: 332, dir: 210, spd: 2 },
+      { at: 346, dir: 210, spd: 3, spr: "v_bs" },
+    ],
+  },
+  honda34: {
+    spawn: { x: 3251, y: 594 },
+    life: 402,
+    spr: "r_as",
+    initial: { dir: 150, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 71, dir: 150, spd: 2, spr: "r_as_bs" },
+      { at: 90, dir: 210, spd: 2 },
+      { at: 109, dir: 210, spd: 3, spr: "r_bs" },
+      { at: 294, dir: 210, spd: 2, spr: "r_bs_bd" },
+      { at: 318, dir: 330, spd: 2 },
+      { at: 332, dir: 330, spd: 3, spr: "r_bd" },
+    ],
+  },
+  honda31a: {
+    spawn: { x: 1909, y: 447 },
+    life: 458,
+    spr: "g_bd",
+    initial: { dir: 330, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 300, dir: 330, spd: 2, spr: "g_bd_ad" },
+      { at: 319, dir: 30, spd: 2 },
+      { at: 338, dir: 30, spd: 3, spr: "g_ad" },
+    ],
+  },
+  honda32a: {
+    spawn: { x: 2713, y: 565 },
+    life: 507,
+    spr: "p_as",
+    initial: { dir: 150, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 190, dir: 150, spd: 2, spr: "p_as_ad" },
+      { at: 209, dir: 30, spd: 2 },
+      { at: 228, dir: 30, spd: 3, spr: "p_ad" },
+      { at: 299, dir: 30, spd: 2, spr: "p_ad_bd" },
+      { at: 318, dir: 330, spd: 2 },
+      { at: 337, dir: 330, spd: 3, spr: "p_bd" },
+    ],
+  },
+  honda33a: {
+    spawn: { x: 2417, y: 755 },
+    life: 421,
+    spr: "g_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 85, dir: 30, spd: 2, spr: "g_ad_as" },
+      { at: 104, dir: 150, spd: 2 },
+      { at: 123, dir: 150, spd: 3, spr: "g_as" },
+      { at: 308, dir: 150, spd: 2, spr: "g_as_bs" },
+      { at: 332, dir: 210, spd: 2 },
+      { at: 346, dir: 210, spd: 3, spr: "g_bs" },
+    ],
+  },
+  honda34a: {
+    spawn: { x: 3251, y: 594 },
+    life: 402,
+    spr: "p_as",
+    initial: { dir: 150, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 71, dir: 150, spd: 2, spr: "p_as_bs" },
+      { at: 90, dir: 210, spd: 2 },
+      { at: 109, dir: 210, spd: 3, spr: "p_bs" },
+      { at: 294, dir: 210, spd: 2, spr: "p_bs_bd" },
+      { at: 318, dir: 330, spd: 2 },
+      { at: 332, dir: 330, spd: 3, spr: "p_bd" },
+    ],
+  },
+  honda31b: {
+    spawn: { x: 1909, y: 447 },
+    life: 458,
+    spr: "c_bd",
+    initial: { dir: 330, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 300, dir: 330, spd: 2, spr: "c_bd_ad" },
+      { at: 319, dir: 30, spd: 2 },
+      { at: 338, dir: 30, spd: 3, spr: "c_ad" },
+    ],
+  },
+  honda32b: {
+    spawn: { x: 2713, y: 565 },
+    life: 507,
+    spr: "v_as",
+    initial: { dir: 150, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 190, dir: 150, spd: 2, spr: "v_as_ad" },
+      { at: 209, dir: 30, spd: 2 },
+      { at: 228, dir: 30, spd: 3, spr: "v_ad" },
+      { at: 299, dir: 30, spd: 2, spr: "v_ad_bd" },
+      { at: 318, dir: 330, spd: 2 },
+      { at: 337, dir: 330, spd: 3, spr: "v_bd" },
+    ],
+  },
+  honda33b: {
+    spawn: { x: 2417, y: 755 },
+    life: 421,
+    spr: "c_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 85, dir: 30, spd: 2, spr: "c_ad_as" },
+      { at: 104, dir: 150, spd: 2 },
+      { at: 123, dir: 150, spd: 3, spr: "c_as" },
+      { at: 308, dir: 150, spd: 2, spr: "c_as_bs" },
+      { at: 332, dir: 210, spd: 2 },
+      { at: 346, dir: 210, spd: 3, spr: "c_bs" },
+    ],
+  },
+  honda34b: {
+    spawn: { x: 3251, y: 594 },
+    life: 402,
+    spr: "v_as",
+    initial: { dir: 150, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 71, dir: 150, spd: 2, spr: "v_as_bs" },
+      { at: 90, dir: 210, spd: 2 },
+      { at: 109, dir: 210, spd: 3, spr: "v_bs" },
+      { at: 294, dir: 210, spd: 2, spr: "v_bs_bd" },
+      { at: 318, dir: 330, spd: 2 },
+      { at: 332, dir: 330, spd: 3, spr: "v_bd" },
+    ],
+  },
+
+  // ------------------------------------------------------------------
+  // honda_br1/br11/br12/br13/br2/br21/br22 (bridge_des), honda_brr1/brr11/
+  // brr12/brr2/brr21 (bridge_des2), honda_bl1 (bridge_sin): il traffico dei
+  // tre ponti levatoi (game/src/bridges.js) — ucciso quando il ponte si
+  // apre, fatto ripartire (con un tipo scelto a dado, vedi bridges.js)
+  // quando si richiude. Stesso schema honda3..9/21..34 sopra. Le posizioni
+  // "leaf" (br11/br12/br13/br21/br22/brr11/brr12/brr21) sono lette dal
+  // punto in cui il genitore le crea (`action_create_object(honda_br11, 0,
+  // 0)`, relativo) PRIMA di un eventuale `action_move_to` proprio (mai
+  // raggiunto se il dado sceglie una foglia) — non le posizioni a cui il
+  // genitore stesso si sposterebbe se sopravvivesse al dado.
+
+  honda_br1: {
+    spawn: { x: 135, y: 1222 },
+    life: 443,
+    spr: "v_bs",
+    initial: { dir: 210, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 285, dir: 210, spd: 2, spr: "v_bs_bd" },
+      { at: 304, dir: 330, spd: 2 },
+      { at: 323, dir: 330, spd: 3, spr: "v_bd" },
+      { at: 612, dir: 30, spd: 2 },
+    ],
+  },
+  honda_br11: {
+    spawn: { x: 135, y: 1222 },
+    life: 443,
+    spr: "r_bs",
+    initial: { dir: 210, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 285, dir: 210, spd: 2, spr: "r_bs_bd" },
+      { at: 304, dir: 330, spd: 2 },
+      { at: 323, dir: 330, spd: 3, spr: "r_bd" },
+      { at: 612, dir: 30, spd: 2 },
+    ],
+  },
+  honda_br12: {
+    spawn: { x: 135, y: 1222 },
+    life: 443,
+    spr: "g_bs",
+    initial: { dir: 210, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 285, dir: 210, spd: 2, spr: "g_bs_bd" },
+      { at: 304, dir: 330, spd: 2 },
+      { at: 323, dir: 330, spd: 3, spr: "g_bd" },
+      { at: 612, dir: 30, spd: 2 },
+    ],
+  },
+  honda_br13: {
+    spawn: { x: 135, y: 1222 },
+    life: 443,
+    spr: "c_bs",
+    initial: { dir: 210, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 285, dir: 210, spd: 2, spr: "c_bs_bd" },
+      { at: 304, dir: 330, spd: 2 },
+      { at: 323, dir: 330, spd: 3, spr: "c_bd" },
+      { at: 612, dir: 30, spd: 2 },
+    ],
+  },
+  honda_br2: {
+    spawn: { x: 228, y: 1257 },
+    life: 399,
+    spr: "p_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 205, dir: 30, spd: 2, spr: "p_ad_as" },
+      { at: 224, dir: 150, spd: 2 },
+      { at: 243, dir: 150, spd: 3, spr: "p_as" },
+      { at: 291, dir: 150, spd: 2, spr: "p_as_ad" },
+      { at: 306, dir: 30, spd: 2 },
+      { at: 329, dir: 30, spd: 3, spr: "p_ad" },
+    ],
+  },
+  honda_br21: {
+    spawn: { x: 135, y: 1222 },
+    life: 399,
+    spr: "v_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 205, dir: 30, spd: 2, spr: "v_ad_as" },
+      { at: 224, dir: 150, spd: 2 },
+      { at: 243, dir: 150, spd: 3, spr: "v_as" },
+      { at: 291, dir: 150, spd: 2, spr: "v_as_ad" },
+      { at: 306, dir: 30, spd: 2 },
+      { at: 329, dir: 30, spd: 3, spr: "v_ad" },
+    ],
+  },
+  honda_br22: {
+    spawn: { x: 135, y: 1222 },
+    life: 399,
+    spr: "r_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 205, dir: 30, spd: 2, spr: "r_ad_as" },
+      { at: 224, dir: 150, spd: 2 },
+      { at: 243, dir: 150, spd: 3, spr: "r_as" },
+      { at: 291, dir: 150, spd: 2, spr: "r_as_ad" },
+      { at: 306, dir: 30, spd: 2 },
+      { at: 329, dir: 30, spd: 3, spr: "r_ad" },
+    ],
+  },
+  honda_brr1: {
+    spawn: { x: 2916, y: 1027 },
+    life: 427,
+    spr: "g_bs",
+    initial: { dir: 210, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+    ],
+  },
+  honda_brr11: {
+    spawn: { x: 2916, y: 1027 },
+    life: 427,
+    spr: "c_bs",
+    initial: { dir: 210, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+    ],
+  },
+  honda_brr12: {
+    spawn: { x: 2916, y: 1027 },
+    life: 427,
+    spr: "v_bs",
+    initial: { dir: 210, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+    ],
+  },
+  honda_brr2: {
+    spawn: { x: 2368, y: 1257 },
+    life: 339,
+    spr: "p_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 165, dir: 30, spd: 2, spr: "p_ad_as" },
+      { at: 184, dir: 150, spd: 2 },
+      { at: 203, dir: 150, spd: 3, spr: "p_as" },
+      { at: 231, dir: 150, spd: 2, spr: "p_as_ad" },
+      { at: 246, dir: 30, spd: 2 },
+      { at: 269, dir: 30, spd: 3, spr: "p_ad" },
+    ],
+  },
+  honda_brr21: {
+    spawn: { x: 135, y: 1222 },
+    life: 339,
+    spr: "g_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 165, dir: 30, spd: 2, spr: "g_ad_as" },
+      { at: 184, dir: 150, spd: 2 },
+      { at: 203, dir: 150, spd: 3, spr: "g_as" },
+      { at: 231, dir: 150, spd: 2, spr: "g_as_ad" },
+      { at: 246, dir: 30, spd: 2 },
+      { at: 269, dir: 30, spd: 3, spr: "g_ad" },
+    ],
+  },
+  honda_bl1: {
+    spawn: { x: 1705, y: 1444 },
+    life: 505,
+    spr: "v_ad",
+    initial: { dir: 30, spd: 3 },
+    depthOffset: 16,
+    schedule: [
+      { at: 67, dir: 30, spd: 2, spr: "v_ad_as" },
+      { at: 86, dir: 150, spd: 2 },
+      { at: 105, dir: 150, spd: 3, spr: "v_as" },
+    ],
+  },
 };
 
 // [C] r12/Create.gml: `action_create_object(carmaker, 0, 0)`, incondizionato
@@ -261,6 +840,23 @@ export const CARMAKER_SCHEDULE = [
   { at: 21600, type: "honda8" },
   { at: 25200, type: "honda9" },
 ].map((e) => ({ ...e, at: e.at * TICK }));   // tick -> secondi, comodo per confrontarlo con un cronometro in secondi
+
+// [C] r32|r22/Alarm_4.gml ("maghene"): stesso schema di CARMAKER_SCHEDULE
+// sopra ma il timer parte da quando la piattaforma stessa nasce (game/src/
+// platform.js, stepFaroChain()), non dal boot della room — `r32`/`r22` non
+// esistono finche' il rispettivo attracco (dockersig1/dockersig3) non
+// finisce. Il primo tipo di ciascuna lista (honda21/honda31) non e' qui:
+// e' creato direttamente da r32|r22/Create.gml, non dal ciclo di Alarm_4 —
+// platform.js lo spawna a parte, nello stesso istante in cui la piattaforma
+// appare.
+export const R32_MAGHENE_SCHEDULE = [
+  "honda22", "honda23", "honda24", "honda25", "honda21a", "honda22a", "honda23a",
+  "honda24a", "honda25a", "honda21b", "honda22b", "honda23b", "honda24b", "honda25b",
+].map((type, i) => ({ type, at: (i + 1) * 8750 * TICK }));
+export const R22_MAGHENE_SCHEDULE = [
+  "honda32y", "honda33", "honda34", "honda31a", "honda32a", "honda33a", "honda34a",
+  "honda31b", "honda32b", "honda33b", "honda34b",
+].map((type, i) => ({ type, at: (i + 1) * 8750 * TICK }));
 
 // [C] entrambe: `action_sprite_color(16366009, 1)` in Create, solo se e'
 // notte nell'istante esatto in cui l'istanza nasce (non viene mai

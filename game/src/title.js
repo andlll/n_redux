@@ -13,7 +13,7 @@
 import { Renderer, loadTexture, makeSolidTexture, solidFrame, PauseBlur } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
-import { applyMatchPlatform } from "./platform.js";
+import { applyMatchPlatform, r120MotorDecor } from "./platform.js";
 import { spawnCar, stepCars } from "./cars.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
@@ -175,8 +175,8 @@ input.onTap = (sx, sy) => {
   const w = camUI.screenToWorld(sx, sy);
   for (const b of BUTTONS) {
     if (!hitButton(b, w.x, w.y)) continue;
-    if (b.obj === "standma") { navigateTo = "index.html?room=match&autoload=1"; fadeT = 0; }
-    else if (b.obj === "easma") { navigateTo = "index.html?room=match_easy&autoload=1"; fadeT = 0; }
+    if (b.obj === "standma") { navigateTo = "play.html?room=match&autoload=1"; fadeT = 0; }
+    else if (b.obj === "easma") { navigateTo = "play.html?room=match_easy&autoload=1"; fadeT = 0; }
     else { message = "tutorial non ancora implementato"; messageT = 2.5; }
     break;
   }
@@ -231,6 +231,9 @@ function frame(now) {
     r.setProjection(camWorld.projection());
     const dynamic = [];
     for (const s of semaphores) if (s.spr) dynamic.push({ obj: "decor", x: s.x, y: s.y, depth: s.depth, _f: mFrameFor(s.spr) });
+    // Le "turbine" di r120 (game/src/platform.js): un lampeggio, non
+    // erano mai state statiche — vedi il commento su blinkMotorVisible() li'.
+    for (const it of r120MotorDecor(elapsed)) dynamic.push({ obj: "decor", x: it.x, y: it.y, depth: it.depth, _f: mFrameFor(it.spr) });
     for (const c of atmo.clouds) dynamic.push({ obj: "decor", x: c.x, y: c.y, depth: c.depth, _f: mFrameFor(c.spr) });
     for (const b of atmo.birds) dynamic.push({ obj: "decor", x: b.x, y: b.y, depth: b.depth, _f: mFrameFor(b.spr) });
     for (const c of cars) dynamic.push({ obj: "decor", x: c.x, y: c.y, depth: c.depth, _f: mFrameFor(c.spr, Math.floor(c.frame)), _tint: c.tint });
