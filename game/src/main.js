@@ -97,6 +97,14 @@ const autoloadOnBoot = params.get("autoload") === "1";
 
 // ---------------------------------------------------------------- scena
 const scene = await fetch(`./data/${roomName}.scene.json`).then((x) => x.json());
+// [C] `scene.bgColor` (STUDIO.md, tools/22_scene.py: room["bg_color"]) — mai
+// letto finora: ogni room disegnava lo stesso placeholder blu scurissimo di
+// gl.js, sbagliato per `match` (bgColor vero: un azzurro cielo chiaro,
+// #cbe9fe) — si vedeva soprattutto nel vuoto sotto/intorno alle basi
+// volanti, sempre "notturno" a prescindere dalla fase del giorno.
+// GameMaker impacchetta i colori R+G*256+B*65536 (ordine BGR), come
+// altrove nel motore (cars.js, NIGHT_TINT).
+const SCENE_BG_RGB = [scene.bgColor & 0xff, (scene.bgColor >> 8) & 0xff, (scene.bgColor >> 16) & 0xff].map((v) => v / 255);
 cam.bounds = { left: 0, top: 0, right: scene.width, bottom: scene.height };
 cam.x = scene.width / 2;
 cam.y = scene.height / 2;
@@ -2159,7 +2167,7 @@ function frame(now) {
   }
   for (const p of placeholders) p._hovered = p === hoveredPh;
 
-  r.beginFrame(canvas.width, canvas.height);
+  r.beginFrame(canvas.width, canvas.height, SCENE_BG_RGB);
   const amb = ambientAt(phaseT);
 
   // --- layer mondo: segue la camera. La tinta giorno/notte e' moltiplicata

@@ -245,9 +245,12 @@ export function clickDockerSignal3(state, r12) {
 }
 
 // [C] r32/Create.gml + r320/Create.gml (relativo a r32, offset 1616,0):
-// solo i pali dei semafori (`object8`) — nessuno sprite proprio, sono
-// controller invisibili nel decompilato (STUDIO.md).
+// r320 NON e' un controller invisibile — [C] _object.json: `visible: 1`,
+// sprite proprio "baa32", `depth: -1241` — un secondo pezzo di piattaforma
+// disegnato dal runtime GameMaker come ogni altra istanza, mancava nella
+// prima versione di questo file (solo i pali `object8` venivano portati).
 const R32_X = -16, R32_Y = 1141;
+const R320_X = R32_X + 1616, R320_Y = R32_Y + 0;
 const R32_POLES = [
   [181, 416], [429, 559], [478, 531], [530, 559], [478, 596],
   [778, 414], [678, 703], [728, 673], [1223, 441], [1371, 415],
@@ -261,7 +264,8 @@ const R32_POLES = [
  * attivo in quell'evento). Chiamata solo a tier1 gia' espanso. */
 function r32Decor() {
   const out = [
-    { obj: "decor", x: R32_X, y: R32_Y, depth: 1, spr: "baa31" },
+    { obj: "decor", x: R32_X, y: R32_Y, depth: -1241, spr: "baa31" },     // [C] r32/_object.json
+    { obj: "decor", x: R320_X, y: R320_Y, depth: -1241, spr: "baa32" },   // [C] r320/_object.json
     { obj: "decor", x: 565, y: 1720, depth: 0, spr: "robbobase" },
     { obj: "decor", x: -16, y: 1153, depth: -1009, spr: "moor31" },
     { obj: "decor", x: 1302, y: 1150, depth: -1990, spr: "moor32" },
@@ -278,15 +282,18 @@ function r32Decor() {
 }
 
 // [C] r22/Create.gml + r220/Create.gml (relativo a r22, offset 1236,225):
-// stesso schema di r32/r320 sopra.
+// stesso schema di r32/r320 sopra — r220 ha anche lei `visible: 1` e uno
+// sprite proprio ("baa22", `depth: 4`), non solo i pali dei semafori.
 const R22_X = 1374, R22_Y = -64;
+const R220_X = R22_X + 1236, R220_Y = R22_Y + 225;
 const R220_POLES = [[40, 463], [140, 405], [130, 750], [192, 779]].map(([dx, dy]) => [1236 + dx, 225 + dy]);
 
 /** Scenografia fissa della terza piattaforma — [C] dockersig3/Alarm_4.gml,
  * posizioni assolute. Chiamata solo a tier2 gia' espanso. */
 function r22Decor() {
   const out = [
-    { obj: "decor", x: R22_X, y: R22_Y, depth: 1, spr: "baa21" },
+    { obj: "decor", x: R22_X, y: R22_Y, depth: 4, spr: "baa21" },     // [C] r22/_object.json
+    { obj: "decor", x: R220_X, y: R220_Y, depth: 4, spr: "baa22" },   // [C] r220/_object.json
     { obj: "decor", x: 1853, y: 263, depth: 2, spr: "moor21" },      // mudr21 — [C] _object.json: depth fisso
     { obj: "decor", x: 2363, y: 783, depth: -990, spr: "bridr1" },   // bridge_des2 — [C] _object.json: depth fisso
     { obj: "decor", x: 2183, y: 908, depth: 0, spr: "motor2" },

@@ -517,6 +517,14 @@ GAMEPLAY_SPRITES = {
         "f1", "f1lux", "wavesin", "bridgesin", "nimbuscluster1", "monviola_bar", "monviola",
         "baa31", "f3b", "f3", "bridr1", "bridl1", "moor31", "moor32", "moor33", "moor34",
         "robbobase", "motor2", "baa21", "moor21",
+        # "baa22"/"baa32": la SECONDA meta' di r32/r22 (r320/r220, creati
+        # relativi dentro r32|r22/Create.gml) — un pezzo di sprite mancante
+        # nella prima versione di questo file: r220/r320 erano trattati
+        # come controller puramente invisibili (solo i pali dei semafori),
+        # ma hanno `visible: 1` con un proprio sprite nel decompilato
+        # (_object.json), disegnato automaticamente dal runtime GameMaker
+        # — qui va fatto a mano.
+        "baa22", "baa32",
     ],
 }
 

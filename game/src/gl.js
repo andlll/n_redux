@@ -89,10 +89,16 @@ export class Renderer {
     this.drawCalls = 0;
   }
 
-  beginFrame(w, h) {
+  // `rgb`: colore di sfondo della room (0..1 per canale) — [I] default un
+  // blu notte generico per chi non lo passa (title.js, dove il quad dello
+  // sfondo sfumato copre comunque tutto lo schermo). game/src/main.js passa
+  // `scene.bgColor` vero (gia' nel JSON, STUDIO.md — mai letto finora:
+  // ogni room usava questo stesso placeholder, sbagliato per `match`, la
+  // cui `bgColor` reale e' un azzurro cielo chiaro, non un blu scurissimo).
+  beginFrame(w, h, rgb = [0.04, 0.06, 0.12]) {
     const gl = this.gl;
     gl.viewport(0, 0, w, h);
-    gl.clearColor(0.04, 0.06, 0.12, 1);
+    gl.clearColor(rgb[0], rgb[1], rgb[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(this.prog);
     gl.uniform1i(this.uTex, 0);
