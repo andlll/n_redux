@@ -3309,11 +3309,28 @@ paragrafo 8.
   ancora `[?]`), e nessun codice poi ricrea l'HUD — il tutorial vero,
   seguito alla lettera, si fermerebbe li' per sempre dopo un bombardamento
   di pochi secondi. **Deviazione concordata con l'autore**: la cutscene
-  gira (2 aerei + `air_tut2` stesso, sprite `tuto_fig1/2`/`tuto_bomb`,
-  velocita' vere lette da `action_set_motion` — a 30px/tick attraversano
-  lo schermo in una frazione di secondo, quindi il grosso dei 4s si vede
-  soprattutto lo sfondo "macerie" fisso) ma **non** sfocia in `blacker1`:
-  l'HUD torna visibile alla fine, cosi' le 34 fasi si vedono davvero.
+  gira (2 aerei + `air_tut2` stesso, sprite `tuto_fig1/2`/`tuto_bomb`) ma
+  **non** sfocia in `blacker1`: l'HUD torna visibile alla fine, cosi' le
+  34 fasi si vedono davvero. **Bug corretto, segnalato dall'autore dagli
+  screenshot**: una prima versione piazzava i 6 tasselli "macerie"
+  esattamente alle coordinate mondo del decompilato (griglia 2x3, passo
+  1128/2000 -- il doppio della dimensione vera del tassello, 564/1000):
+  un checkerboard con META' dell'area scoperta, non un tappeto pieno, e
+  comunque dipendente da dove la telecamera vera della room si trovava
+  in quel momento -- risultato, lo sfondo copriva solo un angolo dello
+  schermo invece di tutto. **[I]** Corretto spostando l'intera cutscene
+  in spazio schermo (stesso layer di uiButtons/freccia, indipendente
+  dalla camera): il tassello si ripete a tappeto su tutta la canvas
+  (qualunque risoluzione -- verificato anche in verticale, 390x664) e i
+  tre aerei attraversano lo schermo da bordo a bordo in coordinate
+  normalizzate invece delle velocita' vere lette da `action_set_motion`
+  (che a 30px/tick avrebbero comunque attraversato lo schermo in una
+  frazione di secondo, illeggibili). **Balloon di testo/bottone "avanti"
+  sovrapposti alla barra azioni sotto** (altro bug segnalato dagli
+  screenshot): la posizione era un margine fisso indovinato, non
+  correlato alla vera altezza della barra (che cambia con `menoo`/
+  dispositivo/UI_SCALE) -- ora letta ogni frame da `uiButtons` (il bordo
+  superiore vero della barra corrente) invece di un pixel fisso.
   **Bug trovato durante il test**: `air_tut2` e' anche lui gia' un'istanza
   vera nella room col proprio sprite di default (`tuto_bomb`, STUDIO.md
   §5.3 "doppia casetta" — stesso principio): senza toglierlo da

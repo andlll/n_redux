@@ -121,7 +121,7 @@ export function createTutorialState(scene) {
     // sull'esito): l'HUD del tutorial (freccia/balloon/bottone, uccisi
     // dalla cutscene nel decompilato) resta nascosto finche' `cutscene`
     // non e' null.
-    cutscene: airTut2 ? createCutscene(airTut2.x, airTut2.y) : null,
+    cutscene: airTut2 ? createCutscene() : null,
     arrowFrame: 0,
   };
 }
@@ -155,44 +155,56 @@ export const LAST_PHASE = TUTORIAL_TEXTS.length - 1;   // 33
 // ---------------------------------------------------------- intro cutscene
 // [C] air_tut2 (istanza in tutorial.json, x=363,y=219) al Create: crea 2
 // `air_tut1` (aerei, offset relativo +300,+200 / -300,+220 dalla propria
-// posizione), 6 `tut_sf` (sfondo "macerie", tassello 1000x564, griglia
-// 2x3 a coordinate ASSOLUTE — non relative ad air_tut2), e uccide subito
-// tutorial_square/freccia_tutorial/tutorial_thumb (l'HUD del tutorial
-// sparisce per la durata della cutscene). air_tut2 stesso e' un terzo
-// "aereo" (sprite tuto_bomb) in moto. **[I]** Qui la cutscene dura 240 tick
-// (4s, Alarm_1 del decompilato — il momento in cui l'originale uccide
-// aerei/sfondo e fa comparire l'overlay nero `blacker1`): l'overlay
-// (schermata di game over del gioco base, mai implementata altrove,
-// STUDIO.md §6) e' SALTATO di proposito (deviazione concordata) — l'HUD
-// del tutorial torna visibile subito dopo, invece di restare bloccati su
-// quell'overlay per sempre come farebbe l'originale (nessun codice lo
-// ricrea, STUDIO.md "intro tutorial").
+// posizione) + 6 `tut_sf` (sfondo "macerie", tassello 1000x564, a
+// coordinate mondo ASSOLUTE), e uccide subito tutorial_square/
+// freccia_tutorial/tutorial_thumb (l'HUD del tutorial sparisce per la
+// durata della cutscene). air_tut2 stesso e' un terzo "aereo" (sprite
+// tuto_bomb) in moto. **[Bug corretto]** una prima versione qui piazzava
+// i 6 tasselli esattamente alle coordinate mondo del decompilato — ma
+// quella griglia (passo 1128 = 2x l'altezza 564 del tassello, passo 2000
+// contro una larghezza di 1000) lascia META' dell'area scoperta
+// (checkerboard, non un tappeto pieno), e comunque dipende da dove la
+// camera normale della room si trova in quel momento (mai garantito
+// vicino ad `air_tut2`): risultato, lo sfondo "macerie" copriva solo un
+// angolo dello schermo invece di tutto quanto (segnalato dall'autore
+// dagli screenshot). **[I]** Qui la cutscene e' invece interamente in
+// SPAZIO SCHERMO (stesso layer di uiButtons/freccia, non il mondo/camera):
+// il tassello si ripete a tappeto su tutta la canvas (qualunque
+// risoluzione) e i tre aerei attraversano lo schermo da un bordo
+// all'altro in coordinate normalizzate — copertura piena garantita,
+// indipendente da dove la camera vera della room punta.
+// Durata: **[I]** 4s (240 tick nel decompilato, Alarm_1 — il momento in
+// cui l'originale uccide aerei/sfondo e fa comparire l'overlay nero
+// `blacker1`, la schermata di game over del gioco base, mai implementata
+// altrove — STUDIO.md §6): quell'overlay e' SALTATO di proposito
+// (deviazione concordata), l'HUD del tutorial torna visibile subito
+// dopo invece di restare bloccato per sempre come farebbe l'originale.
 const CUTSCENE_DURATION = 4;   // secondi — [C] air_tut2/Alarm_1: 240 tick
-const TUT_SF_OFFSETS = [
-  { dx: 0, dy: 0 }, { dx: 0, dy: -1128 }, { dx: 2000, dy: -1128 },
-  { dx: 0, dy: 1128 }, { dx: 2000, dy: 1128 }, { dx: 2000, dy: 0 },
+
+// Attraversano lo schermo da un bordo oltre l'altro (frazione della
+// larghezza vista, -0.3..1.3) in tempi/altezze leggermente sfalsati fra
+// loro — tre sagome invece di un'unica traiettoria identica.
+const CUTSCENE_PLANES = [
+  { spr: "tuto_fig1", yFrac: 0.30, startT: 0.0, dur: 2.6 },
+  { spr: "tuto_fig2", yFrac: 0.55, startT: 0.4, dur: 2.8 },
+  { spr: "tuto_bomb", yFrac: 0.42, startT: 0.2, dur: 3.2 },
 ];
 
-function moveDeg(dir, speed) {
-  const rad = (dir * Math.PI) / 180;
-  return { vx: Math.cos(rad) * speed * 60, vy: -Math.sin(rad) * speed * 60 };   // px/tick -> px/s (TICK=1/60)
-}
-
-export function createCutscene(airTut2X, airTut2Y) {
-  const rnd = () => 1 + Math.random() * 2;   // [C] irandom_range(1,3)
-  const planes = [
-    { x: airTut2X + 300, y: airTut2Y + 200, spr: Math.random() < 0.5 ? "tuto_fig2" : "tuto_fig1", ...moveDeg(rnd(), 30) },
-    { x: airTut2X - 300, y: airTut2Y + 220, spr: Math.random() < 0.5 ? "tuto_fig2" : "tuto_fig1", ...moveDeg(rnd(), 30) },
-    { x: airTut2X, y: airTut2Y, spr: "tuto_bomb", ...moveDeg(1, 30) },
-  ];
-  const tiles = TUT_SF_OFFSETS.map((o) => ({ x: o.dx, y: o.dy, spr: "tuto_sfondo" }));
-  return { t: 0, planes, tiles };
+export function createCutscene() {
+  const planes = CUTSCENE_PLANES.map((p) => ({ ...p, xFrac: -0.3 }));
+  return { t: 0, planes };
 }
 
 /** Ritorna `true` quando la cutscene e' finita (main.js smette di
- * disegnarla e riporta l'HUD del tutorial). */
+ * disegnarla e riporta l'HUD del tutorial). `w`/`h` (dimensioni schermo
+ * correnti) servono solo a calcolare la posizione vera dei tre aerei —
+ * il tassello di sfondo lo ripete a tappeto chi disegna (main.js), non
+ * serve qui. */
 export function stepCutscene(cutscene, dt) {
   cutscene.t += dt;
-  for (const p of cutscene.planes) { p.x += p.vx * dt; p.y += p.vy * dt; }
+  for (const p of cutscene.planes) {
+    const k = Math.max(0, Math.min(1, (cutscene.t - p.startT) / p.dur));
+    p.xFrac = -0.3 + k * 1.6;   // da -0.3 (fuori a sinistra) a 1.3 (fuori a destra)
+  }
   return cutscene.t >= CUTSCENE_DURATION;
 }

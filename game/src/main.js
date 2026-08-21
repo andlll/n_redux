@@ -2164,6 +2164,16 @@ function frame(now) {
       if (showHud) {
         tutorialTextEl.textContent = TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "";
         tutorialOkEl.textContent = tutorialState.phase >= LAST_PHASE ? "Fine" : "OK";
+        // Il balloon/bottone non devono coprire la barra azioni sotto
+        // (segnalato dall'autore: si sovrapponevano) — `uiButtons` (un
+        // frame indietro, ricalcolata piu' sotto: differenza impercettibile,
+        // gia' lo stesso principio usato per il picking altrove) da' il
+        // bordo superiore VERO della barra, qualunque sia menoo/dispositivo,
+        // invece di un margine fisso indovinato.
+        const barTop = uiButtons.length ? Math.min(...uiButtons.map((b) => b.y)) : canvas.clientHeight - 100;
+        const gap = Math.max(8, canvas.clientHeight - barTop + 10);
+        tutorialTextEl.style.bottom = gap + "px";
+        tutorialOkEl.style.bottom = gap + "px";
       }
     }
     // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
@@ -2273,8 +2283,10 @@ function frame(now) {
   // decoro permanente.
   for (const ru of ruins) dynamic.push(ru);
   // Tutorial (game/src/tutorial.js): lotti-rudere (ruin1/ruin2, un
-  // meccanismo dedicato — mai le stesse istanze di `ruins` sopra) +
-  // cutscene iniziale, quando attiva.
+  // meccanismo dedicato — mai le stesse istanze di `ruins` sopra). La
+  // cutscene iniziale si disegna a parte, in spazio schermo (vedi sotto,
+  // dopo il layer GUI) — copre l'intera canvas per davvero, indipendente
+  // da dove punta la camera vera della room.
   if (tutorialState) {
     const hw = input.hover && input.hoverPointerType === "mouse" ? cam.screenToWorld(input.hover.x, input.hover.y) : null;
     for (const lot of ruinLots) {
@@ -2288,14 +2300,6 @@ function frame(now) {
         obj: "ruinLot", ref: lot, x: lot.x, y: lot.y, depth: lot.depth, _f: lot._f,
         ...(hovered ? { _tint: 0xff0000, _selfLit: true } : {}),
       });
-    }
-    if (tutorialState.cutscene) {
-      for (const tile of tutorialState.cutscene.tiles) {
-        dynamic.push({ obj: "decor", x: tile.x, y: tile.y, depth: -9500, _f: frameFor(tile.spr) });
-      }
-      for (const p of tutorialState.cutscene.planes) {
-        dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -9600, _f: frameFor(p.spr) });
-      }
     }
   }
   // Auto decorative (game/src/cars.js): x/y/sprite/frame gia' avanzati da
@@ -2885,6 +2889,31 @@ function frame(now) {
     status = `${picked.obj}${picked.spr ? " [" + picked.spr + "]" : ""}`;
   }
 
+  // Cutscene iniziale del tutorial (game/src/tutorial.js): disegnata per
+  // ultima, in spazio schermo, sopra a TUTTO il resto (mondo + UI vera) —
+  // una vera cutscene a schermo pieno, non un livello del mondo qualunque.
+  // Il tassello "macerie" (tuto_sfondo) si ripete a tappeto su tutta la
+  // canvas (qualunque risoluzione: copertura piena garantita, a differenza
+  // di una prima versione che lo piazzava a coordinate mondo fisse — vedi
+  // il commento su CUTSCENE_DURATION in tutorial.js), i tre aerei
+  // attraversano lo schermo da bordo a bordo in coordinate normalizzate.
+  if (tutorialState?.cutscene) {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    r.setAmbient(1, 1, 1);
+    r.setProjection(screenProjection(cw, ch));
+    const bgFrame = frameFor("tuto_sfondo");
+    if (bgFrame) {
+      for (let y = 0; y < ch; y += bgFrame.h) {
+        for (let x = 0; x < cw; x += bgFrame.w) r.draw(bgFrame, x, y, 1, 0xffffff, 1);
+      }
+    }
+    for (const p of tutorialState.cutscene.planes) {
+      const f = frameFor(p.spr);
+      if (f) r.draw(f, p.xFrac * cw, p.yFrac * ch, 1, 0xffffff, 1);
+    }
+    r.flush();
+  }
+
   hud.textContent =
     `${scene.name}  ${scene.width}x${scene.height}\n` +
     `istanze ${frameList.length}  disegnate ${drawn}  drawcall ${r.drawCalls}\n` +
@@ -2910,6 +2939,7 @@ requestAnimationFrame(frame);
 window.__nimbus = {
   cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
   get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
+  get tutorialState() { return tutorialState; },
   get paused() { return paused; }, setPaused: (v) => { paused = v; }, get pauseBtnRect() { return pauseBtnRect; },
   get pauseMenuButtons() { return pauseMenuButtons; },
   get uiScrollX() { return uiScrollX; }, setUiScrollX: (x) => { uiScrollX = x; },
