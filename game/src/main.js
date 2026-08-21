@@ -269,6 +269,22 @@ const chiesScene = chiesIndex >= 0 ? staticWorld.splice(chiesIndex, 1)[0] : null
 const pu1Index = staticWorld.findIndex((it) => it.obj === "pu1");
 if (pu1Index >= 0) staticWorld.splice(pu1Index, 1);
 
+// `reversi` (sprite di default "tut_ok", ma Create.gml lo cambia subito in
+// "tut_exit") e' anche lei gia' un'istanza vera nella room — lo stesso
+// schema di `pu1` sopra: e' il bottone "esci"/torna al menu del vecchio
+// menu di pausa dell'originale. **[C]** `reversi/Step.gml`: si sposta OGNI
+// frame in spazio schermo (`action_move_to(view_xview[0]+409*sca, ...)`)
+// SOLO quando `pu1.menoo!=0` (pausa aperta); altrimenti va a `(-1000,
+// -1000)`, fuori mappa — mai un decoro fermo alla propria posizione nella
+// room. Qui il menu di pausa e' gia' vera UI in spazio schermo (STUDIO.md,
+// drawPauseOverlay() piu' sotto), quindi l'istanza originale nel mondo va
+// tolta come `pu1` — altrimenti resta ferma alle sue coordinate di
+// piazzamento per sempre, un'icona nera "pollice in su" sospesa nel vuoto
+// sopra `match` (depth -14001, sempre in primo piano) — segnalato
+// dall'autore ("gli omini a destra"): non erano omini, era questo bottone.
+const reversiIndex = staticWorld.findIndex((it) => it.obj === "reversi");
+if (reversiIndex >= 0) staticWorld.splice(reversiIndex, 1);
+
 // `honda_facile_1`/`honda_facile_2` (match_easy) o `honda1`/`honda2`
 // (match — STUDIO.md, letti dopo la prima sessione su questa room) sono
 // anche loro gia' istanze vere nella room (STUDIO.md §5.3 "veicoli_
