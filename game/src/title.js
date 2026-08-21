@@ -24,6 +24,27 @@ import {
 
 const TICK = 1 / 60;
 const canvas = document.getElementById("view");
+
+// Schermata di caricamento (index.html #loading): il menu carica il proprio
+// atlas PIU' un intero ritaglio di `match` per lo sfondo sfumato (sopra),
+// pesante quanto un livello vero — quindi copriamo quell'attesa con logo +
+// sfondo nero, esattamente come main.js faceva per i livelli. **[C]**
+// STUDIO.md §3: il flusso di room originale e' `loguji` (logo Fuji) ->
+// `title` (il menu) -> ...: lo splash va QUI, prima del menu — non prima dei
+// livelli (game/play.html non ne mostra piu' uno, segnalato dall'autore).
+// "show" fa partire subito la dissolvenza in entrata del logo; "hide"
+// (chiamata sotto, al primo frame disegnato) fa la dissolvenza in uscita
+// dell'intera overlay.
+const loading = document.getElementById("loading");
+loading.classList.add("show");
+let loadingHidden = false;
+function hideLoading() {
+  if (loadingHidden) return;
+  loadingHidden = true;
+  loading.classList.add("hide");
+  loading.addEventListener("transitionend", () => loading.remove(), { once: true });
+}
+
 const r = new Renderer(canvas);
 const gl = r.gl;
 const input = new Input(canvas);
@@ -286,6 +307,8 @@ function frame(now) {
       { x: camUI.x + hw, y: camUI.y + hh }, { x: camUI.x - hw, y: camUI.y + hh }, 0x000000, k);
   }
   r.flush();
+
+  hideLoading();
 
   requestAnimationFrame(frame);
 }

@@ -18,6 +18,7 @@ import {
   applyMatchPlatform, createFaroState, stepFaroChain, faroDecor, r120MotorDecor,
   clickFaroButton, clickWaveSignal, clickDockerSignal,
   clickFaro3Button, clickWaveSignal3, clickDockerSignal3,
+  isPlaceholderActive,
 } from "./platform.js";
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
@@ -27,23 +28,6 @@ import { loadFont, drawText, measureText } from "./font.js";
 
 const canvas = document.getElementById("view");
 const hud = document.getElementById("hud");
-
-// Schermata di caricamento (play.html #loading): il gioco e' diventato
-// pesante lato asset (atlas per-room + font bitmap, tutti fetchati prima
-// del primo frame, vedi gli "await fetch"/loadTexture/loadFont piu' sotto),
-// quindi copriamo quell'attesa con logo + sfondo nero invece di uno schermo
-// bianco/vuoto. "show" fa partire subito la dissolvenza in entrata del
-// logo; "hide" (chiamata da hideLoading(), sotto, al primo frame disegnato)
-// fa la dissolvenza in uscita dell'intera overlay.
-const loading = document.getElementById("loading");
-loading.classList.add("show");
-let loadingHidden = false;
-function hideLoading() {
-  if (loadingHidden) return;
-  loadingHidden = true;
-  loading.classList.add("hide");
-  loading.addEventListener("transitionend", () => loading.remove(), { once: true });
-}
 
 const r = new Renderer(canvas);
 const gl = r.gl;
@@ -586,6 +570,18 @@ function findPlacementCluster(tapped, count, radius) {
 
 function placeAt(placeholder, type) {
   const def = BUILDING_TYPES[type];
+  // [C] placeholder/Create.gml + Collision_r12|r120|r22|r220|r32|r320.gml
+  // (platform.js, isPlaceholderActive()): un lotto ancora "act=0" — non
+  // sopra a nessun pezzo di piattaforma esistente, cioe' dentro l'area di
+  // r32/r22 prima che quell'espansione sia stata costruita — non risponde
+  // affatto al tocco nell'originale. Senza questo controllo si poteva
+  // costruire in pieno oceano, ben prima di aver sbloccato quella
+  // piattaforma (segnalato dall'autore: "i placeholder delle espansioni
+  // sono disponibili da subito anche se le espansioni non sono state
+  // costruite").
+  if (!isPlaceholderActive(placeholder.x, placeholder.y, platformState)) {
+    return "quest'area non fa ancora parte della piattaforma";
+  }
   // [C] placeholder/Mouse_LeftReleased.gml, selec==3: il piazzamento vero e
   // proprio richiede anche `close==0` (nessun'altra torretta troppo vicina,
   // STUDIO.md "le mongolfiere" -> tooCloseToTurret()) — controllato PRIMA
@@ -775,6 +771,11 @@ function findDiagonalTargets(origin) {
  */
 function armPlacement(origin, type) {
   const def = BUILDING_TYPES[type];
+  // Stesso gate di placeAt() sopra (platform.js, isPlaceholderActive()): un
+  // lotto non ancora su un pezzo di piattaforma esistente non arma niente.
+  if (!isPlaceholderActive(origin.x, origin.y, platformState)) {
+    return "quest'area non fa ancora parte della piattaforma";
+  }
   if (!canAfford(r12, def.placeCost)) {
     return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
   }
@@ -2586,8 +2587,6 @@ function frame(now) {
     (status ? status + "\n" : "") +
     (messageT > 0 ? message + "\n" : "") +
     `trascina, rotella/pinch, tap — [S] salva [L] carica [P] pausa`;
-
-  hideLoading();
 
   requestAnimationFrame(frame);
 }
