@@ -255,7 +255,9 @@ input.onTap = (sx, sy) => {
     if (!hitButton(b, w.x, w.y)) continue;
     if (b.obj === "standma") { navigateTo = "play.html?room=match&autoload=1"; fadeT = 0; }
     else if (b.obj === "easma") { navigateTo = "play.html?room=match_easy&autoload=1"; fadeT = 0; }
-    else { message = "tutorial non ancora implementato"; messageT = 2.5; }
+    // [I] niente `autoload=1`: il tutorial riparte sempre da zero (nessun
+    // salvataggio da riprendere), STUDIO.md/tutorial.js.
+    else { navigateTo = "play.html?room=tutorial"; fadeT = 0; }
     break;
   }
 };

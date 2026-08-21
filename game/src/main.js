@@ -11,7 +11,7 @@ import {
   stepBalloonSpawner, stepBalloons, stepLoot, collectLoot,
   spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
 } from "./balloons.js";
-import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
+import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
 import {
@@ -25,6 +25,10 @@ import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosi
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText, measureText } from "./font.js";
+import {
+  createTutorialState, extractRuinLots, ruinRebuildConstruction, stepTutorialAuto, stepCutscene,
+  TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE,
+} from "./tutorial.js";
 
 const canvas = document.getElementById("view");
 const hud = document.getElementById("hud");
@@ -76,8 +80,12 @@ const UI_SCALE = isMobile ? 0.6 : 0.7;
 // apposta perche' mascherava le modifiche appena fatte durante lo
 // sviluppo) — vedi `doLoad()` piu' sotto, chiamato una sola volta all'avvio
 // solo con questo flag.
+// "tutorial" (game/src/tutorial.js): stessa partita vera di match_easy
+// sotto (nessuna base volante/faro, STUDIO.md — la room e' 1920x1086 come
+// match_easy, non 3900x2090 come match), con un HUD guidato in piu' sopra.
 const params = new URLSearchParams(location.search);
-const roomName = params.get("room") === "match" ? "match" : "match_easy";
+const roomParam = params.get("room");
+const roomName = roomParam === "match" || roomParam === "tutorial" ? roomParam : "match_easy";
 const autoloadOnBoot = params.get("autoload") === "1";
 
 // ---------------------------------------------------------------- scena
@@ -293,7 +301,14 @@ if (reversiIndex >= 0) staticWorld.splice(reversiIndex, 1);
 // Tolte da staticWorld — altrimenti resterebbero due comparse immobili
 // sotto alle auto vere che si muovono sopra di loro — e sostituite dalle
 // istanze simulate in `cars` piu' sotto.
-const INITIAL_CAR_TYPES = roomName === "match" ? ["honda1", "honda2"] : ["honda_facile_1", "honda_facile_2"];
+// [I] `tutorial` ha anche una terza istanza statica, `honda3` — a
+// differenza di honda1/honda2 il suo `CAR_TYPES.honda3.spawn` (cars.js) e'
+// il punto fisso di `carmaker` (le auto che arrivano nel tempo su
+// match/match_easy), non la posizione reale di QUESTA istanza: simularla
+// da li' la teletrasporterebbe altrove. Resta quindi una terza auto ferma
+// invece di una terza in marcia — gap dichiarato, non un tentativo di
+// calibrarne il percorso per questa sola room.
+const INITIAL_CAR_TYPES = roomName === "match" || roomName === "tutorial" ? ["honda1", "honda2"] : ["honda_facile_1", "honda_facile_2"];
 for (const name of INITIAL_CAR_TYPES) {
   const idx = staticWorld.findIndex((it) => it.obj === name);
   if (idx >= 0) staticWorld.splice(idx, 1);
@@ -346,6 +361,66 @@ let decorEntities = [];      // ornamenti (permanenti a fine cantiere, o transit
 // simula piu' niente (nessuna produzione/crescita/mira/fulmine), e' decoro
 // inerte come `decorEntities` — vedi destroyBuilding() sotto.
 let ruins = [];
+
+// ------------------------------------------------------------- tutorial
+// Solo sulla room "tutorial" (game/src/tutorial.js, STUDIO.md): stato del
+// controller a fasi (tutorial_square) + i lotti-rudere piazzati a mano
+// nella room (ruin1/ruin2 — un meccanismo dedicato, diverso dai `ruins` da
+// battaglia sopra: vedi il commento in tutorial.js). `ruinLots` sostituisce
+// le istanze `ruin1`/`ruin2` in `staticWorld`: da qui in poi vivono solo
+// qui, con hover/click propri (input.onTap piu' sotto), non piu' come
+// decoro passivo.
+let tutorialState = null;
+let ruinLots = [];
+// Balloon di testo + bottone "avanti/esci" (tutorial_thumb/DrawGUI.gml):
+// HTML invece di sprite bitmap-font, stesso principio gia' usato per il
+// messaggio "non ancora implementato" della title screen (game/src/
+// title.js) — 34 frasi lunghe in inglese vanno a capo da sole con CSS,
+// niente word-wrap manuale su un font bitmap.
+let tutorialTextEl = null, tutorialOkEl = null;
+if (roomName === "tutorial") {
+  tutorialState = createTutorialState(scene);
+  ruinLots = extractRuinLots(scene);
+  for (const lot of ruinLots) lot._f = frameFor(lot.spr);
+  // `air_tut2` (letto sopra solo per la sua posizione, createCutscene()) e'
+  // anche lui gia' un'istanza vera della room col proprio sprite di default
+  // ("tuto_bomb") — va tolta da staticWorld com'e' gia' per ruin1/ruin2,
+  // altrimenti resta un bombardiere immobile per sempre, sovrapposto alla
+  // stessa cutscene che lo simula.
+  for (let i = staticWorld.length - 1; i >= 0; i--) {
+    if (staticWorld[i].obj === "ruin1" || staticWorld[i].obj === "ruin2" || staticWorld[i].obj === "air_tut2") staticWorld.splice(i, 1);
+  }
+  tutorialTextEl = document.createElement("div");
+  tutorialTextEl.style.cssText = "position:fixed;left:30px;right:120px;bottom:30px;" +
+    "font:16px/1.4 ui-monospace,monospace;color:#fff;background:rgba(0,0,0,0.55);" +
+    "padding:14px 18px;border-radius:12px;pointer-events:none;";
+  document.body.appendChild(tutorialTextEl);
+  tutorialOkEl = document.createElement("button");
+  tutorialOkEl.textContent = "OK";
+  tutorialOkEl.style.cssText = "position:fixed;right:30px;bottom:30px;width:64px;height:64px;" +
+    "border-radius:50%;border:none;background:#fff;color:#000;font:bold 16px sans-serif;" +
+    "cursor:pointer;";
+  document.body.appendChild(tutorialOkEl);
+  // [C] tutorial_thumb/Mouse_LeftPressed.gml (STUDIO.md, tutorial.js
+  // header — l'operatore letto correttamente e' "!=", non "=="): un tocco
+  // avanza SEMPRE alla fase successiva, tranne all'ultima (LAST_PHASE) dove
+  // invece riporta al menu. `phase===4` in piu' crea la moneta di pratica
+  // (STUDIO.md/tutorial.js, sold13). **[I]** `phase += 1` invece di `+0.5`:
+  // vedi il commento in cima a tutorial.js per il perche'.
+  tutorialOkEl.onclick = () => {
+    if (!tutorialState || tutorialState.cutscene) return;
+    if (tutorialState.phase === 4 && !tutorialState.practiceCoinSpawned) {
+      tutorialState.practiceCoinSpawned = true;
+      coins.push({
+        buildingId: null, x: tutorialState.practiceCoinPos.x, y: tutorialState.practiceCoinPos.y,
+        depth: COIN_DEPTH, amount: 260, kind: "mon", t: 0, spr: "soldico", auto: false,
+        _tutorialPractice: true,
+      });
+    }
+    if (tutorialState.phase >= LAST_PHASE) location.href = "./index.html";
+    else tutorialState.phase += 1;
+  };
+}
 // I lotti "extra" occupati da un edificio multi-tile (oggi solo `eolico`,
 // buildings.js `def.multiTile`) — [C] `impavent` uccide ogni placeholder che
 // la sua maschera copre, non solo quello toccato (vedi placeAt() sotto): qui
@@ -1338,6 +1413,26 @@ function inFrameRect(wx, wy, x, y, f) {
   return wx >= x0 && wx <= x0 + f.w && wy >= y0 && wy <= y0 + f.h;
 }
 
+/** Disegna `f` ruotato di `angleDeg` intorno al proprio ancoraggio (cx,cy) —
+ * [C] freccia_tutorial/EndStep.gml: `image_angle` (STUDIO.md/tutorial.js),
+ * l'unico sprite del motore che ruota per davvero (Renderer.draw() sotto
+ * disegna sempre allineato agli assi). Quattro angoli del rettangolo non
+ * ruotato (rispetto all'ancora `f.ox/f.oy`), ruotati uno per uno e passati a
+ * drawQuad() — stesso principio del quad pieno del laser (STUDIO.md
+ * "il fascio del laser"), qui su uno sprite invece che un colore piatto. */
+function drawRotated(frame, cx, cy, angleDeg, scale, tint, alpha) {
+  const rad = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  const corners = [
+    { x: -frame.ox, y: -frame.oy }, { x: frame.w - frame.ox, y: -frame.oy },
+    { x: frame.w - frame.ox, y: frame.h - frame.oy }, { x: -frame.ox, y: frame.h - frame.oy },
+  ].map((p) => ({
+    x: cx + (p.x * cos - p.y * sin) * scale,
+    y: cy + (p.x * sin + p.y * cos) * scale,
+  }));
+  r.drawQuad(frame, corners[0], corners[1], corners[2], corners[3], tint, alpha);
+}
+
 /** Test punto-in-rombo, centrato sul bounding box di un frame: i placeholder
  * sono disegnati come sprite romboidali ("phold", il rombo viola —
  * Mouse_MouseEnter.gml originale), non rettangolari — un tocco/hover nei
@@ -1672,7 +1767,7 @@ input.onTap = (sx, sy) => {
       && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo"
       && it.obj !== "bankIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
       && it.obj !== "faroDockerSignal" && it.obj !== "faro3Button" && it.obj !== "faro3WaveSignal"
-      && it.obj !== "faro3DockerSignal" && it.obj !== "cargoShip") continue;
+      && it.obj !== "faro3DockerSignal" && it.obj !== "cargoShip" && it.obj !== "ruinLot") continue;
     // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
     // stessa ragione della raccolta hover piu' sotto. Tutto il resto
     // (edifici, casse, monete, segnale di potenziamento) resta sul
@@ -1704,6 +1799,24 @@ input.onTap = (sx, sy) => {
     }
   }
   if (!picked) return;
+  // Tutorial (game/src/tutorial.js): lotto-rudere — [C] ruin1|2/
+  // Mouse_LeftPressed.gml, solo con la ruspa selezionata e fondi
+  // sufficienti. Avvia un cantiere vero (stesso BUILDING_TYPES.casa gia'
+  // esistente) invece di un oggetto dedicato — vedi ruinRebuildConstruction().
+  if (picked.obj === "ruinLot") {
+    const lot = picked.ref;
+    message = ""; messageT = 0;
+    if (r12.selec === 11 && canAfford(r12, { mon: lot.cost })) {
+      r12.mon -= lot.cost;
+      const b = placeBuilding("casa", lot.x, lot.y, lot.depth);
+      b.level = lot.level === 2 ? 1 : 0;
+      b.construction = ruinRebuildConstruction(lot.level);
+      buildings.push(b);
+      ruinLots.splice(ruinLots.indexOf(lot), 1);
+    }
+    picked = null;
+    return;
+  }
   // palazzo/museo: `input.onPointerDown`, per questo stesso tocco, ha gia'
   // provato ad armare il piazzamento (armPlacement()) e ha gia' mostrato un
   // messaggio — riuscito ("trascina verso...", ma allora `armedPlacement`
@@ -2026,6 +2139,33 @@ function frame(now) {
     // onLand: [C] mon_box|mon_bbox/Alarm_0.gml crea "smoko" prima di
     // autodistruggersi — vedi il commento in stepConstructionBoxes() (balloons.js).
     stepConstructionBoxes(constructionBoxes, dt, (x, y) => trails.push(spawnSmoko(x, y)));
+    // Tutorial (game/src/tutorial.js): la cutscene iniziale gira PRIMA di
+    // tutto il resto (avanzamento fasi/freccia restano fermi finche' non
+    // finisce, stesso ordine del decompilato — l'HUD nasce distrutto dalla
+    // cutscene, torna solo alla fine). `coinCollected` (fase 5->6) si legge
+    // qui invece che dentro stepTutorialAuto() perche' dipende da `coins`,
+    // non solo da `r12`/`buildings`.
+    if (tutorialState) {
+      if (tutorialState.cutscene) {
+        if (stepCutscene(tutorialState.cutscene, dt)) tutorialState.cutscene = null;
+      } else {
+        if (tutorialState.practiceCoinSpawned && !coins.some((c) => c._tutorialPractice)) {
+          tutorialState.coinCollected = true;
+        }
+        stepTutorialAuto(tutorialState, { r12, buildings });
+      }
+      // HUD (balloon di testo + bottone avanti/esci): nascosto durante la
+      // cutscene e nelle fasi ad avanzamento automatico (HIDE_ADVANCE_
+      // BUTTON — tutorial_thumb/Step.gml, le stesse 8 fasi gia' viste in
+      // stepTutorialAuto()), visibile in tutte le altre.
+      const showHud = !tutorialState.cutscene && !HIDE_ADVANCE_BUTTON.has(tutorialState.phase);
+      tutorialTextEl.style.display = showHud ? "block" : "none";
+      tutorialOkEl.style.display = showHud ? "block" : "none";
+      if (showHud) {
+        tutorialTextEl.textContent = TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "";
+        tutorialOkEl.textContent = tutorialState.phase >= LAST_PHASE ? "Fine" : "OK";
+      }
+    }
     // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
     // bombardieri/zeppelin man mano che le spie ignorate si accumulano
     // (contatori alzati in stepBalloons() sopra), poi ognuno vola, bombarda,
@@ -2132,6 +2272,32 @@ function frame(now) {
   // muovono, non cambiano sprite) — solo da disegnare, come il resto del
   // decoro permanente.
   for (const ru of ruins) dynamic.push(ru);
+  // Tutorial (game/src/tutorial.js): lotti-rudere (ruin1/ruin2, un
+  // meccanismo dedicato — mai le stesse istanze di `ruins` sopra) +
+  // cutscene iniziale, quando attiva.
+  if (tutorialState) {
+    const hw = input.hover && input.hoverPointerType === "mouse" ? cam.screenToWorld(input.hover.x, input.hover.y) : null;
+    for (const lot of ruinLots) {
+      const hovered = !!hw && r12.selec === 11 && lot._f && inFrameRect(hw.x, hw.y, lot.x, lot.y, lot._f);
+      lot._hovered = hovered;
+      // [C] ruin1|2/Mouse_MouseEnter.gml: action_sprite_color(255,1) — 255 e'
+      // "puro rosso" nel formato colore di GameMaker (R+G*256+B*65536, vedi
+      // SCENE_BG_RGB sopra), non bianco: _selfLit qui salta la tinta
+      // ambientale, altrimenti di notte il rosso si confonderebbe col resto.
+      dynamic.push({
+        obj: "ruinLot", ref: lot, x: lot.x, y: lot.y, depth: lot.depth, _f: lot._f,
+        ...(hovered ? { _tint: 0xff0000, _selfLit: true } : {}),
+      });
+    }
+    if (tutorialState.cutscene) {
+      for (const tile of tutorialState.cutscene.tiles) {
+        dynamic.push({ obj: "decor", x: tile.x, y: tile.y, depth: -9500, _f: frameFor(tile.spr) });
+      }
+      for (const p of tutorialState.cutscene.planes) {
+        dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -9600, _f: frameFor(p.spr) });
+      }
+    }
+  }
   // Auto decorative (game/src/cars.js): x/y/sprite/frame gia' avanzati da
   // stepCars() sopra — `c.frame` anima per davvero le svolte (STUDIO.md
   // "le auto sterzano davvero"), frameFor() lo ritaglia da solo sull'ultimo
@@ -2338,6 +2504,15 @@ function frame(now) {
       break;
     }
   }
+  // Cartellino costo sui lotti-rudere del tutorial (game/src/tutorial.js),
+  // stesso schema del segnale di potenziamento sopra — [C] ruin1|2/
+  // Mouse_MouseEnter.gml: `action_create_object(cc500|cc2000, 0, -50)`.
+  if (tutorialState) for (const lot of ruinLots) {
+    if (!lot._hovered) continue;
+    const tagFrame = frameFor(`c${lot.cost}`);
+    if (tagFrame) r.draw(tagFrame, lot.x - tagFrame.w / 2, lot.y - 50, 1, 0xffffff, 1);
+    break;
+  }
   drawBeams();
   r.flush();
 
@@ -2543,6 +2718,59 @@ function frame(now) {
     const tagFrame = hb && frameFor(costTagSprite(hb.type, null));
     if (tagFrame) {
       r.draw(tagFrame, hb.x + hb.w / 2 - (tagFrame.w * UI_SCALE) / 2, hb.y - 8, UI_SCALE, 0xffffff, 1);
+    }
+  }
+
+  // Freccia del tutorial (game/src/tutorial.js — [C]
+  // freccia_tutorial/EndStep.gml): la tabella originale punta a coordinate
+  // fisse del layout GameMaker, gia' diverso dal selettore ricostruito qui
+  // (STUDIO.md, "ricostruita come UI vera in spazio schermo") — **[I]**
+  // punta quindi al bottone VERO corrispondente in `uiButtons` (per kind/
+  // type), non a un pixel fisso copiato dal decompilato, cosi' resta
+  // corretta qualunque sia la riga/lo scroll del menu al momento.
+  if (tutorialState && !tutorialState.cutscene) {
+    tutorialState.arrowFrame = (tutorialState.arrowFrame + dt * 20) % 20;
+    const byKind = (pred) => uiButtons.find(pred);
+    let target = null;   // { x, y, angle }
+    switch (tutorialState.phase) {
+      case 2: {
+        const b = byKind((btn) => btn.kind === "building" && btn.type === "ruspa")
+          ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1);
+        if (b) target = { x: b.x + b.w / 2, y: b.y, angle: 270 };
+        break;
+      }
+      case 5: {
+        if (tutorialState.practiceCoinSpawned) {
+          const s = cam.worldToScreen(tutorialState.practiceCoinPos.x, tutorialState.practiceCoinPos.y);
+          target = { x: s.x, y: s.y - 100, angle: 270 };
+        }
+        break;
+      }
+      case 6: case 11: case 24:
+        target = { x: canvas.clientWidth / 2, y: 100, angle: 90 };
+        break;
+      case 7: {
+        const b = byKind((btn) => btn.kind === "deselect");
+        if (b) target = { x: b.x + b.w / 2, y: b.y, angle: 270 };
+        break;
+      }
+      case 8: case 12: case 16: case 19: {
+        const type = tutorialState.phase === 8 ? "casa" : tutorialState.phase === 12 ? "industria"
+          : tutorialState.phase === 16 ? "parco" : "missile";
+        const b = byKind((btn) => btn.kind === "building" && btn.type === type)
+          ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1);
+        if (b) target = { x: b.x + b.w / 2, y: b.y, angle: 270 };
+        break;
+      }
+      case 31: {
+        const b = byKind((btn) => btn.kind === "menu" && btn.menoo === 2);
+        if (b) target = { x: b.x + b.w / 2, y: b.y, angle: 270 };
+        break;
+      }
+    }
+    if (target) {
+      const arrowFrame = frameFor("fr_ros", Math.floor(tutorialState.arrowFrame));
+      if (arrowFrame) drawRotated(arrowFrame, target.x, target.y, target.angle, UI_SCALE, 0xffffff, 1);
     }
   }
 
