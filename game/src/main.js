@@ -1069,6 +1069,51 @@ const PHASES = [
   { name: "giorno", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
   { name: "giorno", rgb: [1, 1, 1], dur: 900 / TICKS_PER_SEC },
 ];
+// [C] aura/Create.gml + Alarm_0..7.gml: oltre a ricolorare gli oggetti
+// (PHASES/ambientAt() sopra), l'originale disegna anche un OVERLAY vero —
+// uno sprite 32x32 (ambst/amb00/amb0/ambtr1/amb2/ambtr3)
+// `action_sprite_transform(150, 90, 0, 0)`: diventa 4800x2880, piu' grande
+// della room, posizionato a coprirla tutta. Il commento qui sopra ("cambia
+// solo lo sprite di sfondo, mai la tinta... tolto") si sbagliava: campionati
+// pixel per pixel dalle texture page originali (non dal nome), quegli
+// sprite NON sono trasparenti — sono tinte unite alpha-blended: `ambst` =
+// pesca (255,205,160) @ alpha 0 (invisibile, il "giorno" pieno), `amb0` =
+// stesso pesca @ 64/255, `amb2` = blu (0,0,255) @ 64/255, e tre ANIMAZIONI a
+// 290 frame che interpolano fra questi estremi in sync con le durate degli
+// alarm (`amb00`: alpha 0→64/255 a pesca fisso; `ambtr1`: pesca→blu ad
+// alpha fissa; `ambtr3`: alpha 64/255→0 a blu fisso). Il redesign originale
+// aveva portato solo la ricolorazione degli sprite (una tinta uniform) e
+// lasciato fuori questo overlay: risultato, lo sfondo/cielo SENZA nessuno
+// sprite sopra restava sempre lo stesso colore fisso, mai tinto — segnalato
+// dall'autore ("sono sicuro al 100% che lo sfondo di match cambiava
+// colore... un oggetto con uno sprite colorato molto piccolo scalato").
+// AURA_OVERLAY sotto e' lo stesso ordine/durate di PHASES, ricostruito dai
+// pixel campionati. [I] la vera alternanza di depth -1/-8900 (STUDIO.md
+// §5.2, "da sopra a sotto") fra sopra e sotto il resto della scena non e'
+// riprodotta — troppo poco certa per rischiare un ordine di disegno
+// sbagliato — qui l'overlay resta sempre "dietro" (disegnato prima di ogni
+// sprite del layer mondo, sotto auraDraw() piu' sotto): ad alpha 25% la
+// differenza visiva con "sopra tutto per una manciata di secondi" e' minima.
+const AURA_PEACH = [255 / 255, 205 / 255, 160 / 255];
+const AURA_BLUE = [0, 0, 1];
+const AURA_ALPHA = 64 / 255;
+const AURA_OVERLAY = [
+  { from: { rgb: AURA_PEACH, a: 0 }, to: { rgb: AURA_PEACH, a: AURA_ALPHA } },          // giorno(290): amb00, fade-in
+  { from: { rgb: AURA_PEACH, a: AURA_ALPHA }, to: { rgb: AURA_PEACH, a: AURA_ALPHA } }, // alba(200): amb0, fisso
+  { from: { rgb: AURA_PEACH, a: AURA_ALPHA }, to: { rgb: AURA_BLUE, a: AURA_ALPHA } },  // giorno(290): ambtr1, pesca->blu
+  { from: { rgb: AURA_BLUE, a: AURA_ALPHA }, to: { rgb: AURA_BLUE, a: AURA_ALPHA } },   // notte(900): amb2, fisso
+  { from: { rgb: AURA_BLUE, a: AURA_ALPHA }, to: { rgb: AURA_PEACH, a: AURA_ALPHA } },  // giorno(290): ambtr1 al contrario, blu->pesca
+  { from: { rgb: AURA_PEACH, a: AURA_ALPHA }, to: { rgb: AURA_PEACH, a: AURA_ALPHA } }, // alba(100): amb0, fisso
+  { from: { rgb: AURA_PEACH, a: AURA_ALPHA }, to: { rgb: AURA_PEACH, a: 0 } },          // giorno(290): amb00 al contrario, fade-out
+  { from: { rgb: AURA_PEACH, a: 0 }, to: { rgb: AURA_PEACH, a: 0 } },                   // giorno(900): ambst, invisibile
+];
+function auraOverlayAt(t) {
+  const { i, u } = phaseIndexAt(t);
+  const { from, to } = AURA_OVERLAY[i];
+  const k = Math.min(1, u / PHASES[i].dur);
+  return { rgb: from.rgb.map((v, j) => v + (to.rgb[j] - v) * k), a: from.a + (to.a - from.a) * k };
+}
+
 let phaseT = 0;
 function phaseIndexAt(t) {
   const total = PHASES.reduce((s, p) => s + p.dur, 0);
@@ -2192,6 +2237,15 @@ function frame(now) {
   // il resto — altrimenti "si accendono" ma restano scure quanto la notte
   // intorno, indistinguibili (il bug segnalato: "le luci non funzionano").
   r.setProjection(cam.projection());
+  // Overlay giorno/notte (AURA_OVERLAY sopra) — un quad a tinta unita che
+  // copre l'intera room, disegnato PRIMA di ogni sprite del layer mondo cosi'
+  // resta sempre dietro. `_selfLit` lo attraversa intatto per lo stesso
+  // motivo delle luci (sopra): nessuno qui, il quad stesso non e' un decoro.
+  const aura = auraOverlayAt(phaseT);
+  if (aura.a > 0.002) {
+    const auraTint = (Math.round(aura.rgb[0] * 255) << 16) | (Math.round(aura.rgb[1] * 255) << 8) | Math.round(aura.rgb[2] * 255);
+    r.draw(solidFrame(white, scene.width, scene.height), 0, 0, 1, auraTint, aura.a);
+  }
   let drawn = 0;
   const vw = cam.worldW, vh = cam.worldH;
   const l = cam.x - vw / 2, t = cam.y - vh / 2, rr = l + vw, bb = t + vh;

@@ -205,19 +205,30 @@ input.onTap = (sx, sy) => {
 
 // ---------------------------------------------------------------- loop
 // [I] Il mondo sfocato dietro il menu non ha bisogno di aggiornarsi a 60fps
-// quanto i bottoni: **[misurato]** su questa macchina (rendering software,
-// nessuna vera GPU) l'intera pipeline di blur — una `copyTexImage2D` a
-// piena risoluzione + 4 passate gaussiane, PauseBlur, game/src/gl.js —
-// costava da sola ~37ms/frame (18fps totali) ripetuta ogni frame, contro
-// i 16.6ms/frame (60fps) del solo disegno del mondo senza sfumatura.
-// Ricatturare/risfumare il mondo solo ogni BG_INTERVAL secondi (auto/aerei/
-// semafori continuano comunque ad avanzare ogni frame in JS, cosi'
-// riprendono da dove erano quando tocca il prossimo aggiornamento — nessun
-// salto visibile a ~6Hz, un mondo gia' sfocato non ha bisogno di un refresh
-// ad alta frequenza per sembrare vivo) e ridisegnare il risultato gia'
-// sfumato (una texture GPU che resta valida finche' non la si ricattura)
-// dimezza abbondantemente il costo per frame rispetto al blur continuo.
-const BG_INTERVAL = 1 / 6;
+// quanto i bottoni: la pipeline di blur — una `copyTexImage2D` a piena
+// risoluzione + 4 passate gaussiane, PauseBlur, game/src/gl.js — ha un
+// costo che varia MOLTO da dispositivo a dispositivo (misurato ~37ms/frame,
+// 18fps totali, su rendering software senza vera GPU; una GPU vera, mobile
+// inclusa, e' tipicamente molto piu' veloce). Un intervallo fisso tarato
+// sul caso peggiore restava inutilmente lento — e visibilmente "scattoso"
+// (auto/aerei continuano ad avanzare ogni frame in JS, ma lo sfondo sfumato
+// si aggiorna solo ogni BG_INTERVAL: piu' l'intervallo e' largo, piu' il
+// salto fra un aggiornamento e il successivo si vede, segnalato
+// dall'autore) — anche su dispositivi capaci di aggiornare molto piu'
+// spesso senza appesantirsi. BG_INTERVAL ora si ADATTA al costo vero
+// misurato ogni volta (`costEMA`, una media mobile per non rincorrere
+// rumore frame-per-frame): tenuto abbastanza largo da restare sotto
+// BUDGET_FRAC della durata dell'intervallo stesso (il blur non deve mai
+// occupare piu' di una frazione fissa del tempo, qualunque sia la sua
+// durata vera), quindi si stringe da solo su hardware veloce (fino al
+// limite di un vero refresh ad ogni frame, MIN_INTERVAL) e si allarga da
+// solo su hardware lento (fino a MAX_INTERVAL, lo stesso 1/6 di prima —
+// mai piu' pesante di quanto fosse gia').
+const MIN_INTERVAL = 1 / 60;
+const MAX_INTERVAL = 1 / 6;
+const BUDGET_FRAC = 0.25;   // il blur occupa al piu' 1/4 del proprio intervallo
+let BG_INTERVAL = MAX_INTERVAL;
+let costEMA = null;
 let bgT = BG_INTERVAL;   // forza un aggiornamento al primissimo frame
 let blurTex = null;
 
@@ -246,6 +257,7 @@ function frame(now) {
   bgT += dt;
   if (bgT >= BG_INTERVAL || !blurTex) {
     bgT = 0;
+    const bgStart = performance.now();
     // --- layer mondo (sfumato dopo) ---
     const amb = ambientAt(elapsed);
     r.setAmbient(amb[0], amb[1], amb[2]);
@@ -285,6 +297,13 @@ function frame(now) {
     // valida in GPU finche' `blurScreen()` non viene richiamato di nuovo,
     // motivo per cui i frame saltati sopra possono continuare a ridisegnarla.
     blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    // Adatta BG_INTERVAL al costo vero appena misurato (commento sopra):
+    // media mobile esponenziale (peso 0.3 al nuovo campione) per non
+    // rincorrere un singolo frame rumoroso, poi si sceglie l'intervallo che
+    // tiene quel costo entro BUDGET_FRAC di se stesso.
+    const cost = performance.now() - bgStart;
+    costEMA = costEMA === null ? cost : costEMA + (cost - costEMA) * 0.3;
+    BG_INTERVAL = Math.min(MAX_INTERVAL, Math.max(MIN_INTERVAL, (costEMA / 1000) / BUDGET_FRAC));
   }
 
   r.setAmbient(1, 1, 1);
