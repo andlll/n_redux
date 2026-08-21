@@ -210,7 +210,7 @@ for (const it of staticWorld) {
 }
 
 for (const it of staticWorld) it._f = frameFor(it.spr);
-const missingArt = staticWorld.filter((it) => !it._f).length;
+let missingArt = staticWorld.filter((it) => !it._f).length;
 
 // Font bitmap reale della barra risorse (tools/25_font.py). [C]
 // src/objects/repre/DrawGUI.gml: action_font(gotham_mini, 0) — un font
@@ -303,6 +303,22 @@ for (const name of INITIAL_CAR_TYPES) {
 // solo su `match`, mai su `match_easy` — condivisa con lo sfondo sfocato
 // della title screen (game/src/title.js), stessa `match.scene.json`.
 if (roomName === "match") applyMatchPlatform(staticWorld, { interactive: true });
+// [Bug corretto] `applyMatchPlatform()` PUSHA istanze nuove in `staticWorld`
+// (r120/baa12) DOPO il ciclo che assegna `_f` a tutto il resto (sopra,
+// "for (const it of staticWorld) it._f = frameFor(it.spr)"): senza questo
+// richiamo, quelle istanze restavano per sempre senza `_f`, e il ciclo di
+// disegno le scarta in silenzio (`if (!f) continue`, piu' sotto — lo stesso
+// trattamento riservato ai collisori invisibili veri, "arte persa" solo
+// nel nome). r120/baa12 non e' MAI comparso a schermo, in nessun test: la
+// meta' di `match` che l'autore continuava a vedere sospesa nel vuoto
+// ("è baa12", insistito piu' volte) non era ne' un problema di posizione
+// ne' uno sprite mancante — la texture era sempre stata quella giusta, non
+// veniva mai disegnata. `r12`/baa11 se la cavava per un motivo diverso:
+// e' gia' un'istanza vera in `match.scene.json` (risolta dalla pipeline di
+// scena PRIMA di questo file), quindi il suo `_f` viene assegnato nel primo
+// giro, in tempo.
+for (const it of staticWorld) if (!it._f) it._f = frameFor(it.spr);
+missingArt = staticWorld.filter((it) => !it._f).length;
 // Catena fari -> seconda piattaforma (game/src/platform.js): solo su
 // `match`, come r120/applyMatchPlatform() sopra — `match_easy` non ha ne'
 // la base volante ne' `chies` a livello 2 (STUDIO.md, gap dichiarati).

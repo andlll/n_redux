@@ -84,18 +84,26 @@ export function applyMatchPlatform(staticWorld, { interactive = false } = {}) {
   }
   // [C] r12/_object.json: l'istanza `r12` DELLA ROOM (`src/rooms/match.json`,
   // x=-19,y=-179) porta lo sprite di default "baa11" (1170x1558), stesso
-  // depth=1 di r120 — e' la meta' SINISTRA della piattaforma, che r120/baa12
-  // da sola non copre (baa12 parte da x=1170: chies, x=829, ci sta sopra
-  // solo grazie a questo pezzo). Nel nostro porting `r12` e' lo stato di
-  // gioco puro (state.js), mai un'istanza disegnata: senza questa entry
-  // statica la meta' sinistra della piattaforma (e chies sopra di lei)
-  // restava sospesa nel vuoto — segnalato dall'autore ("non vedo meta'
-  // piattaforma, la prima").
-  staticWorld.push({ obj: "decor", x: -19, y: -179, depth: 1, spr: "baa11" });
+  // depth=1 di r120 — e' la meta' SINISTRA della piattaforma. Questa entry
+  // NON va pushata qui: `r12` e' gia' un'istanza vera in `match.scene.json`
+  // (risolta dalla pipeline di scena, tools/22_scene.py, con `spr: "baa11"`
+  // gia' scritto) — sta in `staticWorld` fin dall'inizio, PRIMA che questa
+  // funzione venga chiamata. Pusharla di nuovo qui la duplicava soltanto
+  // (due istanze identiche sovrapposte, innocuo ma inutile) — il vero bug
+  // che faceva sembrare mancante meta' piattaforma era altrove: vedi il
+  // commento su r120 subito sotto.
   // [C] r12/Create.gml: `action_create_object(r120, 1170, 346)` e' RELATIVO
   // alla posizione di r12 stesso (x=-19,y=-179 — vedi il commento su
   // R120_RECT piu' sopra): la posizione vera e' (-19+1170, -179+346).
   const R120_X = -19 + 1170, R120_Y = -179 + 346;
+  // [Bug corretto, main.js] questa `push()` (a differenza di `r12` sopra)
+  // aggiunge un'istanza NUOVA a `staticWorld`, dopo che main.js ha gia'
+  // calcolato `_f` (il frame dell'atlas) per tutto cio' che c'era prima —
+  // senza un secondo giro in main.js dopo questa chiamata, r120/baa12 non
+  // aveva mai un `_f` e il ciclo di disegno la scartava in silenzio: non e'
+  // MAI comparsa a schermo, in nessuna build. Non un problema di posizione
+  // o di sprite mancante (`segnalato dall'autore, "è baa12"` — aveva
+  // ragione: la texture era sempre quella giusta).
   staticWorld.push({ obj: "r120", x: R120_X, y: R120_Y, depth: 1, spr: "baa12" });
   // [C] r12/Create.gml, `with (r120) { instance_create(x+dx, y+dy, albe) }`
   // — 14 offset letti uno per uno, nessun pattern regolare.
