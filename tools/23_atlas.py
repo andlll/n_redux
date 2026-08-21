@@ -400,6 +400,22 @@ GAMEPLAY_SPRITES = {
         "p_ad_as", "p_as", "p_as_bs", "p_bs_bd",
         "r_ad_as", "r_as_bs", "r_bs_bd",
         "v_ad_as", "v_as_bs", "v_bs_bd",
+        "c_bs_bd",   # honda_br13, il traffico dei ponti (game/src/cars.js) sotto
+    ],
+    # Ponti levatoi (bridge_des/bridge_sin/bridge_des2, game/src/bridges.js)
+    # + la nave cargo che ci passa sotto quando sono aperti (cargomaker ->
+    # cargo1..4, STUDIO.md — scambiata per "camion" e scartata come codice
+    # morto in una sessione precedente: e' un cargo vero, ben visibile
+    # ritagliando l'atlas). "bridr1mo"/"brid1mo" sono l'impalcato che si
+    # solleva (6 frame, impacchettati tutti — non solo il primo, a
+    # differenza delle svolte auto: qui l'animazione si vede per davvero).
+    # "bridr1over"/"bridl1over" sono la balaustra in primo piano (sparisce
+    # insieme all'impalcato mentre e' aperto); "bridr1_sin"/"bridr1_des"
+    # le due meta' sollevate di bridge_des2 (l'unico ponte a due battenti,
+    # quello con la nave).
+    "bridges": [
+        "bridr1mo", "brid1mo", "bridr1over", "bridl1over", "bridr1_sin", "bridr1_des",
+        "cargo1p", "cargo1v", "cargo2p", "cargo2v", "cargo3v", "cargo4p", "cargo4v",
     ],
     # Luci (STUDIO.md §5.3 "notte_target", cddvd/d1NN/di11b — le "luci" che
     # non funzionavano): l'originale anima la transizione con uno sprite "x"

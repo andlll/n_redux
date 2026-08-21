@@ -18,6 +18,11 @@
 import { COIN_DEPTH } from "./coins.js";
 import { canAfford } from "./buildings.js";
 import { spawnCar, R32_MAGHENE_SCHEDULE, R22_MAGHENE_SCHEDULE } from "./cars.js";
+import {
+  createBridgeState, stepBridge, bridgeDeckFrame, bridgeOverVisible, bridgeGapOpen,
+  BRIDGE_DES_CONFIG, BRIDGE_SIN_CONFIG, BRIDGE_DES2_CONFIG,
+  maybeSpawnShip, stepCargoShips, clickShip,
+} from "./bridges.js";
 
 const FARO1 = { x: 616, y: 1100 };
 const FARO2 = { x: 1655, y: 1111 };
@@ -134,7 +139,13 @@ const MONVIOLO_LIFE_SECONDS = 3600 / 60;  // [C] monviolo/Alarm_6: scadenza natu
 const MONVIOLO_DIR = 30;                  // [C] monviolo/Create.gml: action_set_motion(30, ...)
 const SCENE_WIDTH = 3900;                 // [C] match.json width — bordo destro della mappa
 
-/** Stato della catena — persistito nel salvataggio (main.js/save.js). */
+/** Stato della catena — persistito nel salvataggio (main.js/save.js).
+ * `bridgeDes`/`bridgeSin` (game/src/bridges.js) non esistono davvero prima
+ * che `r32` nasca, ma crearli subito e limitarsi a non farli avanzare
+ * (vedi stepFaroChain sotto) e' piu' semplice che ricrearli al volo
+ * appena tier1 diventa "expanded". Stesso principio per `bridgeDes2`/tier2.
+ * [C] bridge_sin/Create.gml: il primo ciclo dura 2400 tick, non 3600 come
+ * gli altri due (letto cosi' com'e'). */
 export function createFaroState() {
   return {
     tier1: { stage: "locked", dockerT: 0 },
@@ -143,6 +154,10 @@ export function createFaroState() {
     monviolos: [],
     r32TrafficT: 0, r32MagheneIdx: 0,
     r22TrafficT: 0, r22MagheneIdx: 0,
+    bridgeDes: createBridgeState(3600),
+    bridgeSin: createBridgeState(2400),
+    bridgeDes2: createBridgeState(3600),
+    ships: [],
   };
 }
 
@@ -154,9 +169,10 @@ function spawnMonviolo() {
 
 /** Avanza timer, sblocchi, traffico e voli — chiamata una volta per frame
  * da main.js, insieme al resto della simulazione (stepCoinSpawner() e
- * affini). `cars` e' l'array condiviso di main.js (game/src/cars.js),
- * `night` la stessa `isNight(phaseT)` gia' usata per tingere le auto vere. */
-export function stepFaroChain(state, r12, coins, cars, dt, chiesLevel, night) {
+ * affini). `cars`/`smoke` sono gli array condivisi di main.js (game/src/
+ * cars.js, game/src/smoke.js), `night` la stessa `isNight(phaseT)` gia'
+ * usata per tingere le auto vere. */
+export function stepFaroChain(state, r12, coins, cars, smoke, dt, chiesLevel, night) {
   // --- tier 1: chies.level>=2 -> ... -> r32 ---
   if (state.tier1.stage === "locked" && chiesLevel >= 2) state.tier1.stage = "buttonShown";
   if (state.tier1.stage === "expanding") {
@@ -190,6 +206,21 @@ export function stepFaroChain(state, r12, coins, cars, dt, chiesLevel, night) {
       state.r22MagheneIdx++;
     }
   }
+
+  // --- ponti levatoi (game/src/bridges.js): bridge_des/bridge_sin vivono
+  // su r32 (tier1), bridge_des2 (con la nave) su r22 (tier2) — [C]
+  // dockersig1|3/Alarm_4.gml, la stessa piattaforma che li crea.
+  if (state.tier1.stage === "expanded") {
+    stepBridge(state.bridgeDes, dt, cars, night, BRIDGE_DES_CONFIG);
+    stepBridge(state.bridgeSin, dt, cars, night, BRIDGE_SIN_CONFIG);
+  }
+  if (state.tier2.stage === "expanded") {
+    stepBridge(state.bridgeDes2, dt, cars, night, BRIDGE_DES2_CONFIG, () => {
+      const ship = maybeSpawnShip(4500, 2170);   // [C] bridge_des2/Alarm_2.gml
+      if (ship) state.ships.push(ship);
+    });
+  }
+  stepCargoShips(state.ships, smoke, dt);
 
   // --- monviolo -> barviola (cristalli) ---
   state.barviolaT += dt;
@@ -303,8 +334,10 @@ const R32_MOTORS = [
 /** Tutte le entry di scenografia FISSA della seconda piattaforma — [C]
  * dockersig1/Alarm_4.gml, posizioni assolute (nessun `action_set_relative`
  * attivo in quell'evento). Chiamata solo a tier1 gia' espanso; `t` =
- * secondi, per il lampeggio delle "turbine" (blinkMotorVisible() sopra). */
-function r32Decor(t) {
+ * secondi, per il lampeggio delle "turbine" (blinkMotorVisible() sopra).
+ * `state` = platformState intero, per l'animazione dei due ponti veri
+ * (game/src/bridges.js) al posto degli sprite fissi "bridr1"/"bridl1". */
+function r32Decor(state, t) {
   const out = [
     { obj: "decor", x: R32_X, y: R32_Y, depth: -1241, spr: "baa31" },     // [C] r32/_object.json
     { obj: "decor", x: R320_X, y: R320_Y, depth: -1241, spr: "baa32" },   // [C] r320/_object.json
@@ -313,9 +346,15 @@ function r32Decor(t) {
     { obj: "decor", x: 1302, y: 1150, depth: -1990, spr: "moor32" },
     { obj: "decor", x: 2513, y: 1268, depth: -1352, spr: "moor33" },
     { obj: "decor", x: 2027, y: 1105, depth: -1213, spr: "moor34" },
-    { obj: "decor", x: 208, y: 807, depth: -990, spr: "bridr1" },
-    { obj: "decor", x: 1375, y: 788, depth: -1010, spr: "bridl1" },
+    // bridge_des (208,807) + bridge_sin (1375,788) — [C] bridge_des|sin/
+    // Create.gml: l'impalcato animato (6 frame, bridges.js) e la balaustra
+    // "over" (visibile solo a ponte chiuso), stessa posizione dell'oggetto
+    // principale ("over" e' creato relativo, offset 0,0).
+    { obj: "decor", x: 208, y: 807, depth: -990, spr: "bridr1mo", frame: Math.round(bridgeDeckFrame(state.bridgeDes)) },
+    { obj: "decor", x: 1375, y: 788, depth: -1010, spr: "brid1mo", frame: Math.round(bridgeDeckFrame(state.bridgeSin)) },
   ];
+  if (bridgeOverVisible(state.bridgeDes)) out.push({ obj: "decor", x: 208, y: 807, depth: -1240, spr: "bridr1over" });
+  if (bridgeOverVisible(state.bridgeSin)) out.push({ obj: "decor", x: 1375, y: 788, depth: -1240, spr: "bridl1over" });
   for (const [dx, dy] of R32_POLES) out.push({ obj: "decor", x: R32_X + dx, y: R32_Y + dy, depth: 0, spr: "se" });
   if (blinkMotorVisible(t)) {
     for (const m of R32_MOTORS) out.push({ obj: "decor", x: m.x, y: m.y, depth: 0, spr: m.spr });
@@ -336,17 +375,37 @@ const R22_MOTORS = [
 ];
 
 /** Scenografia fissa della terza piattaforma — [C] dockersig3/Alarm_4.gml,
- * posizioni assolute. Chiamata solo a tier2 gia' espanso. */
-function r22Decor(t) {
+ * posizioni assolute. Chiamata solo a tier2 gia' espanso. `state` =
+ * platformState intero: bridge_des2 (2363,783) e' l'unico ponte a due
+ * battenti — a piattaforma aperta l'impalcato animato sparisce del tutto
+ * e restano visibili solo le due meta' sollevate ("bridr1_sin"/
+ * "bridr1_des", bridges.js/bridgeGapOpen()), non un semplice frame fermo. */
+function r22Decor(state, t) {
+  const bd2 = state.bridgeDes2;
   const out = [
     { obj: "decor", x: R22_X, y: R22_Y, depth: 4, spr: "baa21" },     // [C] r22/_object.json
     { obj: "decor", x: R220_X, y: R220_Y, depth: 4, spr: "baa22" },   // [C] r220/_object.json
     { obj: "decor", x: 1853, y: 263, depth: 2, spr: "moor21" },      // mudr21 — [C] _object.json: depth fisso
-    { obj: "decor", x: 2363, y: 783, depth: -990, spr: "bridr1" },   // bridge_des2 — [C] _object.json: depth fisso
   ];
+  if (bridgeGapOpen(bd2)) {
+    out.push({ obj: "decor", x: 2363, y: 783, depth: -1100, spr: "bridr1_sin" });
+    out.push({ obj: "decor", x: 2363, y: 783, depth: -1100, spr: "bridr1_des" });
+  } else {
+    out.push({ obj: "decor", x: 2363, y: 783, depth: -990, spr: "bridr1mo", frame: Math.round(bridgeDeckFrame(bd2)) });
+  }
+  if (bridgeOverVisible(bd2)) out.push({ obj: "decor", x: 2363, y: 783, depth: -1240, spr: "bridr1over" });
   for (const [dx, dy] of R220_POLES) out.push({ obj: "decor", x: R22_X + dx, y: R22_Y + dy, depth: 0, spr: "se" });
   if (blinkMotorVisible(t)) {
     for (const m of R22_MOTORS) out.push({ obj: "decor", x: m.x, y: m.y, depth: 0, spr: m.spr });
+  }
+  // La nave cargo (game/src/bridges.js) — cliccabile solo se non gia'
+  // presa e non "cargo3" (mai raccoglibile, [C] preso=2 dalla nascita).
+  for (const s of state.ships) {
+    const clickable = !s.taken;
+    out.push({
+      obj: clickable ? "cargoShip" : "decor", ref: s, x: s.x, y: s.y, depth: -s.y,
+      spr: s.taken ? s.sprV : s.sprP,
+    });
   }
   return out;
 }
@@ -382,7 +441,7 @@ function faro1Decor(state) {
  * una volta espansa — [C] `faro3` non esiste finche' `dockersig1` non lo
  * crea (Alarm_4.gml): chiamata solo quando tier1 e' gia' "expanded". */
 function faro3Decor(state, t) {
-  if (state.tier2.stage === "expanded") return r22Decor(t);
+  if (state.tier2.stage === "expanded") return r22Decor(state, t);
   const out = [];
   const faro3Spr = state.tier2.stage === "locked" || state.tier2.stage === "buttonShown" ? "f3b" : "f3";
   out.push({ obj: "decor", x: FARO3.x, y: FARO3.y, depth: 0, spr: faro3Spr });
@@ -410,7 +469,7 @@ function faro3Decor(state, t) {
  * main.js, insieme al resto (monete/upsign). `t` = secondi trascorsi, solo
  * per il lampeggio delle "turbine" (blinkMotorVisible() sopra). */
 export function faroDecor(state, t) {
-  const out = state.tier1.stage === "expanded" ? r32Decor(t) : faro1Decor(state);
+  const out = state.tier1.stage === "expanded" ? r32Decor(state, t) : faro1Decor(state);
   if (state.tier1.stage === "expanded") out.push(...faro3Decor(state, t));
   // monviolo — [C] nessun evento Mouse nel decompilato: solo decorazione,
   // stesso trattamento delle nuvole/uccelli in atmosphere.js.

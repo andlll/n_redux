@@ -19,6 +19,7 @@ import {
   clickFaroButton, clickWaveSignal, clickDockerSignal,
   clickFaro3Button, clickWaveSignal3, clickDockerSignal3,
 } from "./platform.js";
+import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load } from "./save.js";
@@ -1593,7 +1594,7 @@ input.onTap = (sx, sy) => {
       && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo"
       && it.obj !== "bankIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
       && it.obj !== "faroDockerSignal" && it.obj !== "faro3Button" && it.obj !== "faro3WaveSignal"
-      && it.obj !== "faro3DockerSignal") continue;
+      && it.obj !== "faro3DockerSignal" && it.obj !== "cargoShip") continue;
     // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
     // stessa ragione della raccolta hover piu' sotto. Tutto il resto
     // (edifici, casse, monete, segnale di potenziamento) resta sul
@@ -1798,6 +1799,13 @@ input.onTap = (sx, sy) => {
     message = clickDockerSignal3(platformState, r12) ?? "";
     messageT = 3;
     picked = null;
+  } else if (picked.obj === "cargoShip") {
+    // [C] cargo1|2|4/Mouse_LeftPressed.gml: una tantum, +2000..3000 alla
+    // risorsa della nave (game/src/bridges.js). cargo3 non e' cliccabile:
+    // non arriva nemmeno qui (obj resta "decor" per lei, faroDecor()).
+    message = clickShip(picked.ref, r12) ?? "";
+    messageT = 3;
+    picked = null;
   }
 };
 
@@ -1914,7 +1922,7 @@ function frame(now) {
     stepCoins(coins, dt, r12);
     if (platformState) {
       const chiesLevel = buildings.find((b) => b.type === "chies")?.level ?? 0;
-      stepFaroChain(platformState, r12, coins, cars, dt, chiesLevel, night);
+      stepFaroChain(platformState, r12, coins, cars, smoke, dt, chiesLevel, night);
     }
     // Raccolta al passaggio del mouse — [C] sold*/soldbio/Mouse_MouseEnter.gml
     // usa davvero un hover, non un click (coins.js, collectCoin() sopra il tap
@@ -2106,7 +2114,9 @@ function frame(now) {
   // ogni decoro.
   if (platformState) {
     for (const it of faroDecor(platformState, phaseT)) {
-      dynamic.push({ ...it, _f: frameFor(it.spr), _selfLit: FARO_SIGN_OBJS.has(it.obj) || undefined });
+      // `it.frame`: solo l'impalcato animato dei ponti levatoi (bridges.js,
+      // bridgeDeckFrame()) lo passa, tutto il resto resta al frame 0.
+      dynamic.push({ ...it, _f: frameFor(it.spr, it.frame ?? 0), _selfLit: FARO_SIGN_OBJS.has(it.obj) || undefined });
     }
     // Le "turbine" di r120 (game/src/platform.js): un lampeggio, non un
     // vero sprite animato — vedi il commento su blinkMotorVisible() li'.
