@@ -8,9 +8,11 @@
 // ne ha bisogno anch'esso, sulla stessa `match.scene.json`.
 import { COIN_DEPTH } from "./coins.js";
 import { canAfford } from "./buildings.js";
+import { spawnCar, R32_MAGHENE_SCHEDULE, R22_MAGHENE_SCHEDULE } from "./cars.js";
 
 const FARO1 = { x: 616, y: 1100 };
 const FARO2 = { x: 1655, y: 1111 };
+const FARO3 = { x: 2556, y: 1208 };   // [C] dockersig1/Alarm_4.gml: action_create_object(faro3, 2556, 1208)
 
 export function applyMatchPlatform(staticWorld, { interactive = false } = {}) {
   // Le 56 istanze statiche "albe" della room (quelle A TERRA) vengono
@@ -60,58 +62,122 @@ export function applyMatchPlatform(staticWorld, { interactive = false } = {}) {
   }
 }
 
+
 // ------------------------------------------------------------------
-// Catena fari -> seconda piattaforma — **[C]** ricostruita leggendo
-// `faro1/Step.gml` -> `upfaro1/Mouse_LeftPressed.gml` -> `wavesig1/
-// Mouse_LeftReleased.gml` -> `farolux/Create.gml` -> `dockersig1/
-// Mouse_LeftPressed.gml` + `Alarm_4.gml`. Sequenza:
+// Catena fari -> seconda E terza piattaforma — **[C]** ricostruita
+// leggendo `faro1/Step.gml` -> `upfaro1/Mouse_LeftPressed.gml` ->
+// `wavesig1/Mouse_LeftReleased.gml` -> `farolux/Create.gml` -> `dockersig1/
+// Mouse_LeftPressed.gml` + `Alarm_4.gml`, e la catena gemella di livello 3
+// (`faro3` -> `upfaro3` -> `wavesig3` -> `farolux3` -> `dockersig3`).
+// `state.tier1`/`state.tier2` sono le due catene, stessa forma:
 //
-//  1. `chies.level>=2` -> compare il segnale verde `upfaro1` su `faro1`.
-//  2. tap, -2000 mon -> `faro1` si accende (f1b -> f1) e compare il
-//     segnale `wavesig1`.
-//  3. tap su `wavesig1` **solo di notte**, -20 crys -> accende DAVVERO i
-//     due fari (overlay "f1lux" su faro1 E faro2) e fa comparire il
-//     segnale di attracco `dockersig1`.
-//  4. tap su `dockersig1`, -5000 mon -9000 oil -> ~14s di attracco (840
-//     tick, STUDIO.md sul room_speed — stesso passo deciso per il ciclo
-//     giorno/notte), poi la piattaforma vera e propria: `faro1`/`faro2`/
-//     i fasci spariscono, arriva `r32` (base "baa31") con `faro3` (mai
-//     acceso in questo giro — sarebbe la catena livello 3, terza
-//     piattaforma, fuori scopo qui) e la sua scenografia fissa.
+//  1. `chies.level>=2` (tier1) / `>=3` E tier1 gia' espanso (tier2) ->
+//     compare il segnale verde sul faro.
+//  2. tap, -2000 mon (tier1) / -5000 mon (tier2) -> il faro si accende
+//     (f1b->f1 / f3b->f3) e compare il segnale successivo.
+//  3. tap sul segnale **solo di notte**, -20 crys (tier1) / -50 crys
+//     (tier2) -> accende DAVVERO i fari (overlay "f1lux") e fa comparire
+//     il segnale di attracco.
+//  4. tap sul segnale di attracco, -5000 mon -9000 oil (tier1, ~14s/840
+//     tick) o -15000 mon -27000 oil (tier2, ~10s/600 tick) -> arriva la
+//     piattaforma vera: `r32` (tier1, con `faro3` gia' sopra) o `r22`/
+//     `r220` (tier2), con la loro scenografia fissa e il traffico
+//     periodico proprio ("maghene", sotto).
 //
-// [I] Non portato (dichiarato, non un errore): la raccolta cristalli vera
-// (`monviolo` che vola e poi lascia cadere `barviola`, STUDIO.md) — qui
-// `barviola` compare direttamente a intervalli, stessa cadenza media
-// (r12/Alarm_1: ogni 300 tick, 1/18) ma senza il volo. Il traffico
-// periodico di `r32` (`maghene`, r22/Alarm_4: nuove auto honda3x ogni
-// 8750 tick) e la terza piattaforma (`faro3`/`dockersig3` -> `r22`/`r220`)
-// restano fuori da questo giro.
-const SIGN_DEPTH = -9001;                 // [C] wavesig1|dockersig1/_object.json: depth = -9001, come upsign
-const DOCKER_BUILD_SECONDS = 840 / 60;    // [C] dockersig1/Alarm_4: 840 tick dopo il tap (STUDIO.md, 60 tick/s)
+// [C] Anche il volo vero di `monviolo` (nasce fuori scena, vola a 30°,
+// dopo 3600 tick o all'uscita dalla mappa lascia cadere `barviola`,
+// STUDIO.md) e il traffico periodico di entrambe le piattaforme nuove
+// (`maghene`: honda21..25(+a/b) su r32, honda31..34(+a/b) su r22, game/src/
+// cars.js) — gap dichiarati nella prima versione di questo file, chiusi
+// qui. [I] uscita anticipata dalla mappa per monviolo: il decompilato lo
+// lascia volare oltre il bordo fino allo scadere naturale, lasciando
+// spesso cadere `barviola` ben fuori dall'area giocabile — qui si ferma al
+// bordo invece, cosi' il gettone resta sempre raggiungibile.
+const SIGN_DEPTH = -9001;                 // [C] wavesig1|dockersig1|dockersig3/_object.json: depth = -9001, come upsign
+const TIER1_BUILD_SECONDS = 840 / 60;     // [C] dockersig1/Alarm_4: 840 tick dopo il tap (60 tick/s, STUDIO.md)
+const TIER2_BUILD_SECONDS = 600 / 60;     // [C] dockersig3/Alarm_4: 600 tick dopo il tap
 const BARVIOLA_PERIOD = 300 / 60;         // [C] r12/Alarm_1: si ripete ogni 300 tick
 const BARVIOLA_CHANCE = 1 / 18;           // [C] stesso Alarm_1: action_if_dice(18)
+const MONVIOLO_LIFE_SECONDS = 3600 / 60;  // [C] monviolo/Alarm_6: scadenza naturale
+const MONVIOLO_DIR = 30;                  // [C] monviolo/Create.gml: action_set_motion(30, ...)
+const SCENE_WIDTH = 3900;                 // [C] match.json width — bordo destro della mappa
 
-/** Stato della catena — persistito nel salvataggio (main.js/save.js) */
+/** Stato della catena — persistito nel salvataggio (main.js/save.js). */
 export function createFaroState() {
-  return { stage: "locked", dockerT: 0, barviolaT: 0 };
+  return {
+    tier1: { stage: "locked", dockerT: 0 },
+    tier2: { stage: "locked", dockerT: 0 },
+    barviolaT: 0,
+    monviolos: [],
+    r32TrafficT: 0, r32MagheneIdx: 0,
+    r22TrafficT: 0, r22MagheneIdx: 0,
+  };
 }
 
-/** Avanza timer e sblocchi — chiamata una volta per frame da main.js,
- * insieme al resto della simulazione (stepCoinSpawner() e affini). */
-export function stepFaroChain(state, r12, coins, dt, chiesLevel) {
-  if (state.stage === "locked" && chiesLevel >= 2) state.stage = "buttonShown";
-  if (state.stage === "expanding") {
-    state.dockerT += dt;
-    if (state.dockerT >= DOCKER_BUILD_SECONDS) state.stage = "expanded";
+// [C] monviolo/Create.gml: nasce fuori scena a sinistra (x=-170), y
+// casuale nella fascia 380..3120 della room, velocita' 6..10 px/tick.
+function spawnMonviolo() {
+  return { x: -170, y: 380 + Math.random() * (3120 - 380), spd: 6 + Math.random() * 4, t: 0 };
+}
+
+/** Avanza timer, sblocchi, traffico e voli — chiamata una volta per frame
+ * da main.js, insieme al resto della simulazione (stepCoinSpawner() e
+ * affini). `cars` e' l'array condiviso di main.js (game/src/cars.js),
+ * `night` la stessa `isNight(phaseT)` gia' usata per tingere le auto vere. */
+export function stepFaroChain(state, r12, coins, cars, dt, chiesLevel, night) {
+  // --- tier 1: chies.level>=2 -> ... -> r32 ---
+  if (state.tier1.stage === "locked" && chiesLevel >= 2) state.tier1.stage = "buttonShown";
+  if (state.tier1.stage === "expanding") {
+    state.tier1.dockerT += dt;
+    if (state.tier1.dockerT >= TIER1_BUILD_SECONDS) {
+      state.tier1.stage = "expanded";
+      cars.push(spawnCar("honda21", night));   // [C] r32/Create.gml
+    }
   }
+  if (state.tier1.stage === "expanded") {
+    state.r32TrafficT += dt;
+    while (state.r32MagheneIdx < R32_MAGHENE_SCHEDULE.length && state.r32TrafficT >= R32_MAGHENE_SCHEDULE[state.r32MagheneIdx].at) {
+      cars.push(spawnCar(R32_MAGHENE_SCHEDULE[state.r32MagheneIdx].type, night));
+      state.r32MagheneIdx++;
+    }
+  }
+
+  // --- tier 2: chies.level>=3 E tier1 gia' espanso -> ... -> r22 ---
+  if (state.tier2.stage === "locked" && state.tier1.stage === "expanded" && chiesLevel >= 3) state.tier2.stage = "buttonShown";
+  if (state.tier2.stage === "expanding") {
+    state.tier2.dockerT += dt;
+    if (state.tier2.dockerT >= TIER2_BUILD_SECONDS) {
+      state.tier2.stage = "expanded";
+      cars.push(spawnCar("honda31", night));   // [C] r22/Create.gml
+    }
+  }
+  if (state.tier2.stage === "expanded") {
+    state.r22TrafficT += dt;
+    while (state.r22MagheneIdx < R22_MAGHENE_SCHEDULE.length && state.r22TrafficT >= R22_MAGHENE_SCHEDULE[state.r22MagheneIdx].at) {
+      cars.push(spawnCar(R22_MAGHENE_SCHEDULE[state.r22MagheneIdx].type, night));
+      state.r22MagheneIdx++;
+    }
+  }
+
+  // --- monviolo -> barviola (cristalli) ---
   state.barviolaT += dt;
   while (state.barviolaT >= BARVIOLA_PERIOD) {
     state.barviolaT -= BARVIOLA_PERIOD;
-    if (Math.random() < BARVIOLA_CHANCE) {
+    if (Math.random() < BARVIOLA_CHANCE) state.monviolos.push(spawnMonviolo());
+  }
+  const rad = (MONVIOLO_DIR * Math.PI) / 180;
+  for (let i = state.monviolos.length - 1; i >= 0; i--) {
+    const m = state.monviolos[i];
+    m.t += dt;
+    const pxPerSec = m.spd * 60;   // "speed" e' px/tick a room_speed 60, STUDIO.md/cars.js
+    m.x += Math.cos(rad) * pxPerSec * dt;
+    m.y -= Math.sin(rad) * pxPerSec * dt;
+    if (m.t >= MONVIOLO_LIFE_SECONDS || m.x > SCENE_WIDTH + 100) {
+      state.monviolos.splice(i, 1);
       coins.push({
         buildingId: null, depth: COIN_DEPTH, t: 0, auto: false,
         kind: "crys", spr: "monviola_bar", amount: 1 + Math.floor(Math.random() * 3),
-        x: FARO1.x + Math.random() * 1400 - 200, y: FARO1.y + Math.random() * 900 - 500,
+        x: m.x, y: m.y,
       });
     }
   }
@@ -121,32 +187,61 @@ export function stepFaroChain(state, r12, coins, dt, chiesLevel) {
 // di test gia' usato da ogni altro costo del motore — senza, questa catena
 // sarebbe l'unica a restare bloccata dietro risorse vere durante un test.
 export function clickFaroButton(state, r12) {
-  if (state.stage !== "buttonShown") return null;
+  if (state.tier1.stage !== "buttonShown") return null;
   if (!canAfford(r12, { mon: 2000 })) return `serve 2000 mon (hai ${r12.mon.toFixed(0)})`;
   r12.mon -= 2000;
-  state.stage = "wavesigShown";
+  state.tier1.stage = "wavesigShown";
   return "faro potenziato — cerca il segnale di notte";
 }
 
 export function clickWaveSignal(state, r12, isNight) {
-  if (state.stage !== "wavesigShown") return null;
+  if (state.tier1.stage !== "wavesigShown") return null;
   if (!isNight) return "il segnale si attiva solo di notte";
   if (!canAfford(r12, { crys: 20 })) return `servono 20 cristalli (hai ${r12.crys})`;
   r12.crys -= 20;
-  state.stage = "lit";
+  state.tier1.stage = "lit";
   return "fari accesi";
 }
 
 export function clickDockerSignal(state, r12) {
-  if (state.stage !== "lit") return null;
+  if (state.tier1.stage !== "lit") return null;
   if (!canAfford(r12, { mon: 5000, oil: 9000 })) {
     return r12.mon < 5000 ? `serve 5000 mon (hai ${r12.mon.toFixed(0)})` : `serve 9000 oil (hai ${r12.oil.toFixed(0)})`;
   }
   r12.mon -= 5000;
   r12.oil -= 9000;
-  state.stage = "expanding";
-  state.dockerT = 0;
+  state.tier1.stage = "expanding";
+  state.tier1.dockerT = 0;
   return "attracco in corso...";
+}
+
+export function clickFaro3Button(state, r12) {
+  if (state.tier2.stage !== "buttonShown") return null;
+  if (!canAfford(r12, { mon: 5000 })) return `serve 5000 mon (hai ${r12.mon.toFixed(0)})`;
+  r12.mon -= 5000;
+  state.tier2.stage = "wavesigShown";
+  return "terzo faro potenziato — cerca il segnale di notte";
+}
+
+export function clickWaveSignal3(state, r12, isNight) {
+  if (state.tier2.stage !== "wavesigShown") return null;
+  if (!isNight) return "il segnale si attiva solo di notte";
+  if (!canAfford(r12, { crys: 50 })) return `servono 50 cristalli (hai ${r12.crys})`;
+  r12.crys -= 50;
+  state.tier2.stage = "lit";
+  return "faro acceso";
+}
+
+export function clickDockerSignal3(state, r12) {
+  if (state.tier2.stage !== "lit") return null;
+  if (!canAfford(r12, { mon: 15000, oil: 27000 })) {
+    return r12.mon < 15000 ? `serve 15000 mon (hai ${r12.mon.toFixed(0)})` : `serve 27000 oil (hai ${r12.oil.toFixed(0)})`;
+  }
+  r12.mon -= 15000;
+  r12.oil -= 27000;
+  state.tier2.stage = "expanding";
+  state.tier2.dockerT = 0;
+  return "attracco in corso... (terza piattaforma)";
 }
 
 // [C] r32/Create.gml + r320/Create.gml (relativo a r32, offset 1616,0):
@@ -163,11 +258,10 @@ const R32_POLES = [
 
 /** Tutte le entry di scenografia FISSA della seconda piattaforma — [C]
  * dockersig1/Alarm_4.gml, posizioni assolute (nessun `action_set_relative`
- * attivo in quell'evento). Chiamata solo a piattaforma gia' espansa. */
-export function r32Decor() {
+ * attivo in quell'evento). Chiamata solo a tier1 gia' espanso. */
+function r32Decor() {
   const out = [
     { obj: "decor", x: R32_X, y: R32_Y, depth: 1, spr: "baa31" },
-    { obj: "decor", x: 2556, y: 1208, depth: 0, spr: "f3b" },
     { obj: "decor", x: 565, y: 1720, depth: 0, spr: "robbobase" },
     { obj: "decor", x: -16, y: 1153, depth: -1009, spr: "moor31" },
     { obj: "decor", x: 1302, y: 1150, depth: -1990, spr: "moor32" },
@@ -183,33 +277,87 @@ export function r32Decor() {
   return out;
 }
 
-/** Le entry dinamiche (fari + segnali cliccabili) da aggiungere ogni
- * frame al layer `dynamic` di main.js, insieme al resto (monete/upsign). */
-export function faroDecor(state) {
-  if (state.stage === "expanded") return r32Decor();
+// [C] r22/Create.gml + r220/Create.gml (relativo a r22, offset 1236,225):
+// stesso schema di r32/r320 sopra.
+const R22_X = 1374, R22_Y = -64;
+const R220_POLES = [[40, 463], [140, 405], [130, 750], [192, 779]].map(([dx, dy]) => [1236 + dx, 225 + dy]);
+
+/** Scenografia fissa della terza piattaforma — [C] dockersig3/Alarm_4.gml,
+ * posizioni assolute. Chiamata solo a tier2 gia' espanso. */
+function r22Decor() {
+  const out = [
+    { obj: "decor", x: R22_X, y: R22_Y, depth: 1, spr: "baa21" },
+    { obj: "decor", x: 1853, y: 263, depth: 2, spr: "moor21" },      // mudr21 — [C] _object.json: depth fisso
+    { obj: "decor", x: 2363, y: 783, depth: -990, spr: "bridr1" },   // bridge_des2 — [C] _object.json: depth fisso
+    { obj: "decor", x: 2183, y: 908, depth: 0, spr: "motor2" },
+    { obj: "decor", x: 2729, y: 1223, depth: 0, spr: "motor2" },
+  ];
+  for (const [dx, dy] of R220_POLES) out.push({ obj: "decor", x: R22_X + dx, y: R22_Y + dy, depth: 0, spr: "se" });
+  return out;
+}
+
+/** Fari/segnali della catena di tier1 (`faro1`/`faro2`), o la scenografia
+ * di `r32` una volta espansa. */
+function faro1Decor(state) {
   const out = [];
-  const faro1Spr = state.stage === "locked" || state.stage === "buttonShown" ? "f1b" : "f1";
+  const faro1Spr = state.tier1.stage === "locked" || state.tier1.stage === "buttonShown" ? "f1b" : "f1";
   out.push({ obj: "decor", x: FARO1.x, y: FARO1.y, depth: 0, spr: faro1Spr });
   out.push({ obj: "decor", x: FARO2.x, y: FARO2.y, depth: 0, spr: "f2b" });
-  if (state.stage === "buttonShown") {
+  if (state.tier1.stage === "buttonShown") {
     out.push({ obj: "faroButton", x: FARO1.x, y: FARO1.y - 60, depth: SIGN_DEPTH, spr: "upico" });
   }
-  if (state.stage === "wavesigShown") {
+  if (state.tier1.stage === "wavesigShown") {
     out.push({ obj: "faroWaveSignal", x: FARO1.x, y: FARO1.y - 60, depth: SIGN_DEPTH, spr: "wavesin" });
   }
-  if (state.stage === "lit" || state.stage === "expanding") {
+  if (state.tier1.stage === "lit" || state.tier1.stage === "expanding") {
     out.push({ obj: "decor", x: FARO1.x, y: FARO1.y, depth: -FARO1.y - 1, spr: "f1lux" });
     out.push({ obj: "decor", x: FARO2.x, y: FARO2.y, depth: -FARO2.y - 1, spr: "f1lux" });
   }
-  if (state.stage === "lit") {
+  if (state.tier1.stage === "lit") {
     out.push({ obj: "faroDockerSignal", x: FARO1.x, y: FARO1.y + 100, depth: SIGN_DEPTH, spr: "bridgesin" });
   }
-  if (state.stage === "expanding") {
-    // n_cluster1 — [C] dockersig1/Alarm_0..3|5: una nuvola di 5 ogni volta
-    // che l'alarm scatta durante l'attracco. [I] qui una singola nuvola
-    // decorativa che deriva per tutta la durata, non 25+ istanze vere.
-    const k = Math.min(1, state.dockerT / DOCKER_BUILD_SECONDS);
+  if (state.tier1.stage === "expanding") {
+    const k = Math.min(1, state.tier1.dockerT / TIER1_BUILD_SECONDS);
     out.push({ obj: "decor", x: 5000 - k * 2600, y: 1000, depth: -7000, spr: "nimbuscluster1" });
   }
+  return out;
+}
+
+/** Fari/segnali della catena di tier2 (`faro3`), o la scenografia di `r22`
+ * una volta espansa — [C] `faro3` non esiste finche' `dockersig1` non lo
+ * crea (Alarm_4.gml): chiamata solo quando tier1 e' gia' "expanded". */
+function faro3Decor(state) {
+  if (state.tier2.stage === "expanded") return r22Decor();
+  const out = [];
+  const faro3Spr = state.tier2.stage === "locked" || state.tier2.stage === "buttonShown" ? "f3b" : "f3";
+  out.push({ obj: "decor", x: FARO3.x, y: FARO3.y, depth: 0, spr: faro3Spr });
+  if (state.tier2.stage === "buttonShown") {
+    out.push({ obj: "faro3Button", x: FARO3.x, y: FARO3.y - 60, depth: SIGN_DEPTH, spr: "upico" });
+  }
+  if (state.tier2.stage === "wavesigShown") {
+    out.push({ obj: "faro3WaveSignal", x: FARO3.x, y: FARO3.y - 60, depth: SIGN_DEPTH, spr: "wavesin" });
+  }
+  if (state.tier2.stage === "lit" || state.tier2.stage === "expanding") {
+    out.push({ obj: "decor", x: FARO3.x, y: FARO3.y, depth: -FARO3.y - 1, spr: "f1lux" });
+  }
+  if (state.tier2.stage === "lit") {
+    out.push({ obj: "faro3DockerSignal", x: FARO3.x, y: FARO3.y + 100, depth: SIGN_DEPTH, spr: "bridgesin" });
+  }
+  if (state.tier2.stage === "expanding") {
+    const k = Math.min(1, state.tier2.dockerT / TIER2_BUILD_SECONDS);
+    out.push({ obj: "decor", x: 5000 - k * 2600, y: 1000, depth: -7000, spr: "nimbuscluster1" });
+  }
+  return out;
+}
+
+/** Le entry dinamiche (fari, segnali cliccabili, piattaforme espanse,
+ * monviolo in volo) da aggiungere ogni frame al layer `dynamic` di
+ * main.js, insieme al resto (monete/upsign). */
+export function faroDecor(state) {
+  const out = state.tier1.stage === "expanded" ? r32Decor() : faro1Decor(state);
+  if (state.tier1.stage === "expanded") out.push(...faro3Decor(state));
+  // monviolo — [C] nessun evento Mouse nel decompilato: solo decorazione,
+  // stesso trattamento delle nuvole/uccelli in atmosphere.js.
+  for (const m of state.monviolos) out.push({ obj: "decor", x: m.x, y: m.y, depth: -m.y, spr: "monviola" });
   return out;
 }

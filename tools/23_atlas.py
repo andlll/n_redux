@@ -387,6 +387,20 @@ GAMEPLAY_SPRITES = {
         "g_bs_bd", "g_bd", "g_bd_ad", "g_ad", "g_ad_as",             # honda8
         "p_as_ad", "p_ad_bd", "p_bd_bs", "p_bs", "p_bs_as",          # honda9 (p_as/p_ad gia' sopra)
     ],
+    # honda21..25(+a/b) e honda31..34(+a/b), il traffico periodico di r32/r22
+    # (game/src/cars.js, game/src/platform.js) — STESSO schema di honda3..9
+    # sopra, solo su una piattaforma diversa. Alcuni di questi mancavano
+    # all'appello anche per honda1/2 stessi ("v_ad_as", mai incluso finora:
+    # un gap preesistente, non introdotto qui — la svolta di honda1 saltava
+    # silenziosamente quel frame, frameFor() restituisce null su uno sprite
+    # assente e main.js si limita a non disegnarlo).
+    "cars2": [
+        "c_ad", "c_ad_bd", "c_as_bs", "c_bd", "c_bd_ad",
+        "g_ad_bd", "g_as_ad",
+        "p_ad_as", "p_as", "p_as_bs", "p_bs_bd",
+        "r_ad_as", "r_as_bs", "r_bs_bd",
+        "v_ad_as", "v_as_bs", "v_bs_bd",
+    ],
     # Luci (STUDIO.md §5.3 "notte_target", cddvd/d1NN/di11b — le "luci" che
     # non funzionavano): l'originale anima la transizione con uno sprite "x"
     # dedicato, un frame per tick (es. "crclx", 200 frame per 200 tick —
@@ -500,9 +514,9 @@ GAMEPLAY_SPRITES = {
     # "bridr1"/"bridl1"/"moor31..34"/"robbobase"/"motor2" la sua scenografia
     # fissa (ponti, moli, il palo "robbobaseobj").
     "platform2": [
-        "f1", "f1lux", "wavesin", "bridgesin", "nimbuscluster1", "monviola_bar",
-        "baa31", "f3b", "bridr1", "bridl1", "moor31", "moor32", "moor33", "moor34",
-        "robbobase", "motor2",
+        "f1", "f1lux", "wavesin", "bridgesin", "nimbuscluster1", "monviola_bar", "monviola",
+        "baa31", "f3b", "f3", "bridr1", "bridl1", "moor31", "moor32", "moor33", "moor34",
+        "robbobase", "motor2", "baa21", "moor21",
     ],
 }
 

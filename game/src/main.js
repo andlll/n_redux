@@ -17,6 +17,7 @@ import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
 import {
   applyMatchPlatform, createFaroState, stepFaroChain, faroDecor,
   clickFaroButton, clickWaveSignal, clickDockerSignal,
+  clickFaro3Button, clickWaveSignal3, clickDockerSignal3,
 } from "./platform.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
@@ -971,7 +972,11 @@ function doLoad() {
   if (!data) return false;
   r12 = data.r12;
   buildings = data.buildings;
-  if (platformState) platformState = data.platformState ?? createFaroState();
+  // `?.tier1`: scarta anche un salvataggio con la forma vecchia (prima
+  // dei due livelli fari/piattaforma) invece di rompersi su di lui — lo
+  // stesso principio "niente stato vecchio da onorare" gia' scelto per
+  // l'autoload (STUDIO.md, commento sopra doSave()).
+  if (platformState) platformState = data.platformState?.tier1 ? data.platformState : createFaroState();
   decorEntities = [];
   const usedIds = new Set();
   for (const b of buildings) {
@@ -1111,6 +1116,13 @@ function isDawn(t) {
 const TICK = 1 / 60;              // room_speed dell'originale, stessa unita' di buildings.js
 const LIGHT_FADE = 200 * TICK;
 const UPSIGN_DEPTH = -9001;        // [C] upsign12/_object.json: depth = -9001
+// Segnali cliccabili della catena fari (game/src/platform.js): stesso
+// principio di "upsign" sopra, elencati qui una volta sola invece che
+// ricreati ogni frame nel loop di disegno.
+const FARO_SIGN_OBJS = new Set([
+  "faroButton", "faroWaveSignal", "faroDockerSignal",
+  "faro3Button", "faro3WaveSignal", "faro3DockerSignal",
+]);
 function stepLights(entities, dt, night, r12) {
   // [C] cddvd/Step.gml: sotto questa soglia di elettricita' la luce non si
   // accende (o si spegne di colpo se lo era gia', "bout" nel decompilato —
@@ -1572,7 +1584,8 @@ input.onTap = (sx, sy) => {
     if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
       && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo"
       && it.obj !== "bankIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
-      && it.obj !== "faroDockerSignal") continue;
+      && it.obj !== "faroDockerSignal" && it.obj !== "faro3Button" && it.obj !== "faro3WaveSignal"
+      && it.obj !== "faro3DockerSignal") continue;
     // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
     // stessa ragione della raccolta hover piu' sotto. Tutto il resto
     // (edifici, casse, monete, segnale di potenziamento) resta sul
@@ -1761,6 +1774,22 @@ input.onTap = (sx, sy) => {
     message = clickDockerSignal(platformState, r12) ?? "";
     messageT = 3;
     picked = null;
+  } else if (picked.obj === "faro3Button") {
+    // [C] upfaro3/Mouse_LeftPressed.gml: -5000 mon, faro3 si accende.
+    message = clickFaro3Button(platformState, r12) ?? "";
+    messageT = 3;
+    picked = null;
+  } else if (picked.obj === "faro3WaveSignal") {
+    // [C] wavesig3/Mouse_LeftReleased.gml: attivo solo di notte, -50 crys.
+    message = clickWaveSignal3(platformState, r12, isNight(phaseT)) ?? "";
+    messageT = 3;
+    picked = null;
+  } else if (picked.obj === "faro3DockerSignal") {
+    // [C] dockersig3/Mouse_LeftPressed.gml: -15000 mon -27000 oil, avvia
+    // l'attracco (~10s) che finisce nella terza piattaforma (`r22`/`r220`).
+    message = clickDockerSignal3(platformState, r12) ?? "";
+    messageT = 3;
+    picked = null;
   }
 };
 
@@ -1877,7 +1906,7 @@ function frame(now) {
     stepCoins(coins, dt, r12);
     if (platformState) {
       const chiesLevel = buildings.find((b) => b.type === "chies")?.level ?? 0;
-      stepFaroChain(platformState, r12, coins, dt, chiesLevel);
+      stepFaroChain(platformState, r12, coins, cars, dt, chiesLevel, night);
     }
     // Raccolta al passaggio del mouse — [C] sold*/soldbio/Mouse_MouseEnter.gml
     // usa davvero un hover, non un click (coins.js, collectCoin() sopra il tap
@@ -2061,15 +2090,15 @@ function frame(now) {
     // anche di notte invece di scurirsi con la tinta ambientale.
     dynamic.push({ obj: "coin", ref: c, x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr, frameIdx), _selfLit: true });
   }
-  // Catena fari -> seconda piattaforma (game/src/platform.js): fari,
-  // segnali cliccabili (upfaro1/wavesig1/dockersig1) e, a piattaforma
-  // espansa, la scenografia fissa di `r32`. `_selfLit` solo sui segnali
-  // (stesso motivo di "upsign" sopra): i fari veri e la nuova scenografia
-  // restano invece soggetti alla tinta giorno/notte come ogni decoro.
+  // Catena fari -> seconda/terza piattaforma (game/src/platform.js): fari,
+  // segnali cliccabili (upfaro1/3, wavesig1/3, dockersig1/3) e, a
+  // piattaforma espansa, la scenografia fissa di `r32`/`r22`. `_selfLit`
+  // solo sui segnali (stesso motivo di "upsign" sopra): i fari veri e la
+  // nuova scenografia restano invece soggetti alla tinta giorno/notte come
+  // ogni decoro.
   if (platformState) {
     for (const it of faroDecor(platformState)) {
-      const selfLit = it.obj === "faroButton" || it.obj === "faroWaveSignal" || it.obj === "faroDockerSignal";
-      dynamic.push({ ...it, _f: frameFor(it.spr), _selfLit: selfLit || undefined });
+      dynamic.push({ ...it, _f: frameFor(it.spr), _selfLit: FARO_SIGN_OBJS.has(it.obj) || undefined });
     }
   }
   for (const m of constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
@@ -2527,7 +2556,7 @@ function frame(now) {
     `zoom ${cam.zoom.toFixed(2)}  camera ${cam.x.toFixed(0)},${cam.y.toFixed(0)}\n` +
     `fase ${amb.label}  edifici ${buildings.length}` +
     (r12.storm ? `  ⛈ tempesta (${r12.stormT.toFixed(0)}s)\n` : `\n`) +
-    (platformState ? `cristalli ${r12.crys}  piattaforma: ${platformState.stage}\n` : "") +
+    (platformState ? `cristalli ${r12.crys}  r32: ${platformState.tier1.stage}  r22: ${platformState.tier2.stage}\n` : "") +
     // [TEST] DEBUG_INFINITE_RESOURCES (buildings.js): mon/oil in barra sono
     // gonfiati apposta — questa riga e' l'unico punto dove restano visibili
     // i valori veri (r12.monReal/oilReal, state.js), per non perderli di
