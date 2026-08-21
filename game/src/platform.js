@@ -28,6 +28,53 @@ const FARO1 = { x: 616, y: 1100 };
 const FARO2 = { x: 1655, y: 1111 };
 const FARO3 = { x: 2556, y: 1208 };   // [C] dockersig1/Alarm_4.gml: action_create_object(faro3, 2556, 1208)
 
+// [C] src/objects/placeholder/Create.gml + Collision_r12|r120|r22|r220|r32|
+// r320.gml: su `match` (736==0) ogni placeholder nasce con `act=0`
+// (Mouse_LeftPressed/LeftReleased non fanno NULLA finche' resta cosi', vedi
+// isPlaceholderActive() sotto) e diventa `act=1` SOLO quando la sua maschera
+// tocca per davvero uno di questi sei oggetti — quindi solo quando la
+// piattaforma sotto di lui esiste gia'. Su `match_easy` (736!=0) lo stesso
+// Create.gml lo attiva subito, incondizionatamente: nessun gate la',
+// STUDIO.md/isPlaceholderActive() sotto lo riflette con `platformState ===
+// null` (creato solo per `match`, main.js). Rettangoli invece della vera
+// maschera pixel-perfect del decompilato: i placeholder sono piccoli
+// rispetto a questi sprite, l'approssimazione non cambia mai l'esito.
+// [C] r12/Create.gml: `action_create_object(r120, 1170, 346)` e' preceduto da
+// `action_set_relative(1)` (e seguito da `action_set_relative(0)`) — quella
+// coppia (1170, 346) e' un offset RELATIVO alla posizione della stessa
+// istanza r12 (x=-19,y=-179 nella room, src/rooms/match.json), non una
+// coordinata assoluta: la posizione vera di r120 e' quindi (-19+1170,
+// -179+346) = (1151, 167). Perso alla prima lettura (il flag sta due righe
+// sopra la create, facile da saltare) — segnalato dall'autore ("vedo la
+// piattaforma tagliata con cose a destra che volano": pali/rotori/base del
+// faro restano alle loro coordinate assolute vere, mentre r120/baa12
+// disegnato 19px a destra e 179px piu' in basso del dovuto non li copriva
+// piu' allineati).
+const R12_RECT = { x: -19, y: -179, w: 1170, h: 1558 };      // r12/baa11
+const R120_RECT = { x: -19 + 1170, y: -179 + 346, w: 1112, h: 1092 };     // r120/baa12
+const R32_RECT = { x: -16, y: 1141, w: 1616, h: 953 };       // r32/baa31
+const R320_RECT = { x: 1600, y: 1141, w: 1600, h: 952 };     // r320/baa32
+const R22_RECT = { x: 1374, y: -64, w: 1236, h: 1242 };      // r22/baa21
+const R220_RECT = { x: 2610, y: 161, w: 1223, h: 1333 };     // r220/baa22
+
+function inRect(x, y, r) {
+  return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+}
+
+/** [C] placeholder/Create.gml + Collision_*.gml (commento sopra): vero se
+ * questo lotto sta gia' su un pezzo di piattaforma esistente — sempre per
+ * r12/r120 (la base di partenza), solo se tier1/tier2 sono gia' "expanded"
+ * per r32/r320 risp. r22/r220. `platformState` nullo (match_easy, o
+ * l'anteprima sfocata della title screen) equivale a "nessun gate", come
+ * l'originale su quella room. */
+export function isPlaceholderActive(x, y, platformState) {
+  if (!platformState) return true;
+  if (inRect(x, y, R12_RECT) || inRect(x, y, R120_RECT)) return true;
+  if (platformState.tier1.stage === "expanded" && (inRect(x, y, R32_RECT) || inRect(x, y, R320_RECT))) return true;
+  if (platformState.tier2.stage === "expanded" && (inRect(x, y, R22_RECT) || inRect(x, y, R220_RECT))) return true;
+  return false;
+}
+
 export function applyMatchPlatform(staticWorld, { interactive = false } = {}) {
   // Le 56 istanze statiche "albe" della room (quelle A TERRA) vengono
   // uccise incondizionatamente su questo ramo — sostituite dalle 14 sotto,
@@ -35,7 +82,28 @@ export function applyMatchPlatform(staticWorld, { interactive = false } = {}) {
   for (let i = staticWorld.length - 1; i >= 0; i--) {
     if (staticWorld[i].obj === "albe") staticWorld.splice(i, 1);
   }
-  const R120_X = 1170, R120_Y = 346;
+  // [C] r12/_object.json: l'istanza `r12` DELLA ROOM (`src/rooms/match.json`,
+  // x=-19,y=-179) porta lo sprite di default "baa11" (1170x1558), stesso
+  // depth=1 di r120 — e' la meta' SINISTRA della piattaforma. Questa entry
+  // NON va pushata qui: `r12` e' gia' un'istanza vera in `match.scene.json`
+  // (risolta dalla pipeline di scena, tools/22_scene.py, con `spr: "baa11"`
+  // gia' scritto) — sta in `staticWorld` fin dall'inizio, PRIMA che questa
+  // funzione venga chiamata. Pusharla di nuovo qui la duplicava soltanto
+  // (due istanze identiche sovrapposte, innocuo ma inutile) — il vero bug
+  // che faceva sembrare mancante meta' piattaforma era altrove: vedi il
+  // commento su r120 subito sotto.
+  // [C] r12/Create.gml: `action_create_object(r120, 1170, 346)` e' RELATIVO
+  // alla posizione di r12 stesso (x=-19,y=-179 — vedi il commento su
+  // R120_RECT piu' sopra): la posizione vera e' (-19+1170, -179+346).
+  const R120_X = -19 + 1170, R120_Y = -179 + 346;
+  // [Bug corretto, main.js] questa `push()` (a differenza di `r12` sopra)
+  // aggiunge un'istanza NUOVA a `staticWorld`, dopo che main.js ha gia'
+  // calcolato `_f` (il frame dell'atlas) per tutto cio' che c'era prima —
+  // senza un secondo giro in main.js dopo questa chiamata, r120/baa12 non
+  // aveva mai un `_f` e il ciclo di disegno la scartava in silenzio: non e'
+  // MAI comparsa a schermo, in nessuna build. Non un problema di posizione
+  // o di sprite mancante (`segnalato dall'autore, "è baa12"` — aveva
+  // ragione: la texture era sempre quella giusta).
   staticWorld.push({ obj: "r120", x: R120_X, y: R120_Y, depth: 1, spr: "baa12" });
   // [C] r12/Create.gml, `with (r120) { instance_create(x+dx, y+dy, albe) }`
   // — 14 offset letti uno per uno, nessun pattern regolare.

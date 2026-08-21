@@ -39,7 +39,17 @@ function spawnClouds(atmo) {
     atmo.clouds.push({
       x: p.x, y: p.y, t: 0,
       spd: dice(2) ? 7 : 4,                                        // [C] ni/Create.gml
-      depth: dice(2) ? -3990 : 20,                                 // [C] ni/Create.gml: davanti a tutto o dietro il terreno
+      // [C] ni/Create.gml: -3990 (davanti a tutto) o 20 (dietro il terreno).
+      // -3990 gia' basta da solo: 328 oggetti in tutto il decompilato usano
+      // `depth = -y` (alberi, pali, edifici, veicoli, pedoni...) e la room
+      // piu' grande (`match`) e' alta 2090px, quindi -y non scende mai sotto
+      // -2090 — una nuvola "alta" e' quindi GIA' sempre davanti a qualunque
+      // cosa stia a terra. [I] Spostato comunque a -6000 (margine extra,
+      // richiesto dall'autore dopo aver visto una nuvola "bassa" coprire
+      // alberi/pali sulla piattaforma appena tornata visibile): resta sotto
+      // (meno davanti di) -7000/-9000+ — `nimbuscluster1`, monete/upsign,
+      // fumo dei fucili — che devono restare sopra le nuvole per design.
+      depth: dice(2) ? -6000 : 20,
       spr: CLOUD_SPRITES[(Math.random() * CLOUD_SPRITES.length) | 0],  // [I] pick uniforme fra le 3 varianti
     });
   }

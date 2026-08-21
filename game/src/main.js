@@ -18,6 +18,7 @@ import {
   applyMatchPlatform, createFaroState, stepFaroChain, faroDecor, r120MotorDecor,
   clickFaroButton, clickWaveSignal, clickDockerSignal,
   clickFaro3Button, clickWaveSignal3, clickDockerSignal3,
+  isPlaceholderActive,
 } from "./platform.js";
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
@@ -27,23 +28,6 @@ import { loadFont, drawText, measureText } from "./font.js";
 
 const canvas = document.getElementById("view");
 const hud = document.getElementById("hud");
-
-// Schermata di caricamento (play.html #loading): il gioco e' diventato
-// pesante lato asset (atlas per-room + font bitmap, tutti fetchati prima
-// del primo frame, vedi gli "await fetch"/loadTexture/loadFont piu' sotto),
-// quindi copriamo quell'attesa con logo + sfondo nero invece di uno schermo
-// bianco/vuoto. "show" fa partire subito la dissolvenza in entrata del
-// logo; "hide" (chiamata da hideLoading(), sotto, al primo frame disegnato)
-// fa la dissolvenza in uscita dell'intera overlay.
-const loading = document.getElementById("loading");
-loading.classList.add("show");
-let loadingHidden = false;
-function hideLoading() {
-  if (loadingHidden) return;
-  loadingHidden = true;
-  loading.classList.add("hide");
-  loading.addEventListener("transitionend", () => loading.remove(), { once: true });
-}
 
 const r = new Renderer(canvas);
 const gl = r.gl;
@@ -226,7 +210,7 @@ for (const it of staticWorld) {
 }
 
 for (const it of staticWorld) it._f = frameFor(it.spr);
-const missingArt = staticWorld.filter((it) => !it._f).length;
+let missingArt = staticWorld.filter((it) => !it._f).length;
 
 // Font bitmap reale della barra risorse (tools/25_font.py). [C]
 // src/objects/repre/DrawGUI.gml: action_font(gotham_mini, 0) — un font
@@ -285,6 +269,22 @@ const chiesScene = chiesIndex >= 0 ? staticWorld.splice(chiesIndex, 1)[0] : null
 const pu1Index = staticWorld.findIndex((it) => it.obj === "pu1");
 if (pu1Index >= 0) staticWorld.splice(pu1Index, 1);
 
+// `reversi` (sprite di default "tut_ok", ma Create.gml lo cambia subito in
+// "tut_exit") e' anche lei gia' un'istanza vera nella room — lo stesso
+// schema di `pu1` sopra: e' il bottone "esci"/torna al menu del vecchio
+// menu di pausa dell'originale. **[C]** `reversi/Step.gml`: si sposta OGNI
+// frame in spazio schermo (`action_move_to(view_xview[0]+409*sca, ...)`)
+// SOLO quando `pu1.menoo!=0` (pausa aperta); altrimenti va a `(-1000,
+// -1000)`, fuori mappa — mai un decoro fermo alla propria posizione nella
+// room. Qui il menu di pausa e' gia' vera UI in spazio schermo (STUDIO.md,
+// drawPauseOverlay() piu' sotto), quindi l'istanza originale nel mondo va
+// tolta come `pu1` — altrimenti resta ferma alle sue coordinate di
+// piazzamento per sempre, un'icona nera "pollice in su" sospesa nel vuoto
+// sopra `match` (depth -14001, sempre in primo piano) — segnalato
+// dall'autore ("gli omini a destra"): non erano omini, era questo bottone.
+const reversiIndex = staticWorld.findIndex((it) => it.obj === "reversi");
+if (reversiIndex >= 0) staticWorld.splice(reversiIndex, 1);
+
 // `honda_facile_1`/`honda_facile_2` (match_easy) o `honda1`/`honda2`
 // (match — STUDIO.md, letti dopo la prima sessione su questa room) sono
 // anche loro gia' istanze vere nella room (STUDIO.md §5.3 "veicoli_
@@ -303,6 +303,22 @@ for (const name of INITIAL_CAR_TYPES) {
 // solo su `match`, mai su `match_easy` — condivisa con lo sfondo sfocato
 // della title screen (game/src/title.js), stessa `match.scene.json`.
 if (roomName === "match") applyMatchPlatform(staticWorld, { interactive: true });
+// [Bug corretto] `applyMatchPlatform()` PUSHA istanze nuove in `staticWorld`
+// (r120/baa12) DOPO il ciclo che assegna `_f` a tutto il resto (sopra,
+// "for (const it of staticWorld) it._f = frameFor(it.spr)"): senza questo
+// richiamo, quelle istanze restavano per sempre senza `_f`, e il ciclo di
+// disegno le scarta in silenzio (`if (!f) continue`, piu' sotto — lo stesso
+// trattamento riservato ai collisori invisibili veri, "arte persa" solo
+// nel nome). r120/baa12 non e' MAI comparso a schermo, in nessun test: la
+// meta' di `match` che l'autore continuava a vedere sospesa nel vuoto
+// ("è baa12", insistito piu' volte) non era ne' un problema di posizione
+// ne' uno sprite mancante — la texture era sempre stata quella giusta, non
+// veniva mai disegnata. `r12`/baa11 se la cavava per un motivo diverso:
+// e' gia' un'istanza vera in `match.scene.json` (risolta dalla pipeline di
+// scena PRIMA di questo file), quindi il suo `_f` viene assegnato nel primo
+// giro, in tempo.
+for (const it of staticWorld) if (!it._f) it._f = frameFor(it.spr);
+missingArt = staticWorld.filter((it) => !it._f).length;
 // Catena fari -> seconda piattaforma (game/src/platform.js): solo su
 // `match`, come r120/applyMatchPlatform() sopra — `match_easy` non ha ne'
 // la base volante ne' `chies` a livello 2 (STUDIO.md, gap dichiarati).
@@ -586,6 +602,18 @@ function findPlacementCluster(tapped, count, radius) {
 
 function placeAt(placeholder, type) {
   const def = BUILDING_TYPES[type];
+  // [C] placeholder/Create.gml + Collision_r12|r120|r22|r220|r32|r320.gml
+  // (platform.js, isPlaceholderActive()): un lotto ancora "act=0" — non
+  // sopra a nessun pezzo di piattaforma esistente, cioe' dentro l'area di
+  // r32/r22 prima che quell'espansione sia stata costruita — non risponde
+  // affatto al tocco nell'originale. Senza questo controllo si poteva
+  // costruire in pieno oceano, ben prima di aver sbloccato quella
+  // piattaforma (segnalato dall'autore: "i placeholder delle espansioni
+  // sono disponibili da subito anche se le espansioni non sono state
+  // costruite").
+  if (!isPlaceholderActive(placeholder.x, placeholder.y, platformState)) {
+    return "quest'area non fa ancora parte della piattaforma";
+  }
   // [C] placeholder/Mouse_LeftReleased.gml, selec==3: il piazzamento vero e
   // proprio richiede anche `close==0` (nessun'altra torretta troppo vicina,
   // STUDIO.md "le mongolfiere" -> tooCloseToTurret()) — controllato PRIMA
@@ -775,6 +803,11 @@ function findDiagonalTargets(origin) {
  */
 function armPlacement(origin, type) {
   const def = BUILDING_TYPES[type];
+  // Stesso gate di placeAt() sopra (platform.js, isPlaceholderActive()): un
+  // lotto non ancora su un pezzo di piattaforma esistente non arma niente.
+  if (!isPlaceholderActive(origin.x, origin.y, platformState)) {
+    return "quest'area non fa ancora parte della piattaforma";
+  }
   if (!canAfford(r12, def.placeCost)) {
     return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
   }
@@ -1068,6 +1101,51 @@ const PHASES = [
   { name: "giorno", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
   { name: "giorno", rgb: [1, 1, 1], dur: 900 / TICKS_PER_SEC },
 ];
+// [C] aura/Create.gml + Alarm_0..7.gml: oltre a ricolorare gli oggetti
+// (PHASES/ambientAt() sopra), l'originale disegna anche un OVERLAY vero —
+// uno sprite 32x32 (ambst/amb00/amb0/ambtr1/amb2/ambtr3)
+// `action_sprite_transform(150, 90, 0, 0)`: diventa 4800x2880, piu' grande
+// della room, posizionato a coprirla tutta. Il commento qui sopra ("cambia
+// solo lo sprite di sfondo, mai la tinta... tolto") si sbagliava: campionati
+// pixel per pixel dalle texture page originali (non dal nome), quegli
+// sprite NON sono trasparenti — sono tinte unite alpha-blended: `ambst` =
+// pesca (255,205,160) @ alpha 0 (invisibile, il "giorno" pieno), `amb0` =
+// stesso pesca @ 64/255, `amb2` = blu (0,0,255) @ 64/255, e tre ANIMAZIONI a
+// 290 frame che interpolano fra questi estremi in sync con le durate degli
+// alarm (`amb00`: alpha 0→64/255 a pesca fisso; `ambtr1`: pesca→blu ad
+// alpha fissa; `ambtr3`: alpha 64/255→0 a blu fisso). Il redesign originale
+// aveva portato solo la ricolorazione degli sprite (una tinta uniform) e
+// lasciato fuori questo overlay: risultato, lo sfondo/cielo SENZA nessuno
+// sprite sopra restava sempre lo stesso colore fisso, mai tinto — segnalato
+// dall'autore ("sono sicuro al 100% che lo sfondo di match cambiava
+// colore... un oggetto con uno sprite colorato molto piccolo scalato").
+// AURA_OVERLAY sotto e' lo stesso ordine/durate di PHASES, ricostruito dai
+// pixel campionati. [I] la vera alternanza di depth -1/-8900 (STUDIO.md
+// §5.2, "da sopra a sotto") fra sopra e sotto il resto della scena non e'
+// riprodotta — troppo poco certa per rischiare un ordine di disegno
+// sbagliato — qui l'overlay resta sempre "dietro" (disegnato prima di ogni
+// sprite del layer mondo, sotto auraDraw() piu' sotto): ad alpha 25% la
+// differenza visiva con "sopra tutto per una manciata di secondi" e' minima.
+const AURA_PEACH = [255 / 255, 205 / 255, 160 / 255];
+const AURA_BLUE = [0, 0, 1];
+const AURA_ALPHA = 64 / 255;
+const AURA_OVERLAY = [
+  { from: { rgb: AURA_PEACH, a: 0 }, to: { rgb: AURA_PEACH, a: AURA_ALPHA } },          // giorno(290): amb00, fade-in
+  { from: { rgb: AURA_PEACH, a: AURA_ALPHA }, to: { rgb: AURA_PEACH, a: AURA_ALPHA } }, // alba(200): amb0, fisso
+  { from: { rgb: AURA_PEACH, a: AURA_ALPHA }, to: { rgb: AURA_BLUE, a: AURA_ALPHA } },  // giorno(290): ambtr1, pesca->blu
+  { from: { rgb: AURA_BLUE, a: AURA_ALPHA }, to: { rgb: AURA_BLUE, a: AURA_ALPHA } },   // notte(900): amb2, fisso
+  { from: { rgb: AURA_BLUE, a: AURA_ALPHA }, to: { rgb: AURA_PEACH, a: AURA_ALPHA } },  // giorno(290): ambtr1 al contrario, blu->pesca
+  { from: { rgb: AURA_PEACH, a: AURA_ALPHA }, to: { rgb: AURA_PEACH, a: AURA_ALPHA } }, // alba(100): amb0, fisso
+  { from: { rgb: AURA_PEACH, a: AURA_ALPHA }, to: { rgb: AURA_PEACH, a: 0 } },          // giorno(290): amb00 al contrario, fade-out
+  { from: { rgb: AURA_PEACH, a: 0 }, to: { rgb: AURA_PEACH, a: 0 } },                   // giorno(900): ambst, invisibile
+];
+function auraOverlayAt(t) {
+  const { i, u } = phaseIndexAt(t);
+  const { from, to } = AURA_OVERLAY[i];
+  const k = Math.min(1, u / PHASES[i].dur);
+  return { rgb: from.rgb.map((v, j) => v + (to.rgb[j] - v) * k), a: from.a + (to.a - from.a) * k };
+}
+
 let phaseT = 0;
 function phaseIndexAt(t) {
   const total = PHASES.reduce((s, p) => s + p.dur, 0);
@@ -2191,6 +2269,15 @@ function frame(now) {
   // il resto — altrimenti "si accendono" ma restano scure quanto la notte
   // intorno, indistinguibili (il bug segnalato: "le luci non funzionano").
   r.setProjection(cam.projection());
+  // Overlay giorno/notte (AURA_OVERLAY sopra) — un quad a tinta unita che
+  // copre l'intera room, disegnato PRIMA di ogni sprite del layer mondo cosi'
+  // resta sempre dietro. `_selfLit` lo attraversa intatto per lo stesso
+  // motivo delle luci (sopra): nessuno qui, il quad stesso non e' un decoro.
+  const aura = auraOverlayAt(phaseT);
+  if (aura.a > 0.002) {
+    const auraTint = (Math.round(aura.rgb[0] * 255) << 16) | (Math.round(aura.rgb[1] * 255) << 8) | Math.round(aura.rgb[2] * 255);
+    r.draw(solidFrame(white, scene.width, scene.height), 0, 0, 1, auraTint, aura.a);
+  }
   let drawn = 0;
   const vw = cam.worldW, vh = cam.worldH;
   const l = cam.x - vw / 2, t = cam.y - vh / 2, rr = l + vw, bb = t + vh;
@@ -2586,8 +2673,6 @@ function frame(now) {
     (status ? status + "\n" : "") +
     (messageT > 0 ? message + "\n" : "") +
     `trascina, rotella/pinch, tap — [S] salva [L] carica [P] pausa`;
-
-  hideLoading();
 
   requestAnimationFrame(frame);
 }
