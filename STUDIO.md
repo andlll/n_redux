@@ -3248,3 +3248,181 @@ paragrafo 8.
   alto del centro dichiarato); comportamento gia' presente prima di questo
   giro (riprodotto anche su desktop, zoom pixel-perfect) e non e' un
   bordo — resta un gap dichiarato, non affrontato qui.
+
+- **Edifici illuminati nello sfondo sfumato del menu.** Segnalato
+  dall'autore: lo sfondo di `match` dietro il menu (game/src/title.js)
+  restava una citta' di sole strade/alberi/semafori anche di notte, gia'
+  vuota prima ancora del blur — `match.scene.json` non contiene NESSUN
+  edificio vero (`casa`/`villa`/...), solo `placeholder`: sono tutti
+  piazzati a runtime da chi gioca, e la title screen non simula nessuna
+  partita. Aggiunte 16 `villa`/`casa` gia' finite su altrettanti lotti
+  liberi (`LIT_LOTS`), ognuna con la propria coppia sprite+finestre
+  (`vilNl`/`cNNNl` — le stesse usate a fine cantiere nel gioco vero,
+  buildings.js) che si accende con dissolvenza sul ciclo giorno/notte gia'
+  presente. **[C]** la tinta ambientale in `title.js` era un uniform
+  globale (`u_ambient`), mai per-istanza come in main.js: portata a
+  mulTint() per-istanza cosi' i decori luce (`_selfLit`) possono restare
+  alla propria luminosita' vera invece di scurirsi insieme al resto —
+  stesso schema gia' in main.js, mai serviva prima perche' il menu non
+  aveva decori luce.
+
+- **Tutorial (room "tutorial", `me3` in title screen — mai portato,
+  bottone segnaposto "non ancora implementato" da sempre).** La room
+  (1920x1086, come `match_easy`: nessuna base volante/faro) e' una vera
+  partita match_easy-style gia' pre-costruita (4 `casa3`, 3 `casa2`, 1
+  `industria2`, 2 `industria1`, 4 `parco`, 2 `rocket_launcher`, 2
+  `gatlinggun`, 3 `ru*` rovine, honda1/2/3), sopra cui gira un HUD guidato
+  a 34 fasi (`tutorial_square/DrawGUI.gml`, mai tradotto dall'inglese
+  nell'originale). Pipeline asset generica (tools/22_scene.py invariato,
+  23_atlas.py: `GAMEPLAY_ROOMS`/`GAMEPLAY_SPRITES` estesi con "tutorial" +
+  gruppo dedicato per HUD/cutscene) — nessuna modifica alla pipeline.
+  `game/src/tutorial.js` (nuovo) + agganci in main.js (roomName a 3 vie,
+  invariato per il resto: `tutorial` cade negli stessi rami di
+  `match_easy` ovunque il codice controlli solo `=== "match"`).
+  **[Bug corretto, importante]**: una prima lettura di
+  `tutorial_thumb/Mouse_LeftPressed.gml` (`action_if_variable(phase, 33,
+  1)`) concludeva che il bottone "avanti" uscisse al menu per ogni fase
+  tranne l'ultima — **l'operatore 1 e' invece "!="** (stessa famiglia di
+  errore gia' presa per gli operatori 3/4, sopra): il bottone avanza
+  DAVVERO la fase (di `+0.5` nel decompilato, un residuo che richiederebbe
+  due tocchi per fase dato che `DrawGUI` confronta `phase` per uguaglianza
+  esatta — **[I]** qui `+1` per tocco, niente fase "vuota"), e solo
+  all'ULTIMA fase (33) riporta al menu. Le altre 8 transizioni (fasi
+  2/5/7/8/9/12/16/19) restano gameplay-gated com'erano nel decompilato
+  (`tutorial_square/Step.gml`), lette 1:1 contro `r12.selec`/`pu1.menoo`
+  gia' esistenti in main.js (stessi nomi/valori, nessuna nuova plumbing).
+  **Ruin1/ruin2** (lotti-rudere piazzati a mano nella room, NON gli stessi
+  ruderi da battaglia di `destroyBuilding()` — quelli restano
+  permanenti/mai cliccabili, `ruin1`/`ruin2` hanno invece un proprio
+  Mouse_LeftPressed/MouseEnter dedicato): sotto ruspa (`selec===11`)
+  mostrano un cartellino costo all'hover (500/2000 mon) e al tocco avviano
+  un cantiere vero riusando `BUILDING_TYPES.casa` esistente
+  (`construction.rebuilding=true` per il primo passo accorciato, lo stesso
+  `ruspaFirstStepDur` gia' in buildings.js per la ruspa su edifici vivi —
+  qui applicato per la prima volta a un lotto che non e' mai stato un
+  edificio vero). **Cutscene iniziale** (bombardamento, "hanno distrutto
+  meta' citta'"): `air_tut2` (istanza vera nella room) crea 2 `air_tut1` +
+  6 tasselli di sfondo "macerie" (`tut_sf`, griglia 2x3 assoluta) e UCCIDE
+  subito l'HUD del tutorial — **[?] scoperto studiando il decompilato**:
+  dopo 4s (Alarm_1) l'originale crea `blacker1`, la schermata di game
+  over del gioco BASE (mai implementata ne' investigata altrove, §6
+  ancora `[?]`), e nessun codice poi ricrea l'HUD — il tutorial vero,
+  seguito alla lettera, si fermerebbe li' per sempre dopo un bombardamento
+  di pochi secondi. **Deviazione concordata con l'autore**: la cutscene
+  gira (2 aerei + `air_tut2` stesso, sprite `tuto_fig1/2`/`tuto_bomb`) ma
+  **non** sfocia in `blacker1`: l'HUD torna visibile alla fine, cosi' le
+  34 fasi si vedono davvero. **Bug corretto, segnalato dall'autore dagli
+  screenshot**: una prima versione piazzava i 6 tasselli "macerie"
+  esattamente alle coordinate mondo del decompilato (griglia 2x3, passo
+  1128/2000 -- il doppio della dimensione vera del tassello, 564/1000):
+  un checkerboard con META' dell'area scoperta, non un tappeto pieno, e
+  comunque dipendente da dove la telecamera vera della room si trovava
+  in quel momento -- risultato, lo sfondo copriva solo un angolo dello
+  schermo invece di tutto. **[I]** Corretto spostando l'intera cutscene
+  in spazio schermo (stesso layer di uiButtons/freccia, indipendente
+  dalla camera): il tassello si ripete a tappeto su tutta la canvas
+  (qualunque risoluzione -- verificato anche in verticale, 390x664) e i
+  tre aerei attraversano lo schermo da bordo a bordo in coordinate
+  normalizzate invece delle velocita' vere lette da `action_set_motion`
+  (che a 30px/tick avrebbero comunque attraversato lo schermo in una
+  frazione di secondo, illeggibili). **Balloon di testo/bottone "avanti"
+  sovrapposti alla barra azioni sotto** (altro bug segnalato dagli
+  screenshot): la posizione era un margine fisso indovinato, non
+  correlato alla vera altezza della barra (che cambia con `menoo`/
+  dispositivo/UI_SCALE) -- ora letta ogni frame da `uiButtons` (il bordo
+  superiore vero della barra corrente) invece di un pixel fisso.
+  **Bottone "avanti/esci": il vero sprite, non testo "OK"** (richiesto
+  dall'autore): l'oggetto decompilato si chiama `tutorial_thumb` per un
+  motivo — il suo sprite di default (`tut_ok`, 45x52) e' un pollice in su
+  disegnato a sagoma piena, nello stesso stile flat-black di ogni altra
+  icona del selettore. L'HTML `<button>OK</button>` di prima e' sparito:
+  ora e' il vero sprite `tut_ok`, disegnato nel layer GUI come ogni altro
+  bottone del motore (stessa logica `uiButtons`, un rettangolo schermo
+  `tutorialOkRect` ricalcolato ad ogni frame) e cliccabile da
+  `input.onTap` con la stessa priorita' del bottone di pausa — niente
+  piu' un elemento DOM separato per l'unico bottone del tutorial.
+  **Balloon di testo: stesso font/stile dell'originale, non un div HTML**
+  (richiesto dall'autore): **[C]** tutorial_square/DrawGUI.gml disegna il
+  balloon con `draw_set_font(gotham_mobile)` e un rettangolo BIANCO (non
+  nero) a `draw_set_alpha(0.7)` (`draw_roundrect_colour_ext(...,
+  16777215, 16777215, 0)`), poi il testo NERO a piena opacita' sopra
+  (`draw_text_ext_colour(...,0,0,0,0,1)`). L'HTML `<div>` di prima
+  (font monospazio bianco su nero) e' sparito: font bitmap vero
+  (`gotham_mobile`, tools/25_font.py — mai estratto prima, generato in
+  questo giro) disegnato nel layer GUI col resto del motore (font.js,
+  drawText()/measureText() — le 34 frasi vanno a capo con un nuovo
+  `wrapText()` a misura di parola, dato che GameMaker lo fa nativamente e
+  qui no), rettangolo bianco 70% alpha (`solidFrame()`, gia' usato per
+  altri overlay del motore) invece del rounded-rect dell'originale
+  (**[I]** angoli non arrotondati: nessun primitive rounded-rect nel
+  Renderer di questo motore — un dettaglio cosmetico minore rispetto a
+  colore/font, non affrontato). Larghezza del box ristretta per lasciare
+  spazio al pollice (`tut_ok`) che nell'originale vive altrove nello
+  schermo, qui condivide la stessa fascia in basso.
+  **Bug trovato durante il test**: `air_tut2` e' anche lui gia' un'istanza
+  vera nella room col proprio sprite di default (`tuto_bomb`, STUDIO.md
+  §5.3 "doppia casetta" — stesso principio): senza toglierlo da
+  `staticWorld` restava un bombardiere immobile per sempre, sovrapposto
+  alla stessa cutscene che lo simula — tolto allo stesso modo di
+  `pu1`/`reversi`/`honda1|2`. **Freccia puntatrice**
+  (`freccia_tutorial/EndStep.gml`): la tabella originale punta a
+  coordinate fisse del layout GameMaker, gia' diverso dal selettore
+  ricostruito in questo motore (STUDIO.md, "ricostruita come UI vera in
+  spazio schermo") — **[I]** punta quindi al bottone VERO in `uiButtons`
+  (per kind/type/menoo), non a un pixel copiato dal decompilato, cosi'
+  resta corretta qualunque sia la riga/lo scroll del menu; disegnata con
+  un nuovo `drawRotated()` (game/src/main.js, `drawQuad()` con i 4 angoli
+  ruotati — il primo sprite del motore a ruotare per davvero). **Gap
+  dichiarati, non affrontati in questo giro**: `tutorial_text` (nessuna
+  istanza in room, nessun creatore trovato — probabile relitto mai
+  attivato, non portato); `honda3` (terza auto statica della room:
+  simulata come `honda1`/`honda2` la teletrasporterebbe al punto fisso di
+  `carmaker`, non alla sua posizione vera — resta ferma); gli edifici
+  PRE-ESISTENTI della room (`casa2`/`casa3`/`industria1`/`industria2`/
+  `parco`/`rocket_launcher`/`gatlinggun`) restano decoro statico puro
+  (stesso sprite di default per tutte le istanze dello stesso tipo,
+  nessuna variante a dado) — non partecipano all'economia (nessuna
+  crescita/consumo/fulmine): la narrazione del tutorial non li richiede
+  mai per nome, solo i NUOVI edifici costruiti durante le 34 fasi contano
+  per l'avanzamento. Verificato con Playwright: cutscene visibile e
+  correttamente sostituita dall'HUD (fase 0) alla fine; bottone "avanti"
+  avanza le fasi; fase 2 (gameplay-gated) nasconde bottone/testo e mostra
+  la freccia sul bottone ruspa vero nel menu edifici; un lotto-rudere
+  sotto ruspa mostra il cartellino "2000" all'hover (tinta rossa,
+  `action_sprite_color(255,1)` — 255 e' rosso puro nel formato colore di
+  GameMaker, non bianco) e al tocco sparisce sostituito da un cantiere
+  vero. `.github/workflows/deploy-pages.yml` e README.md aggiornati per
+  rigenerare/documentare anche la room "tutorial".
+
+- **Piattaforma di destra "tagliata" nel tutorial + angoli arrotondati
+  del balloon.** Due richieste dell'autore dagli screenshot.
+  **[Bug corretto]**: la stessa classe di bug gia' vista e risolta su
+  `match` (STUDIO.md, "la meta' di match sospesa nel vuoto" — r120/baa12
+  mai disegnato) si ripresentava sul tutorial, per un motivo diverso:
+  `tutorial.json` ha lo stesso identico `r12`/`baa11` (la meta' SINISTRA
+  della piattaforma, gia' un'istanza vera della room, risolta come
+  qualunque altro decoro) ma copre solo x:[-17,1153] su una room larga
+  1920 — la meta' destra (dove vivono industria2/gatlinggun) restava
+  sospesa nel vuoto perche' `applyMatchPlatform()` (game/src/platform.js,
+  la funzione che spinge r120/baa12) veniva chiamata solo per
+  `roomName==="match"`, mai per `"tutorial"`. Corretto chiamandola anche
+  li' (`interactive:false`, stesso trattamento gia' usato dallo sfondo
+  sfocato della title screen: nessuna catena fari/r22/r32, fuori scopo
+  per una guida). **[Bug corretto, in piu']**: `applyMatchPlatform()`
+  calcolava la posizione di r120 da coordinate FISSE di `match`
+  (x=-19,y=-179), non dalla vera istanza `r12` passata — innocuo su
+  `match` (dove coincidono) ma avrebbe disallineato r120 di 2px sul
+  tutorial (il cui `r12` sta a x=-17): ora legge `r12` per davvero da
+  `staticWorld` invece di un numero copiato. Verificato con Playwright,
+  pan/zoom sulla mappa: il terreno continua fino al bordo vero della
+  piattaforma (profilo diagonale coerente), niente piu' cielo vuoto sotto
+  gli edifici di destra. **Angoli arrotondati**: il balloon di testo
+  (sopra) usava un `solidFrame()` dritto — `draw_roundrect_colour_ext()`
+  nel decompilato ha davvero gli angoli arrotondati. Nuovo
+  `makeRoundedRectTexture()` (game/src/gl.js): stesso principio "pixel
+  calcolato a mano" di `makeCircleTexture()` gia' esistente (una
+  distance-field rotonda negli angoli, piatta su bordi/centro), non un
+  canvas 2D — cache in main.js (`tutorialBoxFrame()`) che rigenera la
+  texture solo quando le dimensioni vere del box cambiano (nuova fase/
+  resize), non ad ogni frame, distruggendo la precedente invece di
+  accumularle in VRAM.

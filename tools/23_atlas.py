@@ -542,15 +542,27 @@ GAMEPLAY_SPRITES = {
         # — qui va fatto a mano.
         "baa22", "baa32",
     ],
+    # HUD della room "tutorial" (src/objects/tutorial_thumb|freccia_tutorial,
+    # game/src/tutorial.js): "tut_ok" il bottone avanti/esci, "fr_ros" la
+    # freccia puntatrice (20 frame, gia' iterati come ogni altro sprite
+    # multi-frame qui sopra). Cutscene di bombardamento iniziale
+    # (air_tut1|air_tut2/Create.gml): "tuto_fig1"/"tuto_fig2" i due aerei
+    # (50% di dado su quale mostrare), "tuto_bomb" il bombardiere/regista
+    # (air_tut2 stesso), "tuto_sfondo" il tassello di sfondo che copre
+    # l'intera area sorvolata. "empty2" e' lo sprite invisibile di
+    # `tutorial_thumb`/`tutorial_square` di base (mai disegnato per davvero,
+    # ma incluso per coerenza con l'atlas — costo trascurabile).
+    "tutorial": ["tut_ok", "fr_ros", "tuto_fig1", "tuto_fig2", "tuto_bomb", "tuto_sfondo", "empty2"],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})
-# Solo le due room di gioco vero (match/match_easy) fanno mai comparire un
-# edificio: la title screen (e le altre room di servizio, mai ancora
-# ricostruite) non ha bisogno di nessuno dei ~950 sprite di GAMEPLAY_SPRITES
-# — includerli comunque vorrebbe dire ~35 pagine di atlas sprecate solo per
-# disegnare tre bottoni.
-GAMEPLAY_ROOMS = {"match", "match_easy"}
+# Le due room di gioco vero (match/match_easy) piu' "tutorial" (stessa
+# partita vera sotto, STUDIO.md/tutorial.js) fanno comparire un edificio: la
+# title screen (e le altre room di servizio, mai ancora ricostruite) non ha
+# bisogno di nessuno dei ~950 sprite di GAMEPLAY_SPRITES — includerli
+# comunque vorrebbe dire ~35 pagine di atlas sprecate solo per disegnare tre
+# bottoni.
+GAMEPLAY_ROOMS = {"match", "match_easy", "tutorial"}
 
 # ---------------------------------------------------------------- raccolta
 rects = []                               # frame da sistemare

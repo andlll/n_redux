@@ -34,14 +34,14 @@ jobs:
 
       - name: Rigenera gli atlas per room
         run: |
-          for room in match_easy match title; do
+          for room in match_easy match title tutorial; do
             python3 tools/23_atlas.py "$room"
             python3 tools/24_blit.py "$room"
           done
 
       - name: Rigenera i font bitmap della UI
         run: |
-          for font in gotham_mid gotham_mini; do
+          for font in gotham_mid gotham_mini gotham_mobile; do
             python3 tools/25_font.py "$font"
             python3 tools/24_blit.py "font_$font"
           done

@@ -109,6 +109,48 @@ for (const it of worldStatic) {
 const semaphorePoles = worldStatic.filter((it) => it.obj === "object8");
 const semaphores = semaphorePoles.map((it) => createSemaphore(it.x, it.y));
 
+// ------------------------------------------------------- edifici illuminati
+// `worldStatic` non contiene NESSUN edificio giocatore (`casa`/`villa`/...):
+// in `match` quei lotti nascono come semplici `placeholder` (tolti sopra) e
+// vengono costruiti solo a runtime da chi gioca — qui non c'e' nessuna
+// partita simulata che li piazzi, quindi lo sfondo sfumato restava una
+// citta' di sole strade/alberi, gia' vuota prima ancora del blur (segnalato
+// dall'autore). Occupiamo un sottoinsieme dei lotti liberi con qualche
+// `villa`/`casa` gia' finita, ognuna con la propria coppia sprite+finestre
+// (`vilNl`/`cNNNl`, le stesse che il gioco vero disegna a fine cantiere —
+// STUDIO.md, buildings.js "Finestre notturne") cosi' la citta' sfumata ha
+// davvero delle luci accese di notte invece di restare buia e vuota.
+const LIT_LOTS = [
+  { x: 1375, y: 451, spr: "vil6" }, { x: 2253, y: 452, spr: "c211" },
+  { x: 2053, y: 453, spr: "vil7" }, { x: 1275, y: 508, spr: "c111" },
+  { x: 1475, y: 509, spr: "vil8" }, { x: 2154, y: 509, spr: "c112" },
+  { x: 1175, y: 565, spr: "vil1" }, { x: 1375, y: 566, spr: "c121" },
+  { x: 2253, y: 568, spr: "vil9" }, { x: 1624, y: 595, spr: "c131" },
+  { x: 1075, y: 623, spr: "vil4" }, { x: 1274, y: 624, spr: "c141" },
+  { x: 1524, y: 652, spr: "vil10" }, { x: 1722, y: 653, spr: "c151" },
+  { x: 976, y: 681, spr: "vil5" }, { x: 1175, y: 682, spr: "c122" },
+];
+// [I] Stesso fade in/out di stepLights() (main.js), ma senza la soglia
+// `r12.ele > 3`: qui non c'e' nessuna economia simulata da cui leggerla, e
+// una citta' decorativa ha sempre corrente a sufficienza.
+const LIGHT_FADE_SEC = 3;
+const buildingLights = [];
+for (const lot of LIT_LOTS) {
+  worldStatic.push({ obj: "decor", x: lot.x, y: lot.y, depth: -lot.y, _f: mFrameFor(lot.spr) });
+  const light = {
+    obj: "decor", x: lot.x, y: lot.y, depth: -lot.y - 1, _f: mFrameFor(lot.spr + "l"),
+    _selfLit: true, _lightT: 0, _alpha: 0,
+  };
+  worldStatic.push(light);
+  buildingLights.push(light);
+}
+function stepBuildingLights(dt, night) {
+  for (const light of buildingLights) {
+    light._lightT = Math.max(0, Math.min(LIGHT_FADE_SEC, light._lightT + (night ? dt : -dt)));
+    light._alpha = light._lightT / LIGHT_FADE_SEC;
+  }
+}
+
 function effDepth(it) { return it.depth === 0 ? -it.y : it.depth; }
 const sortWorld = (a, b) => effDepth(b) - effDepth(a);
 
@@ -140,18 +182,33 @@ const fakeR12 = { ondan: 0, bombn: 0, diron: 0, storm: 0, distrutti: 0 };
 // giro giorno/notte completo ogni 36 minuti veri sarebbe invisibile su una
 // title screen, qui dura CYCLE_SECONDS.
 const PHASES = [
-  { rgb: [1.00, 1.00, 1.00], dur: 14 }, { rgb: [1.00, 0.82, 0.62], dur: 5 },
-  { rgb: [0.45, 0.52, 0.82], dur: 12 }, { rgb: [0.92, 0.80, 0.78], dur: 5 },
+  { name: "giorno", rgb: [1.00, 1.00, 1.00], dur: 14 }, { name: "alba", rgb: [1.00, 0.82, 0.62], dur: 5 },
+  { name: "notte", rgb: [0.45, 0.52, 0.82], dur: 12 }, { name: "alba", rgb: [0.92, 0.80, 0.78], dur: 5 },
 ];
 const CYCLE_SECONDS = 50;
 const PHASE_TOTAL = PHASES.reduce((s, p) => s + p.dur, 0);
-function ambientAt(tSec) {
+function phaseAt(tSec) {
   let u = (tSec / CYCLE_SECONDS) * PHASE_TOTAL % PHASE_TOTAL;
   let i = 0;
   while (u > PHASES[i].dur) { u -= PHASES[i].dur; i = (i + 1) % PHASES.length; }
+  return { i, u };
+}
+function ambientAt(tSec) {
+  const { i, u } = phaseAt(tSec);
   const k = u / PHASES[i].dur;
   const a = PHASES[i].rgb, b = PHASES[(i + 1) % PHASES.length].rgb;
   return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+}
+function isNightAt(tSec) { return PHASES[phaseAt(tSec).i].name === "notte"; }
+// [C] main.js, mulTint(): la tinta ambientale resta per-istanza (non un
+// uniform globale) cosi' i decori "luce" (`_selfLit`, sopra) possono
+// saltarla — altrimenti si "accenderebbero" ma restando scuri quanto la
+// notte intorno, indistinguibili.
+function mulTint(base, rgb) {
+  const r = Math.round(((base >> 16) & 255) * rgb[0]);
+  const g = Math.round(((base >> 8) & 255) * rgb[1]);
+  const b = Math.round((base & 255) * rgb[2]);
+  return (r << 16) | (g << 8) | b;
 }
 
 function updateThreats(dt) {
@@ -198,7 +255,9 @@ input.onTap = (sx, sy) => {
     if (!hitButton(b, w.x, w.y)) continue;
     if (b.obj === "standma") { navigateTo = "play.html?room=match&autoload=1"; fadeT = 0; }
     else if (b.obj === "easma") { navigateTo = "play.html?room=match_easy&autoload=1"; fadeT = 0; }
-    else { message = "tutorial non ancora implementato"; messageT = 2.5; }
+    // [I] niente `autoload=1`: il tutorial riparte sempre da zero (nessun
+    // salvataggio da riprendere), STUDIO.md/tutorial.js.
+    else { navigateTo = "play.html?room=tutorial"; fadeT = 0; }
     break;
   }
 };
@@ -248,6 +307,7 @@ function frame(now) {
   stepCars(cars, dt, { oil: 1 }, false);   // { oil: 1 }: sempre "c'e' ancora olio", rinasce sempre
   stepAtmosphere(atmo, dt, false);
   stepSemaphores(semaphores, dt);
+  stepBuildingLights(dt, isNightAt(elapsed));
   updateThreats(dt);
 
   camWorld.x = CAM_CENTER.x + Math.sin((elapsed / CAM_PERIOD) * Math.PI * 2) * CAM_DRIFT.x;
@@ -259,8 +319,12 @@ function frame(now) {
     bgT = 0;
     const bgStart = performance.now();
     // --- layer mondo (sfumato dopo) ---
+    // [C] main.js: u_ambient resta neutro, la tinta e' applicata per
+    // istanza sotto (mulTint()) cosi' i decori "luce" (buildingLights,
+    // sopra) possono restare alla propria luminosita' vera invece di
+    // scurirsi insieme al resto della scena.
     const amb = ambientAt(elapsed);
-    r.setAmbient(amb[0], amb[1], amb[2]);
+    r.setAmbient(1, 1, 1);
     r.setProjection(camWorld.projection());
     const dynamic = [];
     for (const s of semaphores) if (s.spr) dynamic.push({ obj: "decor", x: s.x, y: s.y, depth: s.depth, _f: mFrameFor(s.spr) });
@@ -289,7 +353,9 @@ function frame(now) {
       if (!f) continue;
       const x0 = it.x - f.ox, y0 = it.y - f.oy;
       if (x0 > rt || y0 > bt || x0 + f.w < l || y0 + f.h < t) continue;
-      r.draw(f, it.x, it.y, it._scale ?? 1, it._tint ?? 0xffffff, 1);
+      const base = it._tint ?? 0xffffff;
+      const tint = it._selfLit ? base : mulTint(base, amb);
+      r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
     }
     r.flush();
     // PauseBlur (game/src/gl.js) — stesso identico effetto del menu di

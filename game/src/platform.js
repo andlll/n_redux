@@ -93,9 +93,16 @@ export function applyMatchPlatform(staticWorld, { interactive = false } = {}) {
   // che faceva sembrare mancante meta' piattaforma era altrove: vedi il
   // commento su r120 subito sotto.
   // [C] r12/Create.gml: `action_create_object(r120, 1170, 346)` e' RELATIVO
-  // alla posizione di r12 stesso (x=-19,y=-179 — vedi il commento su
-  // R120_RECT piu' sopra): la posizione vera e' (-19+1170, -179+346).
-  const R120_X = -19 + 1170, R120_Y = -179 + 346;
+  // alla posizione di r12 stesso (x=-19,y=-179 su `match` — vedi il
+  // commento su R120_RECT piu' sopra): la posizione vera e' (-19+1170,
+  // -179+346). **[I]** letta qui dall'istanza `r12` VERA di `staticWorld`
+  // (gia' un'istanza reale della room, risolta da tools/22_scene.py —
+  // stesso principio del commento sopra) invece di un numero fisso: la
+  // room "tutorial" (game/src/tutorial.js) riusa lo stesso r12/baa11 ma a
+  // una posizione leggermente diversa (-17,-179, non -19,-179) — un
+  // valore fisso copiato da `match` avrebbe disallineato r120 li' di 2px.
+  const r12Instance = staticWorld.find((it) => it.obj === "r12");
+  const R120_X = (r12Instance?.x ?? -19) + 1170, R120_Y = (r12Instance?.y ?? -179) + 346;
   // [Bug corretto, main.js] questa `push()` (a differenza di `r12` sopra)
   // aggiunge un'istanza NUOVA a `staticWorld`, dopo che main.js ha gia'
   // calcolato `_f` (il frame dell'atlas) per tutto cio' che c'era prima —

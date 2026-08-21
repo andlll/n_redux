@@ -1,4 +1,4 @@
-import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture, PauseBlur } from "./gl.js";
+import { Renderer, makeSolidTexture, makeCircleTexture, makeRoundedRectTexture, solidFrame, loadTexture, PauseBlur } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan } from "./state.js";
@@ -11,7 +11,7 @@ import {
   stepBalloonSpawner, stepBalloons, stepLoot, collectLoot,
   spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
 } from "./balloons.js";
-import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
+import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
 import {
@@ -25,6 +25,10 @@ import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosi
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load } from "./save.js";
 import { loadFont, drawText, measureText } from "./font.js";
+import {
+  createTutorialState, extractRuinLots, ruinRebuildConstruction, stepTutorialAuto, stepCutscene,
+  TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE,
+} from "./tutorial.js";
 
 const canvas = document.getElementById("view");
 const hud = document.getElementById("hud");
@@ -76,8 +80,12 @@ const UI_SCALE = isMobile ? 0.6 : 0.7;
 // apposta perche' mascherava le modifiche appena fatte durante lo
 // sviluppo) — vedi `doLoad()` piu' sotto, chiamato una sola volta all'avvio
 // solo con questo flag.
+// "tutorial" (game/src/tutorial.js): stessa partita vera di match_easy
+// sotto (nessuna base volante/faro, STUDIO.md — la room e' 1920x1086 come
+// match_easy, non 3900x2090 come match), con un HUD guidato in piu' sopra.
 const params = new URLSearchParams(location.search);
-const roomName = params.get("room") === "match" ? "match" : "match_easy";
+const roomParam = params.get("room");
+const roomName = roomParam === "match" || roomParam === "tutorial" ? roomParam : "match_easy";
 const autoloadOnBoot = params.get("autoload") === "1";
 
 // ---------------------------------------------------------------- scena
@@ -222,6 +230,10 @@ const fontMini = await loadFont(gl, "gotham_mini");
 // valore di `repre.mon` (il mese, 1..12 — state.js, r12.month) — mai una
 // tabella nel decompilato, ricostruita qui come tale.
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// [C] tutorial_square/DrawGUI.gml: `draw_set_font(gotham_mobile)` — il
+// font del balloon di testo del tutorial, diverso da quello della barra
+// risorse sopra. Caricato solo per questa room (nessun'altra lo usa).
+const fontMobile = roomName === "tutorial" ? await loadFont(gl, "gotham_mobile") : null;
 
 // -------------------------------------------------------- piazzabili e edifici
 // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
@@ -293,16 +305,36 @@ if (reversiIndex >= 0) staticWorld.splice(reversiIndex, 1);
 // Tolte da staticWorld — altrimenti resterebbero due comparse immobili
 // sotto alle auto vere che si muovono sopra di loro — e sostituite dalle
 // istanze simulate in `cars` piu' sotto.
-const INITIAL_CAR_TYPES = roomName === "match" ? ["honda1", "honda2"] : ["honda_facile_1", "honda_facile_2"];
+// [I] `tutorial` ha anche una terza istanza statica, `honda3` — a
+// differenza di honda1/honda2 il suo `CAR_TYPES.honda3.spawn` (cars.js) e'
+// il punto fisso di `carmaker` (le auto che arrivano nel tempo su
+// match/match_easy), non la posizione reale di QUESTA istanza: simularla
+// da li' la teletrasporterebbe altrove. Resta quindi una terza auto ferma
+// invece di una terza in marcia — gap dichiarato, non un tentativo di
+// calibrarne il percorso per questa sola room.
+const INITIAL_CAR_TYPES = roomName === "match" || roomName === "tutorial" ? ["honda1", "honda2"] : ["honda_facile_1", "honda_facile_2"];
 for (const name of INITIAL_CAR_TYPES) {
   const idx = staticWorld.findIndex((it) => it.obj === name);
   if (idx >= 0) staticWorld.splice(idx, 1);
 }
 
-// La base volante di `match` (game/src/platform.js, applyMatchPlatform()):
-// solo su `match`, mai su `match_easy` — condivisa con lo sfondo sfocato
-// della title screen (game/src/title.js), stessa `match.scene.json`.
-if (roomName === "match") applyMatchPlatform(staticWorld, { interactive: true });
+// La base volante (game/src/platform.js, applyMatchPlatform()): mai su
+// `match_easy` (una mappa piatta vera, nessun `r12`/`baa11`), ma non solo
+// su `match` — `tutorial` (game/src/tutorial.js) ha lo stesso identico
+// `r12`/baa11 nella propria room (STUDIO.md — la meta' SINISTRA della
+// piattaforma e' gia' li', risolta dalla pipeline di scena come per
+// `match`), che da sola copre solo x:[-17,1153] su una room larga 1920:
+// senza spingere anche r120/baa12 (la meta' destra) il resto della mappa
+// restava sospeso nel vuoto, "tagliato" a meta' — esattamente lo stesso
+// bug di `match` (sopra) gia' risolto una volta, ripresentatosi qui
+// perche' la room non era mai stata inclusa in questa chiamata.
+// `interactive:false` su tutorial (nessuna catena fari/r22/r32: fuori
+// scopo per una guida, STUDIO.md) — stesso trattamento gia' usato dallo
+// sfondo sfocato della title screen (game/src/title.js) sulla stessa
+// piattaforma.
+if (roomName === "match" || roomName === "tutorial") {
+  applyMatchPlatform(staticWorld, { interactive: roomName === "match" });
+}
 // [Bug corretto] `applyMatchPlatform()` PUSHA istanze nuove in `staticWorld`
 // (r120/baa12) DOPO il ciclo che assegna `_f` a tutto il resto (sopra,
 // "for (const it of staticWorld) it._f = frameFor(it.spr)"): senza questo
@@ -346,6 +378,55 @@ let decorEntities = [];      // ornamenti (permanenti a fine cantiere, o transit
 // simula piu' niente (nessuna produzione/crescita/mira/fulmine), e' decoro
 // inerte come `decorEntities` — vedi destroyBuilding() sotto.
 let ruins = [];
+
+// ------------------------------------------------------------- tutorial
+// Solo sulla room "tutorial" (game/src/tutorial.js, STUDIO.md): stato del
+// controller a fasi (tutorial_square) + i lotti-rudere piazzati a mano
+// nella room (ruin1/ruin2 — un meccanismo dedicato, diverso dai `ruins` da
+// battaglia sopra: vedi il commento in tutorial.js). `ruinLots` sostituisce
+// le istanze `ruin1`/`ruin2` in `staticWorld`: da qui in poi vivono solo
+// qui, con hover/click propri (input.onTap piu' sotto), non piu' come
+// decoro passivo.
+let tutorialState = null;
+let ruinLots = [];
+// Balloon di testo + bottone "avanti/esci" (tutorial_square|tutorial_thumb/
+// DrawGUI.gml): entrambi disegnati nel layer GUI come ogni altro elemento
+// del motore (font bitmap vero, `fontMobile` sopra — non un div HTML),
+// non piu' un elemento DOM a parte. `tutorialOkRect` (sotto) e' il
+// rettangolo schermo del pollice, ricalcolato ad ogni frame, letto da
+// input.onTap per il tocco.
+let tutorialOkRect = null;   // { x, y, w, h }, ricalcolato ad ogni frame dal disegno
+if (roomName === "tutorial") {
+  tutorialState = createTutorialState(scene);
+  ruinLots = extractRuinLots(scene);
+  for (const lot of ruinLots) lot._f = frameFor(lot.spr);
+  // `air_tut2` (letto sopra solo per la sua posizione, createCutscene()) e'
+  // anche lui gia' un'istanza vera della room col proprio sprite di default
+  // ("tuto_bomb") — va tolta da staticWorld com'e' gia' per ruin1/ruin2,
+  // altrimenti resta un bombardiere immobile per sempre, sovrapposto alla
+  // stessa cutscene che lo simula.
+  for (let i = staticWorld.length - 1; i >= 0; i--) {
+    if (staticWorld[i].obj === "ruin1" || staticWorld[i].obj === "ruin2" || staticWorld[i].obj === "air_tut2") staticWorld.splice(i, 1);
+  }
+}
+// [C] tutorial_thumb/Mouse_LeftPressed.gml (STUDIO.md, tutorial.js
+// header — l'operatore letto correttamente e' "!=", non "=="): un tocco
+// avanza SEMPRE alla fase successiva, tranne all'ultima (LAST_PHASE) dove
+// invece riporta al menu. `phase===4` in piu' crea la moneta di pratica
+// (STUDIO.md/tutorial.js, sold13). **[I]** `phase += 1` invece di `+0.5`:
+// vedi il commento in cima a tutorial.js per il perche'.
+function advanceTutorial() {
+  if (tutorialState.phase === 4 && !tutorialState.practiceCoinSpawned) {
+    tutorialState.practiceCoinSpawned = true;
+    coins.push({
+      buildingId: null, x: tutorialState.practiceCoinPos.x, y: tutorialState.practiceCoinPos.y,
+      depth: COIN_DEPTH, amount: 260, kind: "mon", t: 0, spr: "soldico", auto: false,
+      _tutorialPractice: true,
+    });
+  }
+  if (tutorialState.phase >= LAST_PHASE) location.href = "./index.html";
+  else tutorialState.phase += 1;
+}
 // I lotti "extra" occupati da un edificio multi-tile (oggi solo `eolico`,
 // buildings.js `def.multiTile`) — [C] `impavent` uccide ogni placeholder che
 // la sua maschera copre, non solo quello toccato (vedi placeAt() sotto): qui
@@ -1338,6 +1419,63 @@ function inFrameRect(wx, wy, x, y, f) {
   return wx >= x0 && wx <= x0 + f.w && wy >= y0 && wy <= y0 + f.h;
 }
 
+/** Disegna `f` ruotato di `angleDeg` intorno al proprio ancoraggio (cx,cy) —
+ * [C] freccia_tutorial/EndStep.gml: `image_angle` (STUDIO.md/tutorial.js),
+ * l'unico sprite del motore che ruota per davvero (Renderer.draw() sotto
+ * disegna sempre allineato agli assi). Quattro angoli del rettangolo non
+ * ruotato (rispetto all'ancora `f.ox/f.oy`), ruotati uno per uno e passati a
+ * drawQuad() — stesso principio del quad pieno del laser (STUDIO.md
+ * "il fascio del laser"), qui su uno sprite invece che un colore piatto. */
+function drawRotated(frame, cx, cy, angleDeg, scale, tint, alpha) {
+  const rad = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  const corners = [
+    { x: -frame.ox, y: -frame.oy }, { x: frame.w - frame.ox, y: -frame.oy },
+    { x: frame.w - frame.ox, y: frame.h - frame.oy }, { x: -frame.ox, y: frame.h - frame.oy },
+  ].map((p) => ({
+    x: cx + (p.x * cos - p.y * sin) * scale,
+    y: cy + (p.x * sin + p.y * cos) * scale,
+  }));
+  r.drawQuad(frame, corners[0], corners[1], corners[2], corners[3], tint, alpha);
+}
+
+/** A capo semplice per parola, sul font bitmap `font` — [C]
+ * tutorial_square/DrawGUI.gml usa `draw_text_ext_colour` (a capo
+ * automatico nativo di GameMaker); qui measureText() (font.js) misura
+ * ogni riga candidata finche' non supera `maxWidth`. */
+function wrapText(font, str, scale, maxWidth) {
+  const words = str.split(" ");
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    const test = cur ? cur + " " + w : w;
+    if (cur && measureText(font, test, scale) > maxWidth) {
+      lines.push(cur);
+      cur = w;
+    } else {
+      cur = test;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+// Cache del rettangolo arrotondato del balloon (game/src/gl.js,
+// makeRoundedRectTexture()): l'altezza cambia solo quando cambia il
+// numero di righe a capo (nuova fase) o la larghezza schermo (resize),
+// non ad ogni frame — rigenerare la texture solo quando (w,h) cambiano
+// davvero, distruggendo la precedente invece di accumularle in VRAM.
+let tutorialBoxTex = null, tutorialBoxTexKey = "";
+function tutorialBoxFrame(w, h) {
+  const key = w + "x" + h;
+  if (key !== tutorialBoxTexKey) {
+    if (tutorialBoxTex) gl.deleteTexture(tutorialBoxTex);
+    tutorialBoxTex = makeRoundedRectTexture(gl, Math.round(w), Math.round(h), 20);
+    tutorialBoxTexKey = key;
+  }
+  return solidFrame(tutorialBoxTex, w, h);
+}
+
 /** Test punto-in-rombo, centrato sul bounding box di un frame: i placeholder
  * sono disegnati come sprite romboidali ("phold", il rombo viola —
  * Mouse_MouseEnter.gml originale), non rettangolari — un tocco/hover nei
@@ -1598,6 +1736,14 @@ input.onTap = (sx, sy) => {
     }
     return;
   }
+  // Bottone "avanti/esci" del tutorial (tut_ok/tutorialOkRect, disegnato
+  // piu' sotto nel layer GUI): stessa priorita' del bottone di pausa,
+  // intercetta prima che il tocco raggiunga il mondo sotto.
+  if (tutorialOkRect && sx >= tutorialOkRect.x && sx <= tutorialOkRect.x + tutorialOkRect.w
+    && sy >= tutorialOkRect.y && sy <= tutorialOkRect.y + tutorialOkRect.h) {
+    advanceTutorial();
+    return;
+  }
   // Il pannello prestiti (bankPanelOpen sopra), quando aperto, e' un vero
   // modale: intercetta il tocco PRIMA di ogni altra cosa (bottoni,
   // piazzamento, mondo). Un tocco su uno dei 4 bottoni prende quel
@@ -1672,7 +1818,7 @@ input.onTap = (sx, sy) => {
       && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo"
       && it.obj !== "bankIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
       && it.obj !== "faroDockerSignal" && it.obj !== "faro3Button" && it.obj !== "faro3WaveSignal"
-      && it.obj !== "faro3DockerSignal" && it.obj !== "cargoShip") continue;
+      && it.obj !== "faro3DockerSignal" && it.obj !== "cargoShip" && it.obj !== "ruinLot") continue;
     // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
     // stessa ragione della raccolta hover piu' sotto. Tutto il resto
     // (edifici, casse, monete, segnale di potenziamento) resta sul
@@ -1704,6 +1850,24 @@ input.onTap = (sx, sy) => {
     }
   }
   if (!picked) return;
+  // Tutorial (game/src/tutorial.js): lotto-rudere — [C] ruin1|2/
+  // Mouse_LeftPressed.gml, solo con la ruspa selezionata e fondi
+  // sufficienti. Avvia un cantiere vero (stesso BUILDING_TYPES.casa gia'
+  // esistente) invece di un oggetto dedicato — vedi ruinRebuildConstruction().
+  if (picked.obj === "ruinLot") {
+    const lot = picked.ref;
+    message = ""; messageT = 0;
+    if (r12.selec === 11 && canAfford(r12, { mon: lot.cost })) {
+      r12.mon -= lot.cost;
+      const b = placeBuilding("casa", lot.x, lot.y, lot.depth);
+      b.level = lot.level === 2 ? 1 : 0;
+      b.construction = ruinRebuildConstruction(lot.level);
+      buildings.push(b);
+      ruinLots.splice(ruinLots.indexOf(lot), 1);
+    }
+    picked = null;
+    return;
+  }
   // palazzo/museo: `input.onPointerDown`, per questo stesso tocco, ha gia'
   // provato ad armare il piazzamento (armPlacement()) e ha gia' mostrato un
   // messaggio — riuscito ("trascina verso...", ma allora `armedPlacement`
@@ -2026,6 +2190,39 @@ function frame(now) {
     // onLand: [C] mon_box|mon_bbox/Alarm_0.gml crea "smoko" prima di
     // autodistruggersi — vedi il commento in stepConstructionBoxes() (balloons.js).
     stepConstructionBoxes(constructionBoxes, dt, (x, y) => trails.push(spawnSmoko(x, y)));
+    // Tutorial (game/src/tutorial.js): la cutscene iniziale gira PRIMA di
+    // tutto il resto (avanzamento fasi/freccia restano fermi finche' non
+    // finisce, stesso ordine del decompilato — l'HUD nasce distrutto dalla
+    // cutscene, torna solo alla fine). `coinCollected` (fase 5->6) si legge
+    // qui invece che dentro stepTutorialAuto() perche' dipende da `coins`,
+    // non solo da `r12`/`buildings`.
+    if (tutorialState) {
+      if (tutorialState.cutscene) {
+        if (stepCutscene(tutorialState.cutscene, dt)) tutorialState.cutscene = null;
+      } else {
+        if (tutorialState.practiceCoinSpawned && !coins.some((c) => c._tutorialPractice)) {
+          tutorialState.coinCollected = true;
+        }
+        stepTutorialAuto(tutorialState, { r12, buildings });
+      }
+      // HUD (balloon di testo + bottone avanti/esci): nascosto durante la
+      // cutscene e nelle fasi ad avanzamento automatico (HIDE_ADVANCE_
+      // BUTTON — tutorial_thumb/Step.gml, le stesse 8 fasi gia' viste in
+      // stepTutorialAuto()), visibile in tutte le altre.
+      tutorialState.showOkButton = !tutorialState.cutscene && !HIDE_ADVANCE_BUTTON.has(tutorialState.phase);
+      if (tutorialState.showOkButton) {
+        // Il balloon/bottone non devono coprire la barra azioni sotto
+        // (segnalato dall'autore: si sovrapponevano) — `uiButtons` (un
+        // frame indietro, ricalcolata piu' sotto: differenza impercettibile,
+        // gia' lo stesso principio usato per il picking altrove) da' il
+        // bordo superiore VERO della barra, qualunque sia menoo/dispositivo,
+        // invece di un margine fisso indovinato. Salvato su `tutorialState`
+        // cosi' anche il disegno del balloon/pollice (piu' sotto, layer
+        // GUI) puo' riusarlo senza ricalcolarlo.
+        const barTop = uiButtons.length ? Math.min(...uiButtons.map((b) => b.y)) : canvas.clientHeight - 100;
+        tutorialState.uiGap = Math.max(8, canvas.clientHeight - barTop + 10);
+      }
+    }
     // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
     // bombardieri/zeppelin man mano che le spie ignorate si accumulano
     // (contatori alzati in stepBalloons() sopra), poi ognuno vola, bombarda,
@@ -2132,6 +2329,26 @@ function frame(now) {
   // muovono, non cambiano sprite) — solo da disegnare, come il resto del
   // decoro permanente.
   for (const ru of ruins) dynamic.push(ru);
+  // Tutorial (game/src/tutorial.js): lotti-rudere (ruin1/ruin2, un
+  // meccanismo dedicato — mai le stesse istanze di `ruins` sopra). La
+  // cutscene iniziale si disegna a parte, in spazio schermo (vedi sotto,
+  // dopo il layer GUI) — copre l'intera canvas per davvero, indipendente
+  // da dove punta la camera vera della room.
+  if (tutorialState) {
+    const hw = input.hover && input.hoverPointerType === "mouse" ? cam.screenToWorld(input.hover.x, input.hover.y) : null;
+    for (const lot of ruinLots) {
+      const hovered = !!hw && r12.selec === 11 && lot._f && inFrameRect(hw.x, hw.y, lot.x, lot.y, lot._f);
+      lot._hovered = hovered;
+      // [C] ruin1|2/Mouse_MouseEnter.gml: action_sprite_color(255,1) — 255 e'
+      // "puro rosso" nel formato colore di GameMaker (R+G*256+B*65536, vedi
+      // SCENE_BG_RGB sopra), non bianco: _selfLit qui salta la tinta
+      // ambientale, altrimenti di notte il rosso si confonderebbe col resto.
+      dynamic.push({
+        obj: "ruinLot", ref: lot, x: lot.x, y: lot.y, depth: lot.depth, _f: lot._f,
+        ...(hovered ? { _tint: 0xff0000, _selfLit: true } : {}),
+      });
+    }
+  }
   // Auto decorative (game/src/cars.js): x/y/sprite/frame gia' avanzati da
   // stepCars() sopra — `c.frame` anima per davvero le svolte (STUDIO.md
   // "le auto sterzano davvero"), frameFor() lo ritaglia da solo sull'ultimo
@@ -2337,6 +2554,15 @@ function frame(now) {
       }
       break;
     }
+  }
+  // Cartellino costo sui lotti-rudere del tutorial (game/src/tutorial.js),
+  // stesso schema del segnale di potenziamento sopra — [C] ruin1|2/
+  // Mouse_MouseEnter.gml: `action_create_object(cc500|cc2000, 0, -50)`.
+  if (tutorialState) for (const lot of ruinLots) {
+    if (!lot._hovered) continue;
+    const tagFrame = frameFor(`c${lot.cost}`);
+    if (tagFrame) r.draw(tagFrame, lot.x - tagFrame.w / 2, lot.y - 50, 1, 0xffffff, 1);
+    break;
   }
   drawBeams();
   r.flush();
@@ -2546,6 +2772,103 @@ function frame(now) {
     }
   }
 
+  // Freccia del tutorial (game/src/tutorial.js — [C]
+  // freccia_tutorial/EndStep.gml): la tabella originale punta a coordinate
+  // fisse del layout GameMaker, gia' diverso dal selettore ricostruito qui
+  // (STUDIO.md, "ricostruita come UI vera in spazio schermo") — **[I]**
+  // punta quindi al bottone VERO corrispondente in `uiButtons` (per kind/
+  // type), non a un pixel fisso copiato dal decompilato, cosi' resta
+  // corretta qualunque sia la riga/lo scroll del menu al momento.
+  if (tutorialState && !tutorialState.cutscene) {
+    tutorialState.arrowFrame = (tutorialState.arrowFrame + dt * 20) % 20;
+    const byKind = (pred) => uiButtons.find(pred);
+    let target = null;   // { x, y, angle }
+    switch (tutorialState.phase) {
+      case 2: {
+        const b = byKind((btn) => btn.kind === "building" && btn.type === "ruspa")
+          ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1);
+        if (b) target = { x: b.x + b.w / 2, y: b.y, angle: 270 };
+        break;
+      }
+      case 5: {
+        if (tutorialState.practiceCoinSpawned) {
+          const s = cam.worldToScreen(tutorialState.practiceCoinPos.x, tutorialState.practiceCoinPos.y);
+          target = { x: s.x, y: s.y - 100, angle: 270 };
+        }
+        break;
+      }
+      case 6: case 11: case 24:
+        target = { x: canvas.clientWidth / 2, y: 100, angle: 90 };
+        break;
+      case 7: {
+        const b = byKind((btn) => btn.kind === "deselect");
+        if (b) target = { x: b.x + b.w / 2, y: b.y, angle: 270 };
+        break;
+      }
+      case 8: case 12: case 16: case 19: {
+        const type = tutorialState.phase === 8 ? "casa" : tutorialState.phase === 12 ? "industria"
+          : tutorialState.phase === 16 ? "parco" : "missile";
+        const b = byKind((btn) => btn.kind === "building" && btn.type === type)
+          ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1);
+        if (b) target = { x: b.x + b.w / 2, y: b.y, angle: 270 };
+        break;
+      }
+      case 31: {
+        const b = byKind((btn) => btn.kind === "menu" && btn.menoo === 2);
+        if (b) target = { x: b.x + b.w / 2, y: b.y, angle: 270 };
+        break;
+      }
+    }
+    if (target) {
+      const arrowFrame = frameFor("fr_ros", Math.floor(tutorialState.arrowFrame));
+      if (arrowFrame) drawRotated(arrowFrame, target.x, target.y, target.angle, UI_SCALE, 0xffffff, 1);
+    }
+  }
+  // Balloon di testo del tutorial — [C] tutorial_square/DrawGUI.gml:
+  // `draw_set_alpha(0.7)` + `draw_roundrect_colour_ext(..., 16777215,
+  // 16777215, 0)` (un rettangolo BIANCO pieno arrotondato, non nero) poi
+  // `draw_set_alpha(1)` + `draw_text_ext_colour(..., 0,0,0,0, 1)` (testo
+  // NERO in piena opacita') col font `gotham_mobile` — stesso font/stile
+  // dell'originale (fontMobile sopra, tools/25_font.py; rettangolo
+  // arrotondato, tutorialBoxFrame()/makeRoundedRectTexture() sopra) —
+  // **[I]** larghezza/testo a capo qui invece che nel motore GML nativo
+  // (wrapText() sopra, via measureText()).
+  if (tutorialState?.showOkButton && fontMobile) {
+    const textScale = 1;
+    const pad = 20;
+    // boxRight lascia spazio al pollice (tut_ok, disegnato subito sotto:
+    // stessa larghezza 45*1.3 li' usata, + margine) — l'originale non
+    // aveva questo problema (il suo bottone "avanti" vive altrove nello
+    // schermo), ma qui i due condividono la stessa fascia in basso.
+    const boxLeft = 30, boxRight = canvas.clientWidth - 30 - (45 * 1.3 + 45);
+    const lineH = fontMobile.meta.emSize * textScale * 1.35;
+    const lines = wrapText(fontMobile, TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "", textScale, boxRight - boxLeft - pad * 2);
+    const boxH = lines.length * lineH + pad * 2;
+    const boxBottom = canvas.clientHeight - tutorialState.uiGap;
+    const boxTop = boxBottom - boxH;
+    r.draw(tutorialBoxFrame(boxRight - boxLeft, boxH), boxLeft, boxTop, 1, 0xffffff, 0.7);
+    let ty = boxTop + pad;
+    for (const line of lines) {
+      drawText(r, fontMobile, line, boxLeft + pad, ty, textScale, 0x000000, 1);
+      ty += lineH;
+    }
+  }
+  // Bottone "avanti/esci" del tutorial: il vero sprite `tut_ok` (STUDIO.md
+  // — l'oggetto si chiama `tutorial_thumb`, un pollice in su, non testo
+  // "OK") invece dell'HTML segnaposto di prima. `tutorialOkRect` (letto da
+  // input.onTap) e' il suo rettangolo schermo di QUESTO frame.
+  tutorialOkRect = null;
+  if (tutorialState?.showOkButton) {
+    const okScale = 1.3;
+    const okFrame = frameFor("tut_ok");
+    if (okFrame) {
+      const w = okFrame.w * okScale, h = okFrame.h * okScale;
+      const x = canvas.clientWidth - 30 - w, y = canvas.clientHeight - tutorialState.uiGap - h;
+      r.draw(okFrame, x, y, okScale, 0xffffff, 1);
+      tutorialOkRect = { x, y, w, h };
+    }
+  }
+
   // Avviso "ATTACK INCOMING" (src/objects/aincom, game/src/balloons.js): una
   // mongolfiera spia ha completato il suo giro. [C] aincom/Create.gml +
   // Alarm_1/2.gml: lampeggia (mostra/nasconde ogni 30 tick = 0.5s) per 240
@@ -2657,6 +2980,31 @@ function frame(now) {
     status = `${picked.obj}${picked.spr ? " [" + picked.spr + "]" : ""}`;
   }
 
+  // Cutscene iniziale del tutorial (game/src/tutorial.js): disegnata per
+  // ultima, in spazio schermo, sopra a TUTTO il resto (mondo + UI vera) —
+  // una vera cutscene a schermo pieno, non un livello del mondo qualunque.
+  // Il tassello "macerie" (tuto_sfondo) si ripete a tappeto su tutta la
+  // canvas (qualunque risoluzione: copertura piena garantita, a differenza
+  // di una prima versione che lo piazzava a coordinate mondo fisse — vedi
+  // il commento su CUTSCENE_DURATION in tutorial.js), i tre aerei
+  // attraversano lo schermo da bordo a bordo in coordinate normalizzate.
+  if (tutorialState?.cutscene) {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    r.setAmbient(1, 1, 1);
+    r.setProjection(screenProjection(cw, ch));
+    const bgFrame = frameFor("tuto_sfondo");
+    if (bgFrame) {
+      for (let y = 0; y < ch; y += bgFrame.h) {
+        for (let x = 0; x < cw; x += bgFrame.w) r.draw(bgFrame, x, y, 1, 0xffffff, 1);
+      }
+    }
+    for (const p of tutorialState.cutscene.planes) {
+      const f = frameFor(p.spr);
+      if (f) r.draw(f, p.xFrac * cw, p.yFrac * ch, 1, 0xffffff, 1);
+    }
+    r.flush();
+  }
+
   hud.textContent =
     `${scene.name}  ${scene.width}x${scene.height}\n` +
     `istanze ${frameList.length}  disegnate ${drawn}  drawcall ${r.drawCalls}\n` +
@@ -2682,6 +3030,7 @@ requestAnimationFrame(frame);
 window.__nimbus = {
   cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
   get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
+  get tutorialState() { return tutorialState; }, get tutorialOkRect() { return tutorialOkRect; },
   get paused() { return paused; }, setPaused: (v) => { paused = v; }, get pauseBtnRect() { return pauseBtnRect; },
   get pauseMenuButtons() { return pauseMenuButtons; },
   get uiScrollX() { return uiScrollX; }, setUiScrollX: (x) => { uiScrollX = x; },

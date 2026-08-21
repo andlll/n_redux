@@ -112,7 +112,7 @@ L'unico passo che serve prima è generare gli atlas per room.
 
 ```bash
 python3 -m pip install pillow    # unica dipendenza esterna della toolchain
-for room in match_easy match title; do
+for room in match_easy match title tutorial; do
   python3 tools/23_atlas.py "$room"
   python3 tools/24_blit.py "$room"
 done
@@ -132,9 +132,10 @@ python3 -m http.server 5173 --directory game
 E si apre `http://127.0.0.1:5173/` (`index.html`) — la schermata di scelta
 (Match/Match Facile/Tutorial, il vecchio layout del decompilato), la vera
 home del sito. `play.html` resta raggiungibile diretto (default
-`match_easy`) e accetta `?room=match|match_easy` + `?autoload=1`
-(STUDIO.md, game/src/title.js) per chi vuole saltare il menu; dalla partita
-si torna alla title screen col bottone "Torna al menu" nel menu di pausa.
+`match_easy`) e accetta `?room=match|match_easy|tutorial` + `?autoload=1`
+(STUDIO.md, game/src/title.js) per chi vuole saltare il menu — `autoload`
+non si applica al tutorial, che riparte sempre da zero; dalla partita si
+torna alla title screen col bottone "Torna al menu" nel menu di pausa.
 
 ### Deploy come sito statico
 

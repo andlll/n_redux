@@ -249,6 +249,41 @@ export function makeCircleTexture(gl, size = 64) {
   return t;
 }
 
+/** Rettangolo bianco con angoli arrotondati, raggio `radius` — [C]
+ * tutorial_square/DrawGUI.gml: `draw_roundrect_colour_ext(...)` per il
+ * balloon di testo del tutorial (game/src/main.js), l'unico posto nel
+ * motore che ha bisogno di angoli arrotondati invece di un quad dritto
+ * (solidFrame() sopra). Stesso principio "pixel calcolato a mano" di
+ * makeCircleTexture(): per ogni pixel, distanza dal punto piu' vicino sul
+ * rettangolo "arretrato" di `radius` da ogni bordo (clampato agli angoli,
+ * piatto su bordi/centro) — dentro il raggio = pieno, fuori = trasparente,
+ * un pixel di sfumatura in mezzo contro l'aliasing. L'alpha del box (0.7
+ * nel decompilato) resta un parametro di `Renderer.draw()`, non qui: la
+ * texture e' sempre bianca piena/trasparente, riusabile a qualunque
+ * opacita' serva al chiamante. */
+export function makeRoundedRectTexture(gl, w, h, radius) {
+  const data = new Uint8Array(w * h * 4);
+  const r = Math.min(radius, w / 2, h / 2);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const cx = Math.min(Math.max(x + 0.5, r), w - r);
+      const cy = Math.min(Math.max(y + 0.5, r), h - r);
+      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+      const a = Math.max(0, Math.min(1, r - d + 0.5));
+      const o = (y * w + x) * 4;
+      data[o] = 255; data[o + 1] = 255; data[o + 2] = 255; data[o + 3] = Math.round(a * 255);
+    }
+  }
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+
 // -------------------------------------------------------- blur di pausa
 // Sfoca il canvas gia' disegnato per il menu di pausa (main.js) — l'unico
 // posto nel motore che ha bisogno di render-to-texture: tenerlo qui,
