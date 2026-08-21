@@ -230,6 +230,10 @@ const fontMini = await loadFont(gl, "gotham_mini");
 // valore di `repre.mon` (il mese, 1..12 — state.js, r12.month) — mai una
 // tabella nel decompilato, ricostruita qui come tale.
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// [C] tutorial_square/DrawGUI.gml: `draw_set_font(gotham_mobile)` — il
+// font del balloon di testo del tutorial, diverso da quello della barra
+// risorse sopra. Caricato solo per questa room (nessun'altra lo usa).
+const fontMobile = roomName === "tutorial" ? await loadFont(gl, "gotham_mobile") : null;
 
 // -------------------------------------------------------- piazzabili e edifici
 // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
@@ -372,16 +376,12 @@ let ruins = [];
 // decoro passivo.
 let tutorialState = null;
 let ruinLots = [];
-// Balloon di testo (tutorial_thumb/DrawGUI.gml): HTML invece di sprite
-// bitmap-font, stesso principio gia' usato per il messaggio "non ancora
-// implementato" della title screen (game/src/title.js) — 34 frasi lunghe
-// in inglese vanno a capo da sole con CSS, niente word-wrap manuale su un
-// font bitmap. Il bottone "avanti/esci" invece e' il vero sprite
-// `tut_ok` (STUDIO.md — l'oggetto si chiama `tutorial_thumb`: e' un
-// pollice in su, non testo "OK"), disegnato nel layer GUI come ogni altro
-// bottone del motore — `tutorialOkRect` (sotto) e' il suo rettangolo
-// schermo dell'ultimo frame, letto da input.onTap per il tocco.
-let tutorialTextEl = null;
+// Balloon di testo + bottone "avanti/esci" (tutorial_square|tutorial_thumb/
+// DrawGUI.gml): entrambi disegnati nel layer GUI come ogni altro elemento
+// del motore (font bitmap vero, `fontMobile` sopra — non un div HTML),
+// non piu' un elemento DOM a parte. `tutorialOkRect` (sotto) e' il
+// rettangolo schermo del pollice, ricalcolato ad ogni frame, letto da
+// input.onTap per il tocco.
 let tutorialOkRect = null;   // { x, y, w, h }, ricalcolato ad ogni frame dal disegno
 if (roomName === "tutorial") {
   tutorialState = createTutorialState(scene);
@@ -395,11 +395,6 @@ if (roomName === "tutorial") {
   for (let i = staticWorld.length - 1; i >= 0; i--) {
     if (staticWorld[i].obj === "ruin1" || staticWorld[i].obj === "ruin2" || staticWorld[i].obj === "air_tut2") staticWorld.splice(i, 1);
   }
-  tutorialTextEl = document.createElement("div");
-  tutorialTextEl.style.cssText = "position:fixed;left:30px;right:120px;bottom:30px;" +
-    "font:16px/1.4 ui-monospace,monospace;color:#fff;background:rgba(0,0,0,0.55);" +
-    "padding:14px 18px;border-radius:12px;pointer-events:none;";
-  document.body.appendChild(tutorialTextEl);
 }
 // [C] tutorial_thumb/Mouse_LeftPressed.gml (STUDIO.md, tutorial.js
 // header — l'operatore letto correttamente e' "!=", non "=="): un tocco
@@ -1431,6 +1426,27 @@ function drawRotated(frame, cx, cy, angleDeg, scale, tint, alpha) {
   r.drawQuad(frame, corners[0], corners[1], corners[2], corners[3], tint, alpha);
 }
 
+/** A capo semplice per parola, sul font bitmap `font` — [C]
+ * tutorial_square/DrawGUI.gml usa `draw_text_ext_colour` (a capo
+ * automatico nativo di GameMaker); qui measureText() (font.js) misura
+ * ogni riga candidata finche' non supera `maxWidth`. */
+function wrapText(font, str, scale, maxWidth) {
+  const words = str.split(" ");
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    const test = cur ? cur + " " + w : w;
+    if (cur && measureText(font, test, scale) > maxWidth) {
+      lines.push(cur);
+      cur = w;
+    } else {
+      cur = test;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
 /** Test punto-in-rombo, centrato sul bounding box di un frame: i placeholder
  * sono disegnati come sprite romboidali ("phold", il rombo viola —
  * Mouse_MouseEnter.gml originale), non rettangolari — un tocco/hover nei
@@ -2164,22 +2180,18 @@ function frame(now) {
       // cutscene e nelle fasi ad avanzamento automatico (HIDE_ADVANCE_
       // BUTTON — tutorial_thumb/Step.gml, le stesse 8 fasi gia' viste in
       // stepTutorialAuto()), visibile in tutte le altre.
-      const showHud = !tutorialState.cutscene && !HIDE_ADVANCE_BUTTON.has(tutorialState.phase);
-      tutorialTextEl.style.display = showHud ? "block" : "none";
-      tutorialState.showOkButton = showHud;
-      if (showHud) {
-        tutorialTextEl.textContent = TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "";
+      tutorialState.showOkButton = !tutorialState.cutscene && !HIDE_ADVANCE_BUTTON.has(tutorialState.phase);
+      if (tutorialState.showOkButton) {
         // Il balloon/bottone non devono coprire la barra azioni sotto
         // (segnalato dall'autore: si sovrapponevano) — `uiButtons` (un
         // frame indietro, ricalcolata piu' sotto: differenza impercettibile,
         // gia' lo stesso principio usato per il picking altrove) da' il
         // bordo superiore VERO della barra, qualunque sia menoo/dispositivo,
         // invece di un margine fisso indovinato. Salvato su `tutorialState`
-        // cosi' anche il disegno dello sprite `tut_ok` (piu' sotto, layer
+        // cosi' anche il disegno del balloon/pollice (piu' sotto, layer
         // GUI) puo' riusarlo senza ricalcolarlo.
         const barTop = uiButtons.length ? Math.min(...uiButtons.map((b) => b.y)) : canvas.clientHeight - 100;
         tutorialState.uiGap = Math.max(8, canvas.clientHeight - barTop + 10);
-        tutorialTextEl.style.bottom = tutorialState.uiGap + "px";
       }
     }
     // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
@@ -2781,6 +2793,36 @@ function frame(now) {
     if (target) {
       const arrowFrame = frameFor("fr_ros", Math.floor(tutorialState.arrowFrame));
       if (arrowFrame) drawRotated(arrowFrame, target.x, target.y, target.angle, UI_SCALE, 0xffffff, 1);
+    }
+  }
+  // Balloon di testo del tutorial — [C] tutorial_square/DrawGUI.gml:
+  // `draw_set_alpha(0.7)` + `draw_roundrect_colour_ext(..., 16777215,
+  // 16777215, 0)` (un rettangolo BIANCO pieno, non nero) poi
+  // `draw_set_alpha(1)` + `draw_text_ext_colour(..., 0,0,0,0, 1)` (testo
+  // NERO in piena opacita') col font `gotham_mobile` — **[I]** stesso
+  // font/stile dell'originale (fontMobile sopra, tools/25_font.py), ma
+  // angoli non arrotondati (nessun primitive per rounded-rect nel
+  // Renderer di questo motore, STUDIO.md — un dettaglio cosmetico minore
+  // rispetto a colore/font) e larghezza/testo a capo qui invece che nel
+  // motore GML nativo (wrapText() sopra, via measureText()).
+  if (tutorialState?.showOkButton && fontMobile) {
+    const textScale = 1;
+    const pad = 20;
+    // boxRight lascia spazio al pollice (tut_ok, disegnato subito sotto:
+    // stessa larghezza 45*1.3 li' usata, + margine) — l'originale non
+    // aveva questo problema (il suo bottone "avanti" vive altrove nello
+    // schermo), ma qui i due condividono la stessa fascia in basso.
+    const boxLeft = 30, boxRight = canvas.clientWidth - 30 - (45 * 1.3 + 45);
+    const lineH = fontMobile.meta.emSize * textScale * 1.35;
+    const lines = wrapText(fontMobile, TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "", textScale, boxRight - boxLeft - pad * 2);
+    const boxH = lines.length * lineH + pad * 2;
+    const boxBottom = canvas.clientHeight - tutorialState.uiGap;
+    const boxTop = boxBottom - boxH;
+    r.draw(solidFrame(white, boxRight - boxLeft, boxH), boxLeft, boxTop, 1, 0xffffff, 0.7);
+    let ty = boxTop + pad;
+    for (const line of lines) {
+      drawText(r, fontMobile, line, boxLeft + pad, ty, textScale, 0x000000, 1);
+      ty += lineH;
     }
   }
   // Bottone "avanti/esci" del tutorial: il vero sprite `tut_ok` (STUDIO.md

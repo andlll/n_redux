@@ -3341,6 +3341,24 @@ paragrafo 8.
   `tutorialOkRect` ricalcolato ad ogni frame) e cliccabile da
   `input.onTap` con la stessa priorita' del bottone di pausa — niente
   piu' un elemento DOM separato per l'unico bottone del tutorial.
+  **Balloon di testo: stesso font/stile dell'originale, non un div HTML**
+  (richiesto dall'autore): **[C]** tutorial_square/DrawGUI.gml disegna il
+  balloon con `draw_set_font(gotham_mobile)` e un rettangolo BIANCO (non
+  nero) a `draw_set_alpha(0.7)` (`draw_roundrect_colour_ext(...,
+  16777215, 16777215, 0)`), poi il testo NERO a piena opacita' sopra
+  (`draw_text_ext_colour(...,0,0,0,0,1)`). L'HTML `<div>` di prima
+  (font monospazio bianco su nero) e' sparito: font bitmap vero
+  (`gotham_mobile`, tools/25_font.py — mai estratto prima, generato in
+  questo giro) disegnato nel layer GUI col resto del motore (font.js,
+  drawText()/measureText() — le 34 frasi vanno a capo con un nuovo
+  `wrapText()` a misura di parola, dato che GameMaker lo fa nativamente e
+  qui no), rettangolo bianco 70% alpha (`solidFrame()`, gia' usato per
+  altri overlay del motore) invece del rounded-rect dell'originale
+  (**[I]** angoli non arrotondati: nessun primitive rounded-rect nel
+  Renderer di questo motore — un dettaglio cosmetico minore rispetto a
+  colore/font, non affrontato). Larghezza del box ristretta per lasciare
+  spazio al pollice (`tut_ok`) che nell'originale vive altrove nello
+  schermo, qui condivide la stessa fascia in basso.
   **Bug trovato durante il test**: `air_tut2` e' anche lui gia' un'istanza
   vera nella room col proprio sprite di default (`tuto_bomb`, STUDIO.md
   §5.3 "doppia casetta" — stesso principio): senza toglierlo da
