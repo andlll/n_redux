@@ -1,11 +1,20 @@
 // La base volante di `match` (`r120`, sprite "baa12") — [C] r12/Create.gml,
-// ramo `match` (flag 736==0). Tutto decoro STATICO (nessuno step per
-// frame: r120 non si muove mai nel decompilato, a differenza del nome
-// "base volante" che suggerirebbe — resta ferma dove nasce), quindi entra
-// in `staticWorld` com'e', stesso trattamento di ogni albero/auto gia' in
-// scena. Estratto in un modulo a parte (invece di restare inline in
-// main.js) perche' title.js (lo sfondo sfocato della title screen, STUDIO.md)
-// ne ha bisogno anch'esso, sulla stessa `match.scene.json`.
+// ramo `match` (flag 736==0). La piattaforma vera e i suoi alberi sono
+// STATICI (nessuno step per frame: r120 non si muove mai nel decompilato,
+// a differenza del nome "base volante" che suggerirebbe), quindi entrano
+// in `staticWorld` com'e', stesso trattamento di ogni albero gia' in scena.
+// **[C] `moto11`/`moto12`/`moto13` NON sono statici** (letto qui solo dopo
+// una domanda diretta dell'autore, prima erano finiti tra i fissi per
+// errore): ogni istanza lampeggia fra invisibile e lo sprite vero ogni 2
+// tick (Step/Alarm_0/Alarm_1) — sprite "motorNN", letteralmente una ventola
+// vista di taglio, la stessa che compare gia' disegnata (ferma) dentro
+// "baa12". Sparse com'e' l'unica animazione che l'originale usa per dare
+// l'illusione che le turbine girino, non un vero sprite a piu' frame.
+// blinkMotorVisible()/r120MotorDecor() sotto, chiamate ad ogni frame da
+// main.js/title.js invece di restare pushate una volta sola qui. Estratto
+// in un modulo a parte (invece di restare inline in main.js) perche'
+// title.js (lo sfondo sfocato della title screen, STUDIO.md) ne ha bisogno
+// anch'esso, sulla stessa `match.scene.json`.
 import { COIN_DEPTH } from "./coins.js";
 import { canAfford } from "./buildings.js";
 import { spawnCar, R32_MAGHENE_SCHEDULE, R22_MAGHENE_SCHEDULE } from "./cars.js";
@@ -34,19 +43,11 @@ export function applyMatchPlatform(staticWorld, { interactive = false } = {}) {
     staticWorld.push({ obj: "albe", x: R120_X + dx, y: R120_Y + dy, depth: 0, spr: "a1" });
   }
   // [C] stesso Create.gml, DOPO che `action_set_relative` torna a 0:
-  // posizioni ASSOLUTE nella room, indipendenti da r120 (moto/fari/mudr2
-  // sono scenografia fissa della mappa, non agganciata alla piattaforma).
-  const R120_FIXED = [
-    { obj: "moto11", x: 1951, y: 858, spr: "motor11", depth: 0 },
-    { obj: "moto11", x: 1632, y: 1037, spr: "motor11", depth: 0 },
-    { obj: "moto11", x: 656, y: 1231, spr: "motor11", depth: 0 },
-    { obj: "moto12", x: 198, y: 217, spr: "motor12", depth: 0 },
-    { obj: "moto12", x: 514, y: 34, spr: "motor12", depth: 0 },
-    { obj: "moto13", x: 44, y: 876, spr: "motor13", depth: 0 },
-    { obj: "moto13", x: 1015, y: 1142, spr: "motor13", depth: 0 },
-    { obj: "mudr2", x: 769, y: 845, spr: "moor12", depth: -1055 },   // [C] mudr2/_object.json: depth fisso, non -y
-  ];
-  for (const it of R120_FIXED) staticWorld.push(it);
+  // posizione ASSOLUTA nella room, indipendente da r120 (mudr2 e'
+  // scenografia fissa della mappa, non agganciata alla piattaforma).
+  // moto11/12/13 (le "turbine", vedi sopra) NON stanno qui: sono decoro
+  // dinamico, vedi r120MotorDecor() piu' sotto.
+  staticWorld.push({ obj: "mudr2", x: 769, y: 845, spr: "moor12", depth: -1055 });   // [C] mudr2/_object.json: depth fisso, non -y
   // `faro1`/`faro2` restano fuori da qui SOLO quando `interactive` (main.js,
   // la partita vera su `match`): la catena di potenziamento sotto
   // (createFaroState()/faroDecor()) li ridisegna lei stessa ad ogni frame,
@@ -60,6 +61,37 @@ export function applyMatchPlatform(staticWorld, { interactive = false } = {}) {
     staticWorld.push({ obj: "faro1", x: FARO1.x, y: FARO1.y, spr: "f1b", depth: 0 });
     staticWorld.push({ obj: "faro2", x: FARO2.x, y: FARO2.y, spr: "f2b", depth: 0 });
   }
+}
+
+// [C] moto11/12/13/2 — Step.gml + Alarm_0/Alarm_1, IDENTICI su tutti e
+// quattro (moto2 e' lo stesso oggetto, riusato su r32/r22): Create arma
+// alarm(2,0); Alarm_0 -> sprite "empty2" (invisibile), arma alarm(2,1);
+// Alarm_1 -> sprite vero, arma alarm(2,0). Visibile nei tick pari di ogni
+// coppia (0-1 visibile, 2-3 invisibile, ...), partendo visibile perche' lo
+// sprite di default (_object.json) e' gia' quello vero, non "empty2". [I]
+// qui sincronizzato su un solo orologio globale (`t`, secondi) invece che
+// sul proprio istante di Create — un lampeggio a regime non ha una fase
+// percepibile, la differenza sarebbe invisibile a schermo.
+function blinkMotorVisible(t) {
+  return Math.floor((t * 60) / 2) % 2 === 0;
+}
+
+// [C] r12/Create.gml, posizioni assolute (STUDIO.md sopra).
+const R120_MOTORS = [
+  { x: 1951, y: 858, spr: "motor11" },
+  { x: 1632, y: 1037, spr: "motor11" },
+  { x: 656, y: 1231, spr: "motor11" },
+  { x: 198, y: 217, spr: "motor12" },
+  { x: 514, y: 34, spr: "motor12" },
+  { x: 44, y: 876, spr: "motor13" },
+  { x: 1015, y: 1142, spr: "motor13" },
+];
+
+/** Le "turbine" di r120 — chiamata ogni frame da main.js/title.js (`t` =
+ * secondi trascorsi, un cronometro qualunque va bene, vedi sopra). */
+export function r120MotorDecor(t) {
+  if (!blinkMotorVisible(t)) return [];
+  return R120_MOTORS.map((m) => ({ obj: "decor", x: m.x, y: m.y, depth: 0, spr: m.spr }));
 }
 
 
@@ -259,10 +291,20 @@ const R32_POLES = [
   [1616 + 1001, 556], [1616 + 1051, 528], [1616 + 1051, 583], [1616 + 1099, 556],
 ];
 
+// [C] dockersig1/Alarm_4.gml: `moto2` (x2) + `moto12` (x1) — stesso
+// oggetto lampeggiante di R120_MOTORS sopra (moto2 e' letteralmente moto11/
+// 12/13 con un nome diverso, stesso Step/Alarm_0/Alarm_1), non decoro fisso.
+const R32_MOTORS = [
+  { x: -32, y: 1997, spr: "motor2" },
+  { x: 1659, y: 1996, spr: "motor2" },
+  { x: 607, y: 1839, spr: "motor12" },
+];
+
 /** Tutte le entry di scenografia FISSA della seconda piattaforma — [C]
  * dockersig1/Alarm_4.gml, posizioni assolute (nessun `action_set_relative`
- * attivo in quell'evento). Chiamata solo a tier1 gia' espanso. */
-function r32Decor() {
+ * attivo in quell'evento). Chiamata solo a tier1 gia' espanso; `t` =
+ * secondi, per il lampeggio delle "turbine" (blinkMotorVisible() sopra). */
+function r32Decor(t) {
   const out = [
     { obj: "decor", x: R32_X, y: R32_Y, depth: -1241, spr: "baa31" },     // [C] r32/_object.json
     { obj: "decor", x: R320_X, y: R320_Y, depth: -1241, spr: "baa32" },   // [C] r320/_object.json
@@ -273,11 +315,11 @@ function r32Decor() {
     { obj: "decor", x: 2027, y: 1105, depth: -1213, spr: "moor34" },
     { obj: "decor", x: 208, y: 807, depth: -990, spr: "bridr1" },
     { obj: "decor", x: 1375, y: 788, depth: -1010, spr: "bridl1" },
-    { obj: "decor", x: -32, y: 1997, depth: 0, spr: "motor2" },
-    { obj: "decor", x: 1659, y: 1996, depth: 0, spr: "motor2" },
-    { obj: "decor", x: 607, y: 1839, spr: "motor12", depth: 0 },
   ];
   for (const [dx, dy] of R32_POLES) out.push({ obj: "decor", x: R32_X + dx, y: R32_Y + dy, depth: 0, spr: "se" });
+  if (blinkMotorVisible(t)) {
+    for (const m of R32_MOTORS) out.push({ obj: "decor", x: m.x, y: m.y, depth: 0, spr: m.spr });
+  }
   return out;
 }
 
@@ -287,19 +329,25 @@ function r32Decor() {
 const R22_X = 1374, R22_Y = -64;
 const R220_X = R22_X + 1236, R220_Y = R22_Y + 225;
 const R220_POLES = [[40, 463], [140, 405], [130, 750], [192, 779]].map(([dx, dy]) => [1236 + dx, 225 + dy]);
+// [C] dockersig3/Alarm_4.gml: `moto2` x2, stesso oggetto lampeggiante.
+const R22_MOTORS = [
+  { x: 2183, y: 908, spr: "motor2" },
+  { x: 2729, y: 1223, spr: "motor2" },
+];
 
 /** Scenografia fissa della terza piattaforma — [C] dockersig3/Alarm_4.gml,
  * posizioni assolute. Chiamata solo a tier2 gia' espanso. */
-function r22Decor() {
+function r22Decor(t) {
   const out = [
     { obj: "decor", x: R22_X, y: R22_Y, depth: 4, spr: "baa21" },     // [C] r22/_object.json
     { obj: "decor", x: R220_X, y: R220_Y, depth: 4, spr: "baa22" },   // [C] r220/_object.json
     { obj: "decor", x: 1853, y: 263, depth: 2, spr: "moor21" },      // mudr21 — [C] _object.json: depth fisso
     { obj: "decor", x: 2363, y: 783, depth: -990, spr: "bridr1" },   // bridge_des2 — [C] _object.json: depth fisso
-    { obj: "decor", x: 2183, y: 908, depth: 0, spr: "motor2" },
-    { obj: "decor", x: 2729, y: 1223, depth: 0, spr: "motor2" },
   ];
   for (const [dx, dy] of R220_POLES) out.push({ obj: "decor", x: R22_X + dx, y: R22_Y + dy, depth: 0, spr: "se" });
+  if (blinkMotorVisible(t)) {
+    for (const m of R22_MOTORS) out.push({ obj: "decor", x: m.x, y: m.y, depth: 0, spr: m.spr });
+  }
   return out;
 }
 
@@ -333,8 +381,8 @@ function faro1Decor(state) {
 /** Fari/segnali della catena di tier2 (`faro3`), o la scenografia di `r22`
  * una volta espansa — [C] `faro3` non esiste finche' `dockersig1` non lo
  * crea (Alarm_4.gml): chiamata solo quando tier1 e' gia' "expanded". */
-function faro3Decor(state) {
-  if (state.tier2.stage === "expanded") return r22Decor();
+function faro3Decor(state, t) {
+  if (state.tier2.stage === "expanded") return r22Decor(t);
   const out = [];
   const faro3Spr = state.tier2.stage === "locked" || state.tier2.stage === "buttonShown" ? "f3b" : "f3";
   out.push({ obj: "decor", x: FARO3.x, y: FARO3.y, depth: 0, spr: faro3Spr });
@@ -359,10 +407,11 @@ function faro3Decor(state) {
 
 /** Le entry dinamiche (fari, segnali cliccabili, piattaforme espanse,
  * monviolo in volo) da aggiungere ogni frame al layer `dynamic` di
- * main.js, insieme al resto (monete/upsign). */
-export function faroDecor(state) {
-  const out = state.tier1.stage === "expanded" ? r32Decor() : faro1Decor(state);
-  if (state.tier1.stage === "expanded") out.push(...faro3Decor(state));
+ * main.js, insieme al resto (monete/upsign). `t` = secondi trascorsi, solo
+ * per il lampeggio delle "turbine" (blinkMotorVisible() sopra). */
+export function faroDecor(state, t) {
+  const out = state.tier1.stage === "expanded" ? r32Decor(t) : faro1Decor(state);
+  if (state.tier1.stage === "expanded") out.push(...faro3Decor(state, t));
   // monviolo — [C] nessun evento Mouse nel decompilato: solo decorazione,
   // stesso trattamento delle nuvole/uccelli in atmosphere.js.
   for (const m of state.monviolos) out.push({ obj: "decor", x: m.x, y: m.y, depth: -m.y, spr: "monviola" });

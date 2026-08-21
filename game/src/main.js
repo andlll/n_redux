@@ -15,7 +15,7 @@ import { stepCoinSpawner, stepCoins, collectCoin } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
 import {
-  applyMatchPlatform, createFaroState, stepFaroChain, faroDecor,
+  applyMatchPlatform, createFaroState, stepFaroChain, faroDecor, r120MotorDecor,
   clickFaroButton, clickWaveSignal, clickDockerSignal,
   clickFaro3Button, clickWaveSignal3, clickDockerSignal3,
 } from "./platform.js";
@@ -2105,9 +2105,12 @@ function frame(now) {
   // nuova scenografia restano invece soggetti alla tinta giorno/notte come
   // ogni decoro.
   if (platformState) {
-    for (const it of faroDecor(platformState)) {
+    for (const it of faroDecor(platformState, phaseT)) {
       dynamic.push({ ...it, _f: frameFor(it.spr), _selfLit: FARO_SIGN_OBJS.has(it.obj) || undefined });
     }
+    // Le "turbine" di r120 (game/src/platform.js): un lampeggio, non un
+    // vero sprite animato — vedi il commento su blinkMotorVisible() li'.
+    for (const it of r120MotorDecor(phaseT)) dynamic.push({ ...it, _f: frameFor(it.spr) });
   }
   for (const m of constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
   for (const bx of constructionBoxes) dynamic.push({ obj: "decor", x: bx.x, y: bx.y, depth: bx.depth, _f: frameFor(bx.spr) });
