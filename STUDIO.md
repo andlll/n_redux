@@ -3393,3 +3393,36 @@ paragrafo 8.
   GameMaker, non bianco) e al tocco sparisce sostituito da un cantiere
   vero. `.github/workflows/deploy-pages.yml` e README.md aggiornati per
   rigenerare/documentare anche la room "tutorial".
+
+- **Piattaforma di destra "tagliata" nel tutorial + angoli arrotondati
+  del balloon.** Due richieste dell'autore dagli screenshot.
+  **[Bug corretto]**: la stessa classe di bug gia' vista e risolta su
+  `match` (STUDIO.md, "la meta' di match sospesa nel vuoto" — r120/baa12
+  mai disegnato) si ripresentava sul tutorial, per un motivo diverso:
+  `tutorial.json` ha lo stesso identico `r12`/`baa11` (la meta' SINISTRA
+  della piattaforma, gia' un'istanza vera della room, risolta come
+  qualunque altro decoro) ma copre solo x:[-17,1153] su una room larga
+  1920 — la meta' destra (dove vivono industria2/gatlinggun) restava
+  sospesa nel vuoto perche' `applyMatchPlatform()` (game/src/platform.js,
+  la funzione che spinge r120/baa12) veniva chiamata solo per
+  `roomName==="match"`, mai per `"tutorial"`. Corretto chiamandola anche
+  li' (`interactive:false`, stesso trattamento gia' usato dallo sfondo
+  sfocato della title screen: nessuna catena fari/r22/r32, fuori scopo
+  per una guida). **[Bug corretto, in piu']**: `applyMatchPlatform()`
+  calcolava la posizione di r120 da coordinate FISSE di `match`
+  (x=-19,y=-179), non dalla vera istanza `r12` passata — innocuo su
+  `match` (dove coincidono) ma avrebbe disallineato r120 di 2px sul
+  tutorial (il cui `r12` sta a x=-17): ora legge `r12` per davvero da
+  `staticWorld` invece di un numero copiato. Verificato con Playwright,
+  pan/zoom sulla mappa: il terreno continua fino al bordo vero della
+  piattaforma (profilo diagonale coerente), niente piu' cielo vuoto sotto
+  gli edifici di destra. **Angoli arrotondati**: il balloon di testo
+  (sopra) usava un `solidFrame()` dritto — `draw_roundrect_colour_ext()`
+  nel decompilato ha davvero gli angoli arrotondati. Nuovo
+  `makeRoundedRectTexture()` (game/src/gl.js): stesso principio "pixel
+  calcolato a mano" di `makeCircleTexture()` gia' esistente (una
+  distance-field rotonda negli angoli, piatta su bordi/centro), non un
+  canvas 2D — cache in main.js (`tutorialBoxFrame()`) che rigenera la
+  texture solo quando le dimensioni vere del box cambiano (nuova fase/
+  resize), non ad ogni frame, distruggendo la precedente invece di
+  accumularle in VRAM.

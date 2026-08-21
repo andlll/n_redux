@@ -1,4 +1,4 @@
-import { Renderer, makeSolidTexture, makeCircleTexture, solidFrame, loadTexture, PauseBlur } from "./gl.js";
+import { Renderer, makeSolidTexture, makeCircleTexture, makeRoundedRectTexture, solidFrame, loadTexture, PauseBlur } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { Input } from "./input.js";
 import { createR12, tickR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan } from "./state.js";
@@ -318,10 +318,23 @@ for (const name of INITIAL_CAR_TYPES) {
   if (idx >= 0) staticWorld.splice(idx, 1);
 }
 
-// La base volante di `match` (game/src/platform.js, applyMatchPlatform()):
-// solo su `match`, mai su `match_easy` — condivisa con lo sfondo sfocato
-// della title screen (game/src/title.js), stessa `match.scene.json`.
-if (roomName === "match") applyMatchPlatform(staticWorld, { interactive: true });
+// La base volante (game/src/platform.js, applyMatchPlatform()): mai su
+// `match_easy` (una mappa piatta vera, nessun `r12`/`baa11`), ma non solo
+// su `match` — `tutorial` (game/src/tutorial.js) ha lo stesso identico
+// `r12`/baa11 nella propria room (STUDIO.md — la meta' SINISTRA della
+// piattaforma e' gia' li', risolta dalla pipeline di scena come per
+// `match`), che da sola copre solo x:[-17,1153] su una room larga 1920:
+// senza spingere anche r120/baa12 (la meta' destra) il resto della mappa
+// restava sospeso nel vuoto, "tagliato" a meta' — esattamente lo stesso
+// bug di `match` (sopra) gia' risolto una volta, ripresentatosi qui
+// perche' la room non era mai stata inclusa in questa chiamata.
+// `interactive:false` su tutorial (nessuna catena fari/r22/r32: fuori
+// scopo per una guida, STUDIO.md) — stesso trattamento gia' usato dallo
+// sfondo sfocato della title screen (game/src/title.js) sulla stessa
+// piattaforma.
+if (roomName === "match" || roomName === "tutorial") {
+  applyMatchPlatform(staticWorld, { interactive: roomName === "match" });
+}
 // [Bug corretto] `applyMatchPlatform()` PUSHA istanze nuove in `staticWorld`
 // (r120/baa12) DOPO il ciclo che assegna `_f` a tutto il resto (sopra,
 // "for (const it of staticWorld) it._f = frameFor(it.spr)"): senza questo
@@ -1445,6 +1458,22 @@ function wrapText(font, str, scale, maxWidth) {
   }
   if (cur) lines.push(cur);
   return lines;
+}
+
+// Cache del rettangolo arrotondato del balloon (game/src/gl.js,
+// makeRoundedRectTexture()): l'altezza cambia solo quando cambia il
+// numero di righe a capo (nuova fase) o la larghezza schermo (resize),
+// non ad ogni frame — rigenerare la texture solo quando (w,h) cambiano
+// davvero, distruggendo la precedente invece di accumularle in VRAM.
+let tutorialBoxTex = null, tutorialBoxTexKey = "";
+function tutorialBoxFrame(w, h) {
+  const key = w + "x" + h;
+  if (key !== tutorialBoxTexKey) {
+    if (tutorialBoxTex) gl.deleteTexture(tutorialBoxTex);
+    tutorialBoxTex = makeRoundedRectTexture(gl, Math.round(w), Math.round(h), 20);
+    tutorialBoxTexKey = key;
+  }
+  return solidFrame(tutorialBoxTex, w, h);
 }
 
 /** Test punto-in-rombo, centrato sul bounding box di un frame: i placeholder
@@ -2797,14 +2826,13 @@ function frame(now) {
   }
   // Balloon di testo del tutorial — [C] tutorial_square/DrawGUI.gml:
   // `draw_set_alpha(0.7)` + `draw_roundrect_colour_ext(..., 16777215,
-  // 16777215, 0)` (un rettangolo BIANCO pieno, non nero) poi
+  // 16777215, 0)` (un rettangolo BIANCO pieno arrotondato, non nero) poi
   // `draw_set_alpha(1)` + `draw_text_ext_colour(..., 0,0,0,0, 1)` (testo
-  // NERO in piena opacita') col font `gotham_mobile` — **[I]** stesso
-  // font/stile dell'originale (fontMobile sopra, tools/25_font.py), ma
-  // angoli non arrotondati (nessun primitive per rounded-rect nel
-  // Renderer di questo motore, STUDIO.md — un dettaglio cosmetico minore
-  // rispetto a colore/font) e larghezza/testo a capo qui invece che nel
-  // motore GML nativo (wrapText() sopra, via measureText()).
+  // NERO in piena opacita') col font `gotham_mobile` — stesso font/stile
+  // dell'originale (fontMobile sopra, tools/25_font.py; rettangolo
+  // arrotondato, tutorialBoxFrame()/makeRoundedRectTexture() sopra) —
+  // **[I]** larghezza/testo a capo qui invece che nel motore GML nativo
+  // (wrapText() sopra, via measureText()).
   if (tutorialState?.showOkButton && fontMobile) {
     const textScale = 1;
     const pad = 20;
@@ -2818,7 +2846,7 @@ function frame(now) {
     const boxH = lines.length * lineH + pad * 2;
     const boxBottom = canvas.clientHeight - tutorialState.uiGap;
     const boxTop = boxBottom - boxH;
-    r.draw(solidFrame(white, boxRight - boxLeft, boxH), boxLeft, boxTop, 1, 0xffffff, 0.7);
+    r.draw(tutorialBoxFrame(boxRight - boxLeft, boxH), boxLeft, boxTop, 1, 0xffffff, 0.7);
     let ty = boxTop + pad;
     for (const line of lines) {
       drawText(r, fontMobile, line, boxLeft + pad, ty, textScale, 0x000000, 1);
