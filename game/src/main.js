@@ -372,12 +372,17 @@ let ruins = [];
 // decoro passivo.
 let tutorialState = null;
 let ruinLots = [];
-// Balloon di testo + bottone "avanti/esci" (tutorial_thumb/DrawGUI.gml):
-// HTML invece di sprite bitmap-font, stesso principio gia' usato per il
-// messaggio "non ancora implementato" della title screen (game/src/
-// title.js) — 34 frasi lunghe in inglese vanno a capo da sole con CSS,
-// niente word-wrap manuale su un font bitmap.
-let tutorialTextEl = null, tutorialOkEl = null;
+// Balloon di testo (tutorial_thumb/DrawGUI.gml): HTML invece di sprite
+// bitmap-font, stesso principio gia' usato per il messaggio "non ancora
+// implementato" della title screen (game/src/title.js) — 34 frasi lunghe
+// in inglese vanno a capo da sole con CSS, niente word-wrap manuale su un
+// font bitmap. Il bottone "avanti/esci" invece e' il vero sprite
+// `tut_ok` (STUDIO.md — l'oggetto si chiama `tutorial_thumb`: e' un
+// pollice in su, non testo "OK"), disegnato nel layer GUI come ogni altro
+// bottone del motore — `tutorialOkRect` (sotto) e' il suo rettangolo
+// schermo dell'ultimo frame, letto da input.onTap per il tocco.
+let tutorialTextEl = null;
+let tutorialOkRect = null;   // { x, y, w, h }, ricalcolato ad ogni frame dal disegno
 if (roomName === "tutorial") {
   tutorialState = createTutorialState(scene);
   ruinLots = extractRuinLots(scene);
@@ -395,31 +400,24 @@ if (roomName === "tutorial") {
     "font:16px/1.4 ui-monospace,monospace;color:#fff;background:rgba(0,0,0,0.55);" +
     "padding:14px 18px;border-radius:12px;pointer-events:none;";
   document.body.appendChild(tutorialTextEl);
-  tutorialOkEl = document.createElement("button");
-  tutorialOkEl.textContent = "OK";
-  tutorialOkEl.style.cssText = "position:fixed;right:30px;bottom:30px;width:64px;height:64px;" +
-    "border-radius:50%;border:none;background:#fff;color:#000;font:bold 16px sans-serif;" +
-    "cursor:pointer;";
-  document.body.appendChild(tutorialOkEl);
-  // [C] tutorial_thumb/Mouse_LeftPressed.gml (STUDIO.md, tutorial.js
-  // header — l'operatore letto correttamente e' "!=", non "=="): un tocco
-  // avanza SEMPRE alla fase successiva, tranne all'ultima (LAST_PHASE) dove
-  // invece riporta al menu. `phase===4` in piu' crea la moneta di pratica
-  // (STUDIO.md/tutorial.js, sold13). **[I]** `phase += 1` invece di `+0.5`:
-  // vedi il commento in cima a tutorial.js per il perche'.
-  tutorialOkEl.onclick = () => {
-    if (!tutorialState || tutorialState.cutscene) return;
-    if (tutorialState.phase === 4 && !tutorialState.practiceCoinSpawned) {
-      tutorialState.practiceCoinSpawned = true;
-      coins.push({
-        buildingId: null, x: tutorialState.practiceCoinPos.x, y: tutorialState.practiceCoinPos.y,
-        depth: COIN_DEPTH, amount: 260, kind: "mon", t: 0, spr: "soldico", auto: false,
-        _tutorialPractice: true,
-      });
-    }
-    if (tutorialState.phase >= LAST_PHASE) location.href = "./index.html";
-    else tutorialState.phase += 1;
-  };
+}
+// [C] tutorial_thumb/Mouse_LeftPressed.gml (STUDIO.md, tutorial.js
+// header — l'operatore letto correttamente e' "!=", non "=="): un tocco
+// avanza SEMPRE alla fase successiva, tranne all'ultima (LAST_PHASE) dove
+// invece riporta al menu. `phase===4` in piu' crea la moneta di pratica
+// (STUDIO.md/tutorial.js, sold13). **[I]** `phase += 1` invece di `+0.5`:
+// vedi il commento in cima a tutorial.js per il perche'.
+function advanceTutorial() {
+  if (tutorialState.phase === 4 && !tutorialState.practiceCoinSpawned) {
+    tutorialState.practiceCoinSpawned = true;
+    coins.push({
+      buildingId: null, x: tutorialState.practiceCoinPos.x, y: tutorialState.practiceCoinPos.y,
+      depth: COIN_DEPTH, amount: 260, kind: "mon", t: 0, spr: "soldico", auto: false,
+      _tutorialPractice: true,
+    });
+  }
+  if (tutorialState.phase >= LAST_PHASE) location.href = "./index.html";
+  else tutorialState.phase += 1;
 }
 // I lotti "extra" occupati da un edificio multi-tile (oggi solo `eolico`,
 // buildings.js `def.multiTile`) — [C] `impavent` uccide ogni placeholder che
@@ -1693,6 +1691,14 @@ input.onTap = (sx, sy) => {
     }
     return;
   }
+  // Bottone "avanti/esci" del tutorial (tut_ok/tutorialOkRect, disegnato
+  // piu' sotto nel layer GUI): stessa priorita' del bottone di pausa,
+  // intercetta prima che il tocco raggiunga il mondo sotto.
+  if (tutorialOkRect && sx >= tutorialOkRect.x && sx <= tutorialOkRect.x + tutorialOkRect.w
+    && sy >= tutorialOkRect.y && sy <= tutorialOkRect.y + tutorialOkRect.h) {
+    advanceTutorial();
+    return;
+  }
   // Il pannello prestiti (bankPanelOpen sopra), quando aperto, e' un vero
   // modale: intercetta il tocco PRIMA di ogni altra cosa (bottoni,
   // piazzamento, mondo). Un tocco su uno dei 4 bottoni prende quel
@@ -2160,20 +2166,20 @@ function frame(now) {
       // stepTutorialAuto()), visibile in tutte le altre.
       const showHud = !tutorialState.cutscene && !HIDE_ADVANCE_BUTTON.has(tutorialState.phase);
       tutorialTextEl.style.display = showHud ? "block" : "none";
-      tutorialOkEl.style.display = showHud ? "block" : "none";
+      tutorialState.showOkButton = showHud;
       if (showHud) {
         tutorialTextEl.textContent = TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "";
-        tutorialOkEl.textContent = tutorialState.phase >= LAST_PHASE ? "Fine" : "OK";
         // Il balloon/bottone non devono coprire la barra azioni sotto
         // (segnalato dall'autore: si sovrapponevano) — `uiButtons` (un
         // frame indietro, ricalcolata piu' sotto: differenza impercettibile,
         // gia' lo stesso principio usato per il picking altrove) da' il
         // bordo superiore VERO della barra, qualunque sia menoo/dispositivo,
-        // invece di un margine fisso indovinato.
+        // invece di un margine fisso indovinato. Salvato su `tutorialState`
+        // cosi' anche il disegno dello sprite `tut_ok` (piu' sotto, layer
+        // GUI) puo' riusarlo senza ricalcolarlo.
         const barTop = uiButtons.length ? Math.min(...uiButtons.map((b) => b.y)) : canvas.clientHeight - 100;
-        const gap = Math.max(8, canvas.clientHeight - barTop + 10);
-        tutorialTextEl.style.bottom = gap + "px";
-        tutorialOkEl.style.bottom = gap + "px";
+        tutorialState.uiGap = Math.max(8, canvas.clientHeight - barTop + 10);
+        tutorialTextEl.style.bottom = tutorialState.uiGap + "px";
       }
     }
     // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
@@ -2777,6 +2783,21 @@ function frame(now) {
       if (arrowFrame) drawRotated(arrowFrame, target.x, target.y, target.angle, UI_SCALE, 0xffffff, 1);
     }
   }
+  // Bottone "avanti/esci" del tutorial: il vero sprite `tut_ok` (STUDIO.md
+  // — l'oggetto si chiama `tutorial_thumb`, un pollice in su, non testo
+  // "OK") invece dell'HTML segnaposto di prima. `tutorialOkRect` (letto da
+  // input.onTap) e' il suo rettangolo schermo di QUESTO frame.
+  tutorialOkRect = null;
+  if (tutorialState?.showOkButton) {
+    const okScale = 1.3;
+    const okFrame = frameFor("tut_ok");
+    if (okFrame) {
+      const w = okFrame.w * okScale, h = okFrame.h * okScale;
+      const x = canvas.clientWidth - 30 - w, y = canvas.clientHeight - tutorialState.uiGap - h;
+      r.draw(okFrame, x, y, okScale, 0xffffff, 1);
+      tutorialOkRect = { x, y, w, h };
+    }
+  }
 
   // Avviso "ATTACK INCOMING" (src/objects/aincom, game/src/balloons.js): una
   // mongolfiera spia ha completato il suo giro. [C] aincom/Create.gml +
@@ -2939,7 +2960,7 @@ requestAnimationFrame(frame);
 window.__nimbus = {
   cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
   get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
-  get tutorialState() { return tutorialState; },
+  get tutorialState() { return tutorialState; }, get tutorialOkRect() { return tutorialOkRect; },
   get paused() { return paused; }, setPaused: (v) => { paused = v; }, get pauseBtnRect() { return pauseBtnRect; },
   get pauseMenuButtons() { return pauseMenuButtons; },
   get uiScrollX() { return uiScrollX; }, setUiScrollX: (x) => { uiScrollX = x; },

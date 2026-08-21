@@ -3331,6 +3331,16 @@ paragrafo 8.
   correlato alla vera altezza della barra (che cambia con `menoo`/
   dispositivo/UI_SCALE) -- ora letta ogni frame da `uiButtons` (il bordo
   superiore vero della barra corrente) invece di un pixel fisso.
+  **Bottone "avanti/esci": il vero sprite, non testo "OK"** (richiesto
+  dall'autore): l'oggetto decompilato si chiama `tutorial_thumb` per un
+  motivo — il suo sprite di default (`tut_ok`, 45x52) e' un pollice in su
+  disegnato a sagoma piena, nello stesso stile flat-black di ogni altra
+  icona del selettore. L'HTML `<button>OK</button>` di prima e' sparito:
+  ora e' il vero sprite `tut_ok`, disegnato nel layer GUI come ogni altro
+  bottone del motore (stessa logica `uiButtons`, un rettangolo schermo
+  `tutorialOkRect` ricalcolato ad ogni frame) e cliccabile da
+  `input.onTap` con la stessa priorita' del bottone di pausa — niente
+  piu' un elemento DOM separato per l'unico bottone del tutorial.
   **Bug trovato durante il test**: `air_tut2` e' anche lui gia' un'istanza
   vera nella room col proprio sprite di default (`tuto_bomb`, STUDIO.md
   §5.3 "doppia casetta" — stesso principio): senza toglierlo da
