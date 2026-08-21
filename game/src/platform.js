@@ -39,8 +39,19 @@ const FARO3 = { x: 2556, y: 1208 };   // [C] dockersig1/Alarm_4.gml: action_crea
 // null` (creato solo per `match`, main.js). Rettangoli invece della vera
 // maschera pixel-perfect del decompilato: i placeholder sono piccoli
 // rispetto a questi sprite, l'approssimazione non cambia mai l'esito.
+// [C] r12/Create.gml: `action_create_object(r120, 1170, 346)` e' preceduto da
+// `action_set_relative(1)` (e seguito da `action_set_relative(0)`) — quella
+// coppia (1170, 346) e' un offset RELATIVO alla posizione della stessa
+// istanza r12 (x=-19,y=-179 nella room, src/rooms/match.json), non una
+// coordinata assoluta: la posizione vera di r120 e' quindi (-19+1170,
+// -179+346) = (1151, 167). Perso alla prima lettura (il flag sta due righe
+// sopra la create, facile da saltare) — segnalato dall'autore ("vedo la
+// piattaforma tagliata con cose a destra che volano": pali/rotori/base del
+// faro restano alle loro coordinate assolute vere, mentre r120/baa12
+// disegnato 19px a destra e 179px piu' in basso del dovuto non li copriva
+// piu' allineati).
 const R12_RECT = { x: -19, y: -179, w: 1170, h: 1558 };      // r12/baa11
-const R120_RECT = { x: 1170, y: 346, w: 1112, h: 1092 };     // r120/baa12
+const R120_RECT = { x: -19 + 1170, y: -179 + 346, w: 1112, h: 1092 };     // r120/baa12
 const R32_RECT = { x: -16, y: 1141, w: 1616, h: 953 };       // r32/baa31
 const R320_RECT = { x: 1600, y: 1141, w: 1600, h: 952 };     // r320/baa32
 const R22_RECT = { x: 1374, y: -64, w: 1236, h: 1242 };      // r22/baa21
@@ -81,7 +92,10 @@ export function applyMatchPlatform(staticWorld, { interactive = false } = {}) {
   // restava sospesa nel vuoto — segnalato dall'autore ("non vedo meta'
   // piattaforma, la prima").
   staticWorld.push({ obj: "decor", x: -19, y: -179, depth: 1, spr: "baa11" });
-  const R120_X = 1170, R120_Y = 346;
+  // [C] r12/Create.gml: `action_create_object(r120, 1170, 346)` e' RELATIVO
+  // alla posizione di r12 stesso (x=-19,y=-179 — vedi il commento su
+  // R120_RECT piu' sopra): la posizione vera e' (-19+1170, -179+346).
+  const R120_X = -19 + 1170, R120_Y = -179 + 346;
   staticWorld.push({ obj: "r120", x: R120_X, y: R120_Y, depth: 1, spr: "baa12" });
   // [C] r12/Create.gml, `with (r120) { instance_create(x+dx, y+dy, albe) }`
   // — 14 offset letti uno per uno, nessun pattern regolare.
