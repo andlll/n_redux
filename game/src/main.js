@@ -2579,6 +2579,16 @@ export async function mountMatch(ctx, params = {}) {
       const w = cam.screenToWorld(input.hover.x, input.hover.y);
       for (const p of placeholders) {
         if (p.consumed) continue;
+        // [Bug corretto] Segnalato dall'autore: un placeholder su un'area di
+        // piattaforma NON ANCORA costruita (isPlaceholderActive(), platform.js
+        // — r32/r220/r22/r220, finche' la rispettiva catena fari non e'
+        // "expanded") non risponde al tocco (placeAt()/armPlacement() sopra
+        // gia' lo rifiutano), ma restava comunque disegnato "phold" (il rombo
+        // viola) sotto il mouse — un hover che "vola" nel vuoto sopra
+        // un'area di mappa dove non c'e' ancora nessuna piattaforma sotto.
+        // Stesso gate qui, cosi' un placeholder inattivo non fa mai scattare
+        // l'hover, indipendentemente da dove passa il mouse.
+        if (!isPlaceholderActive(p.x, p.y, platformState)) continue;
         if (inFrameDiamond(w.x, w.y, p.x, p.y, p._f)) { hoveredPh = p; break; }
       }
     }
