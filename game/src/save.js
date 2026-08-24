@@ -13,11 +13,18 @@ export function saveSlotFor(sceneName) {
   return SLOT[sceneName] ?? `nimsav_${sceneName}`;
 }
 
-// `ruins` (game/src/main.js, destroyBuilding()): posizione/sprite bastano a
-// ricrearli, il resto (`_f`/`obj: "decor"`) e' derivato a runtime, non
+// `ruins` (game/src/main.js, destroyBuilding()): posizione/sprite/livello
+// bastano a ricrearli, il resto (`_f`/`cost`, quest'ultimo derivabile da
+// `level` con `ruinRebuildCost()`, buildings.js) e' derivato a runtime, non
 // serializzato — stesso principio gia' scelto per `buildings` sopra (niente
-// `_f`, ricalcolato al caricamento). Campo aggiunto senza toccare `v`: un
-// salvataggio vecchio senza `ruins` resta valido, `doLoad()` in main.js lo
+// `_f`, ricalcolato al caricamento). `level` [Bug corretto, richiesto
+// dall'autore: "in match non riesco a demolire le rovine"]: serve a
+// ricostruire il rudere per davvero sotto ruspa (main.js) — un salvataggio
+// scritto PRIMA di questo fix non ha `level`: `doLoad()` in main.js lo
+// legge con `?? 1` (il rudere piu' economico, non "non ricostruibile" —
+// meglio permissivo di un rudere improvvisamente bloccato dopo un
+// caricamento vecchio). Campo aggiunto senza toccare `v`: un salvataggio
+// vecchio senza `ruins` resta comunque valido, `doLoad()` in main.js lo
 // legge con `?? []`.
 // `blockedSlots` (game/src/main.js, placeAt()): i lotti "extra" che
 // `eolico` occupa oltre a quello toccato (buildings.js, `def.multiTile`) —
@@ -25,6 +32,14 @@ export function saveSlotFor(sceneName) {
 // bloccato: senza salvarli esplicitamente un ciclo salva/carica li
 // libererebbe di nuovo (doLoad() li rilegge come `buildings`/`ruins`, ma
 // questi lotti non compaiono in nessuno dei due).
+// `b.tiles` (game/src/main.js, placeAt()/demolishMultiTile()/doLoad()):
+// **[Bug corretto]** per un edificio multi-tile (eolico/grattacielo) TUTTI i
+// lotti realmente consumati (tocco incluso, non solo gli extra sopra) —
+// senza salvarli, un caricamento non saprebbe piu' quale placeholder libero
+// riattribuire a `consumed=true` per il lotto toccato (che non coincide con
+// `b.x/b.y`, l'ancora visiva spostata da `anchorOffset`), lasciandolo
+// libero per un secondo edificio dopo un giro salva/carica. `undefined` per
+// ogni edificio a un solo lotto — nessun campo in piu' nel loro salvataggio.
 // `platformState` (game/src/platform.js, catena fari -> seconda
 // piattaforma): solo `match` la passa, `match_easy` resta `undefined` —
 // `data.platformState` sara' quindi assente nel suo salvataggio, letto con
@@ -40,9 +55,9 @@ export function save(sceneName, r12, buildings, ruins, blockedSlots, platformSta
       makee: b.makee, prodT: b.prodT, decorSpr: b.decorSpr,
       ava: b.ava, growthT: b.growthT, growthNext: b.growthNext, consT: b.consT,
       coinT: b.coinT, coinNext: b.coinNext, solarT: b.solarT, windT: b.windT,
-      overpark: b.overpark, oversolar: b.oversolar,
+      overpark: b.overpark, oversolar: b.oversolar, tiles: b.tiles,
     })),
-    ruins: ruins.map((r) => ({ x: r.x, y: r.y, spr: r.spr })),
+    ruins: ruins.map((r) => ({ x: r.x, y: r.y, spr: r.spr, level: r.level })),
     blockedSlots: blockedSlots.map((s) => ({ x: s.x, y: s.y })),
     platformState,
   };

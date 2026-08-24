@@ -23,14 +23,22 @@
 // [I] Le torrette avevano imparato per un periodo a colpire anche le
 // mongolfiere (risorse E spie), non solo le minacce vere — segnalato
 // allora dall'autore giocando. Richiesta ribaltata in un secondo momento
-// (di nuovo dall'autore): i sistemi di difesa devono ingaggiare SOLO aerei/
-// bombardieri/dirigibili, mai le mongolfiere, ne' in automatico ne' col
-// tocco manuale sul cannone — distruggere una mongolfiera e' ora
-// un'azione del giocatore a se stante (un tap diretto sulla mongolfiera
-// stessa, game/src/main.js/input.onTap), non piu' qualcosa che una
-// torretta puo' fare per conto suo o su richiesta. `stepTurretAim()`/
-// `stepTurretFire()`/`fireTurretManual()` sotto non accettano piu' le
-// mongolfiere come bersaglio possibile.
+// (di nuovo dall'autore): i sistemi di difesa dovevano ingaggiare SOLO
+// aerei/bombardieri/dirigibili, mai le mongolfiere, ne' in automatico ne'
+// col tocco manuale — distruggerle era un'azione del giocatore a se stante
+// (un tap diretto sulla mongolfiera stessa, game/src/main.js/input.onTap).
+//
+// [Bug corretto, richiesto di nuovo dall'autore] Il fuoco AUTOMATICO
+// (stepTurretFire) resta com'era: ingaggia solo minacce vere, mai
+// mongolfiere. Ma quando nessuna minaccia vera e' in portata la torretta
+// ora si aggancia alla mongolfiera piu' vicina (buildings.js/
+// stepTurretAim) invece di restare a riposo — segnalato dall'autore ("le
+// strutture di difesa non puntano ne' sparano contro le mongolfiere") — e
+// un tap sul cannone in quella situazione (fireTurretManual sotto) le
+// spara contro davvero, stessa strada di fireFrom() gia' usata per le
+// minacce vere. `stepProjectiles()` (missile/gatling) gia' sapeva colpire
+// una mongolfiera incontrata per strada; qui manca solo il caso "beam"
+// (laser, colpo istantaneo senza proiettile fisico, vedi fireFrom sotto).
 //
 // Le tre torrette non sono varianti dello stesso cannone: `WEAPONS` sotto
 // tiene i dati che le differenziano (raggio, ricarica, munizioni, la forma
@@ -153,10 +161,19 @@ const WEAPONS = {
   // sola, a differenza del razzo che lo riarma di continuo in volo).
   gatling: {
     kind: "projectile", twin: true, muzzle: GATLING_MUZZLE,
-    cooldown: 50 * TICK,                 // [I] vedi buildings.js: il vero riarmo di `launching` e' un piccolo stato
-    // (spra/amove/Alarm_9|11) non riprodotto — 50 tick e' quando `spra`
-    // torna a 0 (Alarm_9) e la mira/il prossimo sparo vero tornano
-    // possibili, il numero piu' difendibile come "ricarica effettiva".
+    // [Bug corretto, segnalato dall'autore: "il gatling spara troppo
+    // lentamente (probabilmente ha erroneamente lo stesso tempo di
+    // cooldown del lanciarazzi)"] **[C]** una lettura precedente aveva
+    // preso i 50 tick di `gatlinggun/Alarm_9.gml` (che riarma `spra`, il
+    // flag della POSA di rinculo — vedi buildings.js, TURRET_SPRITE_TABLES.
+    // gatlingRecoil/GATLING_RECOIL_HOLD, ora davvero usato per quello) per
+    // il tempo di ricarica fra due colpi: risultato, un gatling che sparava
+    // alla stessa cadenza (quasi) del missile (40 tick, sopra) invece di
+    // essere l'arma rapida che e' nel decompilato. Il vero riarmo del
+    // COLPO e' `Alarm_6.gml`, armato a `action_set_alarm(6, 6)` a ogni
+    // scarica: `launching = 1;` (di nuovo in grado di sparare) 6 tick dopo,
+    // non 50.
+    cooldown: 6 * TICK,
     speed: 60, life: 50 * TICK, spr: "gatmissse", damage: DAMAGE.gatling,
     hitRadius: 70,                       // [I] proiettile piccolo, stessa logica di missile.hitRadius sopra
     ammoCost: { mon: 3 },                // per proiettile, non per scarica
@@ -234,6 +251,14 @@ export function spawnSmoko(x, y) {
 // laser.cooldown sopra), un fascio che durasse quanto quella sarebbe piu'
 // invasivo di quanto serva solo per "vedere che ha sparato".
 export const BEAM_LIFE = 20 * TICK;
+// [I] Lunghezza del fascio DISEGNATO (fireFrom() sotto) — non della portata
+// vera del colpo (BUILDING_TYPES.laser.aim.fireRange, buildings.js, mai
+// toccata). Piu' lunga della diagonale della mappa piu' grande (`match`,
+// game/data/match.scene.json: 3900x2090, diagonale ~4424px) cosi' il fascio
+// esce sempre dallo schermo/dalla mappa in ogni direzione invece di finire
+// a meta' del vuoto — l'effetto "raggio senza fine" richiesto dall'autore,
+// senza dover davvero calcolare un'intersezione coi bordi della scena.
+export const BEAM_VISUAL_LENGTH = 6000;
 export function spawnBeam(x0, y0, x1, y1) {
   return { x0, y0, x1, y1, t: 0 };
 }
@@ -282,8 +307,12 @@ function payAmmo(weapon, r12) {
  * a carico di chi chiama, cosi' i due percorsi possono applicare le
  * proprie regole (stepTurretFire gia' sa che una minaccia vera e' in
  * portata, fireTurretManual no). `trails` riceve gli sbuffi di fumo di
- * scia (spawnSmoko sopra) quando l'arma ne crea uno alla bocca. */
-function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams) {
+ * scia (spawnSmoko sopra) quando l'arma ne crea uno alla bocca. `balloons`/
+ * `loot` (opzionali): solo il ramo "beam" (laser) li usa, per abbattere
+ * davvero una mongolfiera in linea di tiro — missile/gatling non ne hanno
+ * bisogno qui, il proiettile fisico che generano la colpisce da solo
+ * incontrandola per strada (stepProjectiles). */
+function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams, balloons, loot) {
   if (weapon.kind === "beam") {
     const off = bucketFor(weapon.muzzle, b.aimAngle);
     const mx = b.x + off.dx, my = b.y + off.dy;
@@ -297,20 +326,46 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beam
     // prossimo frame, non qui.
     const fireRange = BUILDING_TYPES[b.type].aim.fireRange;
     const r2 = fireRange * fireRange;
-    // Effetto visivo (spawnBeam sopra): un raggio lungo `fireRange` nella
-    // direzione di mira — non verso un singolo bersaglio, perche' il colpo
-    // stesso non ne ha uno solo (danneggia tutto cio' che e' entro il
-    // raggio, vedi sopra). `beams` e' opzionale (`?.`) solo per non
-    // spezzare eventuali test/chiamate dirette a fireFrom() che non lo
-    // passano.
+    // Effetto visivo (spawnBeam sopra): un raggio nella direzione di mira —
+    // non verso un singolo bersaglio, perche' il colpo stesso non ne ha uno
+    // solo (danneggia tutto cio' che e' entro `fireRange`, vedi sopra).
+    // [Bug corretto, richiesto dall'autore: "vorrei che il fascio laser
+    // fosse lungo infinito e non una distanza fissa"] **[I]** il fascio
+    // DISEGNATO ora si estende per `BEAM_VISUAL_LENGTH` (sotto), non per
+    // `fireRange` — il danno vero resta comunque limitato a `fireRange`
+    // (il ciclo su `threats`/`balloons` sotto non cambia): fermare il
+    // fascio disegnato esattamente al bordo della portata rendeva visibile
+    // "il punto in cui il colpo smette di funzionare", un dettaglio di
+    // bilanciamento che l'autore non voleva vedere — un fascio che esce
+    // dallo schermo (o dalla mappa) in ogni direzione, come un vero raggio
+    // laser, comunica "arma a lungo raggio" meglio di un segmento che si
+    // interrompe a meta' strada nel vuoto. `beams` e' opzionale (`?.`) solo
+    // per non spezzare eventuali test/chiamate dirette a fireFrom() che non
+    // lo passano.
     if (beams) {
       const rad = (b.aimAngle * Math.PI) / 180;
-      beams.push(spawnBeam(mx, my, mx + Math.cos(rad) * fireRange, my - Math.sin(rad) * fireRange));
+      beams.push(spawnBeam(mx, my, mx + Math.cos(rad) * BEAM_VISUAL_LENGTH, my - Math.sin(rad) * BEAM_VISUAL_LENGTH));
     }
     for (const th of threats) {
       const dx = th.x - b.x, dy = th.y - b.y;
       if (dx * dx + dy * dy > r2) continue;
       th.life -= DAMAGE.laser[th.type];
+    }
+    // [Bug corretto] Le mongolfiere entro lo stesso raggio: un solo colpo
+    // le abbatte (stesso trattamento di stepProjectiles per missile/
+    // gatling, mai una vita "vera" come le minacce), esplosione + eventuale
+    // cassa di loot. Senza `balloons` (chiamate che non lo passano) questo
+    // ramo resta un no-op, come prima.
+    if (balloons) {
+      for (let i = balloons.length - 1; i >= 0; i--) {
+        const bal = balloons[i];
+        const dx = bal.x - b.x, dy = bal.y - b.y;
+        if (dx * dx + dy * dy > r2) continue;
+        balloons.splice(i, 1);
+        explosions.push(spawnExplosion(bal.x, bal.y));
+        const def = BALLOON_TYPES[bal.type];
+        if (def.loot && loot) loot.push(spawnLoot(def.loot, bal.x, bal.y));
+      }
     }
     return;
   }
@@ -382,16 +437,22 @@ export function stepTurretFire(buildings, threats, dt, projectiles, explosions, 
  * distrugge una minaccia vera solo se ce n'e' gia' una entro `aim.fireRange`
  * in quel preciso istante, altrimenti il colpo parte comunque (lampo +
  * costo + ricarica) senza colpire nulla. Il "veicolo inseguito" (`b.
- * aimTarget`) e' sempre e solo una minaccia vera (stepTurretAim, buildings.js
- * — vedi il commento in cima al file): anche il tocco manuale sul cannone
- * non puo' quindi mai colpire una mongolfiera.
+ * aimTarget`) e' una minaccia vera quando ce n'e' una in portata,
+ * altrimenti — **[Bug corretto, richiesto dall'autore]** — la mongolfiera
+ * piu' vicina, se ce n'e' una (stepTurretAim, buildings.js: le minacce vere
+ * hanno sempre la priorita'): il tocco manuale sul cannone puo' quindi ora
+ * colpire anche una mongolfiera "in linea di tiro" quando non c'e' nessuna
+ * minaccia vera intorno, esattamente come un colpo contro una minaccia —
+ * `balloons`/`loot` servono solo al ramo "beam" (laser) di fireFrom() per
+ * farlo davvero (missile/gatling ci arrivano gia' da soli, il proiettile
+ * fisico la incontra per strada — stepProjectiles).
  *
  * Ritorna true se e' partito un colpo (per il messaggio in main.js), false
  * se il cannone non supporta il fuoco manuale (`BUILDING_TYPES[type].
  * manualFire`), e' in ricarica, non ha nessun bersaglio in portata adesso,
  * o (solo laser) l'energia non basta.
  */
-export function fireTurretManual(b, projectiles, explosions, r12, threats, trails, beams) {
+export function fireTurretManual(b, projectiles, explosions, r12, threats, trails, beams, balloons, loot) {
   const weapon = WEAPONS[b.type];
   if (!weapon || !BUILDING_TYPES[b.type]?.manualFire) return false;
   if (b.aimAngle == null || !b.aimTarget) return false;
@@ -402,7 +463,7 @@ export function fireTurretManual(b, projectiles, explosions, r12, threats, trail
   }
   if ((b.fireT ?? 0) < weapon.cooldown || !canFireAmmo(weapon, r12)) return false;
   b.fireT = 0;
-  fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams);
+  fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams, balloons, loot);
   return true;
 }
 

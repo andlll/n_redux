@@ -41,6 +41,17 @@ GAMEPLAY_SPRITES = {
         "ci28", "ci29", "ci30", "ci31", "ci32", "ci33", "ci34", "ci35", "ci36", "ci37",
         "crcl", "crc2l", "crc3l", "crc3l2", "crc3l3", "crc3l4", "crc3l5",  # decoro cddvd*
         "gru1", "gr21",                                           # gru/rubble cantiere
+        # [Bug corretto] la gru (src/objects/gru) era ferma su "gru1" (la
+        # base) per tutta la durata del cantiere: nel decompilato si monta
+        # per davvero (gru1->gru2->gru3, alta sempre di piu'), fa comparire
+        # un braccio oscillante in cima ("grutop", src/objects/grutop) per
+        # ~600 tic, poi si smonta (gru3->gru2->gru1) e sparisce — vedi
+        # stepCraneAnim()/craneParts() in game/src/buildings.js. "gru2"/
+        # "gru3" (il corpo che cresce) e le sottoimmagini di "grutop"
+        # (gto/gtao: il braccio, due lati speculari; "7" lo stesso braccio
+        # a met giro; "gt0" fermo/ripiegato) mancavano tutte all'atlas.
+        "gru2", "gru3",
+        "gto", "gto7", "gtao", "gtao7", "gt0",
         # industria: secondo edificio, catena impaind0to1r/1to2r/2to3r
         # (src/objects/impaind*, STUDIO.md §5.5/§7.3/§9 "impa* come dati").
         "i11", "i21", "i31",                                      # livello 1/2/3 (variante 1)
@@ -120,11 +131,15 @@ GAMEPLAY_SPRITES = {
         # cantiere impagatlingr/impagatlingf — riusano gli stessi ir1x/if1x/
         # "toppers" di sopra, nessuno sprite di cantiere in piu'). "nm1a"..
         # "nm16a" sono i 16 sprite di mira del cannone (gatlinggun/Step.gml,
-        # sprite_index risolti per indice come "lrn1".."lrn16" sopra) — solo
-        # le pose "a": le "b" (nm1b..nm16b) sono la posa di rinculo dopo lo
-        # sparo, non riprodotta (game/src/buildings.js).
+        # sprite_index risolti per indice come "lrn1".."lrn16" sopra). Le "b"
+        # (nm1b..nm16b) sono la posa di rinculo dopo lo sparo — **[Bug
+        # corretto, segnalato dall'autore: "sembra manchino le animazioni"]**
+        # ora riprodotta (game/src/buildings.js, TURRET_SPRITE_TABLES.
+        # gatlingRecoil), quindi servono anche loro nell'atlante.
         "nm1a", "nm2a", "nm3a", "nm4a", "nm5a", "nm6a", "nm7a", "nm8a",
         "nm9a", "nm10a", "nm11a", "nm12a", "nm13a", "nm14a", "nm15a", "nm16a",
+        "nm1b", "nm2b", "nm3b", "nm4b", "nm5b", "nm6b", "nm7b", "nm8b",
+        "nm9b", "nm10b", "nm11b", "nm12b", "nm13b", "nm14b", "nm15b", "nm16b",
         # laser: decimo edificio, terza torretta (src/objects/lasergun,
         # cantiere impalaser_r/impalaser_f — riusano ir1x/if1x/"toppers"/
         # "gr21" di sopra, nessuno sprite di cantiere in piu'). "lan1"..
@@ -226,6 +241,30 @@ GAMEPLAY_SPRITES = {
         "c531", "c531l", "c533", "c533l",
         "c541", "c541l", "c543", "c543l",
         "c551", "c551l", "c553", "c553l",
+        # [Bug corretto, segnalato dall'autore: "case e palazzi non dovrebbero
+        # essere fade in / fade out ma usare degli sprite esistenti che
+        # accendevano le finestre un po' alla volta"] **[C]** ogni decoro
+        # "l" sopra (un solo frame) ha un gemello "x" con MOLTI frame veri —
+        # una finestra alla volta, scorsi dal vero motore invece di
+        # sfumati in alpha (game/src/main.js, scrubSpriteFor()/stepLights()).
+        # Elencati qui SOLO i 100 nomi "x" (le "l" restano quelle sopra: due
+        # sprite diversi per lo stesso edificio, non un rimpiazzo). Vedi
+        # DEDUP_CONSECUTIVE_SPRITES sotto: senza deduplicare i frame
+        # ripetuti impacchettare questi cento sprite costerebbe ~1.1 GB di
+        # VRAM decompressa (misurato) per un risultato identico a schermo.
+        "c111x", "c112x", "c113x", "c114x", "c121x", "c122x", "c123x", "c124x",
+        "c131x", "c132x", "c133x", "c134x", "c141x", "c142x", "c143x", "c144x",
+        "c151x", "c152x", "c153x", "c154x", "c211x", "c212x", "c213x", "c214x",
+        "c221x", "c222x", "c223x", "c224x", "c231x", "c232x", "c233x", "c234x",
+        "c241x", "c242x", "c243x", "c244x", "c251x", "c252x", "c253x", "c254x",
+        "c311x", "c312x", "c313x", "c314x", "c321x", "c322x", "c323x", "c324x",
+        "c331x", "c332x", "c333x", "c334x", "c341x", "c342x", "c343x", "c344x",
+        "c351x", "c352x", "c353x", "c354x", "c411sx", "c412dx", "c413sx", "c414dx",
+        "c421x", "c422x", "c423x", "c424x", "c431x", "c432x", "c433x", "c434x",
+        "c441x", "c442x", "c443x", "c444x", "c451x", "c452x", "c453x", "c454x",
+        "c511x", "c512x", "c513x", "c514x", "c521x", "c522x", "c523x", "c524x",
+        "c531x", "c532x", "c533x", "c534x", "c541x", "c542x", "c543x", "c544x",
+        "c551x", "c552x", "c553x", "c554x",
         "ru41", "ru41d",   # [C] casa4s/d/Step.gml: rudere (ru41d anche per casa4d, non ru41)
         # museo: dado 50/50 fra due sprite finali, per asse — [C]
         # media1s|d/Create.gml. "med2"/"med2d" non hanno un "l" acceso
@@ -564,6 +603,40 @@ EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group}
 # bottoni.
 GAMEPLAY_ROOMS = {"match", "match_easy", "tutorial"}
 
+# [Bug corretto, segnalato dall'autore: "case e palazzi non dovrebbero
+# essere fade in / fade out ma usare degli sprite esistenti che accendevano
+# le finestre un po' alla volta"] I 100 sprite luce "...x" di casa/palazzo
+# elencati sopra hanno 41..179 sottoimmagini NOMINALI ciascuno, ma la
+# stragrande maggioranza sono duplicati byte per byte CONSECUTIVI — stesso
+# (tex,x,y,w,h) — perche' GameMaker tiene ferma l'immagine per diversi tick
+# prima di accendere la finestra successiva, non un disegno diverso ad ogni
+# tick: misurato, solo il 5-10% dei frame nominali e' davvero unico (~5-12
+# per sprite, tanti quante sono le finestre vere del disegno). Impacchettare
+# anche i duplicati costerebbe ~1.1 GB di VRAM decompressa per un risultato
+# IDENTICO a schermo — deduplicarli qui (tenendo solo il primo di ogni serie
+# di ripetizioni consecutive) porta lo stesso costo a ~100 MB, senza perdere
+# NESSUNA informazione visiva (sono copie esatte, non un'approssimazione).
+# La durata VERA della luce (quanti tick regge, per calcolare la velocita'
+# di scorrimento) resta il conteggio nominale originale — non impacchettato
+# qui, letto una volta da data/sprites.json in una piccola tabella statica
+# di game/src/main.js (SCRUB_TRUE_DURATION), separata dal numero di
+# sottoimmagini VISIVE rimaste nell'atlas dopo la deduplicazione.
+DEDUP_CONSECUTIVE_SPRITES = {
+    "c111x", "c112x", "c113x", "c114x", "c121x", "c122x", "c123x", "c124x",
+    "c131x", "c132x", "c133x", "c134x", "c141x", "c142x", "c143x", "c144x",
+    "c151x", "c152x", "c153x", "c154x", "c211x", "c212x", "c213x", "c214x",
+    "c221x", "c222x", "c223x", "c224x", "c231x", "c232x", "c233x", "c234x",
+    "c241x", "c242x", "c243x", "c244x", "c251x", "c252x", "c253x", "c254x",
+    "c311x", "c312x", "c313x", "c314x", "c321x", "c322x", "c323x", "c324x",
+    "c331x", "c332x", "c333x", "c334x", "c341x", "c342x", "c343x", "c344x",
+    "c351x", "c352x", "c353x", "c354x", "c411sx", "c412dx", "c413sx", "c414dx",
+    "c421x", "c422x", "c423x", "c424x", "c431x", "c432x", "c433x", "c434x",
+    "c441x", "c442x", "c443x", "c444x", "c451x", "c452x", "c453x", "c454x",
+    "c511x", "c512x", "c513x", "c514x", "c521x", "c522x", "c523x", "c524x",
+    "c531x", "c532x", "c533x", "c534x", "c541x", "c542x", "c543x", "c544x",
+    "c551x", "c552x", "c553x", "c554x",
+}
+
 # ---------------------------------------------------------------- raccolta
 rects = []                               # frame da sistemare
 used = sorted({i["spr"] for i in scene["instances"] if "spr" in i}
@@ -572,9 +645,15 @@ for name in used:
     s = spr_by_name.get(name)
     if not s:
         continue
+    dedup = name in DEDUP_CONSECUTIVE_SPRITES
+    prev_key = None
     for fi, fr in enumerate(s["frames"]):
         if "tex" not in fr or fr["w"] <= 0 or fr["h"] <= 0:
             continue
+        key = (fr["tex"], fr["x"], fr["y"], fr["w"], fr["h"])
+        if dedup and key == prev_key:
+            continue
+        prev_key = key
         rects.append({
             "spr": name, "frame": fi,
             "src": fr["tex"], "sx": fr["x"], "sy": fr["y"],

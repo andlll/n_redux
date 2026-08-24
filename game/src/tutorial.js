@@ -88,14 +88,6 @@ export function extractRuinLots(scene) {
   return lots;
 }
 
-/** Avvia il cantiere di ricostruzione su un lotto-rudere (main.js chiama
- * placeBuilding()/push su buildings, questa funzione decide solo con quale
- * `construction` iniziale — vedi il commento sopra). */
-export function ruinRebuildConstruction(level) {
-  return level === 1
-    ? { upgradeIndex: -1, stepIndex: 0, t: 0, rebuilding: true }
-    : { upgradeIndex: 0, stepIndex: 0, t: 0, rebuilding: true };
-}
 
 export function createTutorialState(scene) {
   const count = (name) => scene.instances.filter((it) => it.obj === name).length;
@@ -190,8 +182,25 @@ const CUTSCENE_PLANES = [
   { spr: "tuto_bomb", yFrac: 0.42, startT: 0.2, dur: 3.2 },
 ];
 
+// [Bug corretto, segnalato dall'autore: "gli aerei del tutorial si muovono
+// in orizzontale"] **[C]** `air_tut1/Create.gml`: `action_set_motion(30,
+// irandom_range(1,3))`; `air_tut2/Create.gml`: `action_set_motion(30, 1)`
+// — entrambi volano a direzione 30°, la STESSA diagonale di tutta la
+// famiglia "aerei" (threats.js), mai orizzontale. Una prima versione di
+// questa cutscene (gia' deliberatamente riportata in spazio schermo per
+// garantire copertura piena, vedi il commento sopra) interpolava solo
+// `xFrac`, lasciando `yFrac` fisso — un volo perfettamente orizzontale,
+// infedele alla direzione vera. CUTSCENE_CLIMB fa salire ogni aereo di una
+// frazione fissa dell'altezza schermo mentre attraversa (nello stesso
+// verso di `-sin(30°)` — su, non giu' — usato ovunque nel motore per
+// quella direzione): non e' la stessa pendenza esatta di 30° in pixel
+// veri (impossibile senza un rapporto larghezza/altezza fisso, e questa
+// cutscene resta apposta indipendente dall'aspect ratio) ma la stessa
+// idea — un aereo che sale in diagonale, non uno che scorre dritto.
+const CUTSCENE_CLIMB = 0.18;
+
 export function createCutscene() {
-  const planes = CUTSCENE_PLANES.map((p) => ({ ...p, xFrac: -0.3 }));
+  const planes = CUTSCENE_PLANES.map((p) => ({ ...p, yFrac0: p.yFrac, xFrac: -0.3 }));
   return { t: 0, planes };
 }
 
@@ -205,6 +214,7 @@ export function stepCutscene(cutscene, dt) {
   for (const p of cutscene.planes) {
     const k = Math.max(0, Math.min(1, (cutscene.t - p.startT) / p.dur));
     p.xFrac = -0.3 + k * 1.6;   // da -0.3 (fuori a sinistra) a 1.3 (fuori a destra)
+    p.yFrac = p.yFrac0 - k * CUTSCENE_CLIMB;   // sale in diagonale, non scorre dritto
   }
   return cutscene.t >= CUTSCENE_DURATION;
 }
