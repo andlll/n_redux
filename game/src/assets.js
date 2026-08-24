@@ -31,7 +31,36 @@ export function loadRoomAtlas(gl, roomName) {
   if (!entry) {
     entry = (async () => {
       const atlas = await fetch(`./data/${roomName}.atlas.json`).then((x) => x.json());
-      const pageTex = await Promise.all(atlas.pages.map((p) => loadTexture(gl, "./assets/" + p.file)));
+      // [I] Segnalato dall'autore: "riusciamo a ridurre i tempi di
+      // caricamento caricando gli asset degli edifici avanzati poco prima
+      // che il giocatore sia in condizione di sbloccarli?" — `corePages`
+      // (tools/23_atlas.py, ora impacchetta le pagine "servono da subito"
+      // PRIMA di quelle "arrivano dopo": edifici a livello 1/HUD/decoro
+      // sempre visibile contro potenziamenti/combattimento/la catena
+      // fari->piattaforma, vedi tools/27_sprite_tiers.mjs) dice quante
+      // pagine iniziali aspettare qui prima di poter disegnare il primo
+      // frame — le altre si scaricano in background, PARTONO qui ma non
+      // vengono aspettate, e riempiono lo stesso array `pageTex` condiviso
+      // mano a mano che arrivano. Una room non ancora rigenerata con la
+      // pipeline aggiornata (`corePages` assente, es. build vecchie
+      // rimaste in cache) si comporta come prima: tutte le pagine core,
+      // nessuna in background.
+      const coreCount = atlas.corePages ?? atlas.pages.length;
+      const pageTex = new Array(atlas.pages.length).fill(null);
+      await Promise.all(atlas.pages.slice(0, coreCount).map((p, i) =>
+        loadTexture(gl, "./assets/" + p.file).then((t) => { pageTex[i] = t; })));
+      // Pagine deferred: NON aspettate — un fallimento qui non deve far
+      // ripetere il download delle pagine core gia' andate a buon fine
+      // (a differenza del catch sotto, che scarta l'intera cache SOLO se
+      // una pagina CORE fallisce). frameFor() (main.js/title.js) tratta
+      // gia' `pageTex[f.p] === null` come "non ancora pronto" — lo sprite
+      // semplicemente non si disegna per i pochi frame in cui la sua
+      // pagina e' ancora per strada, poi compare da solo.
+      for (let i = coreCount; i < atlas.pages.length; i++) {
+        loadTexture(gl, "./assets/" + atlas.pages[i].file)
+          .then((t) => { pageTex[i] = t; })
+          .catch((err) => console.error(`nimbus: pagina atlas "${atlas.pages[i].file}" non caricata`, err));
+      }
       return { atlas, pageTex };
     })();
     // [Bug corretto, segnalato dall'autore: "problemi col caricamento del

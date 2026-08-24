@@ -46,6 +46,7 @@ export async function mountTitle(ctx) {
     const frames = atlas.sprites[sprName];
     if (!frames || !frames.length) return null;
     const f = frames[Math.max(0, Math.min(frameIdx, frames.length - 1))];
+    if (!pageTex[f.p]) return null;
     return { tex: pageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1, w: f.w, h: f.h, ox: f.ox, oy: f.oy };
   }
 
@@ -93,6 +94,7 @@ export async function mountTitle(ctx) {
     const frames = mAtlas.sprites[sprName];
     if (!frames || !frames.length) return null;
     const f = frames[Math.max(0, Math.min(frameIdx, frames.length - 1))];
+    if (!mPageTex[f.p]) return null;
     return { tex: mPageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1, w: f.w, h: f.h, ox: f.ox, oy: f.oy };
   }
 
@@ -367,6 +369,16 @@ export async function mountTitle(ctx) {
         const fi = Math.min(AER_SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
         dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: mFrameFor(p.spr, fi), _scale: p.scale });
       }
+      // [I] Guarisce gli sprite di `worldStatic` ancora `null` perche' la
+      // loro pagina "deferred" (game/src/assets.js, tools/23_atlas.py
+      // `corePages`) non era ancora arrivata quando `_f` e' stato
+      // calcolato una volta sola (il ciclo subito dopo `applyMatchPlatform`
+      // sopra, e i due `push()` di LIT_LOTS) — a differenza degli sprite
+      // "dynamic" qui sopra (mFrameFor() richiamato di nuovo ad ogni
+      // aggiornamento, si aggiornano gia' da soli), questi non verrebbero
+      // mai piu' ritentati altrimenti. Costo trascurabile: gia' dentro il
+      // ramo "aggiorna ogni BG_INTERVAL", non ogni frame.
+      for (const it of worldStatic) if (!it._f) it._f = mFrameFor(it.spr);
       const frameList = worldStatic.concat(dynamic).sort(sortWorld);
       const vw = camWorld.worldW, vh = camWorld.worldH;
       const l = camWorld.x - vw / 2, t = camWorld.y - vh / 2, rt = l + vw, bt = t + vh;

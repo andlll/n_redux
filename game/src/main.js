@@ -199,10 +199,27 @@ export async function mountMatch(ctx, params = {}) {
   // inizializzata lancerebbe un ReferenceError ("temporal dead zone"), non
   // silenziosamente NaN.
   const TICK = 1 / 60;              // room_speed dell'originale, stessa unita' di buildings.js
+  // [I] Caricamento a due tempi (tools/23_atlas.py `corePages` + game/src/
+  // assets.js): le pagine "deferred" (potenziamenti, combattimento, la
+  // catena fari->piattaforma) arrivano in background DOPO che la partita
+  // e' gia' disegnata — `pageTex[f.p]` puo' quindi essere ancora `null`
+  // per uno sprite tecnicamente presente nell'atlas ma non ancora
+  // scaricato. Trattato esattamente come uno sprite mancante (`return
+  // null`, lo stesso ramo di "frames non trovati" sotto): main.js non
+  // disegna nulla per quel frame invece di far crashare l'intero
+  // rendering leggendo `.tex` di un `pageTex[f.p]` ancora null — chi lo
+  // richiama ogni frame (la stragrande maggioranza dei chiamanti, vedi
+  // `dynamic.push({..., _f: frameFor(...)})` piu' sotto) lo ritenta da
+  // solo al frame successivo, quindi lo sprite compare da solo (pop-in)
+  // appena la sua pagina finisce di arrivare — nessuno stato da pulire.
+  // I pochi chiamanti che invece CACHANO `_f` una volta sola
+  // (`staticWorld`, sotto) vengono guariti esplicitamente, vedi
+  // healMissingArt()/il ciclo di frame piu' in basso.
   function frameFor(sprName, frameIdx = 0) {
     const frames = atlas.sprites[sprName];
     if (!frames || !frames.length) return null;
     const f = frames[Math.max(0, Math.min(frameIdx, frames.length - 1))];
+    if (!pageTex[f.p]) return null;
     return { tex: pageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1,
              w: f.w, h: f.h, ox: f.ox, oy: f.oy };
   }
@@ -2980,6 +2997,30 @@ export async function mountMatch(ctx, params = {}) {
     // (`_alpha`, 0 di giorno) che il ciclo di disegno rispetta da solo — a
     // differenza di un filtro binario, cosi' la dissolvenza resta visibile
     // durante la transizione invece di sparire di scatto a meta' fade.
+    // [I] Guarisce gli sprite di `staticWorld` ancora `null` perche' la loro
+    // pagina "deferred" (game/src/assets.js, tools/23_atlas.py
+    // `corePages`) non era ancora arrivata quando `_f` e' stato calcolato
+    // una volta sola (i due cicli subito dopo il fetch della scena, molto
+    // piu' sopra) — a differenza degli sprite "dynamic" (frameFor()
+    // richiamato di nuovo ogni frame qui sopra, si aggiornano gia' da
+    // soli), questi non verrebbero mai piu' ritentati altrimenti: un
+    // edificio di fascia alta o di livello 2+ resterebbe invisibile per
+    // sempre invece di comparire (pop-in) appena la sua pagina arriva.
+    // `missingArt` (HUD di debug) va ricalcolato qui insieme: prima del
+    // caricamento a due tempi restava valido per tutta la sessione una
+    // volta scritto (ogni pagina era gia' pronta al mount, quindi "senza
+    // sprite" era per forza un vuoto vero, nell'atlas non nel download).
+    // Ora un edificio "deferred" appare qui SENZA `_f` per i primi
+    // istanti (la sua pagina non e' ancora arrivata) — se il numero
+    // restasse quello del primo frame, un developer che lo legge in HUD
+    // penserebbe che quegli sprite mancano per sempre invece che stiano
+    // ancora per arrivare in background.
+    let stillMissing = 0;
+    for (const it of staticWorld) {
+      if (!it._f) it._f = frameFor(it.spr);
+      if (!it._f) stillMissing++;
+    }
+    missingArt = stillMissing;
     frameList = staticWorld.filter((it) => !(it.obj === "placeholder" && it.consumed))
       .concat(dynamic).sort(sortWorld);
 
