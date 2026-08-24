@@ -15,22 +15,22 @@
 // mai `nemici_target`), quindi poteva sparare verso una mongolfiera innocua
 // invece che verso la minaccia vera che aveva innescato il colpo — cannone
 // che punta una cosa e missile che ne colpisce un'altra, confuso da
-// guardare. [I] Corretto: stepTurretAim() da' priorita' alle minacce vere
-// quando sono a tiro, cosi' `b.aimTarget` (e quindi il colpo) e' sempre
-// coerente con cio' che il cannone sta visibilmente inseguendo.
+// guardare. [I] Corretto: stepTurretAim() insegue SOLO le minacce vere
+// (air/bombar/dirig, mai le mongolfiere), cosi' `b.aimTarget` (e quindi il
+// colpo, sia automatico che manuale) e' sempre coerente con cio' che il
+// cannone sta visibilmente inseguendo.
 //
-// [I] Segnalato dall'autore giocando: le torrette dovrebbero poter colpire
-// anche le mongolfiere (`targets` sotto — risorse E spie), non solo le
-// minacce vere. Missile/gatling lo facevano gia' per un colpo che le
-// incontra per strada (stepProjectiles() sotto controlla collisioni contro
-// `balloons` e `threats` insieme, da quando le spie si possono abbattere
-// "prima che riescano" — vedi il commento su stepProjectiles), ma il
-// grilletto di stepTurretFire scattava SOLO se una minaccia vera era in
-// `fireRange`: una mongolfiera da sola, per quanto vicina, non faceva mai
-// partire un colpo automatico. Ora il controllo di portata considera
-// entrambe le liste. Il laser (fascio istantaneo, niente proiettile: vedi
-// WEAPONS.laser sotto) non toccava proprio le mongolfiere — esteso allo
-// stesso modo di stepProjectiles() per restare coerente.
+// [I] Le torrette avevano imparato per un periodo a colpire anche le
+// mongolfiere (risorse E spie), non solo le minacce vere — segnalato
+// allora dall'autore giocando. Richiesta ribaltata in un secondo momento
+// (di nuovo dall'autore): i sistemi di difesa devono ingaggiare SOLO aerei/
+// bombardieri/dirigibili, mai le mongolfiere, ne' in automatico ne' col
+// tocco manuale sul cannone — distruggere una mongolfiera e' ora
+// un'azione del giocatore a se stante (un tap diretto sulla mongolfiera
+// stessa, game/src/main.js/input.onTap), non piu' qualcosa che una
+// torretta puo' fare per conto suo o su richiesta. `stepTurretAim()`/
+// `stepTurretFire()`/`fireTurretManual()` sotto non accettano piu' le
+// mongolfiere come bersaglio possibile.
 //
 // Le tre torrette non sono varianti dello stesso cannone: `WEAPONS` sotto
 // tiene i dati che le differenziano (raggio, ricarica, munizioni, la forma
@@ -283,7 +283,7 @@ function payAmmo(weapon, r12) {
  * proprie regole (stepTurretFire gia' sa che una minaccia vera e' in
  * portata, fireTurretManual no). `trails` riceve gli sbuffi di fumo di
  * scia (spawnSmoko sopra) quando l'arma ne crea uno alla bocca. */
-function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targets, loot, beams) {
+function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams) {
   if (weapon.kind === "beam") {
     const off = bucketFor(weapon.muzzle, b.aimAngle);
     const mx = b.x + off.dx, my = b.y + off.dy;
@@ -312,20 +312,6 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targ
       if (dx * dx + dy * dy > r2) continue;
       th.life -= DAMAGE.laser[th.type];
     }
-    // [I] Segnalato dall'autore: il fascio dovrebbe poter colpire anche le
-    // mongolfiere entro lo stesso raggio — un solo colpo le distrugge
-    // (nessuna `life`, stessa regola gia' vera per un proiettile che le
-    // incontra, vedi stepProjectiles() sotto), con la stessa cassa/loot che
-    // lascerebbero cadute comunque.
-    if (targets) for (let i = targets.length - 1; i >= 0; i--) {
-      const t = targets[i];
-      const dx = t.x - b.x, dy = t.y - b.y;
-      if (dx * dx + dy * dy > r2) continue;
-      targets.splice(i, 1);
-      explosions.push(spawnExplosion(t.x, t.y));
-      const def = BALLOON_TYPES[t.type];
-      if (def?.loot) loot.push(spawnLoot(def.loot, t.x, t.y));
-    }
     return;
   }
   const off = bucketFor(weapon.muzzle, b.aimAngle);
@@ -343,13 +329,15 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targ
 
 /**
  * Fa sparare le torrette (missile/gatling/laser, tramite `def.aim`): per
- * ognuna, cerca se una minaccia vera O una mongolfiera (`targets` — [I]
- * segnalato dall'autore, vedi il commento in cima al file) e' entro
- * `aim.fireRange`, e se il cannone non e' in ricarica (ne' — solo per laser
- * — a corto di energia) fa partire un colpo verso il bersaglio gia'
- * inseguito (fireFrom sopra).
+ * ognuna, cerca se una minaccia vera (aereo/bombardiere/dirigibile,
+ * `threats`) e' entro `aim.fireRange`, e se il cannone non e' in ricarica
+ * (ne' — solo per laser — a corto di energia) fa partire un colpo verso il
+ * bersaglio gia' inseguito (fireFrom sopra). Le mongolfiere non fanno mai
+ * scattare il fuoco automatico — vedi il commento in cima al file:
+ * distruggerle e' un'azione esplicita del giocatore (un tap diretto sulla
+ * mongolfiera, main.js), non qualcosa che una torretta decide da sola.
  */
-export function stepTurretFire(buildings, targets, threats, dt, projectiles, explosions, r12, trails, loot, beams) {
+export function stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails, beams) {
   for (const b of buildings) {
     const weapon = WEAPONS[b.type];
     if (b.construction || !weapon) continue;
@@ -363,13 +351,9 @@ export function stepTurretFire(buildings, targets, threats, dt, projectiles, exp
       const dx = th.x - b.x, dy = th.y - b.y;
       if (dx * dx + dy * dy < r2) { inRange = true; break; }
     }
-    if (!inRange) for (const t of targets) {
-      const dx = t.x - b.x, dy = t.y - b.y;
-      if (dx * dx + dy * dy < r2) { inRange = true; break; }
-    }
     if (!inRange || !canFireAmmo(weapon, r12)) continue;
     b.fireT = 0;
-    fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targets, loot, beams);
+    fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams);
   }
 }
 
@@ -397,14 +381,17 @@ export function stepTurretFire(buildings, targets, threats, dt, projectiles, exp
  * Create): per il laser (hitscan, fireFrom sopra) questo vuol dire che
  * distrugge una minaccia vera solo se ce n'e' gia' una entro `aim.fireRange`
  * in quel preciso istante, altrimenti il colpo parte comunque (lampo +
- * costo + ricarica) senza colpire nulla.
+ * costo + ricarica) senza colpire nulla. Il "veicolo inseguito" (`b.
+ * aimTarget`) e' sempre e solo una minaccia vera (stepTurretAim, buildings.js
+ * — vedi il commento in cima al file): anche il tocco manuale sul cannone
+ * non puo' quindi mai colpire una mongolfiera.
  *
  * Ritorna true se e' partito un colpo (per il messaggio in main.js), false
  * se il cannone non supporta il fuoco manuale (`BUILDING_TYPES[type].
  * manualFire`), e' in ricarica, non ha nessun bersaglio in portata adesso,
  * o (solo laser) l'energia non basta.
  */
-export function fireTurretManual(b, projectiles, explosions, r12, threats, trails, targets, loot, beams) {
+export function fireTurretManual(b, projectiles, explosions, r12, threats, trails, beams) {
   const weapon = WEAPONS[b.type];
   if (!weapon || !BUILDING_TYPES[b.type]?.manualFire) return false;
   if (b.aimAngle == null || !b.aimTarget) return false;
@@ -415,7 +402,7 @@ export function fireTurretManual(b, projectiles, explosions, r12, threats, trail
   }
   if ((b.fireT ?? 0) < weapon.cooldown || !canFireAmmo(weapon, r12)) return false;
   b.fireT = 0;
-  fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, targets, loot, beams);
+  fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams);
   return true;
 }
 

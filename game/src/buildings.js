@@ -457,17 +457,15 @@ export const BUILDING_TYPES = {
     // (missile e' a un livello solo): vedi fireTurretManual() in
     // game/src/projectiles.js.
     manualFire: true,
-    // [C] rocket_launcher/Step.gml: insegue il veicolo piu' vicino
-    // (famiglia `veicoli_target` — mongolfiere di risorse/spia e le auto
-    // decorative) entro 400px, un sedicesimo di giro alla volta
-    // (`turretSprFor()` sotto) — [I] a meno che una minaccia vera
-    // (`nemici_target`: air/bombar/dirig) non sia gia' entro lo stesso
-    // raggio, nel qual caso ha la priorita' (stepTurretAim() sotto). Il
-    // fuoco vero (game/src/projectiles.js, stepTurretFire) scatta
-    // separatamente quando una minaccia vera entra entro 250px
-    // (`fireRange`), sempre verso il bersaglio gia' inseguito qui sopra —
-    // che quindi e' sempre la minaccia stessa quando e' a tiro, non piu'
-    // un veicolo qualunque scelto a caso.
+    // [C] rocket_launcher/Step.gml: insegue la minaccia vera piu' vicina
+    // (`nemici_target`: air/bombar/dirig) entro 400px, un sedicesimo di giro
+    // alla volta (`turretSprFor()` sotto). [I] Le mongolfiere (risorse/spia)
+    // e le auto decorative NON sono un bersaglio (stepTurretAim() sotto,
+    // buildings.js): la torretta resta senza aggancio finche' non c'e' un
+    // velivolo ostile in portata, mai puntata su un pallone o un'auto a
+    // terra. Il fuoco vero (game/src/projectiles.js, stepTurretFire) scatta
+    // separatamente quando una minaccia vera entra entro 250px (`fireRange`),
+    // sempre verso il bersaglio gia' inseguito qui sopra.
     aim: { range: 400, fireRange: 250 },
     storm: [{ dice: 130, loss: 50 }],   // [C] rocket_launcher/Alarm_5.gml
     construct: {                  // livello 0 -> 1, impamissr (src/objects/impamissr)
@@ -487,7 +485,7 @@ export const BUILDING_TYPES = {
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
         { spr: "ir22", dur: 40 },
         { spr: "ir21", dur: 640, spawn: [                 // tic==4 (durata 600) + tic==5 (durata 40, nessun
-          { spr: "toppers", dx: 0, dy: -86 },              // cambio sprite nel decompilato): fuse in un solo
+          { spr: "toppers", dx: 0, dy: -86, depthOffset: -88 },              // cambio sprite nel decompilato): fuse in un solo
         ] },                                                // passo — [C] impamissf/Alarm_0.gml tic==5 crea "tops2"
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
         { spr: "ir11", dur: 40 }, { spr: "ir12", dur: 40 },
@@ -534,7 +532,7 @@ export const BUILDING_TYPES = {
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 370 },
         { spr: "ir12", dur: 30 },
         { spr: "ir11", dur: 310, spawn: [                 // [C] impasolf/Alarm_4.gml crea "tops1" (sprite
-          { spr: "toppers", dx: 0, dy: -42 },              // "toppers", stessa forma di "tops2" per missile/
+          { spr: "toppers", dx: 0, dy: -42, depthOffset: -80 },              // "toppers", stessa forma di "tops2" per missile/
         ] },                                                // club ma offset -42 invece di -86) a meta' cantiere
         { spr: "ir12", dur: 30 },
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
@@ -652,7 +650,7 @@ export const BUILDING_TYPES = {
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
         { spr: "ir22", dur: 40 },
         { spr: "ir21", dur: 640, spawn: [
-          { spr: "toppers", dx: 0, dy: -86 },
+          { spr: "toppers", dx: 0, dy: -86, depthOffset: -88 },
         ] },
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
         { spr: "ir11", dur: 40 }, { spr: "ir12", dur: 40 },
@@ -739,7 +737,7 @@ export const BUILDING_TYPES = {
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
         { spr: "ir12", dur: 30 },
         { spr: "ir11", dur: 310, spawn: [
-          { spr: "toppers", dx: 0, dy: -42 },
+          { spr: "toppers", dx: 0, dy: -42, depthOffset: -80 },
         ] },
         { spr: "ir12", dur: 30 },
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
@@ -795,7 +793,7 @@ export const BUILDING_TYPES = {
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
         { spr: "ir22", dur: 40 },
         { spr: "ir21", dur: 640, spawn: [
-          { spr: "toppers", dx: 0, dy: -86 },
+          { spr: "toppers", dx: 0, dy: -86, depthOffset: -88 },
         ] },
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
         { spr: "ir11", dur: 40 }, { spr: "ir12", dur: 40 },
@@ -1096,7 +1094,7 @@ export const BUILDING_TYPES = {
         { spr: "sr35", dur: 40 }, { spr: "sr36", dur: 40 },
         { spr: ["sr41", "sr42", "sr43", "sr44"], dur: 40 },
         { spr: "sr45", dur: 40 },
-        { spr: "sr46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170 }] },
+        { spr: "sr46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170, depthOffset: -172 }] },
       ],
     },
     // **Secondo livello, ora portato**: casa4s/Alarm_2.gml continua oltre
@@ -1163,7 +1161,7 @@ export const BUILDING_TYPES = {
           { spr: "sr73", dur: 40 }, { spr: "sr74", dur: 40 },
           { spr: ["sr81", "sr82"], dur: 40 },
           { spr: "sr83", dur: 40 },
-          { spr: "sr84", dur: 1200, spawn: [{ spr: "tops5s", dx: 0, dy: -340 }] },
+          { spr: "sr84", dur: 1200, spawn: [{ spr: "tops5s", dx: 0, dy: -340, depthOffset: -344 }] },
         ],
       },
     ],
@@ -1241,7 +1239,7 @@ export const BUILDING_TYPES = {
         // dell'atlas che li diceva "uguali per entrambi gli assi" era letto
         // male. Puramente cosmetico (topper mai controllato da vicino sui
         // due assi fianco a fianco), corretto qui.
-        { spr: "rd46", dur: 700, spawn: [{ spr: "topld", dx: 0, dy: -170 }] },
+        { spr: "rd46", dur: 700, spawn: [{ spr: "topld", dx: 0, dy: -170, depthOffset: -172 }] },
       ],
     },
     // **Secondo livello** — stessa entry di palazzo sopra, asse "rd": [C]
@@ -1297,7 +1295,7 @@ export const BUILDING_TYPES = {
           { spr: "dr73", dur: 40 }, { spr: "dr74", dur: 40 },
           { spr: ["dr81", "dr82"], dur: 40 },
           { spr: "dr83", dur: 40 },
-          { spr: "dr84", dur: 1200, spawn: [{ spr: "tops5d", dx: 0, dy: -340 }] },
+          { spr: "dr84", dur: 1200, spawn: [{ spr: "tops5d", dx: 0, dy: -340, depthOffset: -344 }] },
         ],
       },
     ],
@@ -1369,7 +1367,7 @@ export const BUILDING_TYPES = {
         { spr: "sr35", dur: 40 }, { spr: "sr36", dur: 40 },
         { spr: ["sr41", "sr42", "sr43", "sr44"], dur: 40 },
         { spr: "sr45", dur: 40 },
-        { spr: "sr46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170 }] },
+        { spr: "sr46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170, depthOffset: -172 }] },
       ],
     },
     // [C] media1s/Alarm_3.gml: ogni 120 tic, SEMPRE lo stesso valore (`ava`
@@ -1415,7 +1413,7 @@ export const BUILDING_TYPES = {
         { spr: "rd35", dur: 40 }, { spr: "rd36", dur: 40 },
         { spr: ["rd41", "rd42", "rd43", "rd44"], dur: 40 },
         { spr: "rd45", dur: 40 },
-        { spr: "rd46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170 }] },
+        { spr: "rd46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170, depthOffset: -172 }] },
       ],
     },
     consumption: [[{ day: 60, night: 150, mon: 60 }]],
@@ -1466,7 +1464,7 @@ export const BUILDING_TYPES = {
         { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
         { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
         { spr: "ir42", dur: 40 },
-        { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170 }] },
+        { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172 }] },
       ],
     },
     // [C] monum: nessun Alarm_5/storm armato in Create.gml (a differenza di
@@ -1520,7 +1518,7 @@ export const BUILDING_TYPES = {
         { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
         { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
         { spr: "ir42", dur: 40 },
-        { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170 }] },
+        { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172 }] },
       ],
     },
     consumption: [[{ day: 18, night: 27 }]],   // [C] banca1/Alarm_3.gml, ogni 120 tic — costante, nessun `ava` (banca non cresce)
@@ -1938,6 +1936,20 @@ export function ruspaCostFor(b) {
  * stepConstructions() sotto) e' l'unica differenza dal percorso normale.
  * `eolico` non passa mai di qui (`def.construct.ruspaDemolish` sopra):
  * main.js lo intercetta prima e demolisce per davvero invece.
+ *
+ * [Bug corretto] `b.spr` NON viene piu' azzerato a "empty" (invisibile) qui:
+ * a differenza di un cantiere su un lotto vuoto (tryStartUpgrade()/
+ * placeBuilding() sopra, dove "empty" e' letteralmente cio' che c'e' — un
+ * lotto libero), un lotto ruspato ha ancora l'edificio VECCHIO sopra finche'
+ * la ruspa non lo sgombera per davvero. Segnalato dall'autore: sparire di
+ * scatto a "empty" e poi al primo sprite del cantiere (una fondamenta/un
+ * lotto spoglio, lo stesso di una costruzione ex novo) faceva sembrare
+ * l'edificio gia' demolito ancora prima che il "sgombero" (il primo passo,
+ * accorciato da `ruspaFirstStepDur` — a volte un solo tick) iniziasse
+ * davvero. `b.spr` resta quindi quello vecchio (l'ultimo disegnato prima di
+ * questa chiamata) finche' stepConstructions() sotto non decide lui stesso
+ * di sostituirlo, SOLO quando il primo passo (il "sgombero") e' finito per
+ * davvero — vedi il commento su `c.rebuilding` li'.
  */
 export function tryRuspaRebuild(b, r12) {
   if (b.construction) return "cantiere gia' in corso";
@@ -1947,7 +1959,6 @@ export function tryRuspaRebuild(b, r12) {
   r12.mon -= cost;
   b.level -= 1;
   b.construction = { upgradeIndex: b.level - 1, stepIndex: 0, t: 0, rebuilding: true };
-  b.spr = "empty";
   return null;
 }
 
@@ -2060,12 +2071,24 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       while (c.drainT >= period) { c.drainT -= period; r12.mon -= up.drain.mon; }
     }
     c.t += dt;
+    // [Bug corretto] Il PRIMO passo di un cantiere avviato dalla ruspa
+    // (`c.rebuilding`, tryRuspaRebuild() sopra) e' il "sgombero" del lotto
+    // gia' sviluppato — accorciato da `ruspaFirstStepDur` (a volte un solo
+    // tick) proprio perche' non c'e' nessun vero sgombero da fare, a
+    // differenza di un lotto vuoto. Il suo sprite (`cur.spr`, lo stesso
+    // della fondamenta/lotto spoglio di un cantiere ex novo) non deve
+    // quindi comparire: finche' quel passo e' in corso `b.spr`/`b.frontSpr`
+    // restano quelli dell'edificio VECCHIO (tryRuspaRebuild() non li tocca
+    // piu' apposta) — l'edificio resta visibilmente in piedi finche' la
+    // ruspa non lo sgombera per davvero, invece di sparire di scatto in una
+    // fondamenta spoglia ancora prima che il cantiere sia davvero iniziato.
+    const clearingLot = c.rebuilding && c.stepIndex === 0;
     // Finche' non e' l'ultimo passo lo sprite disegnato e' ancora il
     // cantiere generico (`c.curSpr`); da quando applyLevelFinish() sopra ha
     // gia' girato (`c.finished`) resta quello vero appena assegnato, non
     // va piu' sovrascritto ogni frame.
-    if (!c.finished) b.spr = c.curSpr;
-    b.frontSpr = frontSprFor(c.curSpr);
+    if (!c.finished && !clearingLot) b.spr = c.curSpr;
+    b.frontSpr = clearingLot ? null : frontSprFor(c.curSpr);
     // Il coperchio a gru (`up.cap`) compare durante l'ultimo passo: e'
     // sempre quello lungo ("l'edificio e' quasi finito", vedi steps sopra),
     // la stessa finestra in cui l'originale lo mostra davvero (poco dopo
@@ -2396,52 +2419,44 @@ function turretSprFor(type, angleDeg) {
 
 /**
  * Le torrette (missile/gatling/laser, tutte con `turret: true`) inseguono
- * col cannone l'oggetto volante piu' vicino entro `def.aim.range` —
- * `targets`/`threats` sono liste di `{x,y}` gia' assemblate da chi chiama
- * (in main.js: mongolfiere e minacce vere — aerei/bombardieri/zeppelin,
- * game/src/threats.js). **[I]** Un solo bersaglio, il piu' vicino fra
- * ENTRAMBE le liste — non piu' `instance_nearest(veicoli_target)`
- * dell'originale (che ignora del tutto le minacce vere, vedi il commento su
- * quella chiamata in projectiles.js) ne' la versione precedente di questa
- * funzione (le minacce vere avevano sempre priorita' sulle mongolfiere,
- * anche quando una mongolfiera era molto piu' vicina): segnalato
- * dall'autore ("dovrebbe calcolare la distanza da tutti gli oggetti volanti
- * — mongolfiere, aerei, dirigibile — e puntare verso quella piu' vicina"),
- * corretto qui con un solo confronto di distanza invece di due liste in
- * ordine di priorita'. Le auto decorative (`cars`, un tempo incluse come
- * "veicoli_target") non sono piu' passate da main.js: non sono oggetti
- * volanti, e includerle e' proprio quello che poteva far restare il cannone
- * puntato su un'auto a terra invece che sul velivolo piu' vicino.
+ * col cannone la minaccia vera piu' vicina entro `def.aim.range` —
+ * `threats` e' la lista di `{x,y}` gia' assemblata da chi chiama (in
+ * main.js: aerei/bombardieri/zeppelin, game/src/threats.js). **[I]** Le
+ * mongolfiere (risorse/spie, game/src/balloons.js) NON sono un bersaglio
+ * possibile per le torrette — ne' per l'aggancio automatico ne' quindi per
+ * il fuoco, automatico o manuale (projectiles.js): richiesto dall'autore,
+ * distruggerle e' un'azione a se stante del giocatore (un tap diretto sulla
+ * mongolfiera, main.js), le torrette devono ingaggiare solo velivoli
+ * ostili. In precedenza questa funzione considerava anche le mongolfiere
+ * (nearest fra le due liste insieme) — ribaltato qui. Le auto decorative
+ * (`cars`, un tempo incluse come "veicoli_target" dell'originale) restano
+ * fuori per lo stesso motivo di sempre: non sono un bersaglio, ne' ostile
+ * ne' cliccabile.
  *
- * **[I]** Se nessun bersaglio e' in portata, `aimAngle`/`aimTarget` vengono
+ * **[I]** Se nessuna minaccia e' in portata, `aimAngle`/`aimTarget` vengono
  * azzerati (non lasciati all'ultima direzione come nell'originale — [C]
  * `rocket_launcher|gatlinggun|lasergun/Step.gml`, l'`if` che li aggiorna e'
  * innestato dentro il controllo di portata, niente ramo `else`): con
- * `targets`/`threats` che nascono fuori mappa e se ne vanno (STUDIO.md, "le
- * mongolfiere"/threats.js) un bersaglio puo' allontanarsi parecchio, o
- * sparire del tutto, senza che la sua POSIZIONE smetta mai di essere "in
- * portata" rispetto a un cannone fermo — l'originale lascia il cannone
- * agganciato per sempre a quel punto, e siccome il fuoco manuale
- * (`fireTurretManual`, projectiles.js) spara sempre verso `b.aimTarget`
- * senza ricontrollare se c'e' ancora qualcosa li', il colpo finiva verso il
- * vuoto — spesso fuori dallo schermo, dato che l'ultimo bersaglio agganciato
- * e' quasi sempre quello che si stava allontanando o e' appena nato lontano
- * dalla mappa (STUDIO.md, `spawnX: -170` per gli aerei). Azzerare quando
- * non c'e' davvero niente in portata e' l'unico modo per far tornare
- * `fireTurretManual`/`stepTurretFire` (che gia' controllano `aimTarget ==
- * null`) a rifiutare correttamente il colpo.
+ * `threats` che nascono fuori mappa e se ne vanno (game/src/threats.js) un
+ * bersaglio puo' allontanarsi parecchio, o sparire del tutto, senza che la
+ * sua POSIZIONE smetta mai di essere "in portata" rispetto a un cannone
+ * fermo — l'originale lascia il cannone agganciato per sempre a quel punto,
+ * e siccome il fuoco manuale (`fireTurretManual`, projectiles.js) spara
+ * sempre verso `b.aimTarget` senza ricontrollare se c'e' ancora qualcosa
+ * li', il colpo finiva verso il vuoto — spesso fuori dallo schermo, dato
+ * che l'ultimo bersaglio agganciato e' quasi sempre quello che si stava
+ * allontanando o e' appena nato lontano dalla mappa (STUDIO.md, `spawnX:
+ * -170` per gli aerei). Azzerare quando non c'e' davvero niente in portata
+ * e' l'unico modo per far tornare `fireTurretManual`/`stepTurretFire` (che
+ * gia' controllano `aimTarget == null`) a rifiutare correttamente il colpo.
  */
-export function stepTurretAim(buildings, targets, threats) {
+export function stepTurretAim(buildings, threats) {
   for (const b of buildings) {
     if (b.construction) continue;
     const def = BUILDING_TYPES[b.type];
     if (!def.aim) continue;
     let nearest = null, nearestD2 = def.aim.range * def.aim.range;
-    for (const t of targets) {
-      const d2 = (t.x - b.x) ** 2 + (t.y - b.y) ** 2;
-      if (d2 < nearestD2) { nearestD2 = d2; nearest = t; }
-    }
-    if (threats) for (const th of threats) {
+    for (const th of threats) {
       const d2 = (th.x - b.x) ** 2 + (th.y - b.y) ** 2;
       if (d2 < nearestD2) { nearestD2 = d2; nearest = th; }
     }

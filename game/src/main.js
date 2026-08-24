@@ -1,5 +1,6 @@
-import { makeCircleTexture, makeRoundedRectTexture, solidFrame, loadTexture } from "./gl.js";
+import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
+import { loadRoomAtlas } from "./assets.js";
 import { createR12, tickR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
@@ -9,6 +10,7 @@ import { spawnPedestrian, stepPedestrians } from "./pedestrians.js";
 import {
   stepBalloonSpawner, stepBalloons, stepLoot, collectLoot,
   spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
+  BALLOON_TYPES, spawnLoot,
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
@@ -70,6 +72,14 @@ export async function mountMatch(ctx, params = {}) {
   // (dynamic.push() piu' sopra nel ciclo di frame, molto prima della sezione
   // che disegna i bottoni) puo' riusarla invece di un secondo numero scollegato.
   const UI_SCALE = isMobile ? 0.6 : 0.7;
+  // [I] Segnalato dall'autore: le etichette dei PREZZI (i cartellini "cN"/
+  // "cfree", costTagSprite() in buildings.js) restavano comunque troppo
+  // grandi su desktop anche a UI_SCALE (0.7) — a differenza dei bottoni/
+  // popup sopra, un cartellino e' un dettaglio testuale che deve leggersi
+  // in un angolo, non occupare quasi quanto l'icona che descrive. Scala
+  // dedicata, unica per ogni cartellino di prezzo del motore (popup ruspa,
+  // segnale di potenziamento, lotto-rudere del tutorial, selettore edificio).
+  const COST_TAG_SCALE = 0.5;
 
   // ---------------------------------------------------------------- room
   // Quale room caricare — [C] `standma`/`easma`/`me3` (src/objects, la room
@@ -105,15 +115,20 @@ export async function mountMatch(ctx, params = {}) {
   cam.y = scene.height / 2;
   // minZoom = quanto ci si puo' avvicinare: sotto 0.5 gli sprite (disegnati
   // alla risoluzione nativa dell'atlas) si vedono sgranati, ingranditi oltre
-  // il loro dettaglio reale. maxZoom invece si ricalcola ad ogni resize() in
-  // base a quanto serve per inquadrare tutta la room (vedi sotto): non ha
-  // senso lasciar allontanare lo zoom molto oltre "si vede tutta la mappa".
-  // Ignorati del tutto su desktop, dove lo zoom non si muove mai (vedi sopra).
+  // il loro dettaglio reale. Vale su entrambe le piattaforme: su mobile
+  // maxZoom si ricalcola ad ogni resize() in base a quanto serve per
+  // inquadrare tutta la room (vedi sotto — non ha senso lasciar allontanare
+  // lo zoom molto oltre "si vede tutta la mappa"); su desktop maxZoom resta
+  // pixelPerfectZoom() (sotto), lo zoom di default: richiesto dall'autore,
+  // la rotella puo' avvicinare (ingrandire, zoom < default) ma non
+  // allontanare oltre il pixel-perfect com'era prima di questo giro.
   cam.minZoom = 0.5;
-  // Finche' non tocchi niente la camera inquadra tutta la room, e si riadatta
-  // se lo schermo cambia (rotazione del telefono). Su desktop non si tocca
-  // comunque mai (niente zoom interattivo), quindi resta sempre "come se non
-  // avessi ancora toccato niente".
+  // Finche' non tocchi niente la camera inquadra tutta la room (mobile) o
+  // resta al pixel-perfect di default (desktop), e si riadatta se lo
+  // schermo cambia (rotazione del telefono, spostamento fra monitor a dpr
+  // diverso) — vedi resize() sotto. Diventa true al primo pan/zoom
+  // dell'utente su entrambe le piattaforme (input.onDrag/onZoom piu' sotto),
+  // cosi' un resize successivo non scavalca piu' la sua scelta.
   let userMoved = false;
 
   /** zoom = quanti pixel di mondo per pixel di schermo FISICO (camera.js):
@@ -154,11 +169,10 @@ export async function mountMatch(ctx, params = {}) {
   // quelle originali di GameMaker sparpagliavano 13 sprite su 12 pagine.
   // L'atlas include anche gli sprite di gameplay (edifici, cantieri: vedi
   // GAMEPLAY_SPRITES in 23_atlas.py) che non stanno ferme in nessuna room
-  // perche' e' il giocatore a farle comparire.
-  const atlas = await fetch(`./data/${roomName}.atlas.json`).then((x) => x.json());
-  const pageTex = await Promise.all(
-    atlas.pages.map((p) => loadTexture(gl, "./assets/" + p.file))
-  );
+  // perche' e' il giocatore a farle comparire. `loadRoomAtlas()` (game/src/
+  // assets.js) cache atlas+texture per room: rientrare in questa stessa room
+  // piu' volte nella sessione (SPA, game/src/app.js) non le riscarica.
+  const { atlas, pageTex } = await loadRoomAtlas(gl, roomName);
   // `frameIdx` (default 0): quasi tutti gli sprite del motore sono statici,
   // una sola posa (STUDIO.md, "nessun sistema di image_speed") — ma alcuni
   // (le svolte delle auto, game/src/cars.js) sono davvero multi-frame
@@ -589,11 +603,11 @@ export async function mountMatch(ctx, params = {}) {
    * fermo alla y del suo edificio come un albero vero, tinto dal ciclo
    * giorno/notte come qualunque altro oggetto di mondo. */
   function addDecor(building, spawns, { transient = false } = {}) {
-    for (const { spr, dx, dy, lit = true, fadeTicks } of spawns) {
+    for (const { spr, dx, dy, lit = true, fadeTicks, depthOffset = 0 } of spawns) {
       const y = building.y + dy;
       decorEntities.push({
         obj: "decor", buildingId: building.id,
-        x: building.x + dx, y, depth: lit ? -y - 1 : -y,
+        x: building.x + dx, y, depth: (lit ? -y - 1 : -y) + depthOffset,
         spr, _f: frameFor(spr),
         // `fadeTicks` (grattacielo, buildings.js): dissolvenza propria invece
         // della LIGHT_FADE condivisa da tutti gli altri decori — vedi stepLights().
@@ -607,17 +621,31 @@ export async function mountMatch(ctx, params = {}) {
   }
 
   /** `onSpawn` di stepConstructions() (buildings.js): le gru e i "topper"
-   * (toppers/topls) creati durante un cantiere — [C] gru1/toppers/Create.gml,
-   * nessuno dei due nel decompilato e' `notte_target`: sono impalcature vere,
-   * illuminate come il resto della scena dalla tinta ambientale, non un
-   * bagliore di finestra che ha bisogno di notte+corrente per comparire.
-   * Segnalato dall'autore ("non vedo mai il top delle impalcature"): passare
-   * `addDecor` diretto come `onSpawn` li faceva nascere con `lit:true` di
-   * default (lo stesso usato per il decoro FINALE, le finestre — vedi sopra),
-   * quindi restavano ad alpha 0 per tutta la durata tipica di un cantiere
-   * (mai una notte intera con energia sufficiente, la stessa soglia di
-   * stepLights()) — invisibili non per un bug di rendering ma perche' il
-   * motore li trattava come una luce mai accesa. */
+   * (toppers/topls/topld/tops5s/tops5d) creati durante un cantiere — [C]
+   * gru1/toppers/Create.gml, nessuno dei due nel decompilato e' `notte_
+   * target`: sono impalcature vere, illuminate come il resto della scena
+   * dalla tinta ambientale, non un bagliore di finestra che ha bisogno di
+   * notte+corrente per comparire. Segnalato dall'autore ("non vedo mai il
+   * top delle impalcature"): passare `addDecor` diretto come `onSpawn` li
+   * faceva nascere con `lit:true` di default (lo stesso usato per il decoro
+   * FINALE, le finestre — vedi sopra), quindi restavano ad alpha 0 per
+   * tutta la durata tipica di un cantiere (mai una notte intera con energia
+   * sufficiente, la stessa soglia di stepLights()) — invisibili non per un
+   * bug di rendering ma perche' il motore li trattava come una luce mai
+   * accesa.
+   *
+   * [Bug corretto, in piu'] Anche dopo quel fix restavano spesso coperti
+   * dalla stessa impalcatura che dovrebbero coronare: `depth` seguiva la
+   * formula generica `-y` di ogni altro decoro, ma i topper reali (`tops1..
+   * tops5d/Create.gml`, mai letti fin qui) dichiarano un bias fisso in piu'
+   * (`depth = -y - 80|-88|-172|-344`, diverso per ciascuno) — necessario
+   * proprio perche' nascono molto piu' in alto del proprio edificio (`dy`
+   * fino a -340): senza quel bias la sola `-y` li ordinava PRIMA
+   * dell'edificio (y piu' piccola = depth piu' grande = disegnato prima,
+   * quindi dietro), nascosti dalla sagoma dell'impalcatura sotto. Ogni
+   * spawn di topper qui sotto (BUILDING_TYPES) porta ora il proprio
+   * `depthOffset` (letto da `addDecor()` sopra), preso dall'oggetto reale
+   * che lo crea — mai un numero indovinato. */
   function addConstructionSpawn(building, spawns) {
     addDecor(building, spawns.map((s) => ({ ...s, lit: false })), { transient: true });
   }
@@ -1526,14 +1554,15 @@ export async function mountMatch(ctx, params = {}) {
   // Il fattore si applica a `targetZoom`, non a `zoom` (che insegue con un
   // filo di ritardo, vedi Camera.update()): cosi' una rotellata mentre lo
   // zoom sta ancora animando accumula sul bersaglio invece di "strappare"
-  // indietro dal valore corrente, ancora a meta' strada.
-  // Su desktop `input.onZoom` resta `null` (Input fa gia' `this.onZoom?.()`,
-  // nessuna chiamata a vuoto): rotella e pinch — quest'ultimo comunque mai
-  // generato da un mouse — non toccano piu' la camera, che resta fissa al
-  // suo zoom pixel-perfect impostato in resize().
-  if (isMobile) {
-    input.onZoom = (f, ax, ay) => { if (paused) return; userMoved = true; cam.setZoom(cam.targetZoom * f, ax, ay); };
-  }
+  // indietro dal valore corrente, ancora a meta' strada. Stesso handler per
+  // mobile (pinch) e desktop (rotella, `Input._wheel` genera lo stesso
+  // `onZoom`, game/src/input.js) — richiesto dall'autore: su desktop la
+  // rotella deve zoomare, non restare senza effetto com'era prima. `cam.
+  // maxZoom` (resize() sotto) tiene comunque lo zoom-out al piu' al valore
+  // di default (pixel-perfect su desktop, "si vede tutta la mappa" su
+  // mobile) — `setZoom()`/`update()` (camera.js) clampano gia' da soli
+  // dentro [minZoom, maxZoom], nessun controllo in piu' serve qui.
+  input.onZoom = (f, ax, ay) => { if (paused) return; userMoved = true; cam.setZoom(cam.targetZoom * f, ax, ay); };
   // Selettore edificio scorrevole: su schermi stretti in portrait la riga di
   // bottoni (fino a 13 nel menu "edifici", vedi OTHER_BUILDINGS piu' sotto) e'
   // piu' larga dello schermo — senza scroll, quelli oltre il bordo destro non
@@ -1706,6 +1735,22 @@ export async function mountMatch(ctx, params = {}) {
     collectCoin(coins, item, r12);
   }
 
+  /** Raccoglie una cassa di risorse lasciata da una mongolfiera (balloons.js)
+   * e fa partire la stessa "bolla" blu della raccolta monete (coinPops sopra,
+   * collectCoinAt()) — segnalato dall'autore: un effetto visivo simile a
+   * quello dei soldi, non uno tutto suo. A differenza del pin delle monete la
+   * cassa e' un semplice box (nessuna "testa" separata dal resto dello
+   * sprite), quindi la bolla centra l'intero frame invece del solo cerchio
+   * superiore. Punto d'ingresso condiviso da input.onTap (sotto) e dalla
+   * raccolta al passaggio del mouse (hover, nel loop principale) — vedi il
+   * commento li' per il perche' in piu' del solo tap. */
+  function collectLootAt(item) {
+    const f = frameFor(item.spr);
+    const bubbleY = f ? item.y - f.oy + f.h / 2 : item.y;
+    coinPops.push({ x: item.x, y: bubbleY, t: 0 });
+    collectLoot(loot, item, r12);
+  }
+
   input.onTap = (sx, sy) => {
     // Il bottone di pausa intercetta PRIMA di ogni altra cosa, modale
     // (bankPanelOpen sotto) incluso — deve restare toccabile sempre, in
@@ -1815,13 +1860,19 @@ export async function mountMatch(ctx, params = {}) {
     // prescindere dal depth, non solo per z-order — e vince comunque contro
     // l'edificio sotto di lui perche' il suo depth (UPSIGN_DEPTH, sempre in
     // primo piano) e' piu' negativo. "ruspaYes"/"ruspaNo" (il popup si'/no
-    // della ruspa, stesso depth) sono qui per lo stesso motivo.
+    // della ruspa, stesso depth) sono qui per lo stesso motivo. "flyingBalloon"
+    // (le mongolfiere di risorse/spia in volo, non il pacco di cantiere — vedi
+    // il commento sul push piu' sotto): richiesto dall'autore, un tap diretto
+    // sulla mongolfiera la distrugge — le torrette non lo fanno piu' da sole
+    // (game/src/projectiles.js) — quindi deve restare raggiungibile a
+    // prescindere dal depth, non solo per z-order, come casse/monete sopra.
     for (const it of frameList) {
       if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
         && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo"
         && it.obj !== "bankIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
         && it.obj !== "faroDockerSignal" && it.obj !== "faro3Button" && it.obj !== "faro3WaveSignal"
-        && it.obj !== "faro3DockerSignal" && it.obj !== "cargoShip" && it.obj !== "ruinLot") continue;
+        && it.obj !== "faro3DockerSignal" && it.obj !== "cargoShip" && it.obj !== "ruinLot"
+        && it.obj !== "flyingBalloon") continue;
       // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
       // stessa ragione della raccolta hover piu' sotto. Tutto il resto
       // (edifici, casse, monete, segnale di potenziamento) resta sul
@@ -1935,14 +1986,14 @@ export async function mountMatch(ctx, params = {}) {
       // buildings.js — [I] ora attivo anche per gatlinggun, vedi il commento
       // su `manualFire` li'): un tocco su una torretta finita non apre un
       // cantiere (nessuna delle tre ha potenziamenti — tryStartUpgrade ci
-      // direbbe solo "livello massimo") — fa partire un colpo contro il
-      // bersaglio che il cannone sta gia' inseguendo (game/src/projectiles.js,
-      // fireTurretManual() — mongolfiera o minaccia vera, vedi il commento in
-      // cima a quel file). Sotto cantiere invece resta tryStartUpgrade come
-      // per qualunque edificio (che gia' risponderebbe da solo "cantiere gia'
-      // in corso").
+      // direbbe solo "livello massimo") — fa partire un colpo contro la
+      // minaccia vera che il cannone sta gia' inseguendo (game/src/
+      // projectiles.js, fireTurretManual() — mai una mongolfiera, vedi il
+      // commento in cima a quel file). Sotto cantiere invece resta
+      // tryStartUpgrade come per qualunque edificio (che gia' risponderebbe
+      // da solo "cantiere gia' in corso").
       if (!b.construction && BUILDING_TYPES[b.type]?.manualFire) {
-        const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails, balloons, loot, beams);
+        const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails, beams);
         message = fired ? "fuoco!"
           : !b.aimTarget ? "nessun bersaglio in portata"
           : b.type === "laser" && r12.ele < 200 ? "energia insufficiente"
@@ -1981,10 +2032,27 @@ export async function mountMatch(ctx, params = {}) {
       picked = null;
     } else if (picked.obj === "loot") {
       const item = picked.ref;
-      collectLoot(loot, item, r12);
+      collectLootAt(item);
       message = `+${item.amount} ${item.key}`;
       messageT = 3;
       picked = null;   // raccolta, non c'e' piu' niente da tenere selezionato
+    } else if (picked.obj === "flyingBalloon") {
+      // Un tap diretto su una mongolfiera in volo (risorsa o spia) la
+      // distrugge — richiesto dall'autore: le torrette non lo fanno piu' da
+      // sole (game/src/projectiles.js/stepTurretFire, buildings.js/
+      // stepTurretAim), questa e' ora l'UNICA via per abbatterla. Stessa
+      // risposta di un colpo andato a segno (game/src/projectiles.js,
+      // stepProjectiles): un'esplosione + la cassa di risorse se ne lascia
+      // una (mai per la spia, monspi/recogn — nessun `def.loot`).
+      const b = picked.ref;
+      const idx = balloons.indexOf(b);
+      if (idx >= 0) balloons.splice(idx, 1);
+      explosions.push(spawnExplosion(b.x, b.y));
+      const def = BALLOON_TYPES[b.type];
+      if (def?.loot) loot.push(spawnLoot(def.loot, b.x, b.y));
+      message = def?.isSpy ? "mongolfiera spia abbattuta" : "mongolfiera abbattuta";
+      messageT = 3;
+      picked = null;
     } else if (picked.obj === "coin") {
       const item = picked.ref;
       collectCoinAt(item);
@@ -2064,11 +2132,18 @@ export async function mountMatch(ctx, params = {}) {
     }
     cam.resize(canvas.clientWidth, canvas.clientHeight);
     if (!isMobile) {
-      // Desktop: zero zoom, solo pixel-perfect — lo zoom non insegue mai un
-      // "fit to screen" frazionario (che sfumerebbe gli sprite), resta fisso
-      // al rapporto texel:pixel esatto per tutta la sessione.
-      cam.minZoom = cam.maxZoom = pixelPerfectZoom();
-      cam.setZoomImmediate(cam.minZoom);
+      // Desktop: lo zoom di default resta pixel-perfect (mai un "fit to
+      // screen" frazionario, che sfumerebbe gli sprite) — ma ora e' solo il
+      // limite di zoom-OUT (`maxZoom`), non piu' un valore fisso: la rotella
+      // (input.onZoom sopra) puo' avvicinare oltre (zoom < maxZoom, fino a
+      // `cam.minZoom` = 0.5) senza mai poter allontanare oltre il default.
+      // `setZoomImmediate` solo finche' l'utente non ha ancora zoomato/
+      // panoramicato da solo (`userMoved`, sopra) — stesso schema gia' usato
+      // dal ramo mobile sotto, cosi' un resize (finestra ridimensionata,
+      // spostata su un monitor a dpr diverso) non scavalca piu' uno zoom
+      // scelto dal giocatore.
+      cam.maxZoom = pixelPerfectZoom();
+      if (!userMoved) cam.setZoomImmediate(cam.maxZoom);
     } else if (canvas.clientWidth > 0) {
       // `Math.min`, non `Math.max`: la room e' quasi sempre piu' larga che
       // alta (match_easy 1920x1086, match 3900x2090 — orizzontali) mentre lo
@@ -2185,6 +2260,16 @@ export async function mountMatch(ctx, params = {}) {
           const x0 = c.x - f.ox, y0 = c.y - f.oy;
           if (hw.x >= x0 && hw.x <= x0 + f.w && hw.y >= y0 && hw.y <= y0 + f.h) collectCoinAt(c);
         }
+        // Casse di risorse (balloons.js): stessa raccolta al passaggio del
+        // mouse delle monete sopra — segnalato dall'autore, prima si
+        // raccoglievano solo con un tap esplicito.
+        for (let i = loot.length - 1; i >= 0; i--) {
+          const l = loot[i];
+          const f = frameFor(l.spr);
+          if (!f) continue;
+          const x0 = l.x - f.ox, y0 = l.y - f.oy;
+          if (hw.x >= x0 && hw.x <= x0 + f.w && hw.y >= y0 && hw.y <= y0 + f.h) collectLootAt(l);
+        }
       }
       for (let i = coinPops.length - 1; i >= 0; i--) {
         coinPops[i].t += dt;
@@ -2241,20 +2326,19 @@ export async function mountMatch(ctx, params = {}) {
       // STUDIO.md "le tempeste diventano reali" + bombe appena sganciate sopra).
       for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
       if (r12.alertT > 0) r12.alertT -= dt;
-      // Torrette (game/src/buildings.js, stepTurretAim): inseguono l'oggetto
-      // volante piu' vicino fra le mongolfiere di risorse/spia (`balloons`,
-      // game/src/balloons.js — non il pacco di cantiere ne' le casse/avanzi) e
-      // le minacce vere (`threats`: aerei/bombardieri/zeppelin, game/src/
-      // threats.js) — [I] non piu' le auto decorative (`cars`): non sono
-      // oggetti volanti, vedi il commento su stepTurretAim() in buildings.js.
-      stepTurretAim(buildings, balloons, threats);
+      // Torrette (game/src/buildings.js, stepTurretAim): inseguono la
+      // minaccia vera piu' vicina (`threats`: aerei/bombardieri/zeppelin,
+      // game/src/threats.js) — mai le mongolfiere (`balloons`,
+      // game/src/balloons.js) ne' le auto decorative (`cars`): richiesto
+      // dall'autore, distruggere una mongolfiera e' un'azione a se stante
+      // del giocatore (tap diretto su di lei, vedi input.onTap piu' sotto),
+      // non qualcosa che una torretta puo' fare da sola. Vedi il commento su
+      // stepTurretAim() in buildings.js.
+      stepTurretAim(buildings, threats);
       // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
-      // gia' nella direzione appena calcolata (b.aimAngle). [I] Segnalato
-      // dall'autore: il grilletto automatico controllava solo `threats` (le
-      // minacce vere) per decidere se sparare — una mongolfiera vicina da sola
-      // non faceva mai partire un colpo, anche se il cannone la stava gia'
-      // inseguendo (`balloons` passato anche qui, non solo a stepTurretAim).
-      stepTurretFire(buildings, balloons, threats, dt, projectiles, explosions, r12, trails, loot, beams);
+      // gia' nella direzione appena calcolata (b.aimAngle). Automatico solo
+      // contro minacce vere, mai contro mongolfiere — stesso motivo di sopra.
+      stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails, beams);
       stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt);
       stepBeams(beams, dt);
       stepSmoko(trails, dt);
@@ -2276,7 +2360,18 @@ export async function mountMatch(ctx, params = {}) {
       // resta piu' diretto.
       const windFrames = (b.type === "eolico" && b.spr === BUILDING_TYPES.eolico.construct.finalSprite) ? frameCountFor(b.spr) : 1;
       const buildingFrameIdx = windFrames > 1 ? Math.floor((b.animT ?? 0) * WIND_ANIM_FPS) % windFrames : constructionFrameIdx(b);
-      dynamic.push({ obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr, buildingFrameIdx) });
+      // [I] Segnalato dall'autore: l'edificio scelto per la demolizione/
+      // riparazione con la ruspa deve avere tinta rossa per tutta la durata
+      // del popup di conferma si'/no (ruspaPending sotto), non solo restare
+      // visivamente indistinguibile dagli altri finche' non si tocca "si'".
+      // Stesso rosso puro (`_selfLit`, salta la tinta ambientale giorno/
+      // notte) gia' usato per l'hover sui lotti-rudere del tutorial — [C]
+      // ruin1|2/Mouse_MouseEnter.gml, action_sprite_color(255,1).
+      const ruspaTargeted = ruspaPending?.buildingId === b.id;
+      dynamic.push({
+        obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr, buildingFrameIdx),
+        ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true } : {}),
+      });
       // Impalcatura in sovraimpressione + coperchio di fine cantiere (vedi
       // buildings.js): stessa x/y/depth dell'edificio, spinti sopra di lui
       // dall'ordine di inserimento (a parita' di depth+y l'array mantiene
@@ -2325,7 +2420,14 @@ export async function mountMatch(ctx, params = {}) {
       if (ruspaPending?.buildingId === b.id) {
         dynamic.push({ obj: "ruspaNo", ref: b, x: b.x + 16 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: frameFor("demoback"), _selfLit: true, _scale: UI_SCALE });
         dynamic.push({ obj: "ruspaYes", ref: b, x: b.x + 177 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: frameFor("demoyesse"), _selfLit: true, _scale: UI_SCALE });
-        dynamic.push({ obj: "decor", x: b.x + 157 * UI_SCALE, y: b.y - 185 * UI_SCALE, depth: UPSIGN_DEPTH, _f: frameFor(`c${ruspaPending.cost}`), _selfLit: true, _scale: UI_SCALE });
+        // [I] Segnalato dall'autore: il cartellino del costo (a differenza dei
+        // due bottoni sopra) restava troppo grande su desktop a UI_SCALE
+        // (0.7) — ridotto a COST_TAG_SCALE (sopra, vicino a UI_SCALE — la
+        // stessa gia' in uso per il cartellino del segnale di potenziamento)
+        // mantenendo pero' l'offset a UI_SCALE, cosi' il cartellino piu'
+        // piccolo resta comunque ancorato vicino ai due bottoni invece di
+        // scostarsi.
+        dynamic.push({ obj: "decor", x: b.x + 157 * UI_SCALE, y: b.y - 185 * UI_SCALE, depth: UPSIGN_DEPTH, _f: frameFor(`c${ruspaPending.cost}`), _selfLit: true, _scale: COST_TAG_SCALE });
       }
     }
     for (const d of decorEntities) dynamic.push(d);
@@ -2390,10 +2492,13 @@ export async function mountMatch(ctx, params = {}) {
     // Pedoni (game/src/pedestrians.js): x/y/depth gia' avanzati da
     // stepPedestrians() sopra.
     for (const p of pedestrians) dynamic.push({ obj: "pedestrian", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
-    // Mongolfiere (game/src/balloons.js): risorse/spia + le casse che
-    // lasciano cadere (obj: "loot", l'unica cliccabile — vedi picking sotto)
-    // + il pacco di cantiere di casa/industria.
-    for (const b of balloons) dynamic.push({ obj: "balloon", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
+    // Mongolfiere (game/src/balloons.js): risorse/spia (obj: "flyingBalloon",
+    // cliccabile — un tap la distrugge, vedi picking sotto: richiesto
+    // dall'autore, non piu' le torrette da sole) + le casse che lasciano
+    // cadere (obj: "loot", vedi picking sotto) + il pacco di cantiere di
+    // casa/industria (obj: "balloon" invece — non cliccabile, sta solo
+    // portando materiali a un cantiere, non e' un bersaglio).
+    for (const b of balloons) dynamic.push({ obj: "flyingBalloon", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
     for (const l of loot) dynamic.push({ obj: "loot", ref: l, x: l.x, y: l.y, depth: l.depth, _f: frameFor(l.spr) });
     // Le monete (game/src/coins.js): "soldfade" anima per davvero (20 frame,
     // stesso schema delle svolte delle auto — frameFor legge il frame vero
@@ -2549,12 +2654,11 @@ export async function mountMatch(ctx, params = {}) {
         if (!inFrameRect(hw.x, hw.y, b.x, b.y, upicoFrame)) continue;
         const tagFrame = frameFor(costTagSprite(b.type, b.level - 1));
         if (tagFrame) {
-          const scale = 0.5;
           // [C] upsign12/Mouse_MouseEnter.gml: offset -50 dal segnale — qui
           // dal bordo superiore vero dell'icona "upico" (`upicoFrame.oy`,
           // l'origine e' quasi in basso al centro), non da un numero fisso
           // scollegato dalla sua altezza reale.
-          r.draw(tagFrame, b.x - (tagFrame.w * scale) / 2, b.y - upicoFrame.oy - 15, scale, 0xffffff, 1);
+          r.draw(tagFrame, b.x - (tagFrame.w * COST_TAG_SCALE) / 2, b.y - upicoFrame.oy - 15, COST_TAG_SCALE, 0xffffff, 1);
         }
         break;
       }
@@ -2565,7 +2669,7 @@ export async function mountMatch(ctx, params = {}) {
     if (tutorialState) for (const lot of ruinLots) {
       if (!lot._hovered) continue;
       const tagFrame = frameFor(`c${lot.cost}`);
-      if (tagFrame) r.draw(tagFrame, lot.x - tagFrame.w / 2, lot.y - 50, 1, 0xffffff, 1);
+      if (tagFrame) r.draw(tagFrame, lot.x - (tagFrame.w * COST_TAG_SCALE) / 2, lot.y - 50, COST_TAG_SCALE, 0xffffff, 1);
       break;
     }
     drawBeams();
@@ -2772,7 +2876,7 @@ export async function mountMatch(ctx, params = {}) {
         && input.hover.y >= btn.y && input.hover.y <= btn.y + btn.h);
       const tagFrame = hb && frameFor(costTagSprite(hb.type, null));
       if (tagFrame) {
-        r.draw(tagFrame, hb.x + hb.w / 2 - (tagFrame.w * UI_SCALE) / 2, hb.y - 8, UI_SCALE, 0xffffff, 1);
+        r.draw(tagFrame, hb.x + hb.w / 2 - (tagFrame.w * COST_TAG_SCALE) / 2, hb.y - 8, COST_TAG_SCALE, 0xffffff, 1);
       }
     }
 

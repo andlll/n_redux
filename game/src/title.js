@@ -20,8 +20,9 @@
 // cio' che questo modulo ha registrato da solo (listener di resize, timer,
 // nodo DOM del messaggio), cosi' rientrare nel menu piu' volte nella stessa
 // sessione non accumula loop/listener fantasma.
-import { loadTexture, solidFrame } from "./gl.js";
+import { solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
+import { loadRoomAtlas, prefetchRoomAtlas } from "./assets.js";
 import { applyMatchPlatform, r120MotorDecor } from "./platform.js";
 import { spawnCar, stepCars } from "./cars.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -40,8 +41,7 @@ export async function mountTitle(ctx) {
 
   // ---------------------------------------------------------------- title UI
   const scene = await fetch("./data/title.scene.json").then((x) => x.json());
-  const atlas = await fetch("./data/title.atlas.json").then((x) => x.json());
-  const pageTex = await Promise.all(atlas.pages.map((p) => loadTexture(gl, "./assets/" + p.file)));
+  const { atlas, pageTex } = await loadRoomAtlas(gl, "title");
   function frameFor(sprName, frameIdx = 0) {
     const frames = atlas.sprites[sprName];
     if (!frames || !frames.length) return null;
@@ -78,8 +78,17 @@ export async function mountTitle(ctx) {
 
   // ------------------------------------------------------------- sfondo: match
   const mScene = await fetch("./data/match.scene.json").then((x) => x.json());
-  const mAtlas = await fetch("./data/match.atlas.json").then((x) => x.json());
-  const mPageTex = await Promise.all(mAtlas.pages.map((p) => loadTexture(gl, "./assets/" + p.file)));
+  const { atlas: mAtlas, pageTex: mPageTex } = await loadRoomAtlas(gl, "match");
+  // [I] Richiesto dall'autore ("caricare gli asset in modo furbo"): mentre il
+  // giocatore guarda ancora il menu, scarica gia' in background l'atlas di
+  // `match_easy` — il bottone in evidenza, la scelta piu' probabile. Non
+  // aspettata (fire-and-forget, game/src/assets.js): se il tap arriva prima
+  // che finisca, mountMatch() (main.js) la aspetta comunque tramite la
+  // stessa cache; se il giocatore sceglie `match`/`tutorial` invece,
+  // l'atlas di `match` e' comunque gia' qui sopra (usato per lo sfondo) e
+  // quello di `tutorial` restera' un caricamento normale, non prioritario
+  // quanto la scelta di default.
+  prefetchRoomAtlas(gl, "match_easy");
   function mFrameFor(sprName, frameIdx = 0) {
     const frames = mAtlas.sprites[sprName];
     if (!frames || !frames.length) return null;
