@@ -1788,6 +1788,45 @@ export function ruinSpriteFor(b) {
   return pickSpr(def.upgrades?.[b.level - 2]?.ruin ?? null);
 }
 
+// [Bug corretto, richiesto dall'autore: "in match non riesco a demolire le
+// rovine"] Il rudere che un edificio lascia (ruinSpriteFor() sopra) NON e'
+// un decoro muto nel decompilato — **[C]** `src/objects/ruin1|2|3/
+// Mouse_LeftPressed.gml` (lo stesso oggetto che questo motore gia'
+// istanzia in scena come rudere, mai controllato finora: una lettura
+// precedente di "I ruderi", STUDIO.md, concludeva "nessun rudere ha un
+// ramo Mouse_LeftPressed" guardando solo `casaX/Step.gml` — chi crea il
+// rudere — senza controllare l'oggetto ruin1/2/3 stesso): sotto ruspa
+// (`r12.selec===11`) un tap sul rudere ricostruisce SUL POSTO pagando —
+// ruin1 (edificio morto al livello 1, taglia condivisa fra piu' tipi,
+// STUDIO.md) 500 mon -> `casa` costruzione ex novo; ruin2 (livello 2) 2000
+// mon -> `casa` upgrade 1->2; ruin3 (livello 3) 5000 mon -> `casa` upgrade
+// 2->3. `ruinsol` (solare, un solo livello possibile) usa lo STESSO ramo di
+// ruin1 (500 mon, "casa" ex novo) — fedele, non un refuso di trascrizione:
+// cosi' e' scritto nel decompilato. Sempre `casa`, mai il tipo originale
+// dell'edificio morto (`impacasaNr` in ognuno dei tre, mai `impaindNr` o
+// simili). `chies` resta fuori (non crea mai un rudere a parte, STUDIO.md:
+// cambia sprite a se stessa e resta piazzata) — l'unico tipo la cui morte
+// non passa mai di qui. Il "livello" del rudere e' `b.level` dell'edificio
+// al momento della morte (1/2/3) — la stessa colonna "taglia" che
+// ruinSpriteFor() sopra legge dallo stesso `b`; main.js lo salva sul
+// rudere insieme allo sprite scelto.
+export function ruinRebuildCost(level) {
+  return level === 1 ? 500 : level === 2 ? 2000 : 5000;
+}
+
+/** Avvia il cantiere di ricostruzione su un rudere (chi chiama, main.js,
+ * fa `placeBuilding()`/push su `buildings` — questa funzione decide solo
+ * con quale `construction` iniziale, vedi il commento sopra).
+ * `rebuilding: true` marca il PRIMO passo come "sgombero" invece che vera
+ * fondamenta (buildings.js/stepConstructions, `clearingLot`/
+ * `ruspaFirstStepDur`) — stesso principio gia' in uso per la ruspa su un
+ * edificio ancora vivo. */
+export function ruinRebuildConstruction(level) {
+  return level === 1
+    ? { upgradeIndex: -1, stepIndex: 0, t: 0, rebuilding: true }
+    : { upgradeIndex: level - 2, stepIndex: 0, t: 0, rebuilding: true };
+}
+
 /** Il potenziamento che l'edificio potrebbe iniziare ora, se lo tocchi (null se il tipo non ne ha). */
 export function nextUpgrade(b) {
   const def = BUILDING_TYPES[b.type];
@@ -1965,8 +2004,26 @@ export function tryRuspaRebuild(b, r12) {
 /** Applica il salto di livello vero e proprio (pop/hap/wewe/vita/sprite
  * finale/decoro/contatori azzerati) — estratto da stepConstructions() sotto
  * perche' ora scatta in un punto diverso da quando `b.construction` viene
- * tolto (vedi il commento li' per il perche'). */
-function applyLevelFinish(b, def, up, c, r12, onDecor) {
+ * tolto (vedi il commento li' per il perche').
+ *
+ * [Bug corretto, richiesto dall'autore] `deferDecor`: per i tipi SENZA
+ * `up.revealAtEnd` questa funzione gira all'INGRESSO dell'ultimo passo
+ * (stepConstructions() sotto), non alla vera fine — sprite/livello/vita/
+ * economia possono gia' cambiare li' (l'edificio "si rivela" sotto
+ * l'impalcatura ancora in sovraimpressione, un effetto voluto: STUDIO.md,
+ * "sincronizzazione impalcatura/gru"), ma il DECORO (`onDecor`, le finestre
+ * illuminate — `addDecor()`/`_selfLit` in main.js, depth -y-1 apposta per
+ * saltare DAVANTI a tutto, impalcatura inclusa) no: senza questo le luci
+ * di un edificio si accendevano gia' durante l'ultimo passo del cantiere,
+ * visibili sopra l'impalcatura ancora in piedi — segnalato dall'autore
+ * ("le luci degli edifici vanno attivate solo quando il cantiere e'
+ * completamente finito"). Con `deferDecor` la scelta del decoro (sprite di
+ * variante compreso, per i tipi a dado) resta congelata su `c.pendingDecor`
+ * finche' stepConstructions() non la applica per davvero, alla vera fine
+ * (`b.construction = null`). I tipi con `up.revealAtEnd` (oggi solo
+ * `eolico`) chiamano gia' questa funzione solo alla vera fine — per loro
+ * `deferDecor` resta false, `onDecor` scatta qui stesso, invariato. */
+function applyLevelFinish(b, def, up, c, r12, onDecor, deferDecor = false) {
   // hap (industria/parco, `up.hap`/`oldDef.hap` in BUILDING_TYPES sopra):
   // l'originale distrugge l'istanza del livello vecchio e ne crea una
   // nuova per il livello nuovo, ognuna con il proprio Create.gml/
@@ -1994,10 +2051,10 @@ function applyLevelFinish(b, def, up, c, r12, onDecor) {
     const v = pickVariant(up.variants);
     b.spr = v.spr;
     b.decorSpr = v.decor;
-    onDecor?.(b, [v.decor]);
+    if (deferDecor) c.pendingDecor = [v.decor]; else onDecor?.(b, [v.decor]);
   } else {
     b.spr = up.finalSprite;
-    onDecor?.(b, up.decor);
+    if (deferDecor) c.pendingDecor = up.decor; else onDecor?.(b, up.decor);
   }
   // [C] industria1|2|3/Create.gml + casa1|2|3/Create.gml: `makee`/`ava`
   // partono da 0 ad ogni livello. Nell'originale ogni livello e' un
@@ -2061,7 +2118,7 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       c.curSpd = cur.spd ?? 0;
       if (cur.spawn) onSpawn?.(b, cur.spawn);
       if (c.stepIndex === up.steps.length - 1 && !c.finished && !up.revealAtEnd) {
-        applyLevelFinish(b, def, up, c, r12, onDecor);
+        applyLevelFinish(b, def, up, c, r12, onDecor, true);
         c.finished = true;
       }
     }
@@ -2124,17 +2181,16 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       c.curSpd = cur.spd ?? 0;
       if (cur.spawn) onSpawn?.(b, cur.spawn);
       if (c.stepIndex === up.steps.length - 1 && !c.finished && !up.revealAtEnd) {
-        applyLevelFinish(b, def, up, c, r12, onDecor);
+        applyLevelFinish(b, def, up, c, r12, onDecor, true);
         c.finished = true;
       }
     } else {
-      // L'edificio (livello/sprite/decoro/contatori) e' gia' stato
+      // L'edificio (livello/sprite/vita/economia/contatori) e' gia' stato
       // finalizzato all'ingresso dell'ultimo passo, sopra — qui resta solo
       // da far sparire l'impalcatura residua, smontata per davvero. Il
       // decoro TRANSITORIO (gru/topper, onSpawn sopra) va rimosso proprio
       // qui, non da onDecor: onDecor sostituisce solo il decoro FINALE
-      // dell'edificio (finestre/decoro per livello) quando applyLevelFinish()
-      // gira, che ora e' l'INGRESSO dell'ultimo passo — se rimuovesse anche
+      // dell'edificio (finestre/decoro per livello) — se rimuovesse anche
       // il transitorio a quel punto, gru/topper sparirebbero nell'istante in
       // cui l'edificio finito compare invece che alla vera fine
       // dell'impalcatura (bug segnalato dall'autore).
@@ -2155,6 +2211,19 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
         applyLevelFinish(b, def, up, c, r12, onDecor);
         c.finished = true;
       }
+      // [Bug corretto, richiesto dall'autore] "le luci degli edifici vanno
+      // attivate solo quando il cantiere e' completamente finito": il
+      // decoro FINALE (finestre illuminate, `_selfLit` in main.js — depth
+      // -y-1, apposta per saltare davanti a TUTTO, impalcatura inclusa)
+      // resta scelto ma non ancora applicato (`c.pendingDecor`,
+      // applyLevelFinish() sopra con `deferDecor=true`) per tutta la durata
+      // dell'ultimo passo: applicarlo solo qui, alla vera fine
+      // dell'impalcatura, evita che una finestra illuminata compaia sopra
+      // un cantiere ancora visibilmente in corso. I tipi con
+      // `up.revealAtEnd` non passano mai di qui con un `pendingDecor` da
+      // applicare (il loro applyLevelFinish() sopra gira gia' senza
+      // `deferDecor`, `onDecor` e' gia' scattato).
+      if (c.pendingDecor !== undefined) { onDecor?.(b, c.pendingDecor); c.pendingDecor = undefined; }
       b.construction = null;
       b.frontSpr = null; b.capSpr = null;
       onFinish?.(b);
@@ -2431,27 +2500,41 @@ function turretSprFor(type, angleDeg) {
  * Le torrette (missile/gatling/laser, tutte con `turret: true`) inseguono
  * col cannone la minaccia vera piu' vicina entro `def.aim.range` —
  * `threats` e' la lista di `{x,y}` gia' assemblata da chi chiama (in
- * main.js: aerei/bombardieri/zeppelin, game/src/threats.js). **[I]** Le
- * mongolfiere (risorse/spie, game/src/balloons.js) NON sono un bersaglio
- * possibile per le torrette — ne' per l'aggancio automatico ne' quindi per
- * il fuoco, automatico o manuale (projectiles.js): richiesto dall'autore,
- * distruggerle e' un'azione a se stante del giocatore (un tap diretto sulla
- * mongolfiera, main.js), le torrette devono ingaggiare solo velivoli
- * ostili. In precedenza questa funzione considerava anche le mongolfiere
- * (nearest fra le due liste insieme) — ribaltato qui. Le auto decorative
- * (`cars`, un tempo incluse come "veicoli_target" dell'originale) restano
- * fuori per lo stesso motivo di sempre: non sono un bersaglio, ne' ostile
- * ne' cliccabile.
+ * main.js: aerei/bombardieri/zeppelin, game/src/threats.js). Le minacce
+ * vere hanno SEMPRE la priorita' sulle mongolfiere (vedi sotto): finche' ce
+ * n'e' una in portata l'aggancio (e quindi il fuoco automatico,
+ * stepTurretFire in projectiles.js) resta esattamente quello di prima,
+ * nessuna regressione sulla difesa vera.
  *
- * **[I]** Se nessuna minaccia e' in portata, `aimAngle`/`aimTarget` vengono
- * azzerati (non lasciati all'ultima direzione come nell'originale — [C]
- * `rocket_launcher|gatlinggun|lasergun/Step.gml`, l'`if` che li aggiorna e'
- * innestato dentro il controllo di portata, niente ramo `else`): con
- * `threats` che nascono fuori mappa e se ne vanno (game/src/threats.js) un
- * bersaglio puo' allontanarsi parecchio, o sparire del tutto, senza che la
- * sua POSIZIONE smetta mai di essere "in portata" rispetto a un cannone
- * fermo — l'originale lascia il cannone agganciato per sempre a quel punto,
- * e siccome il fuoco manuale (`fireTurretManual`, projectiles.js) spara
+ * **[Bug corretto, richiesto dall'autore]** Quando NESSUNA minaccia vera e'
+ * in portata, la torretta non resta piu' a riposo (cannone fermo,
+ * `aimTarget` azzerato): punta invece alla mongolfiera (risorsa o spia,
+ * `balloons`, game/src/balloons.js) piu' vicina entro lo stesso raggio —
+ * segnalato dall'autore ("le strutture di difesa non puntano ne' sparano
+ * contro le mongolfiere"): un tap sul cannone in questa situazione ora fa
+ * partire un colpo vero (fireTurretManual, projectiles.js) verso la
+ * mongolfiera agganciata, esattamente come farebbe contro una minaccia
+ * vera. Il fuoco AUTOMATICO invece resta impossibile contro le mongolfiere
+ * anche con questo fallback: stepTurretFire ricontrolla da se' che una
+ * minaccia vera sia davvero in `fireRange` prima di far partire un colpo
+ * senza tocco, quindi un `aimTarget` di tipo mongolfiera (nessuna minaccia
+ * intorno) non fa mai scattare nulla da solo — resta un'azione che il
+ * giocatore deve chiedere esplicitamente col tap, come gia' era il tap
+ * diretto sulla mongolfiera stessa (main.js, invariato, resta l'altra via
+ * per abbatterle). Le auto decorative (`cars`, un tempo incluse come
+ * "veicoli_target" dell'originale) restano fuori da entrambi i giri: non
+ * sono un bersaglio, ne' ostile ne' cliccabile.
+ *
+ * **[I]** Se nessuna minaccia NE' mongolfiera e' in portata, `aimAngle`/
+ * `aimTarget` vengono azzerati (non lasciati all'ultima direzione come
+ * nell'originale — [C] `rocket_launcher|gatlinggun|lasergun/Step.gml`,
+ * l'`if` che li aggiorna e' innestato dentro il controllo di portata,
+ * niente ramo `else`): con bersagli che nascono fuori mappa e se ne vanno
+ * (game/src/threats.js, game/src/balloons.js) un bersaglio puo'
+ * allontanarsi parecchio, o sparire del tutto, senza che la sua POSIZIONE
+ * smetta mai di essere "in portata" rispetto a un cannone fermo —
+ * l'originale lascia il cannone agganciato per sempre a quel punto, e
+ * siccome il fuoco manuale (`fireTurretManual`, projectiles.js) spara
  * sempre verso `b.aimTarget` senza ricontrollare se c'e' ancora qualcosa
  * li', il colpo finiva verso il vuoto — spesso fuori dallo schermo, dato
  * che l'ultimo bersaglio agganciato e' quasi sempre quello che si stava
@@ -2460,15 +2543,25 @@ function turretSprFor(type, angleDeg) {
  * e' l'unico modo per far tornare `fireTurretManual`/`stepTurretFire` (che
  * gia' controllano `aimTarget == null`) a rifiutare correttamente il colpo.
  */
-export function stepTurretAim(buildings, threats) {
+export function stepTurretAim(buildings, threats, balloons) {
   for (const b of buildings) {
     if (b.construction) continue;
     const def = BUILDING_TYPES[b.type];
     if (!def.aim) continue;
-    let nearest = null, nearestD2 = def.aim.range * def.aim.range;
+    const range2 = def.aim.range * def.aim.range;
+    let nearest = null, nearestD2 = range2;
     for (const th of threats) {
       const d2 = (th.x - b.x) ** 2 + (th.y - b.y) ** 2;
       if (d2 < nearestD2) { nearestD2 = d2; nearest = th; }
+    }
+    // Fallback mongolfiere: SOLO se non c'e' gia' una minaccia vera in
+    // portata (nearest ancora null qui) — le minacce vere vincono sempre.
+    if (!nearest && balloons) {
+      nearestD2 = range2;
+      for (const bal of balloons) {
+        const d2 = (bal.x - b.x) ** 2 + (bal.y - b.y) ** 2;
+        if (d2 < nearestD2) { nearestD2 = d2; nearest = bal; }
+      }
     }
     if (!nearest) { b.aimAngle = null; b.aimTarget = null; continue; }
     const angle = (Math.atan2(-(nearest.y - b.y), nearest.x - b.x) * 180) / Math.PI;

@@ -17,7 +17,7 @@
 // anch'esso, sulla stessa `match.scene.json`.
 import { COIN_DEPTH } from "./coins.js";
 import { canAfford } from "./buildings.js";
-import { spawnCar, R32_MAGHENE_SCHEDULE, R22_MAGHENE_SCHEDULE } from "./cars.js";
+import { spawnCar, R32_MAGHENE_SCHEDULE, R22_MAGHENE_SCHEDULE, NIGHT_TINT } from "./cars.js";
 import {
   createBridgeState, stepBridge, bridgeDeckFrame, bridgeOverVisible, bridgeGapOpen,
   BRIDGE_DES_CONFIG, BRIDGE_SIN_CONFIG, BRIDGE_DES2_CONFIG,
@@ -156,6 +156,37 @@ function blinkMotorVisible(t) {
   return Math.floor((t * 60) / 2) % 2 === 0;
 }
 
+// [Bug corretto] I quattro oggetti "turbina" non sono intercambiabili quanto
+// il commento sopra lascia intendere: letti singolarmente (src/objects/
+// moto11|moto12|moto13|moto2), SOLO moto12/moto13 fanno `depth = -y` nel
+// proprio Create — moto11 e moto2 non toccano mai `depth`, restano fermi al
+// valore fisso di `_object.json` (0 per moto11, 3 per moto2, data/
+// objects.json). Prima qui tutti e quattro finivano con `depth: 0`, che
+// main.js/effDepth() reinterpreta come "ordina per -y" (la stessa
+// convenzione usata per edifici/alberi, che quello SI lo fanno davvero nel
+// proprio Create) — per moto11 questo faceva dipendere il suo ordinamento
+// dalla propria y invece di restare fisso, sovrapponendosi in modo
+// incoerente al ponte levatoio (bridge_des/bridge_sin, depth FISSO -990/
+// -1010: STUDIO.md/bridges.js) a seconda di dove capitava sulla
+// piattaforma — segnalato dall'autore ("il rotore della piattaforma
+// principale si sovrappone al ponte dell'espansione"), riprodotto
+// visivamente (motor11 a (1632,1037): -y = -1037, "davanti" al ponte a
+// -990 invece che dietro, un caso su tre — gli altri due motor11 di
+// R120_MOTORS a y=858/1231 no/si' per lo stesso motivo, incoerente). depth
+// 0 vero (fisso, non -y) non e' rappresentabile alla lettera qui (collide
+// con lo stesso sentinel "0" che main.js usa per "-y"):
+// MOTOR11_FIXED_DEPTH e' l'equivalente pratico, un filo sotto zero — resta
+// sempre dietro al ponte/alla piattaforma (entrambi ben oltre -900) e
+// sempre davanti a qualunque oggetto "di mondo" ordinato per -y (ogni y > 0
+// della mappa da' un -y piu' negativo di questo). moto12/moto13 restano
+// invariati (depth:0, -y vero, gia' corretto).
+const MOTOR11_FIXED_DEPTH = -0.01;
+function motorDepth(spr) {
+  if (spr === "motor11") return MOTOR11_FIXED_DEPTH;
+  if (spr === "motor2") return 3;   // [C] moto2/_object.json: depth fisso 3, mai riassegnato in nessun evento
+  return 0;                          // motor12/motor13 (moto12/moto13): depth = -y vero, Create.gml
+}
+
 // [C] r12/Create.gml, posizioni assolute (STUDIO.md sopra).
 const R120_MOTORS = [
   { x: 1951, y: 858, spr: "motor11" },
@@ -171,7 +202,7 @@ const R120_MOTORS = [
  * secondi trascorsi, un cronometro qualunque va bene, vedi sopra). */
 export function r120MotorDecor(t) {
   if (!blinkMotorVisible(t)) return [];
-  return R120_MOTORS.map((m) => ({ obj: "decor", x: m.x, y: m.y, depth: 0, spr: m.spr }));
+  return R120_MOTORS.map((m) => ({ obj: "decor", x: m.x, y: m.y, depth: motorDepth(m.spr), spr: m.spr }));
 }
 
 
@@ -214,6 +245,38 @@ const MONVIOLO_LIFE_SECONDS = 3600 / 60;  // [C] monviolo/Alarm_6: scadenza natu
 const MONVIOLO_DIR = 30;                  // [C] monviolo/Create.gml: action_set_motion(30, ...)
 const SCENE_WIDTH = 3900;                 // [C] match.json width — bordo destro della mappa
 
+// [Bug corretto] "Manca completamente l'animazione con le nuvole quando
+// viene aggiunta un'espansione della piattaforma" (segnalato dall'autore).
+// **[C]** `dockersig1|dockersig3/Mouse_LeftPressed.gml` + `Alarm_0|1|2|3|5`:
+// al tap che avvia l'attracco (e di nuovo ad ogni alarm elencato sotto) 5
+// istanze di `n_cluster1` nascono in colonna verticale a x=5000 — fuori
+// mappa a destra, `SCENE_WIDTH` e' 3900 — a y assoluta -1000/0/1000/2000/
+// 3000 (i `action_set_relative(0)` immediatamente prima di ciascuna
+// `action_create_object` lo confermano: coordinate ASSOLUTE, non relative a
+// dockersig1 nonostante le coppie `action_set_relative(1)/(0)` ridondanti
+// intorno — un artefatto del decompilato drag&drop, STUDIO.md). **[C]**
+// `n_cluster1/Create.gml`: si sposta poi di (0,-3000) RELATIVO alla propria
+// nascita (stavolta un vero relative — resta `action_set_relative(1)`
+// attivo per quella singola azione), tinta 16366009 (NIGHT_TINT, game/src/
+// cars.js — stessa costante gia' letta per le auto) SOLO se e' notte
+// nell'istante esatto della nascita, poi vola a direzione 210°/velocita' 7
+// px/tic (giu'-a-sinistra) per 1200 tic (20s) e si autodistrugge
+// (`Alarm_0`). Le 5 y assolute meno lo shift di 3000 dànno una colonna che
+// va da y=-4000 a y=0.
+const CLOUD_WAVE_Y = [-1000, 0, 1000, 2000, 3000].map((y) => y - 3000);   // [C]: -4000..0
+const CLOUD_SPAWN_X = 5000;                // [C] fuori mappa a destra (SCENE_WIDTH=3900)
+const CLOUD_DIR = 210;                     // [C] n_cluster1/Create.gml: action_set_motion(210, 7)
+const CLOUD_SPEED = 7;                     // [C] stesso Create.gml, px/tic
+const CLOUD_LIFE_SECONDS = 1200 / 60;      // [C] n_cluster1/Create.gml: action_set_alarm(1200, 0) -> Alarm_0 uccide
+// [C] dockersig1/Mouse_LeftPressed.gml arma alarm(40,0)/alarm(80,1)/
+// alarm(120,2)/alarm(160,3)/alarm(200,5) — CIASCUNO crea un'altra ondata di
+// 5 nuvole identica a quella del tap (0 qui sotto rappresenta il tap
+// stesso, t=0). dockersig3 arma solo i primi quattro (40/80/120/160,
+// nessun alarm(200,5) — letto cosi' com'e', un'ondata in meno della catena
+// gemella).
+const CLOUD_WAVE_TICKS_TIER1 = [0, 40, 80, 120, 160, 200];
+const CLOUD_WAVE_TICKS_TIER2 = [0, 40, 80, 120, 160];
+
 /** Stato della catena — persistito nel salvataggio (main.js/save.js).
  * `bridgeDes`/`bridgeSin` (game/src/bridges.js) non esistono davvero prima
  * che `r32` nasca, ma crearli subito e limitarsi a non farli avanzare
@@ -223,8 +286,8 @@ const SCENE_WIDTH = 3900;                 // [C] match.json width — bordo dest
  * gli altri due (letto cosi' com'e'). */
 export function createFaroState() {
   return {
-    tier1: { stage: "locked", dockerT: 0 },
-    tier2: { stage: "locked", dockerT: 0 },
+    tier1: { stage: "locked", dockerT: 0, cloudWaveIdx: 0 },
+    tier2: { stage: "locked", dockerT: 0, cloudWaveIdx: 0 },
     barviolaT: 0,
     monviolos: [],
     r32TrafficT: 0, r32MagheneIdx: 0,
@@ -233,6 +296,7 @@ export function createFaroState() {
     bridgeSin: createBridgeState(2400),
     bridgeDes2: createBridgeState(3600),
     ships: [],
+    clusterClouds: [],   // n_cluster1 — le nuvole dell'animazione di espansione (sotto)
   };
 }
 
@@ -240,6 +304,41 @@ export function createFaroState() {
 // casuale nella fascia 380..3120 della room, velocita' 6..10 px/tick.
 function spawnMonviolo() {
   return { x: -170, y: 380 + Math.random() * (3120 - 380), spd: 6 + Math.random() * 4, t: 0 };
+}
+
+// n_cluster1 — vedi il blocco di commento su CLOUD_WAVE_Y sopra.
+function spawnCloudWave(clusterClouds, night) {
+  for (const y of CLOUD_WAVE_Y) {
+    clusterClouds.push({ x: CLOUD_SPAWN_X, y, t: 0, tint: night ? NIGHT_TINT : 0xffffff });
+  }
+}
+
+const CLOUD_RAD = (CLOUD_DIR * Math.PI) / 180;
+const CLOUD_PX_PER_SEC = CLOUD_SPEED * 60;
+
+/** Fa partire le ondate ancora dovute (in base a `dockerT`, gia' avanzato
+ * da chi chiama) e avanza/scarta le nuvole gia' in volo — chiamata per
+ * ENTRAMBE le catene (tier1/tier2 condividono lo stesso array
+ * `state.clusterClouds`, STUDIO.md: due espansioni non sono mai
+ * "expanding" insieme, ma le nuvole di una possono restare in volo fino a
+ * 20s dopo che l'altra e' gia' partita). */
+function stepClusterClouds(tier, waveTicks, clusterClouds, night) {
+  if (tier.stage === "expanding") {
+    while (tier.cloudWaveIdx < waveTicks.length && tier.dockerT * 60 >= waveTicks[tier.cloudWaveIdx]) {
+      spawnCloudWave(clusterClouds, night);
+      tier.cloudWaveIdx++;
+    }
+  }
+}
+
+function advanceClouds(clusterClouds, dt) {
+  for (let i = clusterClouds.length - 1; i >= 0; i--) {
+    const c = clusterClouds[i];
+    c.t += dt;
+    if (c.t >= CLOUD_LIFE_SECONDS) { clusterClouds.splice(i, 1); continue; }
+    c.x += Math.cos(CLOUD_RAD) * CLOUD_PX_PER_SEC * dt;
+    c.y -= Math.sin(CLOUD_RAD) * CLOUD_PX_PER_SEC * dt;
+  }
 }
 
 /** Avanza timer, sblocchi, traffico e voli — chiamata una volta per frame
@@ -252,6 +351,7 @@ export function stepFaroChain(state, r12, coins, cars, smoke, dt, chiesLevel, ni
   if (state.tier1.stage === "locked" && chiesLevel >= 2) state.tier1.stage = "buttonShown";
   if (state.tier1.stage === "expanding") {
     state.tier1.dockerT += dt;
+    stepClusterClouds(state.tier1, CLOUD_WAVE_TICKS_TIER1, state.clusterClouds, night);
     if (state.tier1.dockerT >= TIER1_BUILD_SECONDS) {
       state.tier1.stage = "expanded";
       cars.push(spawnCar("honda21", night));   // [C] r32/Create.gml
@@ -269,6 +369,7 @@ export function stepFaroChain(state, r12, coins, cars, smoke, dt, chiesLevel, ni
   if (state.tier2.stage === "locked" && state.tier1.stage === "expanded" && chiesLevel >= 3) state.tier2.stage = "buttonShown";
   if (state.tier2.stage === "expanding") {
     state.tier2.dockerT += dt;
+    stepClusterClouds(state.tier2, CLOUD_WAVE_TICKS_TIER2, state.clusterClouds, night);
     if (state.tier2.dockerT >= TIER2_BUILD_SECONDS) {
       state.tier2.stage = "expanded";
       cars.push(spawnCar("honda31", night));   // [C] r22/Create.gml
@@ -296,6 +397,11 @@ export function stepFaroChain(state, r12, coins, cars, smoke, dt, chiesLevel, ni
     });
   }
   stepCargoShips(state.ships, smoke, dt);
+
+  // n_cluster1 — le nuvole restano in volo fino a 20s indipendentemente
+  // dallo stage (STUDIO.md sopra su stepClusterClouds), quindi avanzano
+  // sempre, non solo mentre "expanding".
+  advanceClouds(state.clusterClouds, dt);
 
   // --- monviolo -> barviola (cristalli) ---
   state.barviolaT += dt;
@@ -442,7 +548,7 @@ function r32Decor(state, t) {
   if (bridgeOverVisible(state.bridgeSin)) out.push({ obj: "decor", x: 1375, y: 788, depth: -1240, spr: "bridl1over" });
   for (const [dx, dy] of R32_POLES) out.push({ obj: "decor", x: R32_X + dx, y: R32_Y + dy, depth: 0, spr: "se" });
   if (blinkMotorVisible(t)) {
-    for (const m of R32_MOTORS) out.push({ obj: "decor", x: m.x, y: m.y, depth: 0, spr: m.spr });
+    for (const m of R32_MOTORS) out.push({ obj: "decor", x: m.x, y: m.y, depth: motorDepth(m.spr), spr: m.spr });
   }
   return out;
 }
@@ -481,7 +587,7 @@ function r22Decor(state, t) {
   if (bridgeOverVisible(bd2)) out.push({ obj: "decor", x: 2363, y: 783, depth: -1240, spr: "bridr1over" });
   for (const [dx, dy] of R220_POLES) out.push({ obj: "decor", x: R22_X + dx, y: R22_Y + dy, depth: 0, spr: "se" });
   if (blinkMotorVisible(t)) {
-    for (const m of R22_MOTORS) out.push({ obj: "decor", x: m.x, y: m.y, depth: 0, spr: m.spr });
+    for (const m of R22_MOTORS) out.push({ obj: "decor", x: m.x, y: m.y, depth: motorDepth(m.spr), spr: m.spr });
   }
   // La nave cargo (game/src/bridges.js) — cliccabile solo se non gia'
   // presa e non "cargo3" (mai raccoglibile, [C] preso=2 dalla nascita).
@@ -515,10 +621,6 @@ function faro1Decor(state) {
   if (state.tier1.stage === "lit") {
     out.push({ obj: "faroDockerSignal", x: FARO1.x, y: FARO1.y + 100, depth: SIGN_DEPTH, spr: "bridgesin" });
   }
-  if (state.tier1.stage === "expanding") {
-    const k = Math.min(1, state.tier1.dockerT / TIER1_BUILD_SECONDS);
-    out.push({ obj: "decor", x: 5000 - k * 2600, y: 1000, depth: -7000, spr: "nimbuscluster1" });
-  }
   return out;
 }
 
@@ -542,10 +644,6 @@ function faro3Decor(state, t) {
   if (state.tier2.stage === "lit") {
     out.push({ obj: "faro3DockerSignal", x: FARO3.x, y: FARO3.y + 100, depth: SIGN_DEPTH, spr: "bridgesin" });
   }
-  if (state.tier2.stage === "expanding") {
-    const k = Math.min(1, state.tier2.dockerT / TIER2_BUILD_SECONDS);
-    out.push({ obj: "decor", x: 5000 - k * 2600, y: 1000, depth: -7000, spr: "nimbuscluster1" });
-  }
   return out;
 }
 
@@ -559,5 +657,12 @@ export function faroDecor(state, t) {
   // monviolo — [C] nessun evento Mouse nel decompilato: solo decorazione,
   // stesso trattamento delle nuvole/uccelli in atmosphere.js.
   for (const m of state.monviolos) out.push({ obj: "decor", x: m.x, y: m.y, depth: -m.y, spr: "monviola" });
+  // n_cluster1 — depth FISSO -7000 (STUDIO.md sopra su CLOUD_WAVE_Y: [C]
+  // n_cluster1/_object.json, mai riassegnato), non -y: restano sempre in
+  // primissimo piano sopra tutta la scenografia della piattaforma,
+  // esattamente come nel decompilato.
+  for (const c of state.clusterClouds) {
+    out.push({ obj: "decor", x: c.x, y: c.y, depth: -7000, spr: "nimbuscluster1", _tint: c.tint });
+  }
   return out;
 }

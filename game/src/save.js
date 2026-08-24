@@ -13,11 +13,18 @@ export function saveSlotFor(sceneName) {
   return SLOT[sceneName] ?? `nimsav_${sceneName}`;
 }
 
-// `ruins` (game/src/main.js, destroyBuilding()): posizione/sprite bastano a
-// ricrearli, il resto (`_f`/`obj: "decor"`) e' derivato a runtime, non
+// `ruins` (game/src/main.js, destroyBuilding()): posizione/sprite/livello
+// bastano a ricrearli, il resto (`_f`/`cost`, quest'ultimo derivabile da
+// `level` con `ruinRebuildCost()`, buildings.js) e' derivato a runtime, non
 // serializzato — stesso principio gia' scelto per `buildings` sopra (niente
-// `_f`, ricalcolato al caricamento). Campo aggiunto senza toccare `v`: un
-// salvataggio vecchio senza `ruins` resta valido, `doLoad()` in main.js lo
+// `_f`, ricalcolato al caricamento). `level` [Bug corretto, richiesto
+// dall'autore: "in match non riesco a demolire le rovine"]: serve a
+// ricostruire il rudere per davvero sotto ruspa (main.js) — un salvataggio
+// scritto PRIMA di questo fix non ha `level`: `doLoad()` in main.js lo
+// legge con `?? 1` (il rudere piu' economico, non "non ricostruibile" —
+// meglio permissivo di un rudere improvvisamente bloccato dopo un
+// caricamento vecchio). Campo aggiunto senza toccare `v`: un salvataggio
+// vecchio senza `ruins` resta comunque valido, `doLoad()` in main.js lo
 // legge con `?? []`.
 // `blockedSlots` (game/src/main.js, placeAt()): i lotti "extra" che
 // `eolico` occupa oltre a quello toccato (buildings.js, `def.multiTile`) —
@@ -42,7 +49,7 @@ export function save(sceneName, r12, buildings, ruins, blockedSlots, platformSta
       coinT: b.coinT, coinNext: b.coinNext, solarT: b.solarT, windT: b.windT,
       overpark: b.overpark, oversolar: b.oversolar,
     })),
-    ruins: ruins.map((r) => ({ x: r.x, y: r.y, spr: r.spr })),
+    ruins: ruins.map((r) => ({ x: r.x, y: r.y, spr: r.spr, level: r.level })),
     blockedSlots: blockedSlots.map((s) => ({ x: s.x, y: s.y })),
     platformState,
   };

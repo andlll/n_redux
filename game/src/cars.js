@@ -865,7 +865,10 @@ export const R22_MAGHENE_SCHEDULE = [
 // codifica i colori come R + G*256 + B*65536 (byte order opposto al nostro
 // 0xRRGGBB), quindi 16366009 non e' 0x16366009: va scomposto e
 // riimpacchettato, non letto direttamente come esadecimale.
-const NIGHT_TINT = (() => {
+// Esportata: game/src/platform.js la riusa per n_cluster1 (le nuvole
+// dell'animazione di espansione piattaforma), stesso identico
+// `action_sprite_color(16366009, 1)` — [C] n_cluster1/Create.gml.
+export const NIGHT_TINT = (() => {
   const v = 16366009, r = v & 0xff, g = (v >> 8) & 0xff, b = (v >> 16) & 0xff;
   return (r << 16) | (g << 8) | b;                    // 0xb9b9f9
 })();

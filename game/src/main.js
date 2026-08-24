@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
 import { createR12, tickR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, ruinRebuildConstruction, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -15,6 +15,7 @@ import {
 import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
+import { addCrane, stepCranes, craneParts } from "./cranes.js";
 import {
   applyMatchPlatform, createFaroState, stepFaroChain, faroDecor, r120MotorDecor,
   clickFaroButton, clickWaveSignal, clickDockerSignal,
@@ -27,7 +28,7 @@ import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmok
 import { save, load } from "./save.js";
 import { loadFont, drawText, measureText } from "./font.js";
 import {
-  createTutorialState, extractRuinLots, ruinRebuildConstruction, stepTutorialAuto, stepCutscene,
+  createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE,
 } from "./tutorial.js";
 
@@ -657,18 +658,36 @@ export async function mountMatch(ctx, params = {}) {
    * quindi dietro), nascosti dalla sagoma dell'impalcatura sotto. Ogni
    * spawn di topper qui sotto (BUILDING_TYPES) porta ora il proprio
    * `depthOffset` (letto da `addDecor()` sopra), preso dall'oggetto reale
-   * che lo crea — mai un numero indovinato. */
+   * che lo crea — mai un numero indovinato.
+   *
+   * [Bug corretto, richiesto dall'autore: "molte gru non si montano, si
+   * crea solo la base ma non i pezzi sopra"] Gli spawn "gru1" (l'oggetto
+   * `gru`, src/objects/gru — 4-5 agli angoli, quasi ogni edificio) non sono
+   * un decoro fermo come i topper: la gru vera si monta/smonta e fa
+   * comparire un braccio in cima da sola, con un timer TUTTO SUO
+   * indipendente dal resto del cantiere (game/src/cranes.js) — instradati a
+   * `addCrane()` invece che ad `addDecor()`, gli altri spawn (topper)
+   * restano invariati. */
   function addConstructionSpawn(building, spawns) {
-    addDecor(building, spawns.map((s) => ({ ...s, lit: false })), { transient: true });
+    const decorSpawns = [];
+    for (const s of spawns) {
+      if (s.spr === "gru1") addCrane(building, s.dx, s.dy);
+      else decorSpawns.push(s);
+    }
+    if (decorSpawns.length) addDecor(building, decorSpawns.map((s) => ({ ...s, lit: false })), { transient: true });
   }
 
   /** `onFinish` di stepConstructions() (buildings.js): l'impalcatura e'
    * DAVVERO smontata (`b.construction` torna `null`) — solo qui il decoro
    * transitorio di cantiere (gru/topper, addConstructionSpawn() sopra) va
    * ripulito. Prima spariva insieme al decoro finale, appena l'edificio finito
-   * compariva (spawnDecor() sopra, stesso bug commentato li'). */
+   * compariva (spawnDecor() sopra, stesso bug commentato li'). Le gru
+   * (game/src/cranes.js, `building._cranes`) non vivono in `decorEntities`
+   * — pulite qui a parte, cosi' un'eventuale prossima costruzione sullo
+   * stesso edificio (upgrade successivo) riparte senza gru "morte" residue. */
   function removeTransientDecor(building) {
     decorEntities = decorEntities.filter((d) => !(d.buildingId === building.id && d.transient));
+    building._cranes = null;
   }
 
   // [C] parco/Create.gml: 7 posizioni fisse intorno al parco: ognuna, a dado
@@ -1026,24 +1045,31 @@ export async function mountMatch(ctx, params = {}) {
    * l'originale non lo rimuove: lo sostituisce con un rudere permanente
    * (`ruinSpriteFor()`, game/src/buildings.js — sceglie fra `ruin1`/`ruin2`/
    * `ruin3`/`ruinsol`/`ruinc1..3` in base a tipo e livello, con lo stesso dado
-   * uniforme del decompilato dove ne ha piu' di uno) che nessuno strumento nel
-   * motore puo' rimuovere — un vicolo cieco fedele, non piu' la rimozione
-   * immediata con placeholder libero di una versione precedente di questo
-   * motore. **[C] Corretto**: una nota precedente qui diceva che la ruspa
-   * (`selec==11`, tryRuspaRebuild()/ruspaPending sotto) fosse "l'unico modo
-   * per ripararlo" — falso, verificato: `demobasia/Collision_*.gml` collide
-   * SOLO con gli oggetti degli edifici FINITI (`casa1`, `industria1`, ...),
-   * mai con un `ruinN`/`ru11`/`ruinc1` — un rudere non ha nessun ramo
-   * `Mouse_LeftPressed.gml` per selec==11 nel decompilato, la ruspa non lo
-   * tocca mai. `parco` e' l'unica eccezione a QUESTA funzione: **[C]**
-   * `parco/Step.gml` non legge mai `life`, quindi non fa NIENTE quando (nella
-   * pratica, quasi mai: `life: 9999`) succede — `ruinSpriteFor()` torna
-   * `null` e questa funzione si ferma subito, prima di toccare pop/hap/
-   * `buildings`, esattamente come l'originale non farebbe niente. Per tutti
-   * gli altri applica il bilancio pop (`currentDeathPop`) e hap
-   * (`currentDeathHap`, industria/parco — STUDIO.md "i pulsanti blu delle
-   * monete") del livello a cui e' morto, letti da chiesX/industriaX/casaX/
-   * parco/Destroy.gml.
+   * uniforme del decompilato dove ne ha piu' di uno).
+   *
+   * **[Bug corretto, richiesto dall'autore: "in match non riesco a
+   * demolire le rovine"]** Una nota precedente qui concludeva che nessun
+   * rudere avesse un ramo `Mouse_LeftPressed.gml` per `selec==11` —
+   * **sbagliato, verificato controllando `ruin1|2|3` stessi invece di
+   * `demobasia/Collision_*.gml`** (che infatti collide solo con edifici
+   * FINITI, MAI con un rudere — quella parte era corretta, la conclusione
+   * "quindi nessuno strumento lo tocca" no): **[C]** `ruin1|2|3/
+   * Mouse_LeftPressed.gml` ricostruisce per davvero sotto ruspa, pagando —
+   * `ruinRebuildCost()`/`ruinRebuildConstruction()` (buildings.js) lo
+   * fanno ora anche per i ruderi VERI da battaglia (non solo per i lotti-
+   * rudere pre-piazzati del tutorial, `ruinLots` sotto, che usano la
+   * STESSA funzione da prima). `level`/`cost` salvati qui sul rudere: la
+   * "taglia" e' `b.level` dell'edificio al momento della morte, letta
+   * UNA VOLTA qui invece che ricalcolata ad ogni tap.
+   *
+   * `parco` e' l'unica eccezione a QUESTA funzione: **[C]** `parco/Step.gml`
+   * non legge mai `life`, quindi non fa NIENTE quando (nella pratica, quasi
+   * mai: `life: 9999`) succede — `ruinSpriteFor()` torna `null` e questa
+   * funzione si ferma subito, prima di toccare pop/hap/`buildings`,
+   * esattamente come l'originale non farebbe niente. Per tutti gli altri
+   * applica il bilancio pop (`currentDeathPop`) e hap (`currentDeathHap`,
+   * industria/parco — STUDIO.md "i pulsanti blu delle monete") del livello
+   * a cui e' morto, letti da chiesX/industriaX/casaX/parco/Destroy.gml.
    */
   function destroyBuilding(b) {
     const spr = ruinSpriteFor(b);
@@ -1054,7 +1080,10 @@ export async function mountMatch(ctx, params = {}) {
     buildings = buildings.filter((x) => x !== b);
     coins = coins.filter((c) => c.buildingId !== b.id);
     if (picked?.obj === "building" && picked.ref === b) picked = null;
-    ruins.push({ obj: "decor", x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr) });
+    ruins.push({
+      x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr),
+      level: b.level, cost: ruinRebuildCost(b.level),
+    });
   }
 
   /** Avvia un potenziamento e — [C] upcrc12/Mouse_LeftPressed.gml: `with
@@ -1150,12 +1179,19 @@ export async function mountMatch(ctx, params = {}) {
       if (ph) { ph.consumed = true; usedIds.add(ph.id); }
       if (b.level >= 1) spawnDecor(b, currentDecor(b));
     }
-    // Ruderi (destroyBuilding() sopra): `_f`/`obj` non sono salvati (derivati,
-    // save.js), vanno ricalcolati qui — stesso principio di `_f` sugli edifici
-    // caricati. Occupano un placeholder anche loro (nessuna ruspa per
-    // liberarli): stesso ciclo `usedIds` di sopra, cosi' un edificio e un
-    // rudere non litigano mai per lo stesso slot.
-    ruins = (data.ruins ?? []).map((ru) => ({ obj: "decor", x: ru.x, y: ru.y, depth: -ru.y, spr: ru.spr, _f: frameFor(ru.spr) }));
+    // Ruderi (destroyBuilding() sopra): `_f`/`cost` non sono salvati
+    // (derivati, save.js), vanno ricalcolati qui — stesso principio di `_f`
+    // sugli edifici caricati. `level ?? 1`: un salvataggio scritto prima
+    // del fix "in match non riesco a demolire le rovine" non ha `level` —
+    // vedi il commento su save.js. Occupano un placeholder anche loro
+    // (demolirli sotto ruspa li rimuove da `ruins` ma NON libera mai il
+    // placeholder, ci nasce sopra un cantiere vero): stesso ciclo `usedIds`
+    // di sopra, cosi' un edificio e un rudere non litigano mai per lo
+    // stesso slot.
+    ruins = (data.ruins ?? []).map((ru) => ({
+      x: ru.x, y: ru.y, depth: -ru.y, spr: ru.spr, _f: frameFor(ru.spr),
+      level: ru.level ?? 1, cost: ruinRebuildCost(ru.level ?? 1),
+    }));
     for (const ru of ruins) {
       const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === ru.x && p.y === ru.y);
       if (ph) { ph.consumed = true; usedIds.add(ph.id); }
@@ -1899,7 +1935,7 @@ export async function mountMatch(ctx, params = {}) {
         && it.obj !== "bankIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
         && it.obj !== "faroDockerSignal" && it.obj !== "faro3Button" && it.obj !== "faro3WaveSignal"
         && it.obj !== "faro3DockerSignal" && it.obj !== "cargoShip" && it.obj !== "ruinLot"
-        && it.obj !== "flyingBalloon") continue;
+        && it.obj !== "ruin" && it.obj !== "flyingBalloon") continue;
       // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
       // stessa ragione della raccolta hover piu' sotto. Tutto il resto
       // (edifici, casse, monete, segnale di potenziamento) resta sul
@@ -1945,6 +1981,26 @@ export async function mountMatch(ctx, params = {}) {
         b.construction = ruinRebuildConstruction(lot.level);
         buildings.push(b);
         ruinLots.splice(ruinLots.indexOf(lot), 1);
+      }
+      picked = null;
+      return;
+    }
+    // [Bug corretto, richiesto dall'autore: "in match non riesco a
+    // demolire le rovine"] Rudere VERO da battaglia (destroyBuilding()
+    // sopra) — stessa identica meccanica di "ruinLot" appena sopra
+    // (**[C]** e' letteralmente lo stesso oggetto `ruin1|2|3` nel
+    // decompilato, buildings.js/ruinRebuildCost|Construction()), solo su
+    // `ruins` invece di `ruinLots`.
+    if (picked.obj === "ruin") {
+      const ru = picked.ref;
+      message = ""; messageT = 0;
+      if (r12.selec === 11 && canAfford(r12, { mon: ru.cost })) {
+        r12.mon -= ru.cost;
+        const b = placeBuilding("casa", ru.x, ru.y, ru.depth);
+        b.level = Math.max(0, ru.level - 1);
+        b.construction = ruinRebuildConstruction(ru.level);
+        buildings.push(b);
+        ruins.splice(ruins.indexOf(ru), 1);
       }
       picked = null;
       return;
@@ -2013,14 +2069,15 @@ export async function mountMatch(ctx, params = {}) {
       // buildings.js — [I] ora attivo anche per gatlinggun, vedi il commento
       // su `manualFire` li'): un tocco su una torretta finita non apre un
       // cantiere (nessuna delle tre ha potenziamenti — tryStartUpgrade ci
-      // direbbe solo "livello massimo") — fa partire un colpo contro la
-      // minaccia vera che il cannone sta gia' inseguendo (game/src/
-      // projectiles.js, fireTurretManual() — mai una mongolfiera, vedi il
-      // commento in cima a quel file). Sotto cantiere invece resta
-      // tryStartUpgrade come per qualunque edificio (che gia' risponderebbe
-      // da solo "cantiere gia' in corso").
+      // direbbe solo "livello massimo") — fa partire un colpo contro
+      // qualunque cosa il cannone sta gia' inseguendo (game/src/
+      // projectiles.js, fireTurretManual()): una minaccia vera se ce n'e'
+      // una in portata, altrimenti la mongolfiera piu' vicina — [Bug
+      // corretto, richiesto dall'autore] buildings.js/stepTurretAim().
+      // Sotto cantiere invece resta tryStartUpgrade come per qualunque
+      // edificio (che gia' risponderebbe da solo "cantiere gia' in corso").
       if (!b.construction && BUILDING_TYPES[b.type]?.manualFire) {
-        const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails, beams);
+        const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails, beams, balloons, loot);
         message = fired ? "fuoco!"
           : !b.aimTarget ? "nessun bersaglio in portata"
           : b.type === "laser" && r12.ele < 200 ? "energia insufficiente"
@@ -2065,12 +2122,13 @@ export async function mountMatch(ctx, params = {}) {
       picked = null;   // raccolta, non c'e' piu' niente da tenere selezionato
     } else if (picked.obj === "flyingBalloon") {
       // Un tap diretto su una mongolfiera in volo (risorsa o spia) la
-      // distrugge — richiesto dall'autore: le torrette non lo fanno piu' da
-      // sole (game/src/projectiles.js/stepTurretFire, buildings.js/
-      // stepTurretAim), questa e' ora l'UNICA via per abbatterla. Stessa
-      // risposta di un colpo andato a segno (game/src/projectiles.js,
-      // stepProjectiles): un'esplosione + la cassa di risorse se ne lascia
-      // una (mai per la spia, monspi/recogn — nessun `def.loot`).
+      // distrugge — sempre disponibile, indipendentemente da dove si trovi
+      // rispetto a una torretta (che ora puo' abbatterla anche lei col tap
+      // sul cannone quando nessuna minaccia vera e' in portata, fireTurretManual/
+      // stepTurretAim in buildings.js/projectiles.js). Stessa risposta di un
+      // colpo andato a segno (game/src/projectiles.js, stepProjectiles):
+      // un'esplosione + la cassa di risorse se ne lascia una (mai per la
+      // spia, monspi/recogn — nessun `def.loot`).
       const b = picked.ref;
       const idx = balloons.indexOf(b);
       if (idx >= 0) balloons.splice(idx, 1);
@@ -2231,6 +2289,10 @@ export async function mountMatch(ctx, params = {}) {
       // di stepConstructions() sopra — vedi il commento in scaffold.js per il
       // perche'.
       stepGrattacieloScaffold(buildings, dt);
+      // Le gru di cantiere (game/src/cranes.js) — stesso principio dello
+      // scaffolding del grattacielo sopra: un timer tutto loro, indipendente
+      // dal resto del cantiere.
+      stepCranes(buildings, dt);
       stepProduction(buildings, dt, r12);
       stepSolarProduction(buildings, dt, r12, night, dawn);
       stepWindProduction(buildings, dt, r12);
@@ -2355,16 +2417,18 @@ export async function mountMatch(ctx, params = {}) {
       if (r12.alertT > 0) r12.alertT -= dt;
       // Torrette (game/src/buildings.js, stepTurretAim): inseguono la
       // minaccia vera piu' vicina (`threats`: aerei/bombardieri/zeppelin,
-      // game/src/threats.js) — mai le mongolfiere (`balloons`,
-      // game/src/balloons.js) ne' le auto decorative (`cars`): richiesto
-      // dall'autore, distruggere una mongolfiera e' un'azione a se stante
-      // del giocatore (tap diretto su di lei, vedi input.onTap piu' sotto),
-      // non qualcosa che una torretta puo' fare da sola. Vedi il commento su
-      // stepTurretAim() in buildings.js.
-      stepTurretAim(buildings, threats);
+      // game/src/threats.js), e se nessuna e' in portata si agganciano alla
+      // mongolfiera piu' vicina (`balloons`, game/src/balloons.js) invece di
+      // restare a riposo — [Bug corretto, richiesto dall'autore] vedi il
+      // commento su stepTurretAim() in buildings.js. Le auto decorative
+      // (`cars`) restano fuori: non sono un bersaglio, ne' ostile ne'
+      // cliccabile.
+      stepTurretAim(buildings, threats, balloons);
       // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
-      // gia' nella direzione appena calcolata (b.aimAngle). Automatico solo
-      // contro minacce vere, mai contro mongolfiere — stesso motivo di sopra.
+      // gia' nella direzione appena calcolata (b.aimAngle). Automatico resta
+      // SOLO contro minacce vere, mai contro mongolfiere — quelle si
+      // abbattono solo col tap manuale sul cannone (fireTurretManual piu'
+      // sotto) o un tap diretto sulla mongolfiera stessa.
       stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails, beams);
       stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt);
       stepBeams(beams, dt);
@@ -2409,6 +2473,10 @@ export async function mountMatch(ctx, params = {}) {
       // puro, si scurisce di notte come ogni altro (nessun `_selfLit`, vedi
       // scaffoldParts()).
       for (const p of scaffoldParts(b)) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
+      // Le gru di cantiere (game/src/cranes.js) — stesso principio, decoro
+      // puro (nessun `_selfLit`: `gru/grutop/Create.gml` si scuriscono di
+      // notte come ogni altro oggetto, STUDIO.md).
+      for (const p of craneParts(b)) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
       // Il segnale verde di potenziamento (obj: "upsign") — [C] upsign12|23/
       // upcrc12|23/upind12|23, tutti la stessa icona "upico" (un pin verde
       // con una freccia in su): compare quando il potenziamento e' davvero
@@ -2459,16 +2527,31 @@ export async function mountMatch(ctx, params = {}) {
     }
     for (const d of decorEntities) dynamic.push(d);
     // Ruderi (destroyBuilding() sopra): niente da avanzare ogni frame (non si
-    // muovono, non cambiano sprite) — solo da disegnare, come il resto del
-    // decoro permanente.
-    for (const ru of ruins) dynamic.push(ru);
+    // muovono, non cambiano sprite). [Bug corretto, richiesto dall'autore:
+    // "in match non riesco a demolire le rovine"] Sotto ruspa si ricostruiscono
+    // per davvero (STUDIO.md/buildings.js, ruinRebuildConstruction()) — stesso
+    // trattamento hover/tinta rossa gia' in uso per i lotti-rudere del
+    // tutorial (`ruinLots` sotto), qui esteso a QUALUNQUE room: un rudere da
+    // battaglia puo' comparire su `match`/`match_easy` quanto su `tutorial`.
+    // [I] Nessun cartellino prezzo all'hover (a differenza del popup ruspa
+    // su un edificio vivo, `ruspaPending` sopra): ne' `ruinLot` lo mostra
+    // gia' — stesso gap, non nuovo qui.
+    const hoverWorld = input.hover && input.hoverPointerType === "mouse" ? cam.screenToWorld(input.hover.x, input.hover.y) : null;
+    for (const ru of ruins) {
+      const hovered = !!hoverWorld && r12.selec === 11 && ru._f && inFrameRect(hoverWorld.x, hoverWorld.y, ru.x, ru.y, ru._f);
+      ru._hovered = hovered;
+      dynamic.push({
+        obj: "ruin", ref: ru, x: ru.x, y: ru.y, depth: ru.depth, _f: ru._f,
+        ...(hovered ? { _tint: 0xff0000, _selfLit: true } : {}),
+      });
+    }
     // Tutorial (game/src/tutorial.js): lotti-rudere (ruin1/ruin2, un
     // meccanismo dedicato — mai le stesse istanze di `ruins` sopra). La
     // cutscene iniziale si disegna a parte, in spazio schermo (vedi sotto,
     // dopo il layer GUI) — copre l'intera canvas per davvero, indipendente
     // da dove punta la camera vera della room.
     if (tutorialState) {
-      const hw = input.hover && input.hoverPointerType === "mouse" ? cam.screenToWorld(input.hover.x, input.hover.y) : null;
+      const hw = hoverWorld;
       for (const lot of ruinLots) {
         const hovered = !!hw && r12.selec === 11 && lot._f && inFrameRect(hw.x, hw.y, lot.x, lot.y, lot._f);
         lot._hovered = hovered;
@@ -3067,9 +3150,28 @@ export async function mountMatch(ctx, params = {}) {
       // [I] I quattro bottoni nel decompilato stavano a (270,-200..-50) da
       // `bankbuttoner`, 50px di distanza fra un centro e l'altro — meno dei
       // loro stessi 88px di altezza, quindi si sovrapporrebbero. Qui invece
-      // impilati senza sovrapposizioni, centrati nell'area vuota del
-      // pannello fra il titolo e la nota sul tasso.
-      const offsets = [-165, -55, 55, 165];
+      // impilati senza sovrapposizioni (110px fra un centro e l'altro,
+      // 22px di margine reale) nell'area vuota del pannello fra il titolo
+      // e la nota sul tasso.
+      // [Bug corretto, segnalato dall'autore: "il primo pulsante va sopra
+      // la scritta"] Il blocco era centrato sul centro GEOMETRICO dello
+      // sprite "loanscr" (offset 0 = l'origine del disegno, data/
+      // sprites.json: origin_y 543 su un canvas 1086 alto) — ma il testo
+      // "GET A LOAN"/"20% interest rate" non e' distribuito simmetricamente
+      // intorno a quel punto: misurato pixel per pixel sulla texture vera
+      // (assets/textures/page_022.png, il frame di "loanscr"), il titolo
+      // finisce a y=335 e la nota sul tasso inizia a y=847 nello stesso
+      // sistema di coordinate del canvas — il centro VERO dell'area vuota
+      // e' quindi a y=(335+847)/2=591, cioe' 48px SOTTO l'origine (543), non
+      // sull'origine stessa. Spostando l'intero blocco di +48 (stessa
+      // distanza reciproca fra i bottoni, invariata) il primo bottone
+      // scende sotto il titolo (47px di margine reale, prima ne aveva 0 —
+      // il suo bordo superiore coincideva quasi esattamente col confine
+      // dell'area vuota) e l'ultimo resta comunque 47px sopra la nota sul
+      // tasso: margini uguali sopra e sotto, non piu' solo "centrato sulla
+      // carta" ma centrato su cio' che si vede davvero.
+      const BANK_BUTTONS_Y_BIAS = 48;
+      const offsets = [-165, -55, 55, 165].map((o) => o + BANK_BUTTONS_Y_BIAS);
       for (let i = 0; i < LOANS.length; i++) {
         const f = frameFor(`getlo${i + 1}`);
         if (!f) continue;

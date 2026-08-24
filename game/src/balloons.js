@@ -87,14 +87,27 @@ export const BALLOON_TYPES = {
   // non una mongolfiera (sprite "reconspr", verificato visivamente), ma
   // riferisce esattamente come monspi (Alarm_0 identico: alza onda/bombolo/
   // dirox, mostra ATTACK INCOMING — isSpy sotto lo tratta allo stesso modo
-  // in stepBalloons()). Tre differenze reali: vita piu' corta (550 contro
-  // 750 tick), velocita' fissa invece di un range (`action_set_motion(30,
-  // ...)`, non irandom), e soprattutto la rotta — 11° o 13° a dado, quasi
-  // orizzontale, non i 30° di tutta la famiglia risorse/spia (`dir` sotto,
-  // letto da spawnBalloon() invece della costante DIR universale).
+  // in stepBalloons()). Due differenze reali: vita piu' corta (550 contro
+  // 750 tick) e velocita' a dado fra due valori fissi invece di un range
+  // continuo (`speed` sotto, una funzione invece di `speedMin`/`speedMax` —
+  // stesso schema di `dir` sotto, generalizzato).
+  //
+  // [Bug corretto, segnalato dall'autore: "gli aerei spia si muovono in
+  // orizzontale"] `action_set_motion(dir, spd)` prende la DIREZIONE per
+  // prima e la VELOCITA' per seconda (STUDIO.md, stesso ordine gia' usato
+  // ovunque in questo motore — es. R32_MOTORS/threats.js) — `action_set_
+  // motion(30, 11)`/`action_set_motion(30, 13)` di questo Create.gml
+  // significano quindi "direzione 30°, velocita' 11 o 13", non "velocita'
+  // 30, direzione 11 o 13" come una lettura precedente aveva scambiato:
+  // `recogn` volava quasi in orizzontale (11°/13°, angoli vicini a "dritto
+  // a est/ovest") a velocita' fissa 30 invece della STESSA diagonale a 30°
+  // di tutta la famiglia risorse/spia (`DIR` sotto), con solo la velocita'
+  // a dado fra 11 e 13 — la sua unica vera differenza di rotta rispetto al
+  // resto della famiglia. Rimosso `dir` (recogn ora usa la stessa diagonale
+  // di default di `spawnBalloon()` sotto, nessun override serve piu').
   recogn: {
-    spr: "reconspr", life: 550, speed: 30, stormDice: 68, isSpy: true,
-    dir: () => (dice(2) ? 11 : 13),
+    spr: "reconspr", life: 550, stormDice: 68, isSpy: true,
+    speed: () => (dice(2) ? 11 : 13),
   },
 };
 
@@ -113,13 +126,19 @@ function maxChiesLevel(buildings) {
 
 export function spawnBalloon(type) {
   const def = BALLOON_TYPES[type];
-  // `dir` (solo recogn, sopra): rotta scelta a dado invece dei 30° fissi
-  // di tutta la famiglia risorse/spia — cos/sin persistiti sull'istanza
-  // invece di ricalcolati ogni frame da stepBalloons().
+  // `dir` (nessun tipo lo usa piu' — vedi il commento su `recogn` sopra):
+  // rotta scelta a dado invece dei 30° fissi di tutta la famiglia
+  // risorse/spia. cos/sin persistiti sull'istanza invece di ricalcolati
+  // ogni frame da stepBalloons().
   const rad = ((def.dir ? def.dir() : 30) * Math.PI) / 180;
+  // `speed` puo' essere un numero fisso o una funzione (recogn sopra: dado
+  // fra due valori discreti, non un range continuo) — `speedMin`/`speedMax`
+  // restano il fallback per ogni altro tipo (range continuo, irandom_range).
+  const spd = typeof def.speed === "function" ? def.speed()
+    : def.speed ?? (def.speedMin + Math.random() * (def.speedMax - def.speedMin));
   return {
     type, x: SPAWN_X, y: SPAWN_Y[0] + Math.random() * (SPAWN_Y[1] - SPAWN_Y[0]),
-    spd: def.speed ?? (def.speedMin + Math.random() * (def.speedMax - def.speedMin)),
+    spd,
     t: 0, stormT: 0, spr: def.spr, depth: -3990,   // [C] Create.gml: depth = -3990 (fisso, sempre davanti al mondo)
     cos: Math.cos(rad), sin: Math.sin(rad),
   };

@@ -41,6 +41,17 @@ GAMEPLAY_SPRITES = {
         "ci28", "ci29", "ci30", "ci31", "ci32", "ci33", "ci34", "ci35", "ci36", "ci37",
         "crcl", "crc2l", "crc3l", "crc3l2", "crc3l3", "crc3l4", "crc3l5",  # decoro cddvd*
         "gru1", "gr21",                                           # gru/rubble cantiere
+        # [Bug corretto] la gru (src/objects/gru) era ferma su "gru1" (la
+        # base) per tutta la durata del cantiere: nel decompilato si monta
+        # per davvero (gru1->gru2->gru3, alta sempre di piu'), fa comparire
+        # un braccio oscillante in cima ("grutop", src/objects/grutop) per
+        # ~600 tic, poi si smonta (gru3->gru2->gru1) e sparisce — vedi
+        # stepCraneAnim()/craneParts() in game/src/buildings.js. "gru2"/
+        # "gru3" (il corpo che cresce) e le sottoimmagini di "grutop"
+        # (gto/gtao: il braccio, due lati speculari; "7" lo stesso braccio
+        # a met giro; "gt0" fermo/ripiegato) mancavano tutte all'atlas.
+        "gru2", "gru3",
+        "gto", "gto7", "gtao", "gtao7", "gt0",
         # industria: secondo edificio, catena impaind0to1r/1to2r/2to3r
         # (src/objects/impaind*, STUDIO.md §5.5/§7.3/§9 "impa* come dati").
         "i11", "i21", "i31",                                      # livello 1/2/3 (variante 1)

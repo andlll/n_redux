@@ -23,14 +23,22 @@
 // [I] Le torrette avevano imparato per un periodo a colpire anche le
 // mongolfiere (risorse E spie), non solo le minacce vere — segnalato
 // allora dall'autore giocando. Richiesta ribaltata in un secondo momento
-// (di nuovo dall'autore): i sistemi di difesa devono ingaggiare SOLO aerei/
-// bombardieri/dirigibili, mai le mongolfiere, ne' in automatico ne' col
-// tocco manuale sul cannone — distruggere una mongolfiera e' ora
-// un'azione del giocatore a se stante (un tap diretto sulla mongolfiera
-// stessa, game/src/main.js/input.onTap), non piu' qualcosa che una
-// torretta puo' fare per conto suo o su richiesta. `stepTurretAim()`/
-// `stepTurretFire()`/`fireTurretManual()` sotto non accettano piu' le
-// mongolfiere come bersaglio possibile.
+// (di nuovo dall'autore): i sistemi di difesa dovevano ingaggiare SOLO
+// aerei/bombardieri/dirigibili, mai le mongolfiere, ne' in automatico ne'
+// col tocco manuale — distruggerle era un'azione del giocatore a se stante
+// (un tap diretto sulla mongolfiera stessa, game/src/main.js/input.onTap).
+//
+// [Bug corretto, richiesto di nuovo dall'autore] Il fuoco AUTOMATICO
+// (stepTurretFire) resta com'era: ingaggia solo minacce vere, mai
+// mongolfiere. Ma quando nessuna minaccia vera e' in portata la torretta
+// ora si aggancia alla mongolfiera piu' vicina (buildings.js/
+// stepTurretAim) invece di restare a riposo — segnalato dall'autore ("le
+// strutture di difesa non puntano ne' sparano contro le mongolfiere") — e
+// un tap sul cannone in quella situazione (fireTurretManual sotto) le
+// spara contro davvero, stessa strada di fireFrom() gia' usata per le
+// minacce vere. `stepProjectiles()` (missile/gatling) gia' sapeva colpire
+// una mongolfiera incontrata per strada; qui manca solo il caso "beam"
+// (laser, colpo istantaneo senza proiettile fisico, vedi fireFrom sotto).
 //
 // Le tre torrette non sono varianti dello stesso cannone: `WEAPONS` sotto
 // tiene i dati che le differenziano (raggio, ricarica, munizioni, la forma
@@ -282,8 +290,12 @@ function payAmmo(weapon, r12) {
  * a carico di chi chiama, cosi' i due percorsi possono applicare le
  * proprie regole (stepTurretFire gia' sa che una minaccia vera e' in
  * portata, fireTurretManual no). `trails` riceve gli sbuffi di fumo di
- * scia (spawnSmoko sopra) quando l'arma ne crea uno alla bocca. */
-function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams) {
+ * scia (spawnSmoko sopra) quando l'arma ne crea uno alla bocca. `balloons`/
+ * `loot` (opzionali): solo il ramo "beam" (laser) li usa, per abbattere
+ * davvero una mongolfiera in linea di tiro — missile/gatling non ne hanno
+ * bisogno qui, il proiettile fisico che generano la colpisce da solo
+ * incontrandola per strada (stepProjectiles). */
+function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams, balloons, loot) {
   if (weapon.kind === "beam") {
     const off = bucketFor(weapon.muzzle, b.aimAngle);
     const mx = b.x + off.dx, my = b.y + off.dy;
@@ -311,6 +323,22 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beam
       const dx = th.x - b.x, dy = th.y - b.y;
       if (dx * dx + dy * dy > r2) continue;
       th.life -= DAMAGE.laser[th.type];
+    }
+    // [Bug corretto] Le mongolfiere entro lo stesso raggio: un solo colpo
+    // le abbatte (stesso trattamento di stepProjectiles per missile/
+    // gatling, mai una vita "vera" come le minacce), esplosione + eventuale
+    // cassa di loot. Senza `balloons` (chiamate che non lo passano) questo
+    // ramo resta un no-op, come prima.
+    if (balloons) {
+      for (let i = balloons.length - 1; i >= 0; i--) {
+        const bal = balloons[i];
+        const dx = bal.x - b.x, dy = bal.y - b.y;
+        if (dx * dx + dy * dy > r2) continue;
+        balloons.splice(i, 1);
+        explosions.push(spawnExplosion(bal.x, bal.y));
+        const def = BALLOON_TYPES[bal.type];
+        if (def.loot && loot) loot.push(spawnLoot(def.loot, bal.x, bal.y));
+      }
     }
     return;
   }
@@ -382,16 +410,22 @@ export function stepTurretFire(buildings, threats, dt, projectiles, explosions, 
  * distrugge una minaccia vera solo se ce n'e' gia' una entro `aim.fireRange`
  * in quel preciso istante, altrimenti il colpo parte comunque (lampo +
  * costo + ricarica) senza colpire nulla. Il "veicolo inseguito" (`b.
- * aimTarget`) e' sempre e solo una minaccia vera (stepTurretAim, buildings.js
- * — vedi il commento in cima al file): anche il tocco manuale sul cannone
- * non puo' quindi mai colpire una mongolfiera.
+ * aimTarget`) e' una minaccia vera quando ce n'e' una in portata,
+ * altrimenti — **[Bug corretto, richiesto dall'autore]** — la mongolfiera
+ * piu' vicina, se ce n'e' una (stepTurretAim, buildings.js: le minacce vere
+ * hanno sempre la priorita'): il tocco manuale sul cannone puo' quindi ora
+ * colpire anche una mongolfiera "in linea di tiro" quando non c'e' nessuna
+ * minaccia vera intorno, esattamente come un colpo contro una minaccia —
+ * `balloons`/`loot` servono solo al ramo "beam" (laser) di fireFrom() per
+ * farlo davvero (missile/gatling ci arrivano gia' da soli, il proiettile
+ * fisico la incontra per strada — stepProjectiles).
  *
  * Ritorna true se e' partito un colpo (per il messaggio in main.js), false
  * se il cannone non supporta il fuoco manuale (`BUILDING_TYPES[type].
  * manualFire`), e' in ricarica, non ha nessun bersaglio in portata adesso,
  * o (solo laser) l'energia non basta.
  */
-export function fireTurretManual(b, projectiles, explosions, r12, threats, trails, beams) {
+export function fireTurretManual(b, projectiles, explosions, r12, threats, trails, beams, balloons, loot) {
   const weapon = WEAPONS[b.type];
   if (!weapon || !BUILDING_TYPES[b.type]?.manualFire) return false;
   if (b.aimAngle == null || !b.aimTarget) return false;
@@ -402,7 +436,7 @@ export function fireTurretManual(b, projectiles, explosions, r12, threats, trail
   }
   if ((b.fireT ?? 0) < weapon.cooldown || !canFireAmmo(weapon, r12)) return false;
   b.fireT = 0;
-  fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams);
+  fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams, balloons, loot);
   return true;
 }
 
