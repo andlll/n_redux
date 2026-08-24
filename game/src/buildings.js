@@ -2082,7 +2082,17 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     // piu' apposta) — l'edificio resta visibilmente in piedi finche' la
     // ruspa non lo sgombera per davvero, invece di sparire di scatto in una
     // fondamenta spoglia ancora prima che il cantiere sia davvero iniziato.
-    const clearingLot = c.rebuilding && c.stepIndex === 0;
+    // `&& b.spr`: SOLO se c'e' davvero un edificio vecchio da preservare —
+    // il lotto-rudere del tutorial (tutorial.js/ruinRebuildConstruction(),
+    // main.js) marca `rebuilding:true` allo STESSO modo ma parte da
+    // `placeBuilding()`, che per un tipo con `construct` lascia `b.spr` a
+    // `null` (nessun edificio precedente, mai esistito): senza questo
+    // controllo in piu' quel `null` restava tale per l'intero primo passo
+    // invece del vero sprite di cantiere, ed il lotto spariva del tutto
+    // (nessun `_f`, scartato in silenzio dal ciclo di disegno) — segnalato
+    // dall'autore verificando che la demolizione di un rudere avviasse un
+    // cantiere vero e non un edificio gia' finito.
+    const clearingLot = c.rebuilding && c.stepIndex === 0 && b.spr;
     // Finche' non e' l'ultimo passo lo sprite disegnato e' ancora il
     // cantiere generico (`c.curSpr`); da quando applyLevelFinish() sopra ha
     // gia' girato (`c.finished`) resta quello vero appena assegnato, non

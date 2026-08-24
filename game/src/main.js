@@ -1468,9 +1468,24 @@ export async function mountMatch(ctx, params = {}) {
    * disegna sempre allineato agli assi). Quattro angoli del rettangolo non
    * ruotato (rispetto all'ancora `f.ox/f.oy`), ruotati uno per uno e passati a
    * drawQuad() — stesso principio del quad pieno del laser (STUDIO.md
-   * "il fascio del laser"), qui su uno sprite invece che un colore piatto. */
+   * "il fascio del laser"), qui su uno sprite invece che un colore piatto.
+   *
+   * [Bug corretto] `image_angle` di GameMaker e' SEMPRE antiorario "a
+   * schermo" (0=destra, 90=su, 180=sinistra, 270=giu', qualunque sia
+   * l'orientamento degli assi di gioco) — la stessa convenzione con cui il
+   * decompilato sceglie 270 per la freccia che punta ai bottoni IN BASSO e
+   * 90 per quella che punta alla barra risorse IN ALTO (freccia_tutorial/
+   * EndStep.gml, letto sopra). La formula qui sotto era invece la rotazione
+   * antioraria "matematica" standard (assi Y verso l'alto) applicata
+   * cosi' com'e' a coordinate schermo con Y verso il BASSO — visivamente
+   * ORARIA, l'opposto: a 270 la freccia puntava in su invece che in giu' (e
+   * viceversa a 90), con la punta che finiva sovrapposta al bottone invece
+   * di restarne fuori puntandolo da una certa distanza (segnalato
+   * dall'autore, tutorial.js). Negare l'angolo prima di ruotare corregge la
+   * direzione, senza toccare come main.js calcola gli angoli (gia' 270/90
+   * nello stile del decompilato). */
   function drawRotated(frame, cx, cy, angleDeg, scale, tint, alpha) {
-    const rad = (angleDeg * Math.PI) / 180;
+    const rad = (-angleDeg * Math.PI) / 180;
     const cos = Math.cos(rad), sin = Math.sin(rad);
     const corners = [
       { x: -frame.ox, y: -frame.oy }, { x: frame.w - frame.ox, y: -frame.oy },
@@ -2534,8 +2549,17 @@ export async function mountMatch(ctx, params = {}) {
         // bridgeDeckFrame()) lo passa, tutto il resto resta al frame 0.
         dynamic.push({ ...it, _f: frameFor(it.spr, it.frame ?? 0), _selfLit: FARO_SIGN_OBJS.has(it.obj) || undefined });
       }
-      // Le "turbine" di r120 (game/src/platform.js): un lampeggio, non un
-      // vero sprite animato — vedi il commento su blinkMotorVisible() li'.
+    }
+    // [Bug corretto] Le "turbine" di r120 (game/src/platform.js): un
+    // lampeggio, non un vero sprite animato — vedi il commento su
+    // blinkMotorVisible() li'. Restava annidato dentro `if (platformState)`
+    // sopra, ma r120 (con le sue turbine) viene piazzato da
+    // applyMatchPlatform() anche su `tutorial` (vedi il commento li' sopra),
+    // che pero' NON ha `platformState` (nessuna catena fari, `interactive:
+    // false`): le turbine del tutorial restavano quindi ferme per sempre,
+    // segnalato dall'autore. Gate corretto: la stessa condizione di
+    // applyMatchPlatform() sopra (`match` O `tutorial`), non `platformState`.
+    if (roomName === "match" || roomName === "tutorial") {
       for (const it of r120MotorDecor(phaseT)) dynamic.push({ ...it, _f: frameFor(it.spr) });
     }
     for (const m of constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
@@ -2912,12 +2936,21 @@ export async function mountMatch(ctx, params = {}) {
     if (tutorialState && !tutorialState.cutscene) {
       tutorialState.arrowFrame = (tutorialState.arrowFrame + dt * 20) % 20;
       const byKind = (pred) => uiButtons.find(pred);
+      // [Bug corretto] La punta della freccia (drawRotated() sopra, dopo il
+      // fix del verso di rotazione) finisce esattamente su `target`: senza
+      // un margine, puntare al bordo pixel-esatto del bottone (`b.y`)
+      // lasciava la punta a contatto diretto — visivamente ancora "appoggiata
+      // sopra" invece che sospesa a puntarlo da una distanza visibile, come
+      // gli offset fissi (es. "-100") gia' usati dal decompilato per gli
+      // altri bersagli. Un margine piccolo ma costante qui, riusato da ogni
+      // caso "punta in giu' al bottone sotto".
+      const ARROW_GAP = 12;
       let target = null;   // { x, y, angle }
       switch (tutorialState.phase) {
         case 2: {
           const b = byKind((btn) => btn.kind === "building" && btn.type === "ruspa")
             ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1);
-          if (b) target = { x: b.x + b.w / 2, y: b.y, angle: 270 };
+          if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
           break;
         }
         case 5: {
@@ -2932,7 +2965,7 @@ export async function mountMatch(ctx, params = {}) {
           break;
         case 7: {
           const b = byKind((btn) => btn.kind === "deselect");
-          if (b) target = { x: b.x + b.w / 2, y: b.y, angle: 270 };
+          if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
           break;
         }
         case 8: case 12: case 16: case 19: {
@@ -2940,12 +2973,12 @@ export async function mountMatch(ctx, params = {}) {
             : tutorialState.phase === 16 ? "parco" : "missile";
           const b = byKind((btn) => btn.kind === "building" && btn.type === type)
             ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1);
-          if (b) target = { x: b.x + b.w / 2, y: b.y, angle: 270 };
+          if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
           break;
         }
         case 31: {
           const b = byKind((btn) => btn.kind === "menu" && btn.menoo === 2);
-          if (b) target = { x: b.x + b.w / 2, y: b.y, angle: 270 };
+          if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
           break;
         }
       }
