@@ -2720,7 +2720,21 @@ export async function mountMatch(ctx, params = {}) {
     // supportata dal renderer per la GUI, qui riusata per la prima volta nel
     // mondo.
     for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale });
-    for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y, _f: frameFor(bm.spr) });
+    // [Bug corretto, segnalato dall'autore: "la depth delle bombe sganciate
+    // dai nemici spesso e' troppo bassa e sembra che le bombe volino dietro
+    // gli edifici"] **[C]** `bomba1/Create.gml`: `depth = -y - 400`, non
+    // solo `-y` come ogni altro decoro dinamico (effDepth() in cima al
+    // file). I -400 sono un margine "di quota" fisso: mentre cade (~0.5s,
+    // BOMB_LIFE sopra) la bomba resta visivamente PIU' vicina alla camera
+    // di qualunque edificio alla sua stessa y — coerente con "sta ancora
+    // cadendo dal cielo", non ancora atterrata — e viene raggiunta/superata
+    // in profondita' da un edificio solo quando la sua vera -y (senza
+    // margine) supera quella dell'edificio. Senza il margine (`-bm.y` nudo,
+    // come qui prima) la bomba nasce alla y dell'AEREO che l'ha sganciata —
+    // quasi sempre MINORE della y di un edificio vicino — quindi per quasi
+    // tutta la caduta appariva gia' "dietro" l'edificio invece che sopra di
+    // lui, l'esatto difetto segnalato.
+    for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y - 400, _f: frameFor(bm.spr) });
     // Pezzi di fusoliera del bombardiere abbattuto (game/src/threats.js,
     // spawnDebris): puramente cosmetici come le bombe, stessa regola di depth.
     for (const d of debris) dynamic.push({ obj: "decor", x: d.x, y: d.y, depth: -d.y, _f: frameFor(d.spr) });
@@ -2955,6 +2969,22 @@ export async function mountMatch(ctx, params = {}) {
     // GML y=20, quindi 42-20=22).
     const hapFrame = frameFor(r12.hap >= r12.pop ? "hap3" : "hap1");
     if (hapFrame) r.draw(hapFrame, barX + 520, barY + 22, 0.62, 0xffffff, 1);
+    // Cristalli (r12.crys: balloons.js, il loot di `monviolo`; platform.js,
+    // il gettone lasciato dal monviolo in volo verso il faro) — **[I]**
+    // nuovo indicatore, richiesto dall'autore ("nella barra superiore manca
+    // un visualizzatore di gemme possedute dal giocatore"): nessun
+    // equivalente nel decompilato, `icone_oriz` (l'immagine fissa della
+    // barra risorse letta sopra) ha solo le quattro icone originali —
+    // pop/olio/energia/denaro sono TUTTO cio' che l'originale mostrava li',
+    // i cristalli sono un sistema aggiunto in questo motore (STUDIO.md).
+    // Icona "monviola_bar" (lo stesso sprite gia' usato per la cassa/il
+    // gettone di cristalli quando viene raccolto, balloons.js/platform.js)
+    // invece di disegnarne una nuova da zero — riga propria appena sotto la
+    // barra, non stipata nello stretto spazio libero a destra della faccina
+    // (troppo poco per icona+numero senza sovrapporsi a lei).
+    const crysFrame = frameFor("monviola_bar");
+    if (crysFrame) r.draw(crysFrame, barX + 6, barY + 60, 0.4, 0xffffff, 1);
+    drawText(r, fontMini, String(Math.round(r12.crys)), barX + 34, barY + 68, 1, 0x000000, 1);
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
     // ancora ricostruita (STUDIO.md §6/§9), e replica la struttura a tre

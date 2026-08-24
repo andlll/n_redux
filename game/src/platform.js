@@ -656,7 +656,20 @@ export function faroDecor(state, t) {
   if (state.tier1.stage === "expanded") out.push(...faro3Decor(state, t));
   // monviolo — [C] nessun evento Mouse nel decompilato: solo decorazione,
   // stesso trattamento delle nuvole/uccelli in atmosphere.js.
-  for (const m of state.monviolos) out.push({ obj: "decor", x: m.x, y: m.y, depth: -m.y, spr: "monviola" });
+  // [Bug corretto, segnalato dall'autore: "la mongolfiera che porta i
+  // cristalli ha problemi di depth e spesso va dietro gli edifici"] **[C]**
+  // `monviolo/Create.gml`: `depth = -3990`, un valore FISSO — esattamente
+  // lo stesso gia' usato per ogni altra mongolfiera in volo (balloons.js,
+  // spawnBalloon(): "depth = -3990 (fisso, sempre davanti al mondo)"),
+  // perche' e' lo STESSO oggetto del decompilato, solo pilotato da un
+  // percorso di volo diverso (fuori mappa -> faro, invece che sopra la
+  // piattaforma). Qui usava `-m.y`, un depth DINAMICO come un edificio o un
+  // decoro a terra: il monviolo vola a bassa quota vicino al bordo mappa
+  // (spawnMonviolo() sotto, x=-170), la sua y resta spesso sotto quella
+  // degli edifici che sorvola, quindi finiva regolarmente disegnato DIETRO
+  // di loro invece che sopra, come ogni mongolfiera in volo dovrebbe
+  // sempre essere.
+  for (const m of state.monviolos) out.push({ obj: "decor", x: m.x, y: m.y, depth: -3990, spr: "monviola" });
   // n_cluster1 — depth FISSO -7000 (STUDIO.md sopra su CLOUD_WAVE_Y: [C]
   // n_cluster1/_object.json, mai riassegnato), non -y: restano sempre in
   // primissimo piano sopra tutta la scenografia della piattaforma,
