@@ -193,6 +193,12 @@ export async function mountMatch(ctx, params = {}) {
   // primo frame: vedi stepCars() e il suo uso qui sotto. L'atlas li
   // impacchetta gia' tutti (tools/23_atlas.py itera `s["frames"]` per
   // intero), semplicemente prima non venivano mai letti oltre il primo.
+  // [I] Spostata qui (era dichiarata molto piu' sotto, vicino a LIGHT_FADE):
+  // CLUB_PULSE_PERIOD/CLUB_SNAP (sotto, addDecor()) ora la usano molto
+  // prima nel file — una `const` a livello di modulo letta prima di essere
+  // inizializzata lancerebbe un ReferenceError ("temporal dead zone"), non
+  // silenziosamente NaN.
+  const TICK = 1 / 60;              // room_speed dell'originale, stessa unita' di buildings.js
   function frameFor(sprName, frameIdx = 0) {
     const frames = atlas.sprites[sprName];
     if (!frames || !frames.length) return null;
@@ -615,16 +621,117 @@ export async function mountMatch(ctx, params = {}) {
    * parco, vedi sotto) disattiva tutto questo: resta un decoro qualunque,
    * fermo alla y del suo edificio come un albero vero, tinto dal ciclo
    * giorno/notte come qualunque altro oggetto di mondo. */
+  // [Bug corretto, segnalato dall'autore: "case e palazzi non dovrebbero
+  // essere fade in / fade out ma usare degli sprite esistenti che
+  // accendevano le finestre un po' alla volta"] **[C]** la dissolvenza in
+  // alpha di stepLights() sotto approssimava una vera animazione:
+  // `cddvd|cddvd2|cddvd3|d111/Step.gml` (chies/casa, verificati uno per
+  // uno) impostano lo sprite del decoro su una variante "...x" con MOLTE
+  // sottoimmagini vere (una finestra alla volta) e la fanno scorrere
+  // all'INDIETRO (`image_speed:-1`, dall'ultimo frame a 0) per accendersi,
+  // in AVANTI per spegnersi — mai un fade dell'immagine ferma. Ogni decoro
+  // "l" a un solo frame (es. "c111l", `data/sprites.json`) ha un gemello
+  // "x" con MOLTI frame veri nello stesso atlas ("c111x", 41..179 a
+  // seconda della casa/edificio — un frame per finestra del disegno
+  // originale, non un numero a caso): trovato qui, usato da stepLights()
+  // per scegliere il frame giusto invece di sfumare l'alpha. Due
+  // trasformazioni del nome, ENTRAMBE viste nel decompilato: la maggior
+  // parte sostituisce la "l" finale con "x" (c111l->c111x, crc2l->crc2x —
+  // cddvd2/cddvd3), il decoro base di chies invece AGGIUNGE una "x" senza
+  // toglierla (crcl->crclx — cddvd) — provate entrambe, vince la prima che
+  // esiste per davvero (frame_count>1 nell'atlas della room corrente). Se
+  // nessuna esiste (industria: `di11b/Step.gml` accende di scatto, senza
+  // scorrimento; club: `_pulse` sotto, ricolora invece di scorrere) resta
+  // `null` — stepLights() ricade sulla dissolvenza in alpha di prima,
+  // invariata per questi casi.
+  function scrubSpriteFor(spr) {
+    if (frameCountFor(spr) > 1) return spr;   // gia' lo sprite giusto (es. banca_lx)
+    const replaced = spr.slice(0, -1) + "x";
+    if (frameCountFor(replaced) > 1) return replaced;
+    const appended = spr + "x";
+    if (frameCountFor(appended) > 1) return appended;
+    return null;
+  }
+
+  // Durata VERA (in tick, cioe' in sottoimmagini nominali dell'originale) di
+  // ogni luce a scorrimento di casa/palazzo — **[C]** letta una volta da
+  // `data/sprites.json` (`frame_count`) per i 100 sprite "...x" elencati in
+  // `tools/23_atlas.py`/DEDUP_CONSECUTIVE_SPRITES. Serve perche' l'atlas
+  // impacchettato NON ha piu' tanti frame quanti erano nell'originale: la
+  // stragrande maggioranza erano duplicati byte per byte consecutivi (la
+  // stessa finestra restava accesa per diversi tick prima che se ne
+  // accendesse un'altra) e sono stati deduplicati per non costare ~1.1 GB
+  // di VRAM decompressa (vedi il commento su DEDUP_CONSECUTIVE_SPRITES nel
+  // tool) — `frameCountFor(scrubSpr)` dopo la deduplicazione riporta solo
+  // 5..12 sottoimmagini VISIVE, non piu' la vera durata dell'accensione:
+  // usarlo anche per il tempo (invece che solo per l'indice del frame da
+  // mostrare) avrebbe fatto scorrere la luce 8-19 volte piu' veloce del
+  // vero. `?? frameCountFor(scrubSpr)` sotto (stepLights()) resta il
+  // fallback per qualunque sprite scrub NON in questa tabella (es.
+  // banca_lx, mai deduplicato: la sua vera durata E' gia' il conteggio
+  // nell'atlas).
+  const SCRUB_TRUE_DURATION = {
+    c111x: 95, c112x: 90, c113x: 86, c114x: 80, c121x: 87, c122x: 65,
+    c123x: 56, c124x: 79, c131x: 90, c132x: 76, c133x: 89, c134x: 48,
+    c141x: 72, c142x: 52, c143x: 49, c144x: 69, c151x: 82, c152x: 81,
+    c153x: 67, c154x: 59, c211x: 85, c212x: 111, c213x: 95, c214x: 58,
+    c221x: 64, c222x: 52, c223x: 69, c224x: 72, c231x: 78, c232x: 92,
+    c233x: 96, c234x: 93, c241x: 61, c242x: 77, c243x: 88, c244x: 72,
+    c251x: 91, c252x: 67, c253x: 75, c254x: 88, c311x: 108, c312x: 93,
+    c313x: 91, c314x: 93, c321x: 54, c322x: 68, c323x: 82, c324x: 60,
+    c331x: 75, c332x: 51, c333x: 66, c334x: 41, c341x: 83, c342x: 96,
+    c343x: 95, c344x: 67, c351x: 64, c352x: 73, c353x: 63, c354x: 52,
+    c411sx: 126, c412dx: 179, c413sx: 149, c414dx: 62, c421x: 73, c422x: 82,
+    c423x: 74, c424x: 71, c431x: 62, c432x: 68, c433x: 62, c434x: 53,
+    c441x: 60, c442x: 52, c443x: 56, c444x: 77, c451x: 85, c452x: 54,
+    c453x: 96, c454x: 102, c511x: 115, c512x: 103, c513x: 94, c514x: 74,
+    c521x: 111, c522x: 75, c523x: 85, c524x: 106, c531x: 59, c532x: 64,
+    c533x: 76, c534x: 63, c541x: 93, c542x: 77, c543x: 71, c544x: 83,
+    c551x: 93, c552x: 91, c553x: 71, c554x: 81,
+  };
+
+  // [Bug corretto, richiesto dall'autore: "forse anche il club ne aveva una
+  // particolare (pulsava)"] **[C]** `clublite1..4/Alarm_0.gml`:
+  // `action_sprite_set(club11i, 0, 1)` — sottoimmagine 0, image_speed 1: a
+  // differenza di chies/casa (scorse a mano, `_scrubSpr`, sempre in UNA
+  // direzione secondo `_lightT`) qui GameMaker anima da SOLO, in loop
+  // continuo avanti (velocita' di default, mai piu' toccata) — "club11i"
+  // ha davvero molte sottoimmagini (`data/sprites.json`: 23..34 a seconda
+  // della variante), un vero "sfarfallio" di finestre che gira in tondo
+  // per tutta la notte, non uno scorrimento diretto una volta sola come le
+  // altre luci. `clublite1..4/Alarm_2.gml` (uno per variante, stessa
+  // logica) aggiunge sopra la RICOLORAZIONE a dado ogni 30 tick fra 4
+  // tinte equiprobabili (due `action_if_dice(2)` annidati) — il "pulsare"
+  // vero e proprio, un cambio di colore mentre lo sfarfallio gira sotto.
+  // Valori `action_sprite_color(V, 1)` ricomposti come sempre (R nel byte
+  // basso, B nel byte alto — stessa formula di ARMED_TINT/NIGHT_TINT
+  // altrove nel motore).
+  const CLUB_COLORS = [0xff7c5b, 0xff00ff, 0xffff80, 0x00ff80];
+  const CLUB_PULSE_PERIOD = 30 * TICK;
+  // [C] clublite1..4/Step.gml: accensione/spegnimento armati con SOLI 2
+  // tick di ritardo (`action_set_alarm(2, ...)`) — uno scatto quasi
+  // istantaneo, non i 200 tick di LIGHT_FADE condivisi da ogni altro
+  // decoro senza uno sprite/comportamento speciale.
+  const CLUB_SNAP = 2 * TICK;
+
   function addDecor(building, spawns, { transient = false } = {}) {
     for (const { spr, dx, dy, lit = true, fadeTicks, depthOffset = 0 } of spawns) {
       const y = building.y + dy;
+      const isClub = building.type === "club";
+      const scrubSpr = lit && !isClub ? scrubSpriteFor(spr) : null;
       decorEntities.push({
         obj: "decor", buildingId: building.id,
         x: building.x + dx, y, depth: (lit ? -y - 1 : -y) + depthOffset,
         spr, _f: frameFor(spr),
         // `fadeTicks` (grattacielo, buildings.js): dissolvenza propria invece
         // della LIGHT_FADE condivisa da tutti gli altri decori — vedi stepLights().
-        ...(lit ? { _selfLit: true, _lightT: 0, _fadeTicks: fadeTicks } : {}),   // parte spento, come "empty" in originale (Create.gml)
+        // `_scrubSpr`/`_scrubFrames`: vero scorrimento a sottoimmagini invece
+        // della dissolvenza (scrubSpriteFor() sopra). `_pulse`: club, vedi sopra.
+        ...(lit ? {
+          _selfLit: true, _lightT: 0, _fadeTicks: fadeTicks,
+          ...(scrubSpr ? { _scrubSpr: scrubSpr, _scrubFrames: frameCountFor(scrubSpr) } : {}),
+          ...(isClub ? { _pulse: true, _pulseFrames: frameCountFor(spr) } : {}),
+        } : {}),   // parte spento, come "empty" in originale (Create.gml)
         // `transient` (addConstructionSpawn() sotto): decoro di cantiere
         // (gru/topper), escluso dal filtro di spawnDecor() — sparisce solo in
         // removeTransientDecor(), alla vera fine del cantiere.
@@ -1395,13 +1502,19 @@ export async function mountMatch(ctx, params = {}) {
   //     invece di esserne oscurati.
   //  2. Comparivano/sparivano di scatto: l'originale anima la transizione con
   //     uno sprite dedicato (es. "crclx", un frame per tick, giocato
-  //     all'indietro per accendersi/in avanti per spegnersi — vedi
-  //     tools/23_atlas.py per perche' non lo impacchettiamo pixel per pixel:
-  //     e' una dissolvenza in alpha dello stesso disegno, non un effetto
-  //     diverso frame per frame). Qui la stessa dissolvenza e' un fade in
-  //     alpha sullo sprite fermo gia' caricato, con la stessa durata
-  //     (200 tick, cddvd/Step.gml — la piu' comune fra i vari decori).
-  const TICK = 1 / 60;              // room_speed dell'originale, stessa unita' di buildings.js
+  //     all'indietro per accendersi/in avanti per spegnersi). **[Bug
+  //     corretto, segnalato dall'autore: "case e palazzi non dovrebbero
+  //     essere fade in / fade out ma usare degli sprite esistenti che
+  //     accendevano le finestre un po' alla volta"]** una prima lettura
+  //     aveva liquidato questo come "una dissolvenza in alpha dello stesso
+  //     disegno, non un effetto diverso frame per frame" e implementato
+  //     solo quello — ma i frame SONO diversi (finestre diverse accese
+  //     l'una dopo l'altra, non la stessa immagine piu' o meno trasparente):
+  //     `scrubSpriteFor()`/`_scrubSpr` sopra ora trovano e scorrono lo
+  //     sprite vero a molti frame per chies/casa/palazzo (chi ce l'ha —
+  //     industria non scorre affatto nel decompilato, club ricolora invece
+  //     di scorrere, `_pulse` sopra). Il fade in alpha sotto resta il
+  //     fallback per tutto il resto (nessuno sprite "x" trovato).
   const LIGHT_FADE = 200 * TICK;
   const UPSIGN_DEPTH = -9001;        // [C] upsign12/_object.json: depth = -9001
   // Segnali cliccabili della catena fari (game/src/platform.js): stesso
@@ -1426,6 +1539,55 @@ export async function mountMatch(ctx, params = {}) {
       // zero). Le altre finestre (m3l1..9) hanno ognuna la propria durata;
       // tutto il resto del motore lascia `_fadeTicks` undefined e riusa LIGHT_FADE.
       if (d._fadeTicks === 0) { d._alpha = lit ? 1 : 0; continue; }
+      // Club (`_pulse`, addDecor() sopra): accensione/spegnimento quasi di
+      // scatto (CLUB_SNAP, 2 tick — vedi clublite1..4/Step.gml) invece della
+      // dissolvenza comune, poi ricolora a dado ogni CLUB_PULSE_PERIOD (30
+      // tick) fra le 4 tinte di CLUB_COLORS mentre resta accesa — il
+      // "pulsare" al neon richiesto dall'autore.
+      if (d._pulse) {
+        d._lightT = Math.max(0, Math.min(CLUB_SNAP, d._lightT + (lit ? dt : -dt)));
+        d._alpha = d._lightT >= CLUB_SNAP ? 1 : 0;
+        if (d._alpha) {
+          // Sfarfallio in loop (vedi il commento su CLUB_COLORS sopra):
+          // GameMaker a image_speed:1 avanza 1 sottoimmagine per tick,
+          // riavvolgendo da solo — stesso calcolo di WIND_ANIM_FPS/
+          // frameCountFor per l'eolico, qui sempre alla velocita' base
+          // (nessun `curSpd` da leggere, il club non ne ha uno). Riusa
+          // `_pulseT` (sotto) anche come orologio dell'animazione: un solo
+          // timer per "quale finestra e' accesa adesso" e "quando tocca
+          // ricolorare", coerente con la loro stessa cadenza nel
+          // decompilato (30 frame di sfarfallio ~ 30 tick di ricolorazione).
+          if (d._pulseFrames > 1) d._f = frameFor(d.spr, Math.floor((d._pulseT ?? 0) * 60) % d._pulseFrames);
+          d._pulseT = (d._pulseT ?? 0) + dt;
+          if (d._pulseT >= CLUB_PULSE_PERIOD) {
+            d._pulseT -= CLUB_PULSE_PERIOD;
+            d._tint = CLUB_COLORS[(Math.random() * CLUB_COLORS.length) | 0];
+          }
+        }
+        continue;
+      }
+      // Chies/casa/palazzo (`_scrubSpr`/`_scrubFrames`, addDecor() sopra):
+      // vero scorrimento a sottoimmagini invece di una dissolvenza —
+      // `_lightT` resta lo stesso timer 0..`fade` di sempre, ma la durata e'
+      // quella VERA dello sprite (un frame per tick, `_scrubFrames` tick in
+      // tutto — non piu' LIGHT_FADE) e pilota quale finestra e' accesa
+      // invece di quanto e' trasparente l'intero disegno: **[C]** all'inizio
+      // dell'accensione (`_lightT` appena sopra 0) e' il frame PIU' alto
+      // (poche finestre accese, come `action_sprite_set(x, frames-1, -1)`
+      // nel decompilato), a fine accensione (`_lightT` = `fade`) il frame 0
+      // (tutte accese) — `_alpha` resta un semplice on/off (0 esatto solo a
+      // "mai acceso"/"spenta del tutto": lo sprite stesso, non l'alpha,
+      // comunica quante finestre sono accese in questo istante).
+      if (d._scrubSpr) {
+        // `SCRUB_TRUE_DURATION` (sopra): la durata VERA, non il conteggio
+        // (deduplicato) di `_scrubFrames` — vedi il commento li' per il perche'.
+        const fade = (SCRUB_TRUE_DURATION[d._scrubSpr] ?? d._scrubFrames) * TICK;
+        d._lightT = Math.max(0, Math.min(fade, d._lightT + (lit ? dt : -dt)));
+        d._alpha = d._lightT > 0 ? 1 : 0;
+        const frameIdx = Math.round((1 - d._lightT / fade) * (d._scrubFrames - 1));
+        d._f = frameFor(d._scrubSpr, frameIdx);
+        continue;
+      }
       const fade = d._fadeTicks != null ? d._fadeTicks * TICK : LIGHT_FADE;
       d._lightT = Math.max(0, Math.min(fade, d._lightT + (lit ? dt : -dt)));
       d._alpha = d._lightT / fade;
