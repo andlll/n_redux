@@ -161,10 +161,19 @@ const WEAPONS = {
   // sola, a differenza del razzo che lo riarma di continuo in volo).
   gatling: {
     kind: "projectile", twin: true, muzzle: GATLING_MUZZLE,
-    cooldown: 50 * TICK,                 // [I] vedi buildings.js: il vero riarmo di `launching` e' un piccolo stato
-    // (spra/amove/Alarm_9|11) non riprodotto — 50 tick e' quando `spra`
-    // torna a 0 (Alarm_9) e la mira/il prossimo sparo vero tornano
-    // possibili, il numero piu' difendibile come "ricarica effettiva".
+    // [Bug corretto, segnalato dall'autore: "il gatling spara troppo
+    // lentamente (probabilmente ha erroneamente lo stesso tempo di
+    // cooldown del lanciarazzi)"] **[C]** una lettura precedente aveva
+    // preso i 50 tick di `gatlinggun/Alarm_9.gml` (che riarma `spra`, il
+    // flag della POSA di rinculo — vedi buildings.js, TURRET_SPRITE_TABLES.
+    // gatlingRecoil/GATLING_RECOIL_HOLD, ora davvero usato per quello) per
+    // il tempo di ricarica fra due colpi: risultato, un gatling che sparava
+    // alla stessa cadenza (quasi) del missile (40 tick, sopra) invece di
+    // essere l'arma rapida che e' nel decompilato. Il vero riarmo del
+    // COLPO e' `Alarm_6.gml`, armato a `action_set_alarm(6, 6)` a ogni
+    // scarica: `launching = 1;` (di nuovo in grado di sparare) 6 tick dopo,
+    // non 50.
+    cooldown: 6 * TICK,
     speed: 60, life: 50 * TICK, spr: "gatmissse", damage: DAMAGE.gatling,
     hitRadius: 70,                       // [I] proiettile piccolo, stessa logica di missile.hitRadius sopra
     ammoCost: { mon: 3 },                // per proiettile, non per scarica

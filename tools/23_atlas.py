@@ -131,11 +131,15 @@ GAMEPLAY_SPRITES = {
         # cantiere impagatlingr/impagatlingf — riusano gli stessi ir1x/if1x/
         # "toppers" di sopra, nessuno sprite di cantiere in piu'). "nm1a"..
         # "nm16a" sono i 16 sprite di mira del cannone (gatlinggun/Step.gml,
-        # sprite_index risolti per indice come "lrn1".."lrn16" sopra) — solo
-        # le pose "a": le "b" (nm1b..nm16b) sono la posa di rinculo dopo lo
-        # sparo, non riprodotta (game/src/buildings.js).
+        # sprite_index risolti per indice come "lrn1".."lrn16" sopra). Le "b"
+        # (nm1b..nm16b) sono la posa di rinculo dopo lo sparo — **[Bug
+        # corretto, segnalato dall'autore: "sembra manchino le animazioni"]**
+        # ora riprodotta (game/src/buildings.js, TURRET_SPRITE_TABLES.
+        # gatlingRecoil), quindi servono anche loro nell'atlante.
         "nm1a", "nm2a", "nm3a", "nm4a", "nm5a", "nm6a", "nm7a", "nm8a",
         "nm9a", "nm10a", "nm11a", "nm12a", "nm13a", "nm14a", "nm15a", "nm16a",
+        "nm1b", "nm2b", "nm3b", "nm4b", "nm5b", "nm6b", "nm7b", "nm8b",
+        "nm9b", "nm10b", "nm11b", "nm12b", "nm13b", "nm14b", "nm15b", "nm16b",
         # laser: decimo edificio, terza torretta (src/objects/lasergun,
         # cantiere impalaser_r/impalaser_f — riusano ir1x/if1x/"toppers"/
         # "gr21" di sopra, nessuno sprite di cantiere in piu'). "lan1"..

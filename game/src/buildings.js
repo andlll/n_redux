@@ -893,7 +893,21 @@ export const BUILDING_TYPES = {
     placeCost: { mon: 50000 },   // [C] eoliplacer/Alarm_1.gml, ramo selec==4
     // [C] placeholder/Mouse_LeftReleased.gml: `anchorOffset` e' l'offset FISSO
     // (98, 0) di eoliplacer dal placeholder toccato, vedi il commento sopra.
-    multiTile: { count: 4, radius: 130, anchorOffset: { dx: 98, dy: 0 } },
+    // [Bug corretto, segnalato dall'autore: "gli edifici spesso occupano
+    // spazi non destinati ad edifici"] **[I]** `radius` (qui e su
+    // `grattacielo` sotto) ora misura la distanza dei 3 lotti extra
+    // dall'ANCORA VISIVA (main.js, findPlacementCluster()), non piu' dal
+    // placeholder toccato — la ricerca risultante e' molto piu' severa (deve
+    // trovare lotti VICINI A DOVE L'EDIFICIO SI VEDE, non semplicemente
+    // vicini al tocco). 130 (tarato sul vecchio schema "vicino al tocco") non
+    // bastava piu' a raggiungere l'anello di vicini immediati intorno
+    // all'ancora spostata (misurato su game/data/match.scene.json: i lotti
+    // che appartengono davvero al gruppo dell'ancora stanno a ~60-125px,
+    // contro un salto secco a >150px per il prossimo lotto "vero" della
+    // griglia) — 175 copre quell'anello con un margine, restando pero' ben
+    // sotto i >200px dei lotti chiaramente estranei che il vecchio raggio
+    // (usato dal punto sbagliato) a volte catturava.
+    multiTile: { count: 4, radius: 175, anchorOffset: { dx: 98, dy: 0 } },
     // [C] eoli/Alarm_0.gml: ogni 30 tick, SEMPRE +110 ele — a differenza di
     // industria non consuma `oil` (un generatore vero, non una centrale a
     // combustibile) e non e' gated su niente: `stepWindProduction()` sotto,
@@ -1504,7 +1518,21 @@ export const BUILDING_TYPES = {
       finalSprite: "banca_img", life: 1300,         // [C] banca1/Create.gml
       wewe: 70,                                       // [C] banca1/Create.gml: wewe += 70 — peso su `match`, state.js
       ruin: ["ru31", "ru32", "ru33", "ru34"],       // [C] ruin3/Create.gml: dado uniforme fra 4, stesso oggetto di industria3/casa3/lasergun
-      decor: ["banca_l"],                           // [C] banca1/Create.gml: create_object(banca1_light)
+      // [Bug corretto, segnalato dall'autore: "la banca non ha illuminazione
+      // ma dovrebbe averla"] **[C]** `banca1_light/Create.gml` nasce con
+      // sprite "empty" (invisibile) e NESSUN `action_set_alarm` che armi il
+      // proprio `Alarm_0` (quello che punterebbe a "banca_l", un frame
+      // singolo, `data/sprites.json`: 1 sottoimmagine) — quell'alarm non
+      // scatta mai, codice morto. Il vero interruttore e' `Step.gml`: notte
+      // + `r12.ele>=0` -> `action_sprite_set(banca_lx, 19, -1)` (20
+      // sottoimmagini vere, un frame per l'accensione scrubbing all'indietro
+      // — stesso principio del bagliore delle altre finestre, qui con una
+      // sagoma dedicata invece del solito quadratino "*l"). "banca_l" era
+      // quindi lo sprite SBAGLIATO: mai mostrato nel decompilato, la banca
+      // restava percio' sempre buia qui. `_selfLit` gia' gestisce la
+      // dissolvenza in alpha (stepLights(), main.js) sullo stesso frame 0 di
+      // "banca_lx", coerente con ogni altra luce del motore.
+      decor: ["banca_lx"],
       steps: [
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
         { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
@@ -1625,7 +1653,11 @@ export const BUILDING_TYPES = {
     // `eoliplacer` — che a sua volta nasce a (98, 0) dal placeholder toccato
     // (STUDIO.md, stessa istanza condivisa col ramo eolico): il vero centro
     // e' quindi `placeholder + (98, 116)`, non la media del cluster.
-    multiTile: { count: 4, radius: 130, anchorOffset: { dx: 98, dy: 116 } },
+    // [I] `radius` 175, non 130: stesso fix di raggio di `BUILDING_TYPES.
+    // eolico` sopra (main.js, findPlacementCluster() ora cerca dall'ancora,
+    // non dal tocco) — qui ancora piu' necessario, l'ancora di grattacielo e'
+    // spostata (98, 116) dal tocco, quasi il doppio di eolico.
+    multiTile: { count: 4, radius: 175, anchorOffset: { dx: 98, dy: 116 } },
     construct: {
       finalSprite: "m3x14", life: 99999,   // [C] m3cant/Alarm_0.gml fase 13; [I] indistruttibile, vedi sopra
       decor: [
@@ -2479,18 +2511,29 @@ function dirTable(prefix, suffix = "") {
 }
 const TURRET_SPRITE_TABLES = {
   missile: dirTable("lrn"),
-  // [I] gatlinggun/Step.gml alterna anche una posa di rinculo dopo ogni
-  // scarica (le "b", sprite_index dispari, pilotate da un piccolo stato
-  // (`spra`/`amove`/Alarm_9|11) che fa lampeggiare il cannone per ~50 tick
-  // dopo lo sparo) — non replicata: e' un dettaglio cosmetico del singolo
-  // sparo, non della mira continua che questa tabella serve, e la stessa
-  // macchina a stati aggiungerebbe parecchia complessita' per un lampeggio
-  // che dura meno di un secondo. Restano solo le pose di mira "a".
   gatling: dirTable("nm", "a"),
+  // [Bug corretto, segnalato dall'autore: "il gatling... sembra manchino le
+  // animazioni"] **[C]** `gatlinggun/Step.gml` alterna anche una posa di
+  // rinculo dopo ogni scarica: le "b" (sprite_index dispari, es. nm1b),
+  // pilotate da `spra`/`amove`/Alarm_9|11 — Alarm_11 (3 tick dopo lo sparo)
+  // passa alla posa "b", e ci resta finche' non arriva Alarm_9 (riarmato a
+  // 50 tick da OGNI rilascio del pulsante, `Mouse_GlobalLeftReleased.gml`)
+  // a riportare `spra` a 0 e restituire lo sprite alla posa di mira "a". In
+  // pratica: durante uno sparo prolungato lo sprite resta "in rinculo"
+  // quasi ininterrottamente (ogni nuovo colpo si riarma prima che Alarm_9
+  // scatti), tornando alla posa di mira solo ~50 tick dopo l'ULTIMO colpo —
+  // una lettura precedente aveva scambiato questi stessi 50 tick per il
+  // tempo di ricarica fra due colpi (WEAPONS.gatling.cooldown in
+  // projectiles.js, corretto qui accanto), liquidando l'intera posa "b"
+  // come "un lampeggio che dura meno di un secondo" da non replicare.
+  gatlingRecoil: dirTable("nm", "b"),
   laser: dirTable("lan"),
 };
-function turretSprFor(type, angleDeg) {
-  const table = TURRET_SPRITE_TABLES[type];
+// [C] gatlinggun/Alarm_9.gml: 50 tick dall'ultimo sparo prima che la posa di
+// rinculo ("b") torni alla posa di mira ("a") — vedi il commento sopra.
+const GATLING_RECOIL_HOLD = 50 * TICK;
+function turretSprFor(type, angleDeg, recoiling) {
+  const table = (recoiling && TURRET_SPRITE_TABLES[type + "Recoil"]) || TURRET_SPRITE_TABLES[type];
   const a = ((angleDeg % 360) + 360) % 360;
   for (const bucket of table) if (a <= bucket.max) return bucket.spr;
   return table[table.length - 1].spr;
@@ -2565,7 +2608,13 @@ export function stepTurretAim(buildings, threats, balloons) {
     }
     if (!nearest) { b.aimAngle = null; b.aimTarget = null; continue; }
     const angle = (Math.atan2(-(nearest.y - b.y), nearest.x - b.x) * 180) / Math.PI;
-    b.spr = turretSprFor(b.type, angle);
+    // [Bug corretto] `b.fireT` (game/src/projectiles.js: azzerato a ogni
+    // colpo, poi conta il tempo trascorso dall'ultimo) e' esattamente il
+    // "tempo dall'ultimo sparo" che governa anche la posa di rinculo vera
+    // (vedi TURRET_SPRITE_TABLES/GATLING_RECOIL_HOLD sopra) — nessun nuovo
+    // stato da tracciare, riusa quello che il fuoco gia' mantiene.
+    const recoiling = (b.fireT ?? Infinity) < GATLING_RECOIL_HOLD;
+    b.spr = turretSprFor(b.type, angle, recoiling);
     // [C] rocket_launcher/Step.gml: `direttorio` (l'angolo verso il
     // veicolo piu' vicino) sceglie anche da quale punta del cannone
     // sparerebbe il razzo (game/src/projectiles.js, MUZZLE_OFFSETS) — ma

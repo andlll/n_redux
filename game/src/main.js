@@ -725,19 +725,32 @@ export async function mountMatch(ctx, params = {}) {
   }
 
   /**
-   * `eolico` (buildings.js, `def.multiTile`) e' l'unico edificio che occupa
-   * PIU' di un placeholder — vedi il commento su `BUILDING_TYPES.eolico` in
-   * buildings.js per il perche'. Cerca fra i placeholder ancora liberi quelli
-   * entro `radius` da quello toccato (il piu' vicino per primo) e ne
-   * restituisce `count` in tutto (quello toccato incluso) — `null` se non ce
-   * ne sono abbastanza vicini. [I] Approssimazione dichiarata di una vera
-   * maschera di collisione (STUDIO.md, "pepazzittecollider" mai ricostruito).
+   * `eolico`/`grattacielo` (buildings.js, `def.multiTile`) sono gli unici
+   * edifici che occupano PIU' di un placeholder — vedi il commento su
+   * `BUILDING_TYPES.eolico` in buildings.js per il perche'. Cerca fra i
+   * placeholder ancora liberi quelli entro `radius` dall'ANCORA VISIVA
+   * dell'edificio (`anchorX/anchorY` — il placeholder toccato piu' l'offset
+   * fisso di `def.multiTile.anchorOffset`, calcolato da placeAt()), il piu'
+   * vicino per primo, e ne restituisce `count` in tutto (il placeholder
+   * TOCCATO sempre incluso, indipendentemente dalla sua distanza
+   * dall'ancora). **[Bug corretto, segnalato dall'autore: "il piazzamento di
+   * eolico/grattacielo... occupano spazi non destinati ad edifici"]** una
+   * versione precedente cercava i vicini piu' vicini al TOCCO (`tapped.x/y`)
+   * invece che all'ancora: per un'ancora spostata di 98-150px dal tocco
+   * (`anchorOffset`, sopra) quello sceglieva spesso lotti dalla parte
+   * sbagliata rispetto a dove l'edificio si vede davvero, lasciando liberi
+   * (mai bloccati) i lotti veri sotto lo sprite — un secondo edificio poteva
+   * nascere proprio li', sovrapponendosi visivamente al primo. `null` se non
+   * ce ne sono abbastanza vicini all'ancora — un rifiuto esplicito (vedi
+   * placeAt()) e' preferibile a un piazzamento "riuscito" ma disallineato.
+   * [I] Approssimazione dichiarata di una vera maschera di collisione
+   * (STUDIO.md, "pepazzittecollider" mai ricostruito).
    */
-  function findPlacementCluster(tapped, count, radius) {
+  function findPlacementCluster(tapped, anchorX, anchorY, count, radius) {
     const r2 = radius * radius;
     const near = placeholders
-      .filter((p) => p !== tapped && !p.consumed && (p.x - tapped.x) ** 2 + (p.y - tapped.y) ** 2 <= r2)
-      .sort((a, b) => ((a.x - tapped.x) ** 2 + (a.y - tapped.y) ** 2) - ((b.x - tapped.x) ** 2 + (b.y - tapped.y) ** 2));
+      .filter((p) => p !== tapped && !p.consumed && (p.x - anchorX) ** 2 + (p.y - anchorY) ** 2 <= r2)
+      .sort((a, b) => ((a.x - anchorX) ** 2 + (a.y - anchorY) ** 2) - ((b.x - anchorX) ** 2 + (b.y - anchorY) ** 2));
     if (near.length < count - 1) return null;
     return [tapped, ...near.slice(0, count - 1)];
   }
@@ -772,12 +785,31 @@ export async function mountMatch(ctx, params = {}) {
     if (!def.noAffordCheck && !canAfford(r12, def.placeCost)) {
       return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
     }
+    // `eolico`/`grattacielo` (def.multiTile.anchorOffset): il centro visivo
+    // e' il placeholder TOCCATO piu' l'offset FISSO letto dal decompilato
+    // (BUILDING_TYPES in buildings.js — `placeholder/Mouse_LeftReleased.gml`,
+    // dove nasce `eoliplacer`), non la media del cluster trovato sotto.
+    // Calcolato QUI, prima della ricerca del cluster: **[Bug corretto,
+    // segnalato dall'autore: "il piazzamento di eolico/grattacielo... spesso
+    // occupano spazi non destinati ad edifici"]** una versione precedente
+    // cercava i 3 lotti extra piu' vicini al placeholder TOCCATO (sotto il
+    // tocco del giocatore), non all'ancora visiva sopra — per `eolico` (dx
+    // 98) e ancora di piu' per `grattacielo` (dx 98, dy 116, il doppio dello
+    // spostamento) il punto dove l'edificio si vede DAVVERO puo' stare a
+    // 100-150px dal tocco: cercare i vicini "piu' vicini al tocco" prendeva
+    // spesso lotti dalla parte OPPOSTA rispetto a dove l'edificio si vede,
+    // lasciando liberi (mai bloccati) i lotti veri sotto lo sprite — un
+    // edificio successivo poteva quindi nascere proprio li', sovrapponendosi
+    // visivamente alla turbina/al grattacielo gia' costruito.
+    const off = def.multiTile?.anchorOffset;
+    const anchorX = off ? placeholder.x + off.dx : placeholder.x;
+    const anchorY = off ? placeholder.y + off.dy : placeholder.y;
     // [C] eoliplacer/Alarm_1.gml controlla `places>=4` DOPO aver gia' verificato
     // i mon (stesso ordine qui) — a differenza dell'originale (fallisce in
     // silenzio, vedi buildings.js) restituisce sempre un messaggio chiaro.
     let cluster = [placeholder];
     if (def.multiTile) {
-      cluster = findPlacementCluster(placeholder, def.multiTile.count, def.multiTile.radius);
+      cluster = findPlacementCluster(placeholder, anchorX, anchorY, def.multiTile.count, def.multiTile.radius);
       if (!cluster) return `serve un'area libera di almeno ${def.multiTile.count} lotti vicini`;
     }
     for (const k in def.placeCost) r12[k] -= def.placeCost[k];
@@ -801,23 +833,18 @@ export async function mountMatch(ctx, params = {}) {
     // (parco, buildings.js — [I] segnalato dall'autore) e' l'eccezione: bassa
     // scenografia piatta, non un edificio solido, resta sempre "in fondo"
     // invece di competere per -y con cio' che le passa sopra.
-    // `eolico` (def.multiTile.anchorOffset): il centro visivo e' il
-    // placeholder TOCCATO piu' l'offset FISSO (98, 0) letto dal decompilato
-    // (BUILDING_TYPES.eolico in buildings.js — `placeholder/Mouse_
-    // LeftReleased.gml`, dove nasce `eoliplacer`), non la media dei 4 lotti
-    // del cluster trovato sopra. [Bug corretto] La media era un punto che si
-    // sposta a seconda di QUALI 3 vicini `findPlacementCluster()` sceglie
-    // (dipende dalla disposizione isometrica irregolare dei placeholder
-    // intorno al tocco) — quasi mai il punto vero, da cui il disallineamento
-    // segnalato piu' volte dall'autore ("il cantiere della turbina continua
-    // ad essere disallineato dalle caselle vuote sottostanti"). Il cluster
-    // trovato da `findPlacementCluster()` resta comunque necessario: serve a
-    // sapere QUALI 4 lotti liberi consumare/bloccare (sopra), solo il centro
-    // di disegno non dipende piu' da lui.
-    const off = def.multiTile?.anchorOffset;
-    const anchorX = off ? placeholder.x + off.dx : placeholder.x;
-    const anchorY = off ? placeholder.y + off.dy : placeholder.y;
     const b = placeBuilding(type, anchorX, anchorY, def.fixedDepth ?? 0);
+    // [Bug corretto] `b.tiles`: i lotti REALMENTE consumati da questo
+    // edificio (l'intero `cluster` sopra, tocco incluso) salvati sull'
+    // istanza stessa — demolishMultiTile()/doLoad() sotto li usano per
+    // liberare/ri-bloccare esattamente questi lotti, invece di ricalcolare
+    // (e sbagliare) una nuova ricerca "cosa sta vicino a b.x,b.y": `b.x/b.y`
+    // ora e' l'ancora visiva (sopra), un punto che quasi mai coincide con le
+    // coordinate di un placeholder vero, a differenza di prima del fix
+    // sull'ancora — cercare "il placeholder con le stesse coordinate di
+    // b.x/b.y" (quello che facevano entrambe le funzioni) non trovava piu'
+    // mai nulla per un edificio multi-tile.
+    if (def.multiTile) b.tiles = cluster.map((ph) => ({ x: ph.x, y: ph.y }));
     buildings.push(b);
     if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
     // [C] placeholder/Mouse_LeftReleased.gml, letto riga per riga: selec==1
@@ -1113,33 +1140,36 @@ export async function mountMatch(ctx, params = {}) {
   }
 
   /**
-   * Il caso a parte della ruspa su `eolico` (`def.construct.ruspaDemolish`,
-   * buildings.js): **[C]** `impavent_dem/Alarm_2.gml`, a differenza di OGNI
-   * altro "_demo", non ricostruisce l'edificio — crea 4 `placeholder` (agli
-   * stessi offset ±98/±58 di `impavent/Alarm_2.gml` per i suoi 4 lotti) e si
-   * autodistrugge: una pala eolica ruspata torna terreno libero, non una pala
-   * eolica nuova. Qui equivale a togliere l'edificio da `buildings` e
-   * liberare i 4 lotti che aveva consumato — [I] lo stesso raggio di ricerca
-   * approssimato gia' usato da findPlacementCluster()/multiTile in placeAt()
-   * invece di una vera maschera di collisione (STUDIO.md, "pepazzittecollider"
-   * mai ricostruito): il lotto toccato (sempre un vero `placeholder`, mai
-   * rimosso dall'array — solo `consumed`) torna libero, e i 3 `blockedSlots`
-   * piu' vicini entro lo stesso raggio di piazzamento tornano `placeholders`
-   * veri invece di restare bloccati per sempre.
+   * Il caso a parte della ruspa su `eolico`/`grattacielo`
+   * (`def.construct.ruspaDemolish`, buildings.js): **[C]**
+   * `impavent_dem/Alarm_2.gml`, a differenza di OGNI altro "_demo", non
+   * ricostruisce l'edificio — crea 4 `placeholder` (agli stessi offset
+   * ±98/±58 di `impavent/Alarm_2.gml` per i suoi 4 lotti) e si autodistrugge:
+   * una pala eolica ruspata torna terreno libero, non una pala eolica nuova.
+   * Qui equivale a togliere l'edificio da `buildings` e liberare i 4 lotti
+   * che aveva consumato — **[Bug corretto, segnalato dall'autore: "il
+   * piazzamento di eolico/grattacielo... occupano spazi non destinati ad
+   * edifici"]** una versione precedente ricalcolava QUI da zero "quali lotti
+   * appartengono a questo edificio" cercando un placeholder alle stesse
+   * coordinate di `b.x/b.y` — coordinate che da quando `anchorOffset`
+   * (buildings.js) sposta l'ancora visiva lontano dal placeholder toccato
+   * (98-150px) non coincidono PIU' MAI con un placeholder vero: quel `find()`
+   * falliva sempre in silenzio (nessun errore, semplicemente `ph`
+   * `undefined`), quindi il lotto toccato non tornava mai libero dopo una
+   * demolizione — restava bloccato per sempre, un vicolo cieco invisibile.
+   * `b.tiles` (placeAt() in questo file: l'intero cluster di lotti REALMENTE
+   * consumati alla costruzione, tocco incluso) elimina la necessita' di
+   * ricalcolare/indovinare nulla: libera esattamente quei lotti, esattamente
+   * quelli bloccati. `?? [{x:b.x,y:b.y}]` resta per un salvataggio scritto
+   * prima di questo fix (nessun `tiles` salvato): degrada al comportamento
+   * precedente (probabilmente ancora sbagliato per quell'edificio specifico)
+   * invece di rompersi.
    */
   function demolishMultiTile(b) {
-    const def = BUILDING_TYPES[b.type];
-    const ph = placeholders.find((p) => p.x === b.x && p.y === b.y);
-    if (ph) ph.consumed = false;
-    const r2 = def.multiTile.radius * def.multiTile.radius;
-    const near = blockedSlots
-      .filter((s) => (s.x - b.x) ** 2 + (s.y - b.y) ** 2 <= r2)
-      .sort((a, c) => ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) - ((c.x - b.x) ** 2 + (c.y - b.y) ** 2))
-      .slice(0, def.multiTile.count - 1);
-    for (const s of near) {
-      blockedSlots = blockedSlots.filter((x) => x !== s);
-      const already = placeholders.find((p) => p.x === s.x && p.y === s.y);
-      if (already) already.consumed = false;
+    for (const t of b.tiles ?? [{ x: b.x, y: b.y }]) {
+      const ph = placeholders.find((p) => p.x === t.x && p.y === t.y);
+      if (ph) ph.consumed = false;
+      blockedSlots = blockedSlots.filter((s) => !(s.x === t.x && s.y === t.y));
     }
     decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
     buildings = buildings.filter((x) => x !== b);
@@ -1174,9 +1204,20 @@ export async function mountMatch(ctx, params = {}) {
     decorEntities = [];
     const usedIds = new Set();
     for (const b of buildings) {
-      // ricostruisce quale placeholder e' occupato dalla posizione salvata
-      const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === b.x && p.y === b.y);
-      if (ph) { ph.consumed = true; usedIds.add(ph.id); }
+      // ricostruisce quali placeholder sono occupati dalla posizione
+      // salvata. [Bug corretto] `b.tiles` (placeAt(), sopra): per un
+      // edificio multi-tile (eolico/grattacielo) `b.x/b.y` e' l'ancora
+      // visiva, spostata dal placeholder toccato — cercarne uno "alle stesse
+      // coordinate di b.x/b.y" (come si faceva qui) non trova mai nulla per
+      // loro, quindi dopo un caricamento il lotto toccato tornava
+      // silenziosamente libero: un secondo edificio poteva nascere proprio
+      // li', sovrapposto a quello ricaricato. `?? [{x:b.x,y:b.y}]`: un
+      // edificio a un solo lotto (niente `tiles`) o un salvataggio scritto
+      // prima di questo fix si comportano come prima, invariati.
+      for (const t of b.tiles ?? [{ x: b.x, y: b.y }]) {
+        const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === t.x && p.y === t.y);
+        if (ph) { ph.consumed = true; usedIds.add(ph.id); }
+      }
       if (b.level >= 1) spawnDecor(b, currentDecor(b));
     }
     // Ruderi (destroyBuilding() sopra): `_f`/`cost` non sono salvati
@@ -1746,12 +1787,12 @@ export async function mountMatch(ctx, params = {}) {
   // osservabile (appaiono solo a soglia raggiunta), non lo stesso layout a
   // pixel. `unlocked()` legge `pu1/Step.gml` riga per riga (operatori 2=">",
   // 4=">=", gia' stabiliti nel resto del progetto): monum a `distrutti>49`
-  // (aerei abbattuti, STUDIO.md/state.js), banca a `chies.level>1 &&
-  // pop>=3000`. Restano nascosti una volta gia' costruiti — [I]:
-  // nell'originale un flag "gia' assegnato" mai identificato con certezza
-  // ottiene lo stesso risultato (il bottone non ricompare per un secondo
-  // esemplare), qui basta controllare se esiste gia' un edificio di quel
-  // tipo.
+  // (aerei abbattuti, STUDIO.md/state.js), banca a `instance_count(monum)>0
+  // && chies.level>1 && pop>=3000`. Restano nascosti una volta gia'
+  // costruiti — [I]: nell'originale un flag "gia' assegnato" mai
+  // identificato con certezza ottiene lo stesso risultato (il bottone non
+  // ricompare per un secondo esemplare), qui basta controllare se esiste
+  // gia' un edificio di quel tipo.
   const STAR_BUILDINGS = [
     {
       type: "monum", selec: 71, spr: "sta1", sprSel: "sta1s", label: "Monumento", cost: 20000,
@@ -1759,21 +1800,46 @@ export async function mountMatch(ctx, params = {}) {
     },
     {
       type: "banca", selec: 72, spr: "sta2", sprSel: "sta2s", label: "Banca", cost: 0,
+      // [Bug corretto, segnalato dall'autore: "lo sblocco della banca
+      // dovrebbe essere subordinato... alla creazione del monumento"]
+      // **[C]** `pu1/Step.gml`: la create di `stella2` e' annidata dentro
+      // `action_if_number(190, 0, 2)` — 190 e' l'indice oggetto di `monum`
+      // (data/objects.json), l'operatore 2 e' ">": "instance_count(monum) >
+      // 0". Una lettura precedente aveva letto solo le condizioni PIU'
+      // interne (chies.level/pop) senza risalire al blocco che le contiene,
+      // perdendo questo primo requisito — senza un monumento gia' in piedi
+      // la banca non doveva mai comparire, indipendentemente da livello di
+      // chies o popolazione.
       unlocked: () => {
         const chies = buildings.find((b) => b.type === "chies");
-        return !!chies && chies.level > 1 && r12.pop >= 3000 && !buildings.some((b) => b.type === "banca");
+        return buildings.some((b) => b.type === "monum")
+          && !!chies && chies.level > 1 && r12.pop >= 3000 && !buildings.some((b) => b.type === "banca");
       },
     },
     // Terza stella: `grattacielo` (buildings.js — corregge la conclusione
     // precedente che la scambiava per un secondo sblocco di eolico, vedi il
-    // commento su BUILDING_TYPES.grattacielo). **[C]** `banca1_light/
-    // Create.gml` arma `stella3` alla PRIMA banca costruita (dietro due flag
-    // "run once", stesso idioma di `distrutti` per il monumento) — non una
-    // soglia a parte come le prime due stelle: `unlocked()` qui legge
-    // semplicemente "esiste gia' una banca".
+    // commento su BUILDING_TYPES.grattacielo). **[Bug corretto]** Una
+    // lettura precedente di `banca1_light/Create.gml` fermava all'`instance_
+    // create(stella3)` senza controllare cosa proteggeva quella riga,
+    // liquidandolo come "due flag 'run once'" — **[C]** in realta'
+    // `action_if_number(159, 0, 2)` + `action_if_number(161, 0, 2)`
+    // (`data/objects.json`: 159=`r22`, 161=`r32`, entrambi con operatore 2
+    // ">") sono "`instance_count(r22) > 0` E `instance_count(r32) > 0`" —
+    // non guardie anti-duplicato (quelle userebbero l'operatore 0, "==0",
+    // come per `stella1`/`stella2` sopra): la terza stella richiede DAVVERO
+    // che entrambe le espansioni della piattaforma (game/src/platform.js,
+    // `platformState.tier1`/`tier2` — solo su `match`, MAI presenti su
+    // `match_easy`) siano gia' "expanded", oltre ad avere gia' una banca.
+    // Coerente con l'endgame vero: il grattacielo (Burj Khalifa) e'
+    // raggiungibile solo dopo aver esteso la piattaforma per intero, non
+    // semplicemente "costruisci una banca" — e su `match_easy`, che non ha
+    // mai una piattaforma da espandere, resta percio' irraggiungibile
+    // (fedele, non un buco: `platformState` e' `null` li').
     {
       type: "grattacielo", selec: 82, spr: "sta3", sprSel: "sta3s", label: "Grattacielo", cost: 200000,
-      unlocked: () => buildings.some((b) => b.type === "banca") && !buildings.some((b) => b.type === "grattacielo"),
+      unlocked: () => buildings.some((b) => b.type === "banca")
+        && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded"
+        && !buildings.some((b) => b.type === "grattacielo"),
     },
   ];
   for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; BUILDING_LABEL[b.type] = b.label; }

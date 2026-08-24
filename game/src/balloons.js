@@ -186,7 +186,25 @@ export function spawnLoot(lootDef, x, y) {
  */
 export function stepBalloonSpawner(r12, balloons, dt, buildings) {
   r12.spyT = (r12.spyT ?? 0) + dt;
-  if (!r12.spy && r12.spyT >= SPY_UNLOCK_T) r12.spy = 1;   // [C]
+  // [Bug corretto, segnalato dall'autore: "il grattacielo non blocca gli
+  // aerei spia/gli attacchi"] **[C]** `r12/Create.gml: action_set_alarm
+  // (29000, 8)` e' un vero ALARM di GameMaker: scatta UNA volta sola e non
+  // si riarma da solo (nessun `action_set_alarm` dentro l'handler
+  // dell'alarm[8], mai letto). Il guard `!r12.spy` qui sotto imitava quel
+  // "una volta sola" leggendo lo STESSO flag che poi viene usato (ed
+  // eventualmente azzerato dal grattacielo, buildings.js/stepConsumption:
+  // "un grattacielo finito blocca le mongolfiere spia per sempre") — ma
+  // una volta che `r12.spyT` supera la soglia resta sopra per sempre
+  // (non decade mai), quindi ad ogni frame in cui qualcos'altro rimette
+  // `r12.spy` a 0 (esattamente il grattacielo), questo `if` lo un-blocca
+  // di nuovo nello stesso frame prima ancora che il resto del gioco possa
+  // accorgersene: il blocco del grattacielo diventava un no-op silenzioso
+  // dopo il primo sblocco. `r12.spyUnlockFired` e' il vero "e' gia'
+  // scattato l'alarm" (mai piu' toccato dopo, indipendente da chi azzera
+  // `r12.spy` in seguito) — lo sblocco resta quindi permanente ESATTAMENTE
+  // una volta, e il grattacielo puo' davvero tenere `r12.spy` a 0 per
+  // sempre da quel momento in poi.
+  if (!r12.spyUnlockFired && r12.spyT >= SPY_UNLOCK_T) { r12.spy = 1; r12.spyUnlockFired = true; }   // [C]
 
   // ondan decade e fa nascere le minacce vere in game/src/threats.js
   // (stepThreatSpawner) — non qui: decadere e "far nascere un air" sono
