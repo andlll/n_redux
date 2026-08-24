@@ -44,6 +44,17 @@ const input = new Input(canvas);
 // menu): title.js chiama `hideLoading()` (via ctx) al primo frame disegnato,
 // idempotente — le visite successive del menu nella stessa sessione la
 // trovano gia' rimossa dal DOM.
+// [Bug corretto, segnalato dall'autore: "non vedo piu' il logo fading su
+// sfondo nero in avviamento"] Prima del refactor a SPA (game/src/app.js,
+// vedi il commento sopra), era title.js — montato come script a livello
+// di modulo — ad aggiungere subito "show" a questo stesso nodo (faceva
+// partire la dissolvenza in ENTRATA del logo, CSS `#loading.show img`).
+// Il refactor ha spostato la gestione di #loading qui (hideLoading(),
+// sotto, per la dissolvenza in USCITA) ma non ha portato con se' quella
+// riga: il logo restava quindi sempre a opacity:0 (il div nero pieno
+// schermo si vedeva, il logo dentro mai) finche' hideLoading() non
+// faceva sparire anche quello, invisibile per tutta la sua durata.
+loading.classList.add("show");
 let loadingHidden = false;
 function hideLoading() {
   if (loadingHidden) return;

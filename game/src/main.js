@@ -2658,7 +2658,8 @@ export async function mountMatch(ctx, params = {}) {
       // non solo da `r12`/`buildings`.
       if (tutorialState) {
         if (tutorialState.cutscene) {
-          if (stepCutscene(tutorialState.cutscene, dt)) tutorialState.cutscene = null;
+          const cutAspect = canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : 16 / 9;
+          if (stepCutscene(tutorialState.cutscene, dt, cutAspect)) tutorialState.cutscene = null;
         } else {
           if (tutorialState.practiceCoinSpawned && !coins.some((c) => c._tutorialPractice)) {
             tutorialState.coinCollected = true;
