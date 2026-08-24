@@ -129,13 +129,15 @@ Poi un server statico qualsiasi:
 python3 -m http.server 5173 --directory game
 ```
 
-E si apre `http://127.0.0.1:5173/` (`index.html`) — la schermata di scelta
-(Match/Match Facile/Tutorial, il vecchio layout del decompilato), la vera
-home del sito. `play.html` resta raggiungibile diretto (default
-`match_easy`) e accetta `?room=match|match_easy|tutorial` + `?autoload=1`
-(STUDIO.md, game/src/title.js) per chi vuole saltare il menu — `autoload`
-non si applica al tutorial, che riparte sempre da zero; dalla partita si
-torna alla title screen col bottone "Torna al menu" nel menu di pausa.
+E si apre `http://127.0.0.1:5173/` (`index.html`) — l'unico link di tutta
+l'app: la schermata di scelta (Match/Match Facile/Tutorial, il vecchio
+layout del decompilato), la vera home del sito. `game/src/app.js` monta/
+smonta le schermate (title.js/main.js) con `import()` dinamico invece di
+navigare a una pagina diversa — un tap sui bottoni del menu carica scena e
+atlas della room scelta e passa alla partita senza refresh del browser;
+`autoload` (passato internamente da title.js) non si applica al tutorial,
+che riparte sempre da zero; dalla partita si torna al menu col bottone
+"Torna al menu" nel menu di pausa, sempre senza refresh.
 
 ### Deploy come sito statico
 

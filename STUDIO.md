@@ -3426,3 +3426,52 @@ paragrafo 8.
   texture solo quando le dimensioni vere del box cambiano (nuova fase/
   resize), non ad ogni frame, distruggendo la precedente invece di
   accumularle in VRAM.
+
+- **Logo della title screen sovrapposto al bottone centrale.** Segnalato
+  dall'autore. **[Bug corretto]**: `gogirrra` (spr `logigogi`, il logo
+  NIMBUS) veniva disegnato alla posizione della scena originale
+  (x=1235,y=543, game/src/title.js) — lo stesso punto su cui e' centrata
+  `camUI`, e quindi la stessa Y del bottone centrale "Match Facile"
+  (`easma`, anch'esso a y=543): finiva sempre in overlap col menu. Ora
+  `positionBanner()` lo ancora all'angolo in basso a destra della
+  viewport REALE di `camUI` (`camUI.x/y ± worldW/worldH/2`, ricalcolati
+  ad ogni `resize()`), non a un punto fisso della scena — l'unico modo
+  che regge qualunque sia l'aspect ratio dello schermo, dato che
+  `worldH` e' fisso (1086) ma `worldW` cambia con la finestra.
+
+- **Da due pagine HTML a una sola app (SPA): "un unico link per tutto il
+  gioco".** Richiesto dall'autore, in vista dell'hosting su siti come
+  itch.io/Playgrounds, dove un solo `index.html` incorporabile e' piu'
+  semplice di due pagine con la propria navigazione. Prima, `index.html`
+  (title.js, il menu) e `play.html` (main.js, la partita/il tutorial)
+  erano due pagine separate: i bottoni del menu e il bottone "Torna al
+  menu" del menu di pausa (STUDIO.md sopra) facevano un vero
+  `location.href`, cioe' un refresh completo del browser ad ogni cambio
+  schermata. **Nuovo `game/src/app.js`**: possiede l'UNICO canvas/
+  contesto WebGL2, `Renderer`, `Input`, `PauseBlur` e la texture bianca
+  condivisa per l'intera sessione (creati una sola volta, non ad ogni
+  cambio schermata — altrimenti si sarebbero accumulati programmi/VAO/
+  buffer WebGL ad ogni visita del menu); title.js e main.js diventano
+  moduli con `export async function mountTitle(ctx)`/`mountMatch(ctx,
+  params)` invece di script a livello di modulo, caricati con `import()`
+  dinamico solo quando servono e smontati esplicitamente (`dispose()`,
+  che ferma il loop `requestAnimationFrame` con un flag `stopped`
+  controllato in testa a `frame()`, e stacca listener/timer/nodi DOM
+  registrati dalla schermata: il listener di resize e il setInterval del
+  banner messaggi di title.js, il listener di keydown e l'aggancio di
+  debug `window.__nimbus` di main.js) prima di montare la prossima.
+  `ctx.navigate(screen, params)` sostituisce sia `location.href` sia la
+  vecchia query string (`?room=...&autoload=1`, letta da
+  `URLSearchParams(location.search)`): `params.room`/`params.autoload`
+  arrivano ora come argomenti passati direttamente da chi chiama
+  `navigate()`, non piu' da un URL. `game/play.html` e' stato rimosso
+  (era solo un punto d'ingresso alternativo per `main.js`, non serve piu'
+  con un router in-app); `game/index.html` resta l'unico entry point,
+  con `<div id="hud">` (prima solo in play.html) aggiunto e nascosto di
+  default via CSS, mostrato solo mentre `mountMatch()` e' montata.
+  **Non ancora fatto** (prossimo passo, esplicitamente rimandato): le
+  texture per-room (atlas di `match`/`match_easy`/`tutorial`) restano
+  scaricate/ricreate ad ogni visita della room invece che cacheate e
+  riusate — "caricare gli asset in modo furbo durante le partite" e'
+  tuttora da fare, questo passo ha sistemato solo la navigazione fra le
+  schermate.
