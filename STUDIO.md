@@ -3475,3 +3475,98 @@ paragrafo 8.
   riusate — "caricare gli asset in modo furbo durante le partite" e'
   tuttora da fare, questo passo ha sistemato solo la navigazione fra le
   schermate.
+
+- **Caricamento a due tempi: "core" prima, "deferred" in background.**
+  Richiesto dall'autore ("riusciamo a ridurre i tempi di caricamento
+  caricando gli asset degli edifici avanzati poco prima che il giocatore
+  sia in condizione di sbloccarli?"). Un primo tentativo puramente lato
+  client (filtrare, a scaricamento gia' fatto, quali delle 50 pagine
+  dell'atlas servono al primo frame) non porta NESSUN risparmio reale:
+  `tools/23_atlas.py` impacchetta gli sprite ordinandoli solo per
+  DIMENSIONE del frame (bin-packing greedy), mai per categoria — anche
+  solo un terzo scarso degli sprite (quelli davvero indispensabili al
+  boot: HUD, decoro della room, edifici a livello 1) finisce quindi
+  sparso su 48-50 pagine su 50 per pura probabilita' (ogni pagina ha
+  ~23 sprite, la possibilita' che NESSUNO dei suoi 23 sia "core" e'
+  trascurabile). Un guadagno vero richiede impacchettare core e deferred
+  in pagine SEPARATE fin dall'inizio — quindi un cambio alla pipeline di
+  build, non solo al client.
+
+  **`tools/27_sprite_tiers.mjs`** (nuovo): cammina `BUILDING_TYPES`
+  (game/src/buildings.js) e classifica ogni sprite di un edificio come
+  "core" (livello 1/`construct`, sempre disponibile) o "deferred"
+  (dentro `upgrades[]`, sbloccato solo a soglie di popolazione/denaro
+  raggiunte giocando) — la stessa distinzione GIA' vera a runtime, non
+  una nuova regola scritta a mano: se `buildings.js` cambia (un nuovo
+  edificio, un nuovo potenziamento) questo file la segue in automatico
+  al prossimo run. Un secondo taglio sullo stesso livello 1: un edificio
+  che costa piu' della dote iniziale (5500 mon) o sbloccato solo da un
+  traguardo (le tre stelle — monum/banca/grattacielo, mai nel pannello
+  base) resta deferred anche al SUO livello 1 — non realisticamente
+  costruibile nei primi minuti comunque. L'icona nel pannello di
+  costruzione (`OTHER_BUILDINGS`/main.js, es. "p4"/"p4ss" per eolico)
+  resta invece sempre core: e' un gruppo diverso (`GAMEPLAY_SPRITES.gui`)
+  visibile da subito indipendentemente da quando l'edificio sara' davvero
+  raggiungibile. Emette `tools/sprite_tiers.json`, letto da
+  `tools/23_atlas.py` per classificare anche gli altri gruppi di
+  `GAMEPLAY_SPRITES` (minacce/fuoco vero/la catena fari->piattaforma
+  deferred; HUD/alberi/traffico iniziale/semafori/nuvole-uccelli/pedoni/
+  monete/fumo/la base volante di partenza core).
+
+  **[Bug corretto durante lo sviluppo di questo stesso taglio]** Le
+  istanze GIA' piazzate in una room (`scene.instances`) devono restare
+  SEMPRE core, qualunque sia il verdetto per famiglia — sono quello che
+  il giocatore vede nel primissimo frame per definizione. Un primo giro
+  assumeva che questo fosse gia' garantito per costruzione (nessun nome
+  puo' comparire sia come istanza di scena sia come sprite "deferred") —
+  falso: `tutorial.scene.json` piazza 4 ruderi (`ruin1`/`ruin2`) fin
+  dall'inizio (game/src/tutorial.js, `RUIN_POOL`, gia' un bug corretto
+  una volta — "il rudere e' invisibile"), ma i loro sprite (`ru11..14`/
+  `ru21..24`) vivono ANCHE dentro `BUILDING_TYPES.casa.upgrades[0].ruin`
+  (il rudere del livello 2 di `casa`, un potenziamento vero) — senza un
+  controllo esplicito PRIMA di guardare la classificazione per famiglia,
+  un rudere gia' in piedi dal primo secondo del tutorial sarebbe rimasto
+  invisibile finche' la sua pagina "deferred" non fosse arrivata in
+  background: lo stesso identico sintomo gia' corretto una volta, per
+  una causa diversa. `tools/23_atlas.py` (`tier_of()`) ora controlla
+  prima gli sprite di scena; le quattro varianti a dado di `RUIN_POOL`
+  che NON sono lo sprite di default della scena (`ru12`-`ru14`/`ru22`-
+  `ru24`) restano un secondo caso a parte, forzate a core a mano in
+  `27_sprite_tiers.mjs` (RUIN_POOL non e' esportato da tutorial.js).
+
+  **Impacchettamento**: `23_atlas.py` (`pack()`, ora richiamata due
+  volte, core e deferred SEPARATAMENTE — mai la stessa pagina mescola i
+  due tier) scrive `atlas.json.corePages`: quante pagine, delle N totali,
+  vanno aspettate prima di poter disegnare il primo frame. Risultato
+  misurato sulle tre room di gioco vero: **match 20/50, match_easy
+  21/51, tutorial 20/50** — circa il 40% delle pagine invece del 100%,
+  un taglio di oltre la meta' del tempo di attesa iniziale bloccante,
+  senza toccare un solo pixel della grafica finale (le pagine deferred
+  arrivano comunque tutte, solo piu' tardi).
+
+  **Client (`game/src/assets.js`)**: `loadRoomAtlas()` aspetta solo le
+  pagine core (`Promise.all` limitato a `pages.slice(0, corePages)`),
+  poi avvia (senza aspettarle) le pagine deferred, che riempiono lo
+  stesso array `pageTex` condiviso mano a mano che arrivano — un
+  atlas.json vecchio (senza `corePages`, es. cache di una build
+  precedente) si comporta come prima, tutte le pagine core. Una pagina
+  deferred fallita NON fa scartare l'intera cache della room (a
+  differenza di una pagina core, dove serve ancora il fix precedente
+  "schermo nero bloccato per sempre"): quella non era comunque aspettata
+  da nessuno.
+
+  **`frameFor()`** (main.js/title.js) tratta `pageTex[f.p] === null`
+  (pagina ancora per strada) come uno sprite mancante — non disegna
+  nulla per quel frame invece di leggere `.tex` di un `pageTex[f.p]`
+  ancora nullo. Chi richiama `frameFor()` ogni frame (la stragrande
+  maggioranza — minacce/edifici/auto/monete/...) si autoguarisce da
+  solo al frame successivo, senza nessuno stato da pulire: lo sprite
+  compare da solo (pop-in) appena la sua pagina finisce di arrivare. I
+  pochi punti che invece CACHANO `_f` una volta sola (`staticWorld` in
+  main.js, `worldStatic`/`BUTTONS`/`BANNER` in title.js) vengono guariti
+  esplicitamente in un ciclo dedicato, dentro il loop di frame gia'
+  esistente (nessun timer/listener in piu'). `missingArt` (il contatore
+  "senza sprite" nell'HUD di debug) va ricalcolato li' assieme, non piu'
+  una volta sola al mount: altrimenti resterebbe una fotografia del
+  primo istante (sprite "deferred" non ancora arrivati contati come
+  "mancanti per sempre") invece del vero stato corrente.

@@ -190,14 +190,32 @@ const CUTSCENE_PLANES = [
 // questa cutscene (gia' deliberatamente riportata in spazio schermo per
 // garantire copertura piena, vedi il commento sopra) interpolava solo
 // `xFrac`, lasciando `yFrac` fisso — un volo perfettamente orizzontale,
-// infedele alla direzione vera. CUTSCENE_CLIMB fa salire ogni aereo di una
-// frazione fissa dell'altezza schermo mentre attraversa (nello stesso
-// verso di `-sin(30°)` — su, non giu' — usato ovunque nel motore per
-// quella direzione): non e' la stessa pendenza esatta di 30° in pixel
-// veri (impossibile senza un rapporto larghezza/altezza fisso, e questa
-// cutscene resta apposta indipendente dall'aspect ratio) ma la stessa
-// idea — un aereo che sale in diagonale, non uno che scorre dritto.
-const CUTSCENE_CLIMB = 0.18;
+// infedele alla direzione vera.
+//
+// [Bug corretto di nuovo, stesso sintomo] Il primo tentativo di correzione
+// faceva salire `yFrac` di una frazione FISSA (0.18) dell'altezza schermo
+// durante l'attraversamento — ma xFrac/yFrac sono entrambe frazioni della
+// rispettiva dimensione (larghezza/altezza), non pixel: su un viewport
+// largo (16:9 o piu', il caso comune) 0.18*ch di salita contro 1.6*cw di
+// avanzata resta un angolo di pochi gradi (~3-4°), visivamente quasi
+// piatto — esattamente il difetto segnalato di nuovo dall'autore ("gli
+// aerei sul mare continuano a volare in orizzontale"). Riprodurre la
+// VERA pendenza di 30° (come le minacce vere in mondo, threats.js, dove
+// funziona perche' la camera scala x/y allo stesso modo) e' pero'
+// incompatibile con l'attraversamento pieno-schermo in pochi secondi di
+// QUESTA cutscene (in spazio schermo, non mondo): su un viewport largo,
+// 30° veri manderebbero ogni aereo fuori dal bordo alto dopo aver
+// coperto solo una piccola fetta della larghezza — un guizzo, non un
+// sorvolo. Qui la salita si calibra invece su un angolo piu' moderato ma
+// comunque inequivocabilmente diagonale (~18°, ben oltre la soglia
+// percepibile), calcolata dal vero rapporto d'aspetto dello schermo
+// (`aspect` = cw/ch, passato da main.js) cosi' l'angolo A SCHERMO resta
+// lo stesso qualunque sia la forma della finestra (desktop panoramico o
+// telefono in verticale) — la stessa idea di "aereo che sale in
+// diagonale" di prima, semplicemente calibrata perche' si VEDA.
+const CUTSCENE_TRAVEL_X = 1.6;   // [C] da -0.3 (fuori sinistra) a 1.3 (fuori destra)
+const CUTSCENE_CLIMB_ANGLE = (18 * Math.PI) / 180;
+const CUTSCENE_TAN = Math.tan(CUTSCENE_CLIMB_ANGLE);
 
 export function createCutscene() {
   const planes = CUTSCENE_PLANES.map((p) => ({ ...p, yFrac0: p.yFrac, xFrac: -0.3 }));
@@ -205,16 +223,22 @@ export function createCutscene() {
 }
 
 /** Ritorna `true` quando la cutscene e' finita (main.js smette di
- * disegnarla e riporta l'HUD del tutorial). `w`/`h` (dimensioni schermo
- * correnti) servono solo a calcolare la posizione vera dei tre aerei —
- * il tassello di sfondo lo ripete a tappeto chi disegna (main.js), non
- * serve qui. */
-export function stepCutscene(cutscene, dt) {
+ * disegnarla e riporta l'HUD del tutorial). `aspect` (larghezza/altezza
+ * dello schermo corrente) serve a calcolare la salita in diagonale dei
+ * tre aerei ad un angolo VISIBILE a schermo — vedi il commento sopra
+ * CUTSCENE_CLIMB_ANGLE. Il tassello di sfondo lo ripete a tappeto chi
+ * disegna (main.js), non serve qui. */
+export function stepCutscene(cutscene, dt, aspect = 16 / 9) {
   cutscene.t += dt;
+  // Salita totale (frazione di altezza schermo) equivalente a
+  // CUTSCENE_CLIMB_ANGLE in pixel: Δy_px = Δx_px * tan(angolo), con
+  // Δx_px = CUTSCENE_TRAVEL_X * cw e Δy_px = climb * ch, quindi
+  // climb = CUTSCENE_TRAVEL_X * tan(angolo) * (cw/ch).
+  const climb = CUTSCENE_TRAVEL_X * CUTSCENE_TAN * aspect;
   for (const p of cutscene.planes) {
     const k = Math.max(0, Math.min(1, (cutscene.t - p.startT) / p.dur));
-    p.xFrac = -0.3 + k * 1.6;   // da -0.3 (fuori a sinistra) a 1.3 (fuori a destra)
-    p.yFrac = p.yFrac0 - k * CUTSCENE_CLIMB;   // sale in diagonale, non scorre dritto
+    p.xFrac = -0.3 + k * CUTSCENE_TRAVEL_X;   // da -0.3 (fuori a sinistra) a 1.3 (fuori a destra)
+    p.yFrac = p.yFrac0 - k * climb;   // sale in diagonale, ad un angolo davvero visibile
   }
   return cutscene.t >= CUTSCENE_DURATION;
 }

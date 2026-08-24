@@ -44,6 +44,17 @@ const input = new Input(canvas);
 // menu): title.js chiama `hideLoading()` (via ctx) al primo frame disegnato,
 // idempotente — le visite successive del menu nella stessa sessione la
 // trovano gia' rimossa dal DOM.
+// [Bug corretto, segnalato dall'autore: "non vedo piu' il logo fading su
+// sfondo nero in avviamento"] Prima del refactor a SPA (game/src/app.js,
+// vedi il commento sopra), era title.js — montato come script a livello
+// di modulo — ad aggiungere subito "show" a questo stesso nodo (faceva
+// partire la dissolvenza in ENTRATA del logo, CSS `#loading.show img`).
+// Il refactor ha spostato la gestione di #loading qui (hideLoading(),
+// sotto, per la dissolvenza in USCITA) ma non ha portato con se' quella
+// riga: il logo restava quindi sempre a opacity:0 (il div nero pieno
+// schermo si vedeva, il logo dentro mai) finche' hideLoading() non
+// faceva sparire anche quello, invisibile per tutta la sua durata.
+loading.classList.add("show");
 let loadingHidden = false;
 function hideLoading() {
   if (loadingHidden) return;
@@ -75,6 +86,20 @@ const ctx = { gl, r, canvas, input, pauseBlur, white, hideLoading, navigate };
 let current = null;   // { dispose() } della schermata montata adesso
 let navigating = false;   // guardia contro un doppio navigate() in corsa
 
+// [Bug corretto, segnalato dall'autore: "problemi col caricamento del
+// livello match" — schermo nero bloccato per sempre, senza nessun modo di
+// uscirne] Se il modulo o il mount() di una schermata falliscono (un fetch
+// di rete che rigetta — atlas.json, una delle pagine texture, ... — vedi
+// anche il fix in assets.js), l'eccezione risaliva fuori da questa stessa
+// funzione: il nero pieno-schermo disegnato qui sopra PRIMA dell'await
+// restava quindi l'ultimo frame mai disegnato per il resto della sessione
+// — nessun errore visibile, nessun loop di rendering ripartito, nessun
+// modo di tornare al menu se non un refresh manuale della pagina. Qui
+// l'errore viene loggato (resta comunque visibile in console per il
+// debug) e, se il fallimento non era gia' un tentativo di tornare al menu,
+// si riprova ad andarci: il menu ricarica sempre dallo stesso `title`
+// gia' funzionante, quindi il giocatore riprende il controllo invece di
+// restare bloccato su un rettangolo nero senza spiegazione.
 async function navigate(screen, params = {}) {
   if (navigating) return;
   navigating = true;
@@ -91,6 +116,19 @@ async function navigate(screen, params = {}) {
     const mod = await SCREEN_MODULES[screen]();
     const mount = screen === "menu" ? mod.mountTitle : mod.mountMatch;
     current = await mount(ctx, params);
+  } catch (err) {
+    console.error(`nimbus: caricamento di "${screen}" fallito`, err);
+    hideLoading();
+    // `setTimeout(..., 0)`, non una chiamata diretta: questo stesso
+    // navigate() e' ancora in corso (dentro il proprio try/finally, ne'
+    // e' uscito) — chiamare navigate("menu") qui rientrerebbe subito nella
+    // funzione mentre `navigating` e' ancora `true`, oppure (azzerandolo a
+    // mano prima) lascerebbe che il `finally` sotto lo rimetta a `false`
+    // A META' del nuovo tentativo appena partito, riaprendo la guardia
+    // contro un secondo navigate() concorrente proprio mentre il menu sta
+    // ancora caricando. Rimandarla al prossimo giro dell'event loop la fa
+    // partire solo dopo che QUESTA chiamata e' finita per davvero.
+    if (screen !== "menu") setTimeout(() => navigate("menu"), 0);
   } finally {
     navigating = false;
   }

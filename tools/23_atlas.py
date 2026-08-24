@@ -603,6 +603,63 @@ EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group}
 # bottoni.
 GAMEPLAY_ROOMS = {"match", "match_easy", "tutorial"}
 
+# ------------------------------------------------------- core vs deferred
+# Segnalato dall'autore: "riusciamo a ridurre i tempi di caricamento
+# caricando gli asset degli edifici avanzati poco prima che il giocatore
+# sia in condizione di sbloccarli?". tools/27_sprite_tiers.mjs cammina
+# BUILDING_TYPES (game/src/buildings.js — gia' la stessa distinzione vera
+# livello 1 vs `upgrades` usata a runtime) e classifica i GAMEPLAY_SPRITES
+# di sopra in due insiemi: "core" (edifici a livello 1, HUD, decoro sempre
+# visibile — serve gia' al primissimo frame) e "deferred" (potenziamenti
+# di livello 2+, combattimento, la catena fari->seconda/terza piattaforma:
+# tutta roba che il giocatore sblocca solo dopo minuti di partita, spesso
+# mai su match_easy/tutorial). Il packer sotto impacchetta le pagine core
+# per prime, poi quelle deferred: game/src/assets.js aspetta solo le prime
+# prima di disegnare, il resto arriva in background mentre si gioca gia'.
+#
+# Provato prima un taglio "a pagina" puramente lato client (nessuna
+# modifica qui) confrontando quali pagine gia' impacchettate tocca il solo
+# decoro/HUD sempre visibile: con l'impacchettamento attuale (ordinato
+# solo per DIMENSIONE del frame, non per categoria) anche un terzo scarso
+# degli sprite finisce sparso su 48-50 pagine su 50 — statisticamente
+# quasi impossibile che una pagina non contenga NESSUNO sprite "subito
+# necessario". Un guadagno vero richiede impacchettare core e deferred in
+# pagine SEPARATE fin dall'inizio, non filtrarle dopo — da qui questo
+# cambio alla pipeline, non solo al client.
+TIERS_PATH = os.path.join(ROOT, "tools", "sprite_tiers.json")
+if os.path.exists(TIERS_PATH):
+    _tiers = json.load(open(TIERS_PATH, encoding="utf-8"))
+else:
+    _tiers = {"coreGroups": list(GAMEPLAY_SPRITES.keys()), "deferredGroups": [], "balloonCore": [], "buildingsDeferred": []}
+
+DEFERRED_SPRITE_NAMES = set()
+for group in _tiers["deferredGroups"]:
+    DEFERRED_SPRITE_NAMES |= set(GAMEPLAY_SPRITES.get(group, []))
+DEFERRED_SPRITE_NAMES |= set(_tiers["buildingsDeferred"])
+DEFERRED_SPRITE_NAMES |= set(GAMEPLAY_SPRITES.get("balloons", [])) - set(_tiers["balloonCore"])
+
+
+def tier_of(name):
+    # Il decoro/le istanze GIA' piazzate nella room (scene["instances"],
+    # `scene_sprites` sotto) sono SEMPRE core, qualunque sia il verdetto
+    # per famiglia GAMEPLAY_SPRITES — sono quello che il giocatore vede nel
+    # primissimo frame per definizione. [Bug corretto durante lo sviluppo
+    # di questo stesso taglio] Un primo giro assumeva che nessun nome
+    # potesse MAI ricorrere sia come istanza di scena sia come sprite
+    # "deferred": falso — `tutorial.scene.json` piazza 3 istanze `ruin2`
+    # con sprite di default "ru21" (game/src/tutorial.js, RUIN_POOL), ma
+    # quello stesso nome vive ANCHE dentro `BUILDING_TYPES.casa.
+    # upgrades[0].ruin` (il rudere del livello 2 di `casa`, un potenziamento
+    # vero — tools/27_sprite_tiers.mjs lo classifica quindi "deferred" per
+    # quella via) — senza questo controllo esplicito PRIMA di guardare
+    # DEFERRED_SPRITE_NAMES, un rudere gia' in piedi dal primissimo istante
+    # del tutorial sarebbe rimasto invisibile finche' la sua pagina
+    # "deferred" non fosse arrivata in background: lo stesso identico "il
+    # rudere e' invisibile" gia' corretto una volta (43c81e7).
+    if name in scene_sprites:
+        return "core"
+    return "deferred" if name in DEFERRED_SPRITE_NAMES else "core"
+
 # [Bug corretto, segnalato dall'autore: "case e palazzi non dovrebbero
 # essere fade in / fade out ma usare degli sprite esistenti che accendevano
 # le finestre un po' alla volta"] I 100 sprite luce "...x" di casa/palazzo
@@ -638,9 +695,14 @@ DEDUP_CONSECUTIVE_SPRITES = {
 }
 
 # ---------------------------------------------------------------- raccolta
+# Sprite piazzate DIRETTAMENTE nella room (scene["instances"]) sono sempre
+# "core": e' esattamente il decoro/gli edifici che il giocatore vede nel
+# primissimo frame, per definizione — non passano da GAMEPLAY_SPRITES,
+# quindi tier_of() (che guarda solo DEFERRED_SPRITE_NAMES) le classifica
+# gia' "core" di default, corretto anche senza caso speciale qui.
 rects = []                               # frame da sistemare
-used = sorted({i["spr"] for i in scene["instances"] if "spr" in i}
-              | (set(EXTRA_SPRITES) if room_name in GAMEPLAY_ROOMS else set()))
+scene_sprites = {i["spr"] for i in scene["instances"] if "spr" in i}
+used = sorted(scene_sprites | (set(EXTRA_SPRITES) if room_name in GAMEPLAY_ROOMS else set()))
 for name in used:
     s = spr_by_name.get(name)
     if not s:
@@ -655,7 +717,7 @@ for name in used:
             continue
         prev_key = key
         rects.append({
-            "spr": name, "frame": fi,
+            "spr": name, "frame": fi, "tier": tier_of(name),
             "src": fr["tex"], "sx": fr["x"], "sy": fr["y"],
             "w": fr["w"], "h": fr["h"],
             "ox": s["origin_x"] - fr["render_x"],
@@ -667,35 +729,45 @@ if not rects:
 
 # ------------------------------------------------------- packer a scaffali
 # Semplice ma efficace su sprite di altezze simili: si ordina per altezza
-# decrescente e si riempiono righe successive.
-rects.sort(key=lambda r: (-r["h"], -r["w"]))
-pages = []                               # ogni pagina: {shelfY, shelfH, cursorX}
-for r in rects:
-    w, h = r["w"] + PAD, r["h"] + PAD
-    if w > PAGE or h > PAGE:
-        sys.exit("frame piu' grande della pagina: %s %dx%d" % (r["spr"], r["w"], r["h"]))
-    placed = False
-    for pi, p in enumerate(pages):
-        # prova gli scaffali esistenti
-        for sh in p["shelves"]:
-            if sh["h"] >= h and sh["x"] + w <= PAGE:
-                r["dst"], r["dx"], r["dy"] = pi, sh["x"], sh["y"]
-                sh["x"] += w
+# decrescente e si riempiono righe successive. Chiamato due volte, core e
+# deferred SEPARATAMENTE (mai la stessa pagina mescola i due tier — vedi
+# il commento su DEFERRED_SPRITE_NAMES sopra: mescolarli vorrebbe dire che
+# quasi ogni pagina finisce comunque "necessaria subito").
+def pack(rects_subset, page_offset):
+    rects_subset = sorted(rects_subset, key=lambda r: (-r["h"], -r["w"]))
+    pages = []                           # ogni pagina: {shelves, bottom}
+    for r in rects_subset:
+        w, h = r["w"] + PAD, r["h"] + PAD
+        if w > PAGE or h > PAGE:
+            sys.exit("frame piu' grande della pagina: %s %dx%d" % (r["spr"], r["w"], r["h"]))
+        placed = False
+        for pi, p in enumerate(pages):
+            for sh in p["shelves"]:
+                if sh["h"] >= h and sh["x"] + w <= PAGE:
+                    r["dst"], r["dx"], r["dy"] = page_offset + pi, sh["x"], sh["y"]
+                    sh["x"] += w
+                    placed = True
+                    break
+            if placed:
+                break
+            if p["bottom"] + h <= PAGE:
+                sh = {"y": p["bottom"], "x": w, "h": h}
+                p["shelves"].append(sh)
+                p["bottom"] += h
+                r["dst"], r["dx"], r["dy"] = page_offset + pi, 0, sh["y"]
                 placed = True
                 break
-        if placed:
-            break
-        # nuovo scaffale in fondo alla pagina
-        if p["bottom"] + h <= PAGE:
-            sh = {"y": p["bottom"], "x": w, "h": h}
-            p["shelves"].append(sh)
-            p["bottom"] += h
-            r["dst"], r["dx"], r["dy"] = pi, 0, sh["y"]
-            placed = True
-            break
-    if not placed:
-        pages.append({"shelves": [{"y": 0, "x": r["w"] + PAD, "h": h}], "bottom": h})
-        r["dst"], r["dx"], r["dy"] = len(pages) - 1, 0, 0
+        if not placed:
+            pages.append({"shelves": [{"y": 0, "x": r["w"] + PAD, "h": h}], "bottom": h})
+            r["dst"], r["dx"], r["dy"] = page_offset + len(pages) - 1, 0, 0
+    return pages
+
+core_rects = [r for r in rects if r["tier"] == "core"]
+deferred_rects = [r for r in rects if r["tier"] == "deferred"]
+core_pages = pack(core_rects, 0)
+deferred_pages = pack(deferred_rects, len(core_pages))
+pages = core_pages + deferred_pages
+CORE_PAGE_COUNT = len(core_pages)
 
 # altezza reale di ogni pagina, arrotondata a potenza di due
 def pow2(v):
@@ -707,7 +779,7 @@ def pow2(v):
 heights = [pow2(p["bottom"]) for p in pages]
 
 # ---------------------------------------------------------------- output
-atlas = {"room": room_name, "pages": [], "sprites": {}}
+atlas = {"room": room_name, "corePages": CORE_PAGE_COUNT, "pages": [], "sprites": {}}
 for pi, h in enumerate(heights):
     atlas["pages"].append({"file": "%s_%d.png" % (room_name, pi), "w": PAGE, "h": h})
 
@@ -744,5 +816,5 @@ print("%s: %d sprite, %d frame" % (room_name, len(by_sprite), len(rects)))
 print("   prima:  %d pagine originali, %.0f MB VRAM"
       % (srcpages, sum(page_by_id[p]["w"] * page_by_id[p]["h"] * 4
                        for p in {r["src"] for r in rects}) / 1e6))
-print("   dopo:   %d pagine %dx%s, %.0f MB VRAM"
-      % (len(heights), PAGE, heights, vram / 1e6))
+print("   dopo:   %d pagine %dx%s, %.0f MB VRAM (di cui %d pagine core, %d deferred)"
+      % (len(heights), PAGE, heights, vram / 1e6, CORE_PAGE_COUNT, len(heights) - CORE_PAGE_COUNT))
