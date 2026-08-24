@@ -107,7 +107,13 @@ export async function mountTitle(ctx) {
   // nascosto finche' non e' sotto hover nel gioco vero: qui non c'e' nessun
   // input di piazzamento, quindi va tolto invece di restare sempre acceso a
   // coprire mezza mappa (172 istanze su `match`).
-  const worldStatic = mScene.instances.filter((it) => it.obj !== "placeholder");
+  // [Bug corretto] Le nuvole ("ni"/"nifast") piazzate nella room — stesso
+  // motivo del filtro in main.js: nel decompilato nessuna delle due resta
+  // mai ferma (si mettono in moto da sole al proprio Create, la stessa
+  // diagonale gia' simulata qui sotto da atmo/stepAtmosphere), quindi non
+  // vanno disegnate come decoro fisso — il cielo sfumato dietro il menu ha
+  // gia' il proprio generatore dinamico (atmo.clouds, sotto).
+  const worldStatic = mScene.instances.filter((it) => it.obj !== "placeholder" && it.obj !== "ni" && it.obj !== "nifast");
   applyMatchPlatform(worldStatic);   // la base volante — STUDIO.md, game/src/platform.js
   // honda1/honda2 (le due auto "gia' in marcia" di `match`, game/src/cars.js)
   // sostituite dalle istanze simulate sotto — stesso motivo della rimozione

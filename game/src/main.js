@@ -162,7 +162,19 @@ export async function mountMatch(ctx, params = {}) {
     return it.depth === 0 ? -it.y : it.depth;
   }
   const sortWorld = (a, b) => effDepth(b) - effDepth(a);
-  const staticWorld = scene.instances.slice().sort(sortWorld);
+  // [Bug corretto] Le nuvole ("ni"/"nifast") piazzate direttamente nella room
+  // finivano qui come qualunque altro decoro FISSO — ma nel decompilato
+  // NESSUNA delle due lo e' mai: entrambe si mettono in moto da sole al
+  // proprio Create (`action_set_motion(30, ...)`, la stessa diagonale gia'
+  // riprodotta in game/src/atmosphere.js) e, per meta' delle volte, si
+  // autodistruggono all'istante (`action_if_dice(2)` -> `action_kill_
+  // object()`). Segnalato dall'autore: restavano invece ferme per sempre,
+  // "nuvole statiche" che nell'originale non esistono — il cielo vero e'
+  // interamente popolato dal generatore dinamico di atmosphere.js (chiamato
+  // ogni frame da stepAtmosphere() piu' sotto), queste istanze della room
+  // sono solo il punto di partenza "prima" che l'originale stesso avrebbe
+  // gia' fatto sparire/mettere in moto.
+  const staticWorld = scene.instances.filter((it) => it.obj !== "ni" && it.obj !== "nifast").sort(sortWorld);
 
   // ---------------------------------------------------------------- atlas
   // Le pagine sono reimpacchettate per room da tools/23_atlas.py + 24_blit.py:

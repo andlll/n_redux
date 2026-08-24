@@ -312,10 +312,20 @@ export function stepFaroChain(state, r12, coins, cars, smoke, dt, chiesLevel, ni
     m.y -= Math.sin(rad) * pxPerSec * dt;
     if (m.t >= MONVIOLO_LIFE_SECONDS || m.x > SCENE_WIDTH + 100) {
       state.monviolos.splice(i, 1);
+      // [Bug corretto] `m.x` a questo punto e' gia' OLTRE `SCENE_WIDTH` (la
+      // soglia di uscita e' apposta `SCENE_WIDTH + 100`, per farlo sparire
+      // visibilmente fuori dal bordo) — ma `cam.bounds.right` (main.js) e'
+      // proprio `SCENE_WIDTH`: la camera non puo' MAI centrarsi oltre quel
+      // limite, quindi un gettone lasciato a `m.x` restava sempre fuori
+      // portata, esattamente l'opposto di quanto il commento sopra
+      // (`spawnMonviolo()`) prometteva ("il gettone resta sempre
+      // raggiungibile"). Il monviolo continua a volare visibilmente oltre
+      // il bordo prima di sparire (com'era), ma il gettone che lascia cade
+      // ancora DENTRO l'area che la camera puo' davvero inquadrare.
       coins.push({
         buildingId: null, depth: COIN_DEPTH, t: 0, auto: false,
         kind: "crys", spr: "monviola_bar", amount: 1 + Math.floor(Math.random() * 3),
-        x: m.x, y: m.y,
+        x: Math.min(m.x, SCENE_WIDTH - 200), y: m.y,
       });
     }
   }
