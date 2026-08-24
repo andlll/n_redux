@@ -34,6 +34,19 @@ export function loadRoomAtlas(gl, roomName) {
       const pageTex = await Promise.all(atlas.pages.map((p) => loadTexture(gl, "./assets/" + p.file)));
       return { atlas, pageTex };
     })();
+    // [Bug corretto, segnalato dall'autore: "problemi col caricamento del
+    // livello match" — schermo nero bloccato per sempre] Un fetch/decode
+    // fallito per anche una sola delle ~50 pagine di un atlas (rete
+    // instabile, un file mancante sul deploy, ...) fa rigettare questa
+    // stessa promise — ma prima di questo fix la promise REIETTATA restava
+    // comunque in cache per il resto della sessione: ogni tentativo
+    // successivo di entrare in quella room (tornare al menu e ricliccare
+    // "Match") ripescava la stessa promise gia' fallita invece di
+    // riprovare il download, quindi falliva SEMPRE, identico, senza che
+    // nulla di transitorio potesse mai risolversi da solo. Qui, se il
+    // caricamento fallisce, la voce di cache viene rimossa cosi' un nuovo
+    // tentativo riparte da un fetch vero.
+    entry.catch(() => { if (cache.get(roomName) === entry) cache.delete(roomName); });
     cache.set(roomName, entry);
   }
   return entry;
