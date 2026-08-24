@@ -251,6 +251,14 @@ export function spawnSmoko(x, y) {
 // laser.cooldown sopra), un fascio che durasse quanto quella sarebbe piu'
 // invasivo di quanto serva solo per "vedere che ha sparato".
 export const BEAM_LIFE = 20 * TICK;
+// [I] Lunghezza del fascio DISEGNATO (fireFrom() sotto) — non della portata
+// vera del colpo (BUILDING_TYPES.laser.aim.fireRange, buildings.js, mai
+// toccata). Piu' lunga della diagonale della mappa piu' grande (`match`,
+// game/data/match.scene.json: 3900x2090, diagonale ~4424px) cosi' il fascio
+// esce sempre dallo schermo/dalla mappa in ogni direzione invece di finire
+// a meta' del vuoto — l'effetto "raggio senza fine" richiesto dall'autore,
+// senza dover davvero calcolare un'intersezione coi bordi della scena.
+export const BEAM_VISUAL_LENGTH = 6000;
 export function spawnBeam(x0, y0, x1, y1) {
   return { x0, y0, x1, y1, t: 0 };
 }
@@ -318,15 +326,25 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beam
     // prossimo frame, non qui.
     const fireRange = BUILDING_TYPES[b.type].aim.fireRange;
     const r2 = fireRange * fireRange;
-    // Effetto visivo (spawnBeam sopra): un raggio lungo `fireRange` nella
-    // direzione di mira — non verso un singolo bersaglio, perche' il colpo
-    // stesso non ne ha uno solo (danneggia tutto cio' che e' entro il
-    // raggio, vedi sopra). `beams` e' opzionale (`?.`) solo per non
-    // spezzare eventuali test/chiamate dirette a fireFrom() che non lo
-    // passano.
+    // Effetto visivo (spawnBeam sopra): un raggio nella direzione di mira —
+    // non verso un singolo bersaglio, perche' il colpo stesso non ne ha uno
+    // solo (danneggia tutto cio' che e' entro `fireRange`, vedi sopra).
+    // [Bug corretto, richiesto dall'autore: "vorrei che il fascio laser
+    // fosse lungo infinito e non una distanza fissa"] **[I]** il fascio
+    // DISEGNATO ora si estende per `BEAM_VISUAL_LENGTH` (sotto), non per
+    // `fireRange` — il danno vero resta comunque limitato a `fireRange`
+    // (il ciclo su `threats`/`balloons` sotto non cambia): fermare il
+    // fascio disegnato esattamente al bordo della portata rendeva visibile
+    // "il punto in cui il colpo smette di funzionare", un dettaglio di
+    // bilanciamento che l'autore non voleva vedere — un fascio che esce
+    // dallo schermo (o dalla mappa) in ogni direzione, come un vero raggio
+    // laser, comunica "arma a lungo raggio" meglio di un segmento che si
+    // interrompe a meta' strada nel vuoto. `beams` e' opzionale (`?.`) solo
+    // per non spezzare eventuali test/chiamate dirette a fireFrom() che non
+    // lo passano.
     if (beams) {
       const rad = (b.aimAngle * Math.PI) / 180;
-      beams.push(spawnBeam(mx, my, mx + Math.cos(rad) * fireRange, my - Math.sin(rad) * fireRange));
+      beams.push(spawnBeam(mx, my, mx + Math.cos(rad) * BEAM_VISUAL_LENGTH, my - Math.sin(rad) * BEAM_VISUAL_LENGTH));
     }
     for (const th of threats) {
       const dx = th.x - b.x, dy = th.y - b.y;

@@ -1445,24 +1445,78 @@ export async function mountMatch(ctx, params = {}) {
     return Math.max(0, Math.min(1, remaining / SMOKE_FADE_FRAC));
   }
 
+  // [Bug corretto/migliorato, richiesto dall'autore: "vorrei... che
+  // cambiasse velocemente colore, se possibile che avesse anche un effetto
+  // sfocato ai lati"] **[I]** ruota rapidamente in tinta unita (S=1,V=1)
+  // invece del ciano fisso di prima — nessun equivalente nel decompilato
+  // (WEAPONS.laser in projectiles.js: il vero `laserone` e' uno sprite
+  // statico, mai tinto a runtime), puramente un effetto richiesto. Un ciclo
+  // completo ogni ~0.15s: nell'arco della vita breve del fascio (BEAM_LIFE,
+  // 20 tick ~0.33s) si vedono gia' due cicli interi, un vero "sfarfallio"
+  // di colore invece di una dissolvenza di tinta lenta e poco percepibile.
+  function hueToRgb(h) {
+    const i = Math.floor(h * 6) % 6, f = h * 6 - Math.floor(h * 6);
+    const q = 1 - f;
+    let rr, gg, bb;
+    if (i === 0) { rr = 1; gg = f; bb = 0; }
+    else if (i === 1) { rr = q; gg = 1; bb = 0; }
+    else if (i === 2) { rr = 0; gg = 1; bb = f; }
+    else if (i === 3) { rr = 0; gg = q; bb = 1; }
+    else if (i === 4) { rr = f; gg = 0; bb = 1; }
+    else { rr = 1; gg = 0; bb = q; }
+    return (Math.round(rr * 255) << 16) | (Math.round(gg * 255) << 8) | Math.round(bb * 255);
+  }
+  const BEAM_HUE_PERIOD = 0.15;   // [I] secondi per un ciclo completo di colore
+
   /** Il fascio del laser (game/src/projectiles.js, spawnBeam/stepBeams): un
-   * quad pieno da bocca a fondo raggio, l'unico VFX del motore che non e' uno
-   * sprite (Renderer.drawQuad(), gl.js — vedi il commento su WEAPONS.laser in
-   * projectiles.js per il perche'). Vita breve (BEAM_LIFE): sfuma verso la
-   * fine come le altre VFX transitorie gia' nel motore (fadeAlpha() sopra). */
+   * quad pieno da bocca a `BEAM_VISUAL_LENGTH` (projectiles.js), l'unico VFX
+   * del motore che non e' uno sprite (Renderer.drawQuad(), gl.js — vedi il
+   * commento su WEAPONS.laser in projectiles.js per il perche'). Vita breve
+   * (BEAM_LIFE): sfuma verso la fine come le altre VFX transitorie gia' nel
+   * motore (fadeAlpha() sopra).
+   *
+   * [Bug corretto/migliorato, richiesto dall'autore: "un effetto sfocato ai
+   * lati"] **[I]** tre quad concentrici invece di uno solo (nessuna vera
+   * sfocatura nel renderer, gl.js — STUDIO.md, niente shader custom): un
+   * involucro largo e tenue, uno medio piu' denso, un nucleo bianco stretto
+   * e quasi opaco. Con il blending "over" gia' attivo (gl.js, SRC_ALPHA/
+   * ONE_MINUS_SRC_ALPHA) tre strati semitrasparenti sovrapposti si
+   * accumulano verso il centro esattamente come un vero bagliore (piu'
+   * chiaro/denso al centro, sfumato ai bordi) senza bisogno di un vero
+   * shader di blur.
+   */
   function drawBeams() {
-    const half = 7;   // meta' spessore del fascio, in px
+    const half = 7;   // meta' spessore del nucleo del fascio, in px (invariato)
     for (const bm of beams) {
       const dx = bm.x1 - bm.x0, dy = bm.y1 - bm.y0;
       const len = Math.hypot(dx, dy) || 1;
-      const nx = (-dy / len) * half, ny = (dx / len) * half;
+      const ux = dx / len, uy = dy / len;
       const alpha = fadeAlpha(bm.t, BEAM_LIFE);
-      r.drawQuad(
-        solidFrame(white, 1, 1),
-        { x: bm.x0 + nx, y: bm.y0 + ny }, { x: bm.x1 + nx, y: bm.y1 + ny },
-        { x: bm.x1 - nx, y: bm.y1 - ny }, { x: bm.x0 - nx, y: bm.y0 - ny },
-        0x5fd8ff, alpha,
-      );
+      const hue = (bm.t / BEAM_HUE_PERIOD) % 1;
+      const color = hueToRgb(hue);
+      const layer = (w, tint, a) => {
+        const nx = -uy * w, ny = ux * w;
+        r.drawQuad(
+          solidFrame(white, 1, 1),
+          { x: bm.x0 + nx, y: bm.y0 + ny }, { x: bm.x1 + nx, y: bm.y1 + ny },
+          { x: bm.x1 - nx, y: bm.y1 - ny }, { x: bm.x0 - nx, y: bm.y0 - ny },
+          tint, a,
+        );
+      };
+      layer(half * 3.2, color, alpha * 0.18);     // involucro esterno, sfocato
+      layer(half * 1.7, color, alpha * 0.4);       // strato medio
+      layer(half, color, alpha * 0.85);            // nucleo colorato
+      layer(half * 0.35, 0xffffff, alpha * 0.9);   // filo centrale bianco incandescente
+      // Lampo alla bocca del cannone (richiesto dall'autore, "un effetto
+      // lampo di luce sulla bocca del cannone stesso") — **[I]** si affianca
+      // all'esplosione "fica" gia' creata da fireFrom() (projectiles.js,
+      // spawnExplosion con MUZZLE_FLASH_SCALE): un piccolo bagliore
+      // quadrato che pulsa con la stessa tinta del fascio, per legare
+      // visivamente bocca e raggio invece di un lampo bianco generico
+      // scollegato dal colore del colpo in corso.
+      const flashSize = 26 * (1 - bm.t / BEAM_LIFE) + 10;
+      r.draw(solidFrame(white, flashSize, flashSize), bm.x0 - flashSize / 2, bm.y0 - flashSize / 2, 1, 0xffffff, alpha * 0.7);
+      r.draw(solidFrame(white, flashSize * 0.5, flashSize * 0.5), bm.x0 - flashSize * 0.25, bm.y0 - flashSize * 0.25, 1, color, alpha);
     }
   }
 
