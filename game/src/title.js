@@ -64,8 +64,26 @@ function frameFor(sprName, frameIdx = 0) {
 
 const BUTTONS = scene.instances.filter((it) => ["standma", "easma", "me3"].includes(it.obj));
 for (const b of BUTTONS) b._f = frameFor(b.spr);
+// [FIX] `gogirrra` (logo NIMBUS, spr `logigogi`) veniva disegnato alla
+// posizione della scena originale (x=1235, y=543) — lo stesso punto su cui
+// e' centrata camUI: finiva quindi sovrapposto al bottone centrale
+// ("Match Facile"/`easma`, anch'esso a y=543). Segnalato dall'autore: il
+// logo deve stare in basso a destra della schermata, senza toccare i
+// bottoni. BANNER.x/y vengono ricalcolati in positionBanner() (sotto),
+// ancorati all'angolo in basso a destra della viewport reale di camUI
+// invece che a un punto fisso della scena — l'unico modo che regge anche
+// quando resize() cambia camUI.worldW/worldH col variare dell'aspect ratio.
 const BANNER = scene.instances.find((it) => it.obj === "gogirrra");
 BANNER._f = frameFor(BANNER.spr);
+const BANNER_MARGIN = 24;
+function positionBanner() {
+  const f = BANNER._f;
+  if (!f) return;
+  const rightEdge = camUI.x + camUI.worldW / 2 - BANNER_MARGIN;
+  const bottomEdge = camUI.y + camUI.worldH / 2 - BANNER_MARGIN;
+  BANNER.x = rightEdge - f.w + f.ox;
+  BANNER.y = bottomEdge - f.h + f.oy;
+}
 
 const camUI = new Camera();
 camUI.bounds = { left: 0, top: 0, right: scene.width, bottom: scene.height };
@@ -235,6 +253,7 @@ function resize() {
   const fitZoom = 1086 / camUI.viewH;
   camUI.minZoom = camUI.maxZoom = fitZoom * 1.08;
   camUI.setZoomImmediate(camUI.minZoom);
+  positionBanner();
   camWorld.resize(canvas.clientWidth, canvas.clientHeight);
 }
 window.addEventListener("resize", resize);
