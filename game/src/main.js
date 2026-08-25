@@ -14,6 +14,7 @@ import {
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
+import { spawnLightning, stepLightning, boltSprite, glowPosition, glowFrame, LIGHTNING_GLOW_LIFE } from "./lightning.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
 import { addCrane, stepCranes, craneParts } from "./cranes.js";
 import {
@@ -112,8 +113,33 @@ export async function mountMatch(ctx, params = {}) {
   // altrove nel motore (cars.js, NIGHT_TINT).
   const SCENE_BG_RGB = [scene.bgColor & 0xff, (scene.bgColor >> 8) & 0xff, (scene.bgColor >> 16) & 0xff].map((v) => v / 255);
   cam.bounds = { left: 0, top: 0, right: scene.width, bottom: scene.height };
+  // [Bug corretto, gap dichiarato STUDIO.md: "match mostra ancora perlopiu'
+  // cielo/nuvole al primo avvio"] Il centro GEOMETRICO della room (usato qui
+  // sotto, e di nuovo in resize() piu' sotto per il ramo mobile) non e' dove
+  // sta la citta': su `match` la piattaforma volante vive nella meta'
+  // superiore della room (`match.json` e' alta 2090px, ma le istanze vere —
+  // strade, edifici, la base — si affollano ben sopra la sua meta', il resto
+  // e' cielo vuoto sotto/intorno). La MEDIANA della y di tutte le istanze
+  // della scena (non filtrate: anche solo poche decine di outlier — pu1,
+  // reversi, honda1/2, rimossi da `staticWorld` piu' sotto — non spostano una
+  // mediana su centinaia di istanze) e' un proxy semplice e senza bisogno di
+  // conoscere la room in anticipo per "dove sta il contenuto vero", usata
+  // solo sull'asse Y (l'asse X resta il centro geometrico: la citta' e' gia'
+  // ragionevolmente centrata in orizzontale, il problema segnalato era solo
+  // verticale). Effettivo solo su DESKTOP: su mobile lo zoom iniziale
+  // "cover" (resize() piu' sotto, gia' un fix precedente per non lasciare
+  // bordi) inquadra l'ALTEZZA della room esattamente pari a quella dello
+  // schermo per ogni room giocabile (tutte piu' larghe che alte, ogni
+  // telefono in portrait l'opposto) — zero margine di panoramica verticale,
+  // quindi `cam.clamp()` (camera.js) ricentra comunque sul centro
+  // geometrico qualunque valore le si passi. Non toccato: e' il comportamento
+  // "cover" voluto da quel fix, non un effetto collaterale di questo.
+  const instanceYs = scene.instances.map((it) => it.y).sort((a, b) => a - b);
+  const midIdx = instanceYs.length >> 1;
+  const initialFocusY = instanceYs.length === 0 ? scene.height / 2
+    : instanceYs.length % 2 ? instanceYs[midIdx] : (instanceYs[midIdx - 1] + instanceYs[midIdx]) / 2;
   cam.x = scene.width / 2;
-  cam.y = scene.height / 2;
+  cam.y = initialFocusY;
   // minZoom = quanto ci si puo' avvicinare: sotto 0.5 gli sprite (disegnati
   // alla risoluzione nativa dell'atlas) si vedono sgranati, ingranditi oltre
   // il loro dettaglio reale. Vale su entrambe le piattaforme: su mobile
@@ -357,14 +383,24 @@ export async function mountMatch(ctx, params = {}) {
   // Tolte da staticWorld — altrimenti resterebbero due comparse immobili
   // sotto alle auto vere che si muovono sopra di loro — e sostituite dalle
   // istanze simulate in `cars` piu' sotto.
-  // [I] `tutorial` ha anche una terza istanza statica, `honda3` — a
-  // differenza di honda1/honda2 il suo `CAR_TYPES.honda3.spawn` (cars.js) e'
-  // il punto fisso di `carmaker` (le auto che arrivano nel tempo su
-  // match/match_easy), non la posizione reale di QUESTA istanza: simularla
-  // da li' la teletrasporterebbe altrove. Resta quindi una terza auto ferma
-  // invece di una terza in marcia — gap dichiarato, non un tentativo di
-  // calibrarne il percorso per questa sola room.
-  const INITIAL_CAR_TYPES = roomName === "match" || roomName === "tutorial" ? ["honda1", "honda2"] : ["honda_facile_1", "honda_facile_2"];
+  // [Bug corretto] `tutorial` ha anche una terza istanza statica, `honda3`
+  // (assente da `match`/`match_easy`, verificato su tutte e tre le scene) —
+  // una nota precedente la lasciava ferma per scelta, assumendo che
+  // `CAR_TYPES.honda3.spawn` (cars.js: il punto fisso di `carmaker`, le auto
+  // che arrivano nel tempo su tutte e tre le room) non fosse la posizione
+  // reale di QUESTA istanza. **[C]** Rileggendo `honda3/Create.gml`: il nudge
+  // relativo (+21,-26), applicato quando `action_if_number(736,1,0)` e' vero
+  // (lo stesso flag "0=match/1=match_easy" letto ovunque nel motore,
+  // game/src/state.js) — su `tutorial` (`roomName==="match"`, STUDIO.md)
+  // vale `false`, lo stesso ramo di `match`, quindi NON si applica: la
+  // posizione vera dell'istanza (1841,631, `tutorial.scene.json`) piu' il
+  // nudge da' (1862,605) — a un pixel da `CAR_TYPES.honda3.spawn`
+  // (1863,604, gia' scritto per `carmaker`): sono lo stesso punto. Simulata
+  // come honda1/honda2: tolta da `staticWorld`, spawnata da subito invece
+  // che dopo 60s da `carmaker` (che qui SALTA il suo stesso primo turno,
+  // `carmakerIdx` sotto, per non farla comparire due volte).
+  const INITIAL_CAR_TYPES = roomName === "tutorial" ? ["honda1", "honda2", "honda3"]
+    : roomName === "match" ? ["honda1", "honda2"] : ["honda_facile_1", "honda_facile_2"];
   for (const name of INITIAL_CAR_TYPES) {
     const idx = staticWorld.findIndex((it) => it.obj === name);
     if (idx >= 0) staticWorld.splice(idx, 1);
@@ -499,7 +535,11 @@ export async function mountMatch(ctx, params = {}) {
   // ogni room — ogni 60s di gioco arriva un'altra auto (honda3..honda9),
   // finche' non sono comparse tutte e sette. `carmakerT` e' lo stesso
   // cronometro, `carmakerIdx` il prossimo tipo ancora da far comparire.
-  let carmakerT = 0, carmakerIdx = 0;
+  // Su `tutorial` honda3 e' gia' partita da subito (INITIAL_CAR_TYPES sopra,
+  // stessa posizione di spawn di CARMAKER_SCHEDULE[0]): si salta quella
+  // prima voce, altrimenti a 60s ne comparirebbe una SECONDA identica,
+  // sovrapposta al punto di partenza della prima.
+  let carmakerT = 0, carmakerIdx = roomName === "tutorial" ? 1 : 0;
   // Nuvole e uccelli (game/src/atmosphere.js): stesso timer di r12/Alarm_0.gml,
   // puramente decorativi (non incidono su niente in r12).
   const atmo = createAtmosphere();
@@ -528,6 +568,11 @@ export async function mountMatch(ctx, params = {}) {
   // per `industria` in piedi, mai in cantiere — vedi stepSmokeSpawner() piu'
   // sotto.
   let smoke = [];
+  // Il lampo del fulmine (game/src/lightning.js) — un colpo per ogni edificio
+  // (stepStormDamage, buildings.js) o mongolfiera (stepBalloons, balloons.js)
+  // effettivamente colpiti durante una tempesta, vedi entrambe le chiamate
+  // piu' sotto.
+  let lightning = [];
   // Minacce vere (game/src/threats.js): `threats` sono aerei/bombardieri/
   // zeppelin, fatti nascere da stepThreatSpawner (r12/Alarm_4|5|6.gml) ogni
   // volta che una mongolfiera spia viene ignorata abbastanza a lungo da
@@ -1388,8 +1433,11 @@ export async function mountMatch(ctx, params = {}) {
     }
     // Scorciatoia da tastiera per lo stesso bottone di pausa in basso a
     // destra (vedi `paused` sopra) — comoda su desktop, dove il bottone
-    // resta comunque toccabile col mouse come su touch.
-    if (e.key === "p" || e.key === "P") paused = !paused;
+    // resta comunque toccabile col mouse come su touch. Disabilitata mentre
+    // `outcome` (sopra) e' a schermo: in sconfitta non c'e' niente da
+    // riprendere, in vittoria "P" toglierebbe di mezzo il pannello senza
+    // passare dal tap che lo chiude per davvero (onTap sotto).
+    if ((e.key === "p" || e.key === "P") && !outcome) paused = !paused;
   }
   window.addEventListener("keydown", onKeydown);
 
@@ -1500,6 +1548,30 @@ export async function mountMatch(ctx, params = {}) {
   function isDawn(t) {
     return PHASES[phaseIndexAt(t).i].name === "alba";
   }
+
+  // `baura` (STUDIO.md, gap minore "nifast/mud/baura mai investigati") —
+  // investigato, NON portato, per un motivo trovato solo provandolo: `mud`
+  // non ha nessun codice proprio (gia' corretto com'e', un decoro statico
+  // qualunque); `baura` e' presente su `match`/`tutorial` (mai
+  // `match_easy`), un piccolo sole/luna (sprite 160x160, non uno sfondo a
+  // piena mappa) che cicla `day/dayset/sett/setnite/nite` sugli STESSI 8
+  // alarm di `aura` sopra (identiche durate) — la logica sarebbe stata
+  // banale da agganciare a PHASES/phaseIndexAt() gia' qui sopra. **[Bug
+  // evitato mentre si implementava**: `baura/Create.gml` lo sposta RELATIVO
+  // di (0,-200) dalla propria istanza di scena (a sua volta (0,0)) — cioe'
+  // 200px SOPRA il bordo superiore della room (`cam.bounds.top = 0`, qui
+  // sopra). `Camera.clamp()` (game/src/camera.js) non lascia MAI il centro
+  // scendere sotto `top + worldH/2`: qualunque sia lo zoom, il bordo
+  // superiore della viewport non supera mai `y=0` — un punto a y=-200 non
+  // e' quindi mai, in nessuna condizione di zoom/pan, dentro l'area
+  // visibile. Animarlo per bene (l'ho scritto, poi tolto: stessa idea di
+  // BAURA_PHASE_SPRITE/bauraSpriteFrame() gia' provata per `r120MotorDecor`)
+  // sarebbe stato codice morto — nessun giocatore potrebbe mai vederlo senza
+  // prima cambiare i limiti della camera, una modifica diversa e piu'
+  // rischiosa (STUDIO.md, il fix "niente bordi" che ha introdotto quel
+  // clamp) di quanto valga per un sole/luna decorativo. `nifast` resta
+  // anch'esso un gap: il suo spawner periodico e' specifico di `match` e
+  // non ancora collegato ad atmosphere.js (oggi copre solo `match_easy`).
 
   // --------------------------------------------------------------- luci
   // Le "luci" (bagliore finestre di chies/casa/industria, aggiunte da
@@ -1757,6 +1829,95 @@ export async function mountMatch(ctx, params = {}) {
     r.flush();
   }
 
+  /**
+   * `outcome` (sopra) — stesso post-processo di drawPauseOverlay(): cattura
+   * il canvas gia' disegnato (`pauseBlur.blurScreen()`) e ci disegna sopra.
+   * Chiamata FUORI dal batch GUI appena chiuso, stessa ragione li' spiegata.
+   *
+   * Sconfitta: un'introduzione (buio crescente su `introDur` secondi, sotto
+   * — per "oil" anche il mondo catturato che scivola verso il basso,
+   * un solo `draw()` traslato invece di una vera fisica di caduta: nessun
+   * equivalente da imitare, STUDIO.md, e' tutto "nostro") prima del pannello
+   * vero e proprio — `outcomeButtons` resta vuoto (quindi onTap non risponde
+   * a nessun tocco, sotto) finche' l'introduzione non e' finita. Vittoria:
+   * nessuna introduzione, lo stesso sfumato/oscuramento leggero del menu di
+   * pausa — la partita continua sotto, non e' una fine.
+   */
+  function drawOutcomeOverlay() {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    // v0/v1 scambiati: copyTexImage2D cattura dal framebuffer di default,
+    // origine in basso a sinistra — stesso motivo di drawPauseOverlay() sopra.
+    const worldFrame = { tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 };
+
+    const defeat = outcome.kind === "defeat";
+    let showPanel = true;
+    if (defeat) {
+      const introDur = outcome.reason === "oil" ? 3 : 1.2;
+      const k = Math.min(1, outcome.t / introDur);
+      const ease = k * k;   // accelera, non scivola a velocita' costante — "cade"
+      // Base OPACA nera prima di tutto: sia il "buco" lasciato in alto dal
+      // mondo traslato verso il basso (reason "oil") sia il crossfade
+      // (reason "chies") devono rivelare nero, non il frame precedente
+      // ancora nel framebuffer.
+      r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 1);
+      if (outcome.reason === "oil") {
+        // A `ease===1` l'immagine e' spinta un'intera altezza schermo sotto
+        // il bordo: niente resta visibile, senza bisogno di sfumarla anche
+        // in trasparenza.
+        r.draw(worldFrame, 0, ease * ch, 1, 0xffffff, 1);
+      } else {
+        r.draw(worldFrame, 0, 0, 1, 0xffffff, 1 - ease);
+      }
+      showPanel = k >= 1;
+    } else {
+      r.draw(worldFrame, 0, 0, 1, 0xffffff, 1);
+      r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+    }
+
+    outcomeButtons = [];
+    if (showPanel) {
+      const title = defeat ? "GAME OVER" : "COMPLIMENTI!";
+      const subtitle = !defeat
+        ? "Hai completato il Grattacielo. La partita continua."
+        : outcome.reason === "chies"
+        ? "La Chiesa, l'edificio storico della citta', e' stata distrutta."
+        : "L'olio e' finito: i rotori si sono fermati e la piattaforma e' precipitata.";
+      const rows = defeat
+        ? [{ label: "Carica partita", action: "load" }, { label: "Torna al menu", action: "title" }]
+        : [{ label: "Continua a giocare", action: "continue" }];
+
+      const textScale = 1.1;
+      const panelW = Math.min(360, cw - 40);
+      const lines = wrapText(fontMini, subtitle, textScale, panelW - 60);
+      const lineH = 22;
+      const titleScale = 2.2;
+      const panelH = 32 + 17 * titleScale + 14 + lines.length * lineH + 14 + rows.length * 60;
+      const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+      r.draw(solidFrame(white, panelW, panelH), px, py, 1, 0x20242c, 0.97);
+
+      drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 20,
+        titleScale, defeat ? 0xff6a5a : 0x8ef58e, 1);
+
+      let ty = py + 20 + 17 * titleScale + 14;
+      for (const line of lines) {
+        drawText(r, fontMini, line, px + (panelW - measureText(fontMini, line, textScale)) / 2, ty, textScale, 0xdcdfe6, 1);
+        ty += lineH;
+      }
+
+      const btnW = panelW - 60, btnH = 46, btnGap = 14;
+      let by = ty + 14;
+      for (const row of rows) {
+        const bx = px + (panelW - btnW) / 2;
+        r.draw(solidFrame(white, btnW, btnH), bx, by, 1, 0x3a4152, 0.95);
+        drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, 0xffffff, 1);
+        outcomeButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+        by += btnH + btnGap;
+      }
+    }
+    r.flush();
+  }
+
   /** Moltiplica una tinta 0xRRGGBB per una tinta ambientale [r,g,b] in 0..1. */
   function mulTint(base, rgb) {
     const r = Math.round(((base >> 16) & 255) * rgb[0]);
@@ -1942,6 +2103,35 @@ export async function mountMatch(ctx, params = {}) {
   let pauseBtnRect = null;   // { x, y, w, h }
   let pauseMenuButtons = [];   // { x, y, w, h, action }
 
+  /**
+   * Fine partita — nessun equivalente vero nel decompilato (STUDIO.md,
+   * "playbuttoner": investigato a fondo e non era una pausa/game over,
+   * §6 "condizioni di vittoria e sconfitta" resta `[?]` fino in fondo al
+   * diario; l'unica traccia vera, `blacker1` creato da `air_tut2/Alarm_1.gml`
+   * nella cutscene del tutorial, non e' MAI implementata nel decompilato
+   * stesso in nessun'altra room — la cutscene qui la bypassa apposta,
+   * STUDIO.md tutorial.js). Richiesto dall'autore, tre condizioni:
+   *  - sconfitta, `chies` (STUDIO.md §9: l'edificio unico e preesistente)
+   *    distrutta — in QUALUNQUE room, e' sempre l'unico esemplare;
+   *  - sconfitta, l'olio a zero SOLO su `match`/`tutorial` (le uniche due
+   *    room con la piattaforma volante — game/src/platform.js,
+   *    applyMatchPlatform(): `match_easy` ha la citta' gia' a terra, un
+   *    "sotto" in cui cadere non esiste);
+   *  - vittoria, il `grattacielo` completato (l'ultima delle tre "stelle",
+   *    STAR_BUILDINGS sopra) — a differenza della sconfitta NON blocca la
+   *    partita, resta un traguardo.
+   * null | { kind: "defeat", reason: "chies"|"oil", t, motorFreezeT? }
+   * | { kind: "victory", t }. `t`: secondi dal trigger, avanzato fuori dal
+   * blocco `if (!frozen)` sotto (l'introduzione della sconfitta deve girare
+   * anche mentre il resto della simulazione e' fermo). `victoryShown`
+   * impedisce che la stessa vittoria ricompaia ogni frame dopo il primo tap
+   * di "Continua" — al massimo un grattacielo esiste per partita (unlocked()
+   * sopra), quindi basta un flag, non un id da tracciare.
+   */
+  let outcome = null;
+  let victoryShown = false;
+  let outcomeButtons = [];   // { x, y, w, h, action }, solo quando il pannello e' visibile
+
   // [C] placeholder/Mouse_LeftReleased.gml: `r12.selec` e' il vero selettore
   // di modalita' piazzamento nell'originale (1 = casa, 2 = industria, ...).
   const SELEC_BY_TYPE = { casa: 1, industria: 2 };
@@ -2114,6 +2304,34 @@ export async function mountMatch(ctx, params = {}) {
   }
 
   input.onTap = (sx, sy) => {
+    // `outcome` (sopra) intercetta PRIMA di tutto, bottone di pausa incluso —
+    // in sconfitta la pausa non ha senso (la partita e' gia' finita), in
+    // vittoria non deve restare un modo per aprire il menu di pausa SOPRA al
+    // pannello di vittoria stesso.
+    if (outcome) {
+      if (outcome.kind === "victory") {
+        // Qualunque tocco chiude — nessun blocco duro come la sconfitta
+        // sotto: e' un traguardo, non una fine (richiesto dall'autore, "puo'
+        // continuare a giocare"), quindi anche il bottone "Continua"
+        // (outcomeButtons, drawOutcomeOverlay()) e' solo un'affordance, non
+        // l'unico modo di chiuderlo.
+        outcome = null;
+        return;
+      }
+      // Sconfitta: `outcomeButtons` resta vuoto finche' l'introduzione
+      // (buio/caduta, drawOutcomeOverlay()) non e' finita — nessun tocco fa
+      // niente prima di allora, il pannello va guardato fino in fondo.
+      const hit = outcomeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+      if (hit?.action === "load") {
+        const ok = doLoad();
+        if (ok) { picked = null; outcome = null; }
+        message = ok ? "partita caricata" : "nessun salvataggio";
+        messageT = 3;
+      } else if (hit?.action === "title") {
+        navigate("menu");
+      }
+      return;
+    }
     // Il bottone di pausa intercetta PRIMA di ogni altra cosa, modale
     // (bankPanelOpen sotto) incluso — deve restare toccabile sempre, in
     // entrambi gli stati (avvia/toglie la pausa), altrimenti una volta
@@ -2548,8 +2766,14 @@ export async function mountMatch(ctx, params = {}) {
       cam.maxZoom = fitZoom * 1.3;
       if (!userMoved) {
         cam.setZoomImmediate(fitZoom);
+        // `initialFocusY` (calcolato sopra, dove viene spiegato) invece di
+        // `scene.height / 2`: senza effetto pratico oggi (cam.clamp() sotto
+        // ricentra comunque quando la room "cover" non lascia margine
+        // verticale, il caso comune — vedi sopra), ma corretto per il caso in
+        // cui in futuro lo lasciasse (una room piu' quadrata, un tablet in
+        // landscape trattato come mobile via `pointer: coarse`).
         cam.x = scene.width / 2;
-        cam.y = scene.height / 2;
+        cam.y = initialFocusY;
       }
     }
     cam.clamp();
@@ -2572,17 +2796,40 @@ export async function mountMatch(ctx, params = {}) {
     const night = isNight(phaseT);
     const dawn = isDawn(phaseT);
 
+    // `outcome` (sopra): avanza il proprio orologio SEMPRE, anche a
+    // simulazione ferma (la sconfitta congela `buildings`/`r12` etc. ma la
+    // sua stessa introduzione — buio/caduta, drawOutcomeOverlay() — deve
+    // continuare a scorrere). La vittoria non congela niente (`frozen` sotto
+    // resta `false`), ma il suo `t` non serve a nient'altro che a esistere
+    // per simmetria con la sconfitta — nessun timer di auto-chiusura.
+    if (outcome) outcome.t += dt;
+
     // --- simulazione: cantieri, economia, meteo, traffico, luci
-    // `paused` (bottone di pausa in basso a destra, sotto): l'intero blocco
-    // usa `dt` per avanzare stato — a differenza del resto del motore (che
-    // non ha mai avuto un concetto di "in pausa"), qui basta saltarlo del
-    // tutto per congelare la partita. Il disegno sotto NON e' condizionato:
+    // `paused` (bottone di pausa in basso a destra, sotto) o una sconfitta
+    // gia' in corso: l'intero blocco usa `dt` per avanzare stato — a
+    // differenza del resto del motore (che non ha mai avuto un concetto di
+    // "in pausa" prima di questo), qui basta saltarlo del tutto per
+    // congelare la partita. La vittoria NON e' in questo elenco: "puo'
+    // continuare a giocare" (richiesto dall'autore) — solo un pannello,
+    // niente di simulativo si ferma. Il disegno sotto NON e' condizionato:
     // ridisegna lo stesso identico stato ogni frame (nessun costo visibile,
-    // il mondo non cambia), cosi' il blur di pausa (vedi drawPauseOverlay()
-    // in fondo al file) puo' restare un post-processo puro invece di dover
-    // duplicare la logica di disegno.
-    if (!paused) {
+    // il mondo non cambia mentre e' fermo), cosi' il blur di pausa/sconfitta
+    // (drawPauseOverlay()/drawOutcomeOverlay() in fondo al file) puo' restare
+    // un post-processo puro invece di dover duplicare la logica di disegno.
+    const frozen = paused || outcome?.kind === "defeat";
+    if (!frozen) {
       stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
+      // Vittoria (`outcome` sopra): il grattacielo (STAR_BUILDINGS, l'ultima
+      // delle tre "stelle") appena finito di costruire — `b.construction`
+      // diventa `null` proprio dentro stepConstructions() appena chiamata
+      // (buildings.js), quindi qui e' gia' il primo frame utile per
+      // accorgersene. Al piu' un grattacielo esiste per partita
+      // (`unlocked()`, STAR_BUILDINGS sopra), quindi `victoryShown` basta a
+      // non ripetere il trigger ad ogni frame successivo.
+      if (!victoryShown) {
+        const g = buildings.find((b) => b.type === "grattacielo" && !b.construction);
+        if (g) { victoryShown = true; outcome = { kind: "victory", t: 0 }; }
+      }
       // Impalcatura/gru rotanti del grattacielo (game/src/scaffold.js): un
       // sotto-sistema di scenografia indipendente, non un `onSpawn`/`onFinish`
       // di stepConstructions() sopra — vedi il commento in scaffold.js per il
@@ -2600,11 +2847,24 @@ export async function mountMatch(ctx, params = {}) {
       // blu sotto (stesso ordine gia' scelto per stepCoinSpawner()).
       stepSmokeSpawner(buildings, smoke, dt, r12);
       stepSmoke(smoke, dt);
+      stepLightning(lightning, dt);
       stepGrowth(buildings, dt, r12, (b) => pedestrians.push(spawnPedestrian(b.x, b.y)));
       stepConsumption(buildings, dt, r12, night);
       stepWeather(r12, dt, scene.name === "match");
-      stepStormDamage(buildings, dt, r12);
+      stepStormDamage(buildings, dt, r12, (x, y) => lightning.push(spawnLightning(x, y)));
       tickR12(r12, dt, buildings);
+      // Sconfitta, l'olio a zero (`outcome` sopra) — SOLO su `match`/
+      // `tutorial`, le uniche due room con la piattaforma volante
+      // (game/src/platform.js): `r12.oil` e' gia' il valore finale di questo
+      // frame qui (clampR12(), chiamata in coda a tickR12() appena sopra, lo
+      // ha gia' pavimentato a 0). `motorFreezeT`: il valore di `phaseT` di
+      // QUESTO istante, cosi' le turbine di r120 (r120MotorDecor() piu'
+      // sotto, nel disegno) smettono di lampeggiare invece di continuare
+      // finche' non arriva il buio della cutscene — "i rotori si bloccano",
+      // richiesto dall'autore.
+      if (!outcome && (roomName === "match" || roomName === "tutorial") && r12.oil <= 0) {
+        outcome = { kind: "defeat", reason: "oil", t: 0, motorFreezeT: phaseT };
+      }
       stepCalendar(r12, dt);
       stepCars(cars, dt, r12, night);
       carmakerT += dt;
@@ -2623,7 +2883,14 @@ export async function mountMatch(ctx, params = {}) {
       stepBalloonSpawner(r12, balloons, dt, buildings);
       // onStruck: [C] Alarm_5.gml crea "esplo" prima di uccidersi per
       // fulmine — vedi il commento in stepBalloons() (balloons.js).
-      stepBalloons(balloons, loot, dt, r12, (x, y) => explosions.push(spawnExplosion(x, y)));
+      // onStruck (balloons.js): "esplo" + il lampo del fulmine vero e proprio
+      // (game/src/lightning.js — stessa scelta gia' fatta per gli edifici,
+      // stepStormDamage() sopra), entrambi creati dal decompilato prima che
+      // la mongolfiera si autodistrugga.
+      stepBalloons(balloons, loot, dt, r12, (x, y) => {
+        explosions.push(spawnExplosion(x, y));
+        lightning.push(spawnLightning(x, y));
+      });
       stepLoot(loot, dt);
       // I pulsanti blu delle monete (game/src/coins.js): casa1|2|3/Alarm_4.gml,
       // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
@@ -2713,7 +2980,15 @@ export async function mountMatch(ctx, params = {}) {
       stepExplosions(explosions, dt);
       // Unico controllo per tutte le fonti di danno di questo frame (fulmini,
       // STUDIO.md "le tempeste diventano reali" + bombe appena sganciate sopra).
-      for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
+      for (const b of buildings) {
+        if (b.construction || b.life > 0) continue;
+        // Sconfitta, `chies` distrutta (`outcome` sopra) — in QUALUNQUE room:
+        // e' sempre l'unico esemplare (STUDIO.md §9), a differenza di ogni
+        // altro edificio la cui morte (destroyBuilding() sotto, comunque
+        // chiamata: diventa un rudere come sempre) non ferma la partita.
+        if (b.type === "chies" && !outcome) outcome = { kind: "defeat", reason: "chies", t: 0 };
+        destroyBuilding(b);
+      }
       if (r12.alertT > 0) r12.alertT -= dt;
       // Torrette (game/src/buildings.js, stepTurretAim): inseguono la
       // minaccia vera piu' vicina (`threats`: aerei/bombardieri/zeppelin,
@@ -2897,6 +3172,20 @@ export async function mountMatch(ctx, params = {}) {
       const frameIdx = Math.min(SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
       dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, SMOKE_LIFE) });
     }
+    // Il fulmine (game/src/lightning.js): il lampo vero (`th1`/`th2` ->
+    // `th1s`/`th2s` a meta' vita, depth -y-5 come l'originale) sempre
+    // presente finche' vivo, il segno d'impatto (`basediswa_t`, sprite
+    // "base" — un disco nero che sfuma in alpha, 30 frame veri) solo per i
+    // primi istanti. `_selfLit`: `image_blend` forzato bianco nel
+    // decompilato — un moltiplicatore neutro, non lo schiarisce (e' nero),
+    // ma lo tiene comunque fuori dalla tinta ambientale come l'originale.
+    for (const s of lightning) {
+      dynamic.push({ obj: "decor", x: s.x, y: s.y, depth: -s.y - 5, _f: frameFor(boltSprite(s)) });
+      if (s.t < LIGHTNING_GLOW_LIFE) {
+        const g = glowPosition(s);
+        dynamic.push({ obj: "decor", x: g.x, y: g.y, depth: -5, _f: frameFor("base", glowFrame(s)), _scale: 2, _selfLit: true });
+      }
+    }
     for (const c of atmo.clouds) dynamic.push({ obj: "cloud", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr) });
     for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
     // Pedoni (game/src/pedestrians.js): x/y/depth gia' avanzati da
@@ -2943,7 +3232,13 @@ export async function mountMatch(ctx, params = {}) {
     // segnalato dall'autore. Gate corretto: la stessa condizione di
     // applyMatchPlatform() sopra (`match` O `tutorial`), non `platformState`.
     if (roomName === "match" || roomName === "tutorial") {
-      for (const it of r120MotorDecor(phaseT)) dynamic.push({ ...it, _f: frameFor(it.spr) });
+      // Sconfitta, l'olio a zero (`outcome.motorFreezeT` sopra): le turbine
+      // smettono di lampeggiare — congelate al valore di `phaseT` di quando
+      // l'olio e' finito, invece di continuare a inseguire l'orologio
+      // ambientale (che non si ferma mai, nemmeno a partita persa: guida
+      // anche il ciclo giorno/notte, STUDIO.md).
+      const motorClockT = outcome?.kind === "defeat" && outcome.reason === "oil" ? outcome.motorFreezeT : phaseT;
+      for (const it of r120MotorDecor(motorClockT)) dynamic.push({ ...it, _f: frameFor(it.spr) });
     }
     for (const m of constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
     for (const bx of constructionBoxes) dynamic.push({ obj: "decor", x: bx.x, y: bx.y, depth: bx.depth, _f: frameFor(bx.spr) });
@@ -3557,7 +3852,11 @@ export async function mountMatch(ctx, params = {}) {
     // e ci disegna sopra un pannello con i tre bottoni. Post-processo puro,
     // FUORI dal batch appena chiuso: legge il framebuffer di default con
     // `pauseBlur.blurScreen()` DOPO che tutto il resto e' gia' li' dentro.
-    if (paused) drawPauseOverlay();
+    // `outcome` (sopra) ha priorita' sul menu di pausa — coerente con onTap
+    // (che gia' intercetta `outcome` prima del bottone di pausa): i due non
+    // vanno mai disegnati insieme.
+    if (outcome) drawOutcomeOverlay();
+    else if (paused) drawPauseOverlay();
 
     // --- HUD testuale di debug: numeri e stato dettagliato per lo sviluppo,
     // sovrapposto in DOM. La barra sopra e' la UI "vera", in canvas.
@@ -3660,10 +3959,19 @@ export async function mountMatch(ctx, params = {}) {
     get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
     get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
     get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
+    get lightning() { return lightning; },
     get beams() { return beams; },
     get aerSmoke() { return aerSmoke; }, get debris() { return debris; }, get ruins() { return ruins; },
     get blockedSlots() { return blockedSlots; }, get placeholders() { return placeholders; },
     get bankPanelOpen() { return bankPanelOpen; }, setBankPanelOpen: (v) => { bankPanelOpen = v; },
+    // Fine partita (`outcome` sopra) — comodo per testare le tre condizioni
+    // senza aspettare che l'olio scenda a zero per davvero o costruire un
+    // grattacielo da 200000 mon: `forceDefeat("oil"|"chies")`/`forceVictory()`
+    // impostano lo stesso stato che il gioco raggiungerebbe da solo.
+    get outcome() { return outcome; }, get outcomeButtons() { return outcomeButtons; },
+    forceDefeat: (reason) => { outcome = { kind: "defeat", reason, t: 0, motorFreezeT: phaseT }; },
+    forceVictory: () => { victoryShown = true; outcome = { kind: "victory", t: 0 }; },
+    clearOutcome: () => { outcome = null; },
     get bankButtons() { return bankButtons; },
     setPhase: (t) => { phaseT = t; },
     phases: PHASES,

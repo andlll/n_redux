@@ -16,7 +16,8 @@
     "bridges",
     "threats",
     "projectiles",
-    "platform2"
+    "platform2",
+    "lightning"
   ],
   "balloonCore": [
     "monv",

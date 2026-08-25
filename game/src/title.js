@@ -22,7 +22,7 @@
 // sessione non accumula loop/listener fantasma.
 import { solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
-import { loadRoomAtlas, prefetchRoomAtlas } from "./assets.js";
+import { loadRoomAtlas } from "./assets.js";
 import { applyMatchPlatform, r120MotorDecor } from "./platform.js";
 import { spawnCar, stepCars } from "./cars.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -80,16 +80,27 @@ export async function mountTitle(ctx) {
   // ------------------------------------------------------------- sfondo: match
   const mScene = await fetch("./data/match.scene.json").then((x) => x.json());
   const { atlas: mAtlas, pageTex: mPageTex } = await loadRoomAtlas(gl, "match");
-  // [I] Richiesto dall'autore ("caricare gli asset in modo furbo"): mentre il
-  // giocatore guarda ancora il menu, scarica gia' in background l'atlas di
-  // `match_easy` — il bottone in evidenza, la scelta piu' probabile. Non
-  // aspettata (fire-and-forget, game/src/assets.js): se il tap arriva prima
-  // che finisca, mountMatch() (main.js) la aspetta comunque tramite la
-  // stessa cache; se il giocatore sceglie `match`/`tutorial` invece,
-  // l'atlas di `match` e' comunque gia' qui sopra (usato per lo sfondo) e
-  // quello di `tutorial` restera' un caricamento normale, non prioritario
-  // quanto la scelta di default.
-  prefetchRoomAtlas(gl, "match_easy");
+  // [Bug corretto, segnalato dall'autore: "appena avvio match il sito si
+  // refresha tornando alla schermata logo e poi al menu", su mobile] Qui
+  // c'era un `prefetchRoomAtlas(gl, "match_easy")` — [I] richiesto
+  // dall'autore ("caricare gli asset in modo furbo"): mentre il giocatore
+  // guarda ancora il menu, scaricare gia' in background l'atlas di
+  // `match_easy` (il bottone in evidenza), cosi' fosse gia' calda la cache
+  // se lo sceglieva davvero. Il problema: la riga SOPRA ha gia' caricato
+  // l'intero atlas di `match` (~50 pagine da 2048x2048, ~800 MB non
+  // compressi in GPU, STUDIO.md/assets.js) solo per lo sfondo sfumato dietro
+  // il menu — prefetchare ANCHE `match_easy` (un secondo atlas quasi
+  // altrettanto grande) voleva dire tenere in memoria GPU, gia' stando fermi
+  // sul menu, la somma di entrambi: su mobile (budget per-tab molto piu'
+  // stretto che su desktop) questo da solo poteva bastare a far terminare la
+  // pagina, con l'effetto — riavvio silenzioso del sistema operativo,
+  // ripartenza da index.html — di un "refresh" del sito proprio nel momento
+  // in cui si tocca "Match" (assets.js ha il fix parallelo sul PICCO di
+  // memoria durante il caricamento di un singolo atlas; qui il problema era
+  // lo STATO STAZIONARIO: due atlas interi tenuti insieme senza motivo).
+  // Tolto: `match_easy` si carica ora solo quando il giocatore lo sceglie
+  // davvero (mountMatch(), main.js) — un filo di attesa in piu' alla
+  // scelta, invece di un rischio di crash mentre si e' ancora nel menu.
   function mFrameFor(sprName, frameIdx = 0) {
     const frames = mAtlas.sprites[sprName];
     if (!frames || !frames.length) return null;
