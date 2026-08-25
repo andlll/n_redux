@@ -21,6 +21,50 @@ import { loadTexture } from "./gl.js";
 
 const cache = new Map();   // roomName -> Promise<{ atlas, pageTex }>
 
+// [Bug corretto, segnalato dall'autore: "appena avvio match il sito si
+// refresha tornando alla schermata logo e poi al menu", riproducibile su
+// mobile] Ogni pagina di un atlas e' 2048x2048 RGBA = 16 MB non compressi in
+// GPU — un atlas intero (~50 pagine per `match`/`match_easy`/`tutorial`,
+// STUDIO.md) e' quindi ~800 MB. Prima di questo fix TUTTE le pagine
+// "deferred" (le ~30 oltre `corePages`) partivano insieme, nello stesso
+// istante: decine di `Image` che decodificano in parallelo (ognuna tiene un
+// bitmap decodificato in memoria PRIMA che `texImage2D` lo carichi in GPU e
+// il browser possa liberarlo) sommate al batch `corePages` gia' bloccante
+// sotto — un picco di memoria transitoria, non solo lo stato stazionario
+// finale, che su un dispositivo mobile (budget per-tab molto piu' stretto di
+// un desktop) puo' bastare da solo a far terminare la pagina: il sistema
+// operativo la ricarica da zero, che a chi gioca appare come "il sito si
+// refresha" — si riparte da index.html (la schermata di caricamento col
+// logo) e app.js chiama di nuovo `navigate("menu")` al bootstrap, quindi
+// dopo il logo si ritorna al menu, non a un errore visibile. Qui il batch
+// (core E deferred, stesso principio) carica al piu' PAGE_LOAD_CONCURRENCY
+// pagine alla volta invece di tutte insieme: stesso totale di dati scaricati
+// e stessa quantita' finale di memoria GPU occupata, ma senza il picco.
+const PAGE_LOAD_CONCURRENCY = 4;
+
+/** Carica `pages[indices[i]]` in `pageTex[indices[i]]`, al piu'
+ * PAGE_LOAD_CONCURRENCY alla volta. Ogni pagina fallita viene loggata e
+ * rilancia l'errore SOLO se `rethrow` (le pagine core: un fallimento li'
+ * deve far rigettare l'intero atlas, vedi sotto) — le deferred continuano
+ * a caricare le altre pagine anche se una fallisce (stesso comportamento di
+ * prima di questo fix). */
+async function loadPagesLimited(gl, pages, pageTex, indices, { rethrow }) {
+  let next = 0;
+  async function worker() {
+    while (next < indices.length) {
+      const i = indices[next++];
+      try {
+        pageTex[i] = await loadTexture(gl, "./assets/" + pages[i].file);
+      } catch (err) {
+        console.error(`nimbus: pagina atlas "${pages[i].file}" non caricata`, err);
+        if (rethrow) throw err;
+      }
+    }
+  }
+  const workers = Array.from({ length: Math.min(PAGE_LOAD_CONCURRENCY, indices.length) }, worker);
+  await Promise.all(workers);
+}
+
 /** Atlas (JSON gia' fatto il parse + texture GPU gia' caricate) di una room,
  * scaricato una sola volta per sessione: una seconda richiesta per la stessa
  * room (stesso `gl` — vedi sopra sul perche' non cambia mai in questa app)
@@ -47,8 +91,8 @@ export function loadRoomAtlas(gl, roomName) {
       // nessuna in background.
       const coreCount = atlas.corePages ?? atlas.pages.length;
       const pageTex = new Array(atlas.pages.length).fill(null);
-      await Promise.all(atlas.pages.slice(0, coreCount).map((p, i) =>
-        loadTexture(gl, "./assets/" + p.file).then((t) => { pageTex[i] = t; })));
+      const coreIndices = Array.from({ length: coreCount }, (_, i) => i);
+      await loadPagesLimited(gl, atlas.pages, pageTex, coreIndices, { rethrow: true });
       // Pagine deferred: NON aspettate — un fallimento qui non deve far
       // ripetere il download delle pagine core gia' andate a buon fine
       // (a differenza del catch sotto, che scarta l'intera cache SOLO se
@@ -56,11 +100,9 @@ export function loadRoomAtlas(gl, roomName) {
       // gia' `pageTex[f.p] === null` come "non ancora pronto" — lo sprite
       // semplicemente non si disegna per i pochi frame in cui la sua
       // pagina e' ancora per strada, poi compare da solo.
-      for (let i = coreCount; i < atlas.pages.length; i++) {
-        loadTexture(gl, "./assets/" + atlas.pages[i].file)
-          .then((t) => { pageTex[i] = t; })
-          .catch((err) => console.error(`nimbus: pagina atlas "${atlas.pages[i].file}" non caricata`, err));
-      }
+      const deferredIndices = Array.from(
+        { length: Math.max(0, atlas.pages.length - coreCount) }, (_, i) => coreCount + i);
+      loadPagesLimited(gl, atlas.pages, pageTex, deferredIndices, { rethrow: false });
       return { atlas, pageTex };
     })();
     // [Bug corretto, segnalato dall'autore: "problemi col caricamento del
@@ -79,17 +121,4 @@ export function loadRoomAtlas(gl, roomName) {
     cache.set(roomName, entry);
   }
   return entry;
-}
-
-/** Avvia il download dell'atlas di una room senza aspettarlo — usata da
- * app.js mentre si e' ancora nel menu, per la room piu' probabile
- * (`match_easy`, il tasto in evidenza): se il giocatore la sceglie davvero
- * `loadRoomAtlas()` trova gia' la cache calda (o comunque a buon punto)
- * invece di ripartire da zero, riducendo l'attesa proprio nel momento in
- * cui e' piu' fastidiosa (il tap su "gioca"). Un rifiuto (rete assente,
- * room non ancora generata) non deve interrompere nient'altro: nessuno sta
- * aspettando questa promise, quindi va intercettato qui — altrimenti
- * risulterebbe un rifiuto di promise non gestito in console. */
-export function prefetchRoomAtlas(gl, roomName) {
-  loadRoomAtlas(gl, roomName).catch(() => {});
 }
