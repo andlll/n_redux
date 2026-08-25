@@ -91,7 +91,11 @@ for (const s of RUIN_POOL_SPRITES) { buildingsCore.add(s); buildingsDeferred.del
 // l'unico gruppo diviso sprite-per-sprite (sopra), perche' e' l'unico che
 // mescola livello 1 e livelli avanzati nella stessa lista piatta.
 const CORE_GROUPS = ["gui", "trees", "cars", "semaphores", "atmosphere", "pedestrians", "coins", "smoke", "platform", "tutorial"];
-const DEFERRED_GROUPS = ["cars2", "bridges", "threats", "projectiles", "platform2"];
+// "lightning": un colpo di fulmine richiede una tempesta (rara, r12.storm —
+// game/src/state.js) E un edificio/torretta/mongolfiera gia' in gioco che
+// venga colpito — mai nel primissimo frame, stesso principio di
+// "threats"/"projectiles" (il combattimento vero arriva sempre dopo).
+const DEFERRED_GROUPS = ["cars2", "bridges", "threats", "projectiles", "platform2", "lightning"];
 // balloons: SOLO monvo (l'unica risorsa "sempre creata, nessun dado" —
 // game/src/balloons.js) piu' il pacco di cantiere (creato ad OGNI
 // edificio piazzato, dal primo della tutorial in poi) sono core; le altre

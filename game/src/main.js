@@ -14,6 +14,7 @@ import {
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
+import { spawnLightning, stepLightning, boltSprite, glowPosition, glowFrame, LIGHTNING_GLOW_LIFE } from "./lightning.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
 import { addCrane, stepCranes, craneParts } from "./cranes.js";
 import {
@@ -382,14 +383,24 @@ export async function mountMatch(ctx, params = {}) {
   // Tolte da staticWorld — altrimenti resterebbero due comparse immobili
   // sotto alle auto vere che si muovono sopra di loro — e sostituite dalle
   // istanze simulate in `cars` piu' sotto.
-  // [I] `tutorial` ha anche una terza istanza statica, `honda3` — a
-  // differenza di honda1/honda2 il suo `CAR_TYPES.honda3.spawn` (cars.js) e'
-  // il punto fisso di `carmaker` (le auto che arrivano nel tempo su
-  // match/match_easy), non la posizione reale di QUESTA istanza: simularla
-  // da li' la teletrasporterebbe altrove. Resta quindi una terza auto ferma
-  // invece di una terza in marcia — gap dichiarato, non un tentativo di
-  // calibrarne il percorso per questa sola room.
-  const INITIAL_CAR_TYPES = roomName === "match" || roomName === "tutorial" ? ["honda1", "honda2"] : ["honda_facile_1", "honda_facile_2"];
+  // [Bug corretto] `tutorial` ha anche una terza istanza statica, `honda3`
+  // (assente da `match`/`match_easy`, verificato su tutte e tre le scene) —
+  // una nota precedente la lasciava ferma per scelta, assumendo che
+  // `CAR_TYPES.honda3.spawn` (cars.js: il punto fisso di `carmaker`, le auto
+  // che arrivano nel tempo su tutte e tre le room) non fosse la posizione
+  // reale di QUESTA istanza. **[C]** Rileggendo `honda3/Create.gml`: il nudge
+  // relativo (+21,-26), applicato quando `action_if_number(736,1,0)` e' vero
+  // (lo stesso flag "0=match/1=match_easy" letto ovunque nel motore,
+  // game/src/state.js) — su `tutorial` (`roomName==="match"`, STUDIO.md)
+  // vale `false`, lo stesso ramo di `match`, quindi NON si applica: la
+  // posizione vera dell'istanza (1841,631, `tutorial.scene.json`) piu' il
+  // nudge da' (1862,605) — a un pixel da `CAR_TYPES.honda3.spawn`
+  // (1863,604, gia' scritto per `carmaker`): sono lo stesso punto. Simulata
+  // come honda1/honda2: tolta da `staticWorld`, spawnata da subito invece
+  // che dopo 60s da `carmaker` (che qui SALTA il suo stesso primo turno,
+  // `carmakerIdx` sotto, per non farla comparire due volte).
+  const INITIAL_CAR_TYPES = roomName === "tutorial" ? ["honda1", "honda2", "honda3"]
+    : roomName === "match" ? ["honda1", "honda2"] : ["honda_facile_1", "honda_facile_2"];
   for (const name of INITIAL_CAR_TYPES) {
     const idx = staticWorld.findIndex((it) => it.obj === name);
     if (idx >= 0) staticWorld.splice(idx, 1);
@@ -524,7 +535,11 @@ export async function mountMatch(ctx, params = {}) {
   // ogni room — ogni 60s di gioco arriva un'altra auto (honda3..honda9),
   // finche' non sono comparse tutte e sette. `carmakerT` e' lo stesso
   // cronometro, `carmakerIdx` il prossimo tipo ancora da far comparire.
-  let carmakerT = 0, carmakerIdx = 0;
+  // Su `tutorial` honda3 e' gia' partita da subito (INITIAL_CAR_TYPES sopra,
+  // stessa posizione di spawn di CARMAKER_SCHEDULE[0]): si salta quella
+  // prima voce, altrimenti a 60s ne comparirebbe una SECONDA identica,
+  // sovrapposta al punto di partenza della prima.
+  let carmakerT = 0, carmakerIdx = roomName === "tutorial" ? 1 : 0;
   // Nuvole e uccelli (game/src/atmosphere.js): stesso timer di r12/Alarm_0.gml,
   // puramente decorativi (non incidono su niente in r12).
   const atmo = createAtmosphere();
@@ -553,6 +568,11 @@ export async function mountMatch(ctx, params = {}) {
   // per `industria` in piedi, mai in cantiere — vedi stepSmokeSpawner() piu'
   // sotto.
   let smoke = [];
+  // Il lampo del fulmine (game/src/lightning.js) — un colpo per ogni edificio
+  // (stepStormDamage, buildings.js) o mongolfiera (stepBalloons, balloons.js)
+  // effettivamente colpiti durante una tempesta, vedi entrambe le chiamate
+  // piu' sotto.
+  let lightning = [];
   // Minacce vere (game/src/threats.js): `threats` sono aerei/bombardieri/
   // zeppelin, fatti nascere da stepThreatSpawner (r12/Alarm_4|5|6.gml) ogni
   // volta che una mongolfiera spia viene ignorata abbastanza a lungo da
@@ -1528,6 +1548,30 @@ export async function mountMatch(ctx, params = {}) {
   function isDawn(t) {
     return PHASES[phaseIndexAt(t).i].name === "alba";
   }
+
+  // `baura` (STUDIO.md, gap minore "nifast/mud/baura mai investigati") —
+  // investigato, NON portato, per un motivo trovato solo provandolo: `mud`
+  // non ha nessun codice proprio (gia' corretto com'e', un decoro statico
+  // qualunque); `baura` e' presente su `match`/`tutorial` (mai
+  // `match_easy`), un piccolo sole/luna (sprite 160x160, non uno sfondo a
+  // piena mappa) che cicla `day/dayset/sett/setnite/nite` sugli STESSI 8
+  // alarm di `aura` sopra (identiche durate) — la logica sarebbe stata
+  // banale da agganciare a PHASES/phaseIndexAt() gia' qui sopra. **[Bug
+  // evitato mentre si implementava**: `baura/Create.gml` lo sposta RELATIVO
+  // di (0,-200) dalla propria istanza di scena (a sua volta (0,0)) — cioe'
+  // 200px SOPRA il bordo superiore della room (`cam.bounds.top = 0`, qui
+  // sopra). `Camera.clamp()` (game/src/camera.js) non lascia MAI il centro
+  // scendere sotto `top + worldH/2`: qualunque sia lo zoom, il bordo
+  // superiore della viewport non supera mai `y=0` — un punto a y=-200 non
+  // e' quindi mai, in nessuna condizione di zoom/pan, dentro l'area
+  // visibile. Animarlo per bene (l'ho scritto, poi tolto: stessa idea di
+  // BAURA_PHASE_SPRITE/bauraSpriteFrame() gia' provata per `r120MotorDecor`)
+  // sarebbe stato codice morto — nessun giocatore potrebbe mai vederlo senza
+  // prima cambiare i limiti della camera, una modifica diversa e piu'
+  // rischiosa (STUDIO.md, il fix "niente bordi" che ha introdotto quel
+  // clamp) di quanto valga per un sole/luna decorativo. `nifast` resta
+  // anch'esso un gap: il suo spawner periodico e' specifico di `match` e
+  // non ancora collegato ad atmosphere.js (oggi copre solo `match_easy`).
 
   // --------------------------------------------------------------- luci
   // Le "luci" (bagliore finestre di chies/casa/industria, aggiunte da
@@ -2803,10 +2847,11 @@ export async function mountMatch(ctx, params = {}) {
       // blu sotto (stesso ordine gia' scelto per stepCoinSpawner()).
       stepSmokeSpawner(buildings, smoke, dt, r12);
       stepSmoke(smoke, dt);
+      stepLightning(lightning, dt);
       stepGrowth(buildings, dt, r12, (b) => pedestrians.push(spawnPedestrian(b.x, b.y)));
       stepConsumption(buildings, dt, r12, night);
       stepWeather(r12, dt, scene.name === "match");
-      stepStormDamage(buildings, dt, r12);
+      stepStormDamage(buildings, dt, r12, (x, y) => lightning.push(spawnLightning(x, y)));
       tickR12(r12, dt, buildings);
       // Sconfitta, l'olio a zero (`outcome` sopra) — SOLO su `match`/
       // `tutorial`, le uniche due room con la piattaforma volante
@@ -2838,7 +2883,14 @@ export async function mountMatch(ctx, params = {}) {
       stepBalloonSpawner(r12, balloons, dt, buildings);
       // onStruck: [C] Alarm_5.gml crea "esplo" prima di uccidersi per
       // fulmine — vedi il commento in stepBalloons() (balloons.js).
-      stepBalloons(balloons, loot, dt, r12, (x, y) => explosions.push(spawnExplosion(x, y)));
+      // onStruck (balloons.js): "esplo" + il lampo del fulmine vero e proprio
+      // (game/src/lightning.js — stessa scelta gia' fatta per gli edifici,
+      // stepStormDamage() sopra), entrambi creati dal decompilato prima che
+      // la mongolfiera si autodistrugga.
+      stepBalloons(balloons, loot, dt, r12, (x, y) => {
+        explosions.push(spawnExplosion(x, y));
+        lightning.push(spawnLightning(x, y));
+      });
       stepLoot(loot, dt);
       // I pulsanti blu delle monete (game/src/coins.js): casa1|2|3/Alarm_4.gml,
       // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
@@ -3119,6 +3171,20 @@ export async function mountMatch(ctx, params = {}) {
     for (const p of smoke) {
       const frameIdx = Math.min(SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
       dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, SMOKE_LIFE) });
+    }
+    // Il fulmine (game/src/lightning.js): il lampo vero (`th1`/`th2` ->
+    // `th1s`/`th2s` a meta' vita, depth -y-5 come l'originale) sempre
+    // presente finche' vivo, il segno d'impatto (`basediswa_t`, sprite
+    // "base" — un disco nero che sfuma in alpha, 30 frame veri) solo per i
+    // primi istanti. `_selfLit`: `image_blend` forzato bianco nel
+    // decompilato — un moltiplicatore neutro, non lo schiarisce (e' nero),
+    // ma lo tiene comunque fuori dalla tinta ambientale come l'originale.
+    for (const s of lightning) {
+      dynamic.push({ obj: "decor", x: s.x, y: s.y, depth: -s.y - 5, _f: frameFor(boltSprite(s)) });
+      if (s.t < LIGHTNING_GLOW_LIFE) {
+        const g = glowPosition(s);
+        dynamic.push({ obj: "decor", x: g.x, y: g.y, depth: -5, _f: frameFor("base", glowFrame(s)), _scale: 2, _selfLit: true });
+      }
     }
     for (const c of atmo.clouds) dynamic.push({ obj: "cloud", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr) });
     for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
@@ -3893,6 +3959,7 @@ export async function mountMatch(ctx, params = {}) {
     get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
     get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
     get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
+    get lightning() { return lightning; },
     get beams() { return beams; },
     get aerSmoke() { return aerSmoke; }, get debris() { return debris; }, get ruins() { return ruins; },
     get blockedSlots() { return blockedSlots; }, get placeholders() { return placeholders; },

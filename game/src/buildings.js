@@ -126,10 +126,13 @@ export const BUILDING_TYPES = {
     // Su `match_easy` la tempesta reale (`r12.storm`, non `stormeasy`) resta
     // rara di suo (STUDIO.md §9) — qui la regola c'e' per davvero, non solo
     // letta, perche' su `match` (mappa difficile) non e' affatto cosmetica.
+    // `dy`: offset verticale del lampo/fulmine visivo (game/src/lightning.js,
+    // stepStormDamage() sotto) — [C] `action_create_object(thunder, 0, dy)`
+    // relativo, letto da industria1|2|3/Alarm_5|5|6.gml.
     storm: [
-      { dice: 130, loss: 50 },   // [C] industria1
-      { dice: 120, loss: 50 },   // [C] industria2
-      { dice: 100, loss: 50 },   // [C] industria3
+      { dice: 130, loss: 50, dy: -20 },    // [C] industria1
+      { dice: 120, loss: 50, dy: -50 },    // [C] industria2
+      { dice: 100, loss: 50, dy: -140 },   // [C] industria3
     ],
     construct: {                  // livello 0 -> 1, impaind0to1r (src/objects/impaind0to1r)
       drain: { mon: 1, every: 20 },              // [C] impaind0to1r/Alarm_10.gml
@@ -298,9 +301,11 @@ export const BUILDING_TYPES = {
     // esiste nessun `casa3/Alarm_5.gml` — l'alarm scatta e non fa niente,
     // codice morto nell'originale stesso. `null` qui riproduce fedelmente
     // quel "niente", non una dimenticanza.
+    // `dy`: offset del lampo visivo (game/src/lightning.js) — [C] casa1|2
+    // creano "thunder" a offset relativo (0,0), nessuno spostamento.
     storm: [
-      { dice: 180, loss: 50 },   // [C] casa1
-      { dice: 170, loss: 50 },   // [C] casa2
+      { dice: 180, loss: 50, dy: 0 },   // [C] casa1
+      { dice: 170, loss: 50, dy: 0 },   // [C] casa2
       null,                       // [C] casa3: Alarm_5 armato ma senza codice
     ],
     construct: {                 // livello 0 -> 1, impa0to1r (src/objects/impa0to1r)
@@ -618,7 +623,7 @@ export const BUILDING_TYPES = {
   club: {
     label: "Club",
     placeCost: { mon: 3500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==60
-    storm: [{ dice: 200, loss: 50 }],   // [C] club1/Alarm_5.gml
+    storm: [{ dice: 200, loss: 50, dy: -20 }],   // [C] club1/Alarm_5.gml
     // [C] club1/Destroy.gml: hap +50 alla morte, nessun costo alla nascita —
     // non simmetrico, stesso schema gia' letto per solare/parco.
     construct: {                  // livello 0 -> 1, impaclubr (src/objects/impaclubr)
@@ -817,7 +822,7 @@ export const BUILDING_TYPES = {
     // vedi fireTurretManual() in game/src/projectiles.js.
     manualFire: true,
     aim: { range: 800, fireRange: 200 },
-    storm: [{ dice: 90, loss: 50 }],   // [C] lasergun/Alarm_5.gml (thunder offset -70, non riprodotto: puramente cosmetico)
+    storm: [{ dice: 90, loss: 50, dy: -70 }],   // [C] lasergun/Alarm_5.gml
     construct: {                  // livello 0 -> 1, impalaser_r (src/objects/impalaser_r)
       drain: { mon: 3, every: 20 },              // [C] impalaser_r/Alarm_10.gml
       finalSprite: "lan1", life: 1000,            // [C] lasergun/Create.gml
@@ -914,7 +919,11 @@ export const BUILDING_TYPES = {
     // non il generico stepProduction() (quello e' industria-specifico,
     // richiede oil>0 incondizionatamente).
     windProduction: { every: 30, ele: 110 },
-    storm: [{ dice: 30, loss: 50 }],   // [C] eoli/Alarm_5.gml (crea anche "thunder", puramente cosmetico — non riprodotto, stessa scelta di laser)
+    // `dy` non letto (offset esatto non verificato): il lampo visivo
+    // (game/src/lightning.js) usa qui il default 0, un'approssimazione [I] —
+    // a differenza di industria/casa/club/laser sopra, dove l'offset vero e'
+    // stato letto riga per riga.
+    storm: [{ dice: 30, loss: 50 }],   // [C] eoli/Alarm_5.gml (crea anche "thunder")
     construct: {                  // livello 0 -> 1, impavent (src/objects/impavent)
       // [C] impavent/Step.gml: `r12.mon -= 1` OGNI tick (non ogni N come il
       // `drain` di ogni altro cantiere) per tutta la sua durata — il campo
@@ -1201,8 +1210,8 @@ export const BUILDING_TYPES = {
       ],
     ],
     // [C] casa4s/Alarm_5.gml (livello 1) + casa5ss/Alarm_5.gml (livello 2,
-    // dado 1/76 invece di 1/108) — entrambi creano anche "thunder", non
-    // riprodotto (stessa scelta di eolico/laser).
+    // dado 1/76 invece di 1/108) — entrambi creano anche "thunder" (`dy` non
+    // letto, stesso default [I] di eolico sopra, game/src/lightning.js).
     storm: [{ dice: 108, loss: 50 }, { dice: 76, loss: 50 }],
   },
 
@@ -2459,8 +2468,13 @@ const STORM_CHECK = 57 * TICK;   // [C] industria1|2/Alarm_5.gml, industria3/Ala
  * di chi chiama, perche' tocca cose che buildings.js non conosce (i
  * placeholder, il decoro in scena) — stesso confine di `spawnDecor`/
  * `addDecor` in main.js.
+ *
+ * `onStrike(x, y)`: [C] ogni Alarm_5/6 che applica il danno crea PRIMA
+ * "thunder" (il lampo visivo, game/src/lightning.js) — `sd.dy` (default 0
+ * dove l'offset esatto non e' stato letto, vedi i commenti sulle singole
+ * tabelle `storm`) e' l'offset verticale relativo all'ancora dell'edificio.
  */
-export function stepStormDamage(buildings, dt, r12) {
+export function stepStormDamage(buildings, dt, r12, onStrike) {
   for (const b of buildings) {
     if (b.construction || b.life <= 0) continue;
     const def = BUILDING_TYPES[b.type];
@@ -2469,7 +2483,10 @@ export function stepStormDamage(buildings, dt, r12) {
     b.stormT = (b.stormT ?? 0) + dt;
     while (b.stormT >= STORM_CHECK) {
       b.stormT -= STORM_CHECK;
-      if (r12.storm && Math.random() < 1 / sd.dice) b.life = Math.max(0, b.life - sd.loss);
+      if (r12.storm && Math.random() < 1 / sd.dice) {
+        b.life = Math.max(0, b.life - sd.loss);
+        onStrike?.(b.x, b.y + (sd.dy ?? 0));
+      }
     }
   }
 }

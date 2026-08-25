@@ -550,6 +550,12 @@ GAMEPLAY_SPRITES = {
     # "cc2"/"cc3" le due varianti a dado di Create.gml — non serve
     # distinguere smoke_ind da smoke_ind_2, condividono lo stesso sprite).
     "smoke": ["cc1", "cc2", "cc3"],
+    # Il lampo del fulmine (src/objects/thunder + basediswa_t,
+    # game/src/lightning.js): "th1"/"th2" le due varianti a dado, "th1s"/
+    # "th2s" la stessa variante a meta' vita ("in scarica"), "base" il segno
+    # d'impatto del figlio — 30 frame veri (data/sprites.json), un disco
+    # nero la cui alpha sfuma da 255 a ~10, scalato 200% a runtime.
+    "lightning": ["th1", "th1s", "th2", "th2s", "base"],
     # La base volante di `match` (r12/Create.gml, ramo `match` — flag 736==0,
     # STUDIO.md): `r120` (sprite "baa12") non e' un'istanza statica della
     # room ma creata via codice, come ogni altro decoro runtime qui sopra.

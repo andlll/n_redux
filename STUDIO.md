@@ -3570,3 +3570,146 @@ paragrafo 8.
   una volta sola al mount: altrimenti resterebbe una fotografia del
   primo istante (sprite "deferred" non ancora arrivati contati come
   "mancanti per sempre") invece del vero stato corrente.
+
+- **"Appena avvio match il sito si refresha, torna al logo e poi al
+  menu" — su mobile.** Segnalato dall'autore. **[Bug corretto]**: non un
+  crash JS (nessun errore in console) ma quasi certamente un OOM del
+  browser — la title screen carica gia' l'intero atlas di `match` per lo
+  sfondo sfumato (~50 pagine 2048x2048 non compresse, ~800 MB di
+  texture GPU, STUDIO.md/assets.js) e prima di questo fix prefetchava
+  ANCHE l'intero atlas di `match_easy` in background mentre si era
+  ancora fermi sul menu — la somma di due atlas interi tenuti in
+  memoria GPU solo per stare sul menu, ben oltre il budget per-tab di
+  molti telefoni. Un OOM-kill di iOS/Android ricarica la pagina in
+  silenzio: si riparte da `index.html` (il logo) e `app.js` richiama
+  `navigate("menu")` al bootstrap — da cui il "torna al menu" osservato,
+  non un errore. Due fix indipendenti: `assets.js`, `loadRoomAtlas()`
+  caricava tutte le ~30 pagine "deferred" di un atlas insieme (decine di
+  decode paralleli, un picco di memoria oltre lo stato stazionario) — ora
+  al piu' `PAGE_LOAD_CONCURRENCY` (4) pagine alla volta, stesso totale
+  scaricato, senza il picco; `title.js`, tolto il `prefetchRoomAtlas(gl,
+  "match_easy")` mentre si e' ancora sul menu — si carica solo quando
+  scelto davvero. Verificato con Playwright (emulazione iPhone 13): il
+  tap su "Match" transita correttamente, nessuna richiesta per
+  `match_easy` parte finche' non e' la room scelta.
+
+- **Condizioni di vittoria e sconfitta.** Mai esistite nel motore
+  riscritto (STUDIO.md §6, `[?]` fin dal primo giorno — l'originale
+  stesso non le implementa mai per davvero: `blacker1`, il game over del
+  gioco base, non viene mai creato fuori dalla cutscene del tutorial, e
+  quella lo bypassa apposta). Richiesto dall'autore, `outcome` in
+  main.js (`null | {kind:"defeat", reason:"chies"|"oil", t, ...} |
+  {kind:"victory", t}`):
+  - sconfitta, `chies` (STUDIO.md §9, l'edificio unico e preesistente)
+    distrutta — in QUALUNQUE room, e' sempre l'unico esemplare. Fade a
+    nero (~1.2s) poi il pannello.
+  - sconfitta, l'olio a zero — SOLO su `match`/`tutorial` (le uniche due
+    room con la piattaforma volante, game/src/platform.js:
+    `match_easy` ha gia' la citta' a terra, un "sotto" in cui cadere
+    non esiste). Le turbine di `r120` si bloccano (congelate al
+    `phaseT` esatto dell'istante, invece di continuare a inseguire
+    l'orologio ambientale che non si ferma mai) e il mondo catturato
+    (`pauseBlur.blurScreen()`, lo stesso post-processo del menu di
+    pausa) scivola verso il basso con un'accelerazione quadratica
+    (`ease = k*k`, "cade", non scivola a velocita' costante) su ~3s,
+    poi il pannello.
+  - vittoria, il `grattacielo` completato (l'ultima delle tre "stelle",
+    STAR_BUILDINGS) — **non** ferma la partita ("puo' continuare a
+    giocare", richiesto dall'autore): un pannello dismissibile con
+    QUALUNQUE tap, stesso blur/oscuramento leggero del menu di pausa.
+
+  La sconfitta congela l'intera simulazione (`frozen = paused ||
+  outcome?.kind === "defeat"`, lo stesso `if` che gia' guardava solo
+  `paused`); la vittoria no. Il pannello di sconfitta offre "Carica
+  partita" (`doLoad()` gia' esistente — "nessun salvataggio" se non ce
+  n'e', stesso messaggio del menu di pausa) o "Torna al menu"
+  (`navigate("menu")`). `input.onTap` intercetta `outcome` PRIMA del
+  bottone di pausa stesso (in sconfitta la pausa non ha senso; in
+  vittoria non deve restare un modo di aprirla sopra al pannello).
+  Verificato con Playwright (mount headless, emulazione iPhone 13) tutti
+  e tre gli stati via due hook di debug nuovi su `window.__nimbus`
+  (`forceDefeat(reason)`/`forceVictory()`), incluso il caricamento
+  fallito/riuscito e la chiusura della vittoria.
+
+- **Ripresa dei "gap minori" rimasti aperti in fondo a questo diario** —
+  richiesto dall'autore, dopo aver tolto esplicitamente `eyebutton`
+  (filtri di vista mai capiti, "scomodo") e `reversi` (il vecchio menu
+  di pausa dell'originale, gia' sostituito da uno migliore) dalla lista.
+
+  **La camera iniziale su `match` mostrava perlopiu' cielo.** Il gap
+  era gia' dichiarato: la camera partiva centrata sul centro GEOMETRICO
+  della room (`scene.width/2, scene.height/2`), non su dove sta la
+  citta' vera (su `match` la piattaforma volante vive ben sopra la
+  meta' della room, alta 2090px). **[Bug corretto]**: la mediana della
+  y di TUTTE le istanze della scena (non filtrate: pochi outlier —
+  `pu1`/`reversi`/`honda1|2`, tolti da `staticWorld` poco dopo — non
+  spostano una mediana su centinaia di istanze) sostituisce
+  `scene.height/2` come bersaglio iniziale, solo sull'asse Y (la citta'
+  era gia' ragionevolmente centrata in orizzontale). Effettivo solo su
+  DESKTOP (verificato: la piattaforma e gli edifici sono subito in
+  vista, zoom 1.00, invece di perlopiu' cielo): su mobile lo zoom
+  "cover" (un fix precedente per non lasciare bordi) non lascia MAI
+  margine di panoramica verticale in nessuna room giocabile — tutte
+  piu' larghe che alte, ogni telefono in portrait l'opposto —
+  `cam.clamp()` ricentra comunque sul centro geometrico qualunque
+  valore gli si passi. Non toccato: e' il comportamento "cover" voluto
+  da quel fix precedente, non un effetto collaterale di questo.
+
+  **Il rinculo del cannone gatling era gia' portato** — una lettura
+  precedente del solo diario (senza controllare il codice) lo aveva
+  segnato ancora aperto: `TURRET_SPRITE_TABLES.gatlingRecoil`/
+  `turretSprFor()`/`GATLING_RECOIL_HOLD` (buildings.js) gia' esistono e
+  sono gia' collegati (`stepTurretAim()`, `recoiling = (b.fireT ??
+  Infinity) < GATLING_RECOIL_HOLD`), nessuna modifica servita.
+
+  **L'effetto visivo del fulmine.** Il motore applicava gia' il danno
+  da tempesta (buildings.js, `stepStormDamage()`) e la morte per
+  fulmine delle mongolfiere (balloons.js, `stepBalloons()`, onStruck),
+  mai l'oggetto che il decompilato crea PRIMA di applicare l'uno o
+  l'altro: `thunder` (il lampo, due varianti a dado `th1`/`th2` che
+  passano a `th1s`/`th2s` a meta' vita, 45 tick totali) + il figlio
+  `basediswa_t`, spostato relativo (-100,-300), scala 200%. **[Bug
+  evitato mentre si leggeva il codice**: una prima lettura del solo
+  `Create.gml` ("colore forzato bianco pieno") faceva pensare a un
+  bagliore luminoso — campionando lo sprite `base` pixel per pixel
+  (data/sprites.json) e' in realta' un disco NERO puro, 30 frame veri
+  che sfumano solo l'ALPHA da 255 a ~10: un segno d'impatto che si
+  dissolve, non un lampo di luce (il "bianco" del blend e' un
+  moltiplicatore neutro su un nero, resta nero). Nuovo
+  `game/src/lightning.js`; `dy` (l'offset verticale del lampo, letto
+  riga per riga per industria1/2/3/-20/-50/-140, casa1/2/0/0, club1/-20,
+  laser/-70 — default 0 altrove, dove l'offset esatto non e' stato
+  verificato) aggiunto alle tabelle `storm` di buildings.js. Sprite
+  nuovi in `GAMEPLAY_SPRITES` (gruppo "lightning", DEFERRED — un colpo
+  di fulmine richiede una tempesta gia' rara, mai nel primissimo
+  frame).
+
+  **`honda3` nel tutorial restava ferma.** Una nota precedente
+  assumeva che `CAR_TYPES.honda3.spawn` (cars.js, il punto di
+  `carmaker`) non fosse la posizione reale di questa istanza statica.
+  **[Bug corretto]**: il nudge relativo (+21,-26) di `honda3/Create.gml`
+  scatta solo su `match_easy` (`action_if_number(736,1,0)`) — su
+  `tutorial` (stesso ramo di `match`) NON si applica, quindi la
+  posizione vera dell'istanza (1841,631) coincide (a un pixel) con
+  `CAR_TYPES.honda3.spawn` (1863,604): sono lo stesso punto. Simulata
+  come `honda1`/`honda2` (tolta da `staticWorld`, spawnata da subito);
+  `carmakerIdx` parte da 1 invece di 0 su `tutorial`, per non far
+  comparire una seconda `honda3` identica a 60s da `carmaker`.
+
+  **`baura` (il sole/luna decorativo di `match`/`tutorial`) resta un
+  gap, per un motivo capito solo scrivendone l'implementazione e poi
+  togliendola.** Cicla `day/dayset/sett/setnite/nite` sugli stessi 8
+  alarm di `aura` (identiche durate) — banale da agganciare a
+  `PHASES`/`phaseIndexAt()` gia' esistenti. Ma `baura/Create.gml` la
+  sposta relativa di (0,-200) dalla propria istanza — 200px SOPRA il
+  bordo superiore della room (`cam.bounds.top = 0`) — e
+  `Camera.clamp()` (camera.js) non lascia mai il centro scendere sotto
+  `top + worldH/2`: un punto a y=-200 non e' MAI, a nessuno zoom,
+  dentro l'area visibile. Animarla per bene sarebbe stato codice morto,
+  invisibile a qualunque giocatore senza prima allargare i limiti della
+  camera — una modifica diversa e piu' rischiosa di quanto valga per un
+  dettaglio decorativo. `mud` non ha invece nessun codice proprio (gia'
+  corretto com'e', un decoro statico qualunque). `nifast` resta un gap
+  a parte: uno spawner periodico di nuvole veloci specifico di `match`
+  (`r12/Alarm_0.gml`) non ancora collegato ad atmosphere.js, che oggi
+  copre solo i punti di spawn di `match_easy`.
