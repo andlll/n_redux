@@ -1388,8 +1388,11 @@ export async function mountMatch(ctx, params = {}) {
     }
     // Scorciatoia da tastiera per lo stesso bottone di pausa in basso a
     // destra (vedi `paused` sopra) — comoda su desktop, dove il bottone
-    // resta comunque toccabile col mouse come su touch.
-    if (e.key === "p" || e.key === "P") paused = !paused;
+    // resta comunque toccabile col mouse come su touch. Disabilitata mentre
+    // `outcome` (sopra) e' a schermo: in sconfitta non c'e' niente da
+    // riprendere, in vittoria "P" toglierebbe di mezzo il pannello senza
+    // passare dal tap che lo chiude per davvero (onTap sotto).
+    if ((e.key === "p" || e.key === "P") && !outcome) paused = !paused;
   }
   window.addEventListener("keydown", onKeydown);
 
@@ -1757,6 +1760,95 @@ export async function mountMatch(ctx, params = {}) {
     r.flush();
   }
 
+  /**
+   * `outcome` (sopra) — stesso post-processo di drawPauseOverlay(): cattura
+   * il canvas gia' disegnato (`pauseBlur.blurScreen()`) e ci disegna sopra.
+   * Chiamata FUORI dal batch GUI appena chiuso, stessa ragione li' spiegata.
+   *
+   * Sconfitta: un'introduzione (buio crescente su `introDur` secondi, sotto
+   * — per "oil" anche il mondo catturato che scivola verso il basso,
+   * un solo `draw()` traslato invece di una vera fisica di caduta: nessun
+   * equivalente da imitare, STUDIO.md, e' tutto "nostro") prima del pannello
+   * vero e proprio — `outcomeButtons` resta vuoto (quindi onTap non risponde
+   * a nessun tocco, sotto) finche' l'introduzione non e' finita. Vittoria:
+   * nessuna introduzione, lo stesso sfumato/oscuramento leggero del menu di
+   * pausa — la partita continua sotto, non e' una fine.
+   */
+  function drawOutcomeOverlay() {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    // v0/v1 scambiati: copyTexImage2D cattura dal framebuffer di default,
+    // origine in basso a sinistra — stesso motivo di drawPauseOverlay() sopra.
+    const worldFrame = { tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 };
+
+    const defeat = outcome.kind === "defeat";
+    let showPanel = true;
+    if (defeat) {
+      const introDur = outcome.reason === "oil" ? 3 : 1.2;
+      const k = Math.min(1, outcome.t / introDur);
+      const ease = k * k;   // accelera, non scivola a velocita' costante — "cade"
+      // Base OPACA nera prima di tutto: sia il "buco" lasciato in alto dal
+      // mondo traslato verso il basso (reason "oil") sia il crossfade
+      // (reason "chies") devono rivelare nero, non il frame precedente
+      // ancora nel framebuffer.
+      r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 1);
+      if (outcome.reason === "oil") {
+        // A `ease===1` l'immagine e' spinta un'intera altezza schermo sotto
+        // il bordo: niente resta visibile, senza bisogno di sfumarla anche
+        // in trasparenza.
+        r.draw(worldFrame, 0, ease * ch, 1, 0xffffff, 1);
+      } else {
+        r.draw(worldFrame, 0, 0, 1, 0xffffff, 1 - ease);
+      }
+      showPanel = k >= 1;
+    } else {
+      r.draw(worldFrame, 0, 0, 1, 0xffffff, 1);
+      r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+    }
+
+    outcomeButtons = [];
+    if (showPanel) {
+      const title = defeat ? "GAME OVER" : "COMPLIMENTI!";
+      const subtitle = !defeat
+        ? "Hai completato il Grattacielo. La partita continua."
+        : outcome.reason === "chies"
+        ? "La Chiesa, l'edificio storico della citta', e' stata distrutta."
+        : "L'olio e' finito: i rotori si sono fermati e la piattaforma e' precipitata.";
+      const rows = defeat
+        ? [{ label: "Carica partita", action: "load" }, { label: "Torna al menu", action: "title" }]
+        : [{ label: "Continua a giocare", action: "continue" }];
+
+      const textScale = 1.1;
+      const panelW = Math.min(360, cw - 40);
+      const lines = wrapText(fontMini, subtitle, textScale, panelW - 60);
+      const lineH = 22;
+      const titleScale = 2.2;
+      const panelH = 32 + 17 * titleScale + 14 + lines.length * lineH + 14 + rows.length * 60;
+      const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+      r.draw(solidFrame(white, panelW, panelH), px, py, 1, 0x20242c, 0.97);
+
+      drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 20,
+        titleScale, defeat ? 0xff6a5a : 0x8ef58e, 1);
+
+      let ty = py + 20 + 17 * titleScale + 14;
+      for (const line of lines) {
+        drawText(r, fontMini, line, px + (panelW - measureText(fontMini, line, textScale)) / 2, ty, textScale, 0xdcdfe6, 1);
+        ty += lineH;
+      }
+
+      const btnW = panelW - 60, btnH = 46, btnGap = 14;
+      let by = ty + 14;
+      for (const row of rows) {
+        const bx = px + (panelW - btnW) / 2;
+        r.draw(solidFrame(white, btnW, btnH), bx, by, 1, 0x3a4152, 0.95);
+        drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, 0xffffff, 1);
+        outcomeButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+        by += btnH + btnGap;
+      }
+    }
+    r.flush();
+  }
+
   /** Moltiplica una tinta 0xRRGGBB per una tinta ambientale [r,g,b] in 0..1. */
   function mulTint(base, rgb) {
     const r = Math.round(((base >> 16) & 255) * rgb[0]);
@@ -1942,6 +2034,35 @@ export async function mountMatch(ctx, params = {}) {
   let pauseBtnRect = null;   // { x, y, w, h }
   let pauseMenuButtons = [];   // { x, y, w, h, action }
 
+  /**
+   * Fine partita — nessun equivalente vero nel decompilato (STUDIO.md,
+   * "playbuttoner": investigato a fondo e non era una pausa/game over,
+   * §6 "condizioni di vittoria e sconfitta" resta `[?]` fino in fondo al
+   * diario; l'unica traccia vera, `blacker1` creato da `air_tut2/Alarm_1.gml`
+   * nella cutscene del tutorial, non e' MAI implementata nel decompilato
+   * stesso in nessun'altra room — la cutscene qui la bypassa apposta,
+   * STUDIO.md tutorial.js). Richiesto dall'autore, tre condizioni:
+   *  - sconfitta, `chies` (STUDIO.md §9: l'edificio unico e preesistente)
+   *    distrutta — in QUALUNQUE room, e' sempre l'unico esemplare;
+   *  - sconfitta, l'olio a zero SOLO su `match`/`tutorial` (le uniche due
+   *    room con la piattaforma volante — game/src/platform.js,
+   *    applyMatchPlatform(): `match_easy` ha la citta' gia' a terra, un
+   *    "sotto" in cui cadere non esiste);
+   *  - vittoria, il `grattacielo` completato (l'ultima delle tre "stelle",
+   *    STAR_BUILDINGS sopra) — a differenza della sconfitta NON blocca la
+   *    partita, resta un traguardo.
+   * null | { kind: "defeat", reason: "chies"|"oil", t, motorFreezeT? }
+   * | { kind: "victory", t }. `t`: secondi dal trigger, avanzato fuori dal
+   * blocco `if (!frozen)` sotto (l'introduzione della sconfitta deve girare
+   * anche mentre il resto della simulazione e' fermo). `victoryShown`
+   * impedisce che la stessa vittoria ricompaia ogni frame dopo il primo tap
+   * di "Continua" — al massimo un grattacielo esiste per partita (unlocked()
+   * sopra), quindi basta un flag, non un id da tracciare.
+   */
+  let outcome = null;
+  let victoryShown = false;
+  let outcomeButtons = [];   // { x, y, w, h, action }, solo quando il pannello e' visibile
+
   // [C] placeholder/Mouse_LeftReleased.gml: `r12.selec` e' il vero selettore
   // di modalita' piazzamento nell'originale (1 = casa, 2 = industria, ...).
   const SELEC_BY_TYPE = { casa: 1, industria: 2 };
@@ -2114,6 +2235,34 @@ export async function mountMatch(ctx, params = {}) {
   }
 
   input.onTap = (sx, sy) => {
+    // `outcome` (sopra) intercetta PRIMA di tutto, bottone di pausa incluso —
+    // in sconfitta la pausa non ha senso (la partita e' gia' finita), in
+    // vittoria non deve restare un modo per aprire il menu di pausa SOPRA al
+    // pannello di vittoria stesso.
+    if (outcome) {
+      if (outcome.kind === "victory") {
+        // Qualunque tocco chiude — nessun blocco duro come la sconfitta
+        // sotto: e' un traguardo, non una fine (richiesto dall'autore, "puo'
+        // continuare a giocare"), quindi anche il bottone "Continua"
+        // (outcomeButtons, drawOutcomeOverlay()) e' solo un'affordance, non
+        // l'unico modo di chiuderlo.
+        outcome = null;
+        return;
+      }
+      // Sconfitta: `outcomeButtons` resta vuoto finche' l'introduzione
+      // (buio/caduta, drawOutcomeOverlay()) non e' finita — nessun tocco fa
+      // niente prima di allora, il pannello va guardato fino in fondo.
+      const hit = outcomeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+      if (hit?.action === "load") {
+        const ok = doLoad();
+        if (ok) { picked = null; outcome = null; }
+        message = ok ? "partita caricata" : "nessun salvataggio";
+        messageT = 3;
+      } else if (hit?.action === "title") {
+        navigate("menu");
+      }
+      return;
+    }
     // Il bottone di pausa intercetta PRIMA di ogni altra cosa, modale
     // (bankPanelOpen sotto) incluso — deve restare toccabile sempre, in
     // entrambi gli stati (avvia/toglie la pausa), altrimenti una volta
@@ -2572,17 +2721,40 @@ export async function mountMatch(ctx, params = {}) {
     const night = isNight(phaseT);
     const dawn = isDawn(phaseT);
 
+    // `outcome` (sopra): avanza il proprio orologio SEMPRE, anche a
+    // simulazione ferma (la sconfitta congela `buildings`/`r12` etc. ma la
+    // sua stessa introduzione — buio/caduta, drawOutcomeOverlay() — deve
+    // continuare a scorrere). La vittoria non congela niente (`frozen` sotto
+    // resta `false`), ma il suo `t` non serve a nient'altro che a esistere
+    // per simmetria con la sconfitta — nessun timer di auto-chiusura.
+    if (outcome) outcome.t += dt;
+
     // --- simulazione: cantieri, economia, meteo, traffico, luci
-    // `paused` (bottone di pausa in basso a destra, sotto): l'intero blocco
-    // usa `dt` per avanzare stato — a differenza del resto del motore (che
-    // non ha mai avuto un concetto di "in pausa"), qui basta saltarlo del
-    // tutto per congelare la partita. Il disegno sotto NON e' condizionato:
+    // `paused` (bottone di pausa in basso a destra, sotto) o una sconfitta
+    // gia' in corso: l'intero blocco usa `dt` per avanzare stato — a
+    // differenza del resto del motore (che non ha mai avuto un concetto di
+    // "in pausa" prima di questo), qui basta saltarlo del tutto per
+    // congelare la partita. La vittoria NON e' in questo elenco: "puo'
+    // continuare a giocare" (richiesto dall'autore) — solo un pannello,
+    // niente di simulativo si ferma. Il disegno sotto NON e' condizionato:
     // ridisegna lo stesso identico stato ogni frame (nessun costo visibile,
-    // il mondo non cambia), cosi' il blur di pausa (vedi drawPauseOverlay()
-    // in fondo al file) puo' restare un post-processo puro invece di dover
-    // duplicare la logica di disegno.
-    if (!paused) {
+    // il mondo non cambia mentre e' fermo), cosi' il blur di pausa/sconfitta
+    // (drawPauseOverlay()/drawOutcomeOverlay() in fondo al file) puo' restare
+    // un post-processo puro invece di dover duplicare la logica di disegno.
+    const frozen = paused || outcome?.kind === "defeat";
+    if (!frozen) {
       stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
+      // Vittoria (`outcome` sopra): il grattacielo (STAR_BUILDINGS, l'ultima
+      // delle tre "stelle") appena finito di costruire — `b.construction`
+      // diventa `null` proprio dentro stepConstructions() appena chiamata
+      // (buildings.js), quindi qui e' gia' il primo frame utile per
+      // accorgersene. Al piu' un grattacielo esiste per partita
+      // (`unlocked()`, STAR_BUILDINGS sopra), quindi `victoryShown` basta a
+      // non ripetere il trigger ad ogni frame successivo.
+      if (!victoryShown) {
+        const g = buildings.find((b) => b.type === "grattacielo" && !b.construction);
+        if (g) { victoryShown = true; outcome = { kind: "victory", t: 0 }; }
+      }
       // Impalcatura/gru rotanti del grattacielo (game/src/scaffold.js): un
       // sotto-sistema di scenografia indipendente, non un `onSpawn`/`onFinish`
       // di stepConstructions() sopra — vedi il commento in scaffold.js per il
@@ -2605,6 +2777,18 @@ export async function mountMatch(ctx, params = {}) {
       stepWeather(r12, dt, scene.name === "match");
       stepStormDamage(buildings, dt, r12);
       tickR12(r12, dt, buildings);
+      // Sconfitta, l'olio a zero (`outcome` sopra) — SOLO su `match`/
+      // `tutorial`, le uniche due room con la piattaforma volante
+      // (game/src/platform.js): `r12.oil` e' gia' il valore finale di questo
+      // frame qui (clampR12(), chiamata in coda a tickR12() appena sopra, lo
+      // ha gia' pavimentato a 0). `motorFreezeT`: il valore di `phaseT` di
+      // QUESTO istante, cosi' le turbine di r120 (r120MotorDecor() piu'
+      // sotto, nel disegno) smettono di lampeggiare invece di continuare
+      // finche' non arriva il buio della cutscene — "i rotori si bloccano",
+      // richiesto dall'autore.
+      if (!outcome && (roomName === "match" || roomName === "tutorial") && r12.oil <= 0) {
+        outcome = { kind: "defeat", reason: "oil", t: 0, motorFreezeT: phaseT };
+      }
       stepCalendar(r12, dt);
       stepCars(cars, dt, r12, night);
       carmakerT += dt;
@@ -2713,7 +2897,15 @@ export async function mountMatch(ctx, params = {}) {
       stepExplosions(explosions, dt);
       // Unico controllo per tutte le fonti di danno di questo frame (fulmini,
       // STUDIO.md "le tempeste diventano reali" + bombe appena sganciate sopra).
-      for (const b of buildings) if (!b.construction && b.life <= 0) destroyBuilding(b);
+      for (const b of buildings) {
+        if (b.construction || b.life > 0) continue;
+        // Sconfitta, `chies` distrutta (`outcome` sopra) — in QUALUNQUE room:
+        // e' sempre l'unico esemplare (STUDIO.md §9), a differenza di ogni
+        // altro edificio la cui morte (destroyBuilding() sotto, comunque
+        // chiamata: diventa un rudere come sempre) non ferma la partita.
+        if (b.type === "chies" && !outcome) outcome = { kind: "defeat", reason: "chies", t: 0 };
+        destroyBuilding(b);
+      }
       if (r12.alertT > 0) r12.alertT -= dt;
       // Torrette (game/src/buildings.js, stepTurretAim): inseguono la
       // minaccia vera piu' vicina (`threats`: aerei/bombardieri/zeppelin,
@@ -2943,7 +3135,13 @@ export async function mountMatch(ctx, params = {}) {
     // segnalato dall'autore. Gate corretto: la stessa condizione di
     // applyMatchPlatform() sopra (`match` O `tutorial`), non `platformState`.
     if (roomName === "match" || roomName === "tutorial") {
-      for (const it of r120MotorDecor(phaseT)) dynamic.push({ ...it, _f: frameFor(it.spr) });
+      // Sconfitta, l'olio a zero (`outcome.motorFreezeT` sopra): le turbine
+      // smettono di lampeggiare — congelate al valore di `phaseT` di quando
+      // l'olio e' finito, invece di continuare a inseguire l'orologio
+      // ambientale (che non si ferma mai, nemmeno a partita persa: guida
+      // anche il ciclo giorno/notte, STUDIO.md).
+      const motorClockT = outcome?.kind === "defeat" && outcome.reason === "oil" ? outcome.motorFreezeT : phaseT;
+      for (const it of r120MotorDecor(motorClockT)) dynamic.push({ ...it, _f: frameFor(it.spr) });
     }
     for (const m of constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
     for (const bx of constructionBoxes) dynamic.push({ obj: "decor", x: bx.x, y: bx.y, depth: bx.depth, _f: frameFor(bx.spr) });
@@ -3557,7 +3755,11 @@ export async function mountMatch(ctx, params = {}) {
     // e ci disegna sopra un pannello con i tre bottoni. Post-processo puro,
     // FUORI dal batch appena chiuso: legge il framebuffer di default con
     // `pauseBlur.blurScreen()` DOPO che tutto il resto e' gia' li' dentro.
-    if (paused) drawPauseOverlay();
+    // `outcome` (sopra) ha priorita' sul menu di pausa — coerente con onTap
+    // (che gia' intercetta `outcome` prima del bottone di pausa): i due non
+    // vanno mai disegnati insieme.
+    if (outcome) drawOutcomeOverlay();
+    else if (paused) drawPauseOverlay();
 
     // --- HUD testuale di debug: numeri e stato dettagliato per lo sviluppo,
     // sovrapposto in DOM. La barra sopra e' la UI "vera", in canvas.
@@ -3664,6 +3866,14 @@ export async function mountMatch(ctx, params = {}) {
     get aerSmoke() { return aerSmoke; }, get debris() { return debris; }, get ruins() { return ruins; },
     get blockedSlots() { return blockedSlots; }, get placeholders() { return placeholders; },
     get bankPanelOpen() { return bankPanelOpen; }, setBankPanelOpen: (v) => { bankPanelOpen = v; },
+    // Fine partita (`outcome` sopra) — comodo per testare le tre condizioni
+    // senza aspettare che l'olio scenda a zero per davvero o costruire un
+    // grattacielo da 200000 mon: `forceDefeat("oil"|"chies")`/`forceVictory()`
+    // impostano lo stesso stato che il gioco raggiungerebbe da solo.
+    get outcome() { return outcome; }, get outcomeButtons() { return outcomeButtons; },
+    forceDefeat: (reason) => { outcome = { kind: "defeat", reason, t: 0, motorFreezeT: phaseT }; },
+    forceVictory: () => { victoryShown = true; outcome = { kind: "victory", t: 0 }; },
+    clearOutcome: () => { outcome = null; },
     get bankButtons() { return bankButtons; },
     setPhase: (t) => { phaseT = t; },
     phases: PHASES,
