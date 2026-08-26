@@ -3138,8 +3138,10 @@ export async function mountMatch(ctx, params = {}) {
       // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
       // bombardieri/zeppelin man mano che le spie ignorate si accumulano
       // (contatori alzati in stepBalloons() sopra), poi ognuno vola, bombarda,
-      // e sparisce da solo.
-      stepThreatSpawner(r12, threats, dt);
+      // e sparisce da solo. `!!platformState`: solo su una room con una
+      // piattaforma vera gli `air` possono nascere "di sfondo" (dietro di
+      // lei, threats.js/spawnThreat()) — decisione dell'autore.
+      stepThreatSpawner(r12, threats, dt, !!platformState);
       stepThreats(threats, bombs, explosions, dt, r12, aerSmoke, debris);
       stepAerSmoke(aerSmoke, dt);
       stepDebris(debris, explosions, dt);
