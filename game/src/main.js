@@ -1668,7 +1668,15 @@ export async function mountMatch(ctx, params = {}) {
       message = "caricamento da file fallito"; messageT = 3;
       return;
     }
-    if (!result) return;   // dialog annullato, o file non valido (silenzioso: save.js gia' lo scarta)
+    if (!result) return;   // dialog annullato dall'utente, nessun messaggio
+    // "invalid" (save.js/loadFromFile()): un file e' stato scelto davvero,
+    // ma non e' un salvataggio valido — JSON malformato, un altro gioco, o
+    // il checksum non combacia (modificato a mano, save.js/verify()). A
+    // differenza del dialog annullato (sopra) qui vale la pena dirlo.
+    if (result === "invalid") {
+      message = "file non valido o modificato"; messageT = 3;
+      return;
+    }
     // Un file salvato per un'ALTRA room (es. si apre un salvataggio di
     // `match` mentre si sta giocando `match_easy`) non puo' essere applicato
     // qui: gli edifici/la piattaforma dell'una non hanno senso nell'altra.

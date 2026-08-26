@@ -500,10 +500,14 @@ export async function mountTitle(ctx) {
     loadFileBtn.disabled = true;
     try {
       const result = await loadFromFile();
-      // `null`: dialog annullato dall'utente O file non valido (save.js non
-      // distingue i due casi) — silenzioso in entrambi, coerente con
-      // "annullare un dialog non e' un errore da segnalare".
-      if (result) {
+      // `null`: dialog annullato dall'utente — silenzioso, non e' un
+      // errore. `"invalid"`: un file e' stato scelto davvero ma non e' un
+      // salvataggio valido (JSON malformato, un altro gioco, o il
+      // checksum non combacia — modificato a mano, save.js/verify()): qui
+      // SI vale la pena dirlo, a differenza del dialog annullato.
+      if (result === "invalid") {
+        message = "file non valido o modificato"; messageT = 3;
+      } else if (result) {
         navigateTo = {
           room: result.data.scene ?? "match_easy", autoload: false,
           loadedData: result.data, fileHandle: result.handle,
