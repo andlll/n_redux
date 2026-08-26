@@ -1,8 +1,8 @@
 import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
-import { createR12, tickR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, ruinRebuildConstruction, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
+import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION } from "./state.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -10,11 +10,12 @@ import { spawnPedestrian, stepPedestrians } from "./pedestrians.js";
 import {
   stepBalloonSpawner, stepBalloons, stepLoot, collectLoot,
   spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
-  BALLOON_TYPES, spawnLoot,
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { spawnLightning, stepLightning, boltSprite, glowPosition, glowFrame, LIGHTNING_GLOW_LIFE } from "./lightning.js";
+import { createWeatherState, stepRain, RAIN_STREAK_LENGTH, RAIN_STREAK_WIDTH, RAIN_TINT, RAIN_ALPHA } from "./weather.js";
+import { createFireworksState, stepFireworks, FIREWORK_DEPTH, FIREWORK_SPARK_SIZE } from "./fireworks.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
 import { addCrane, stepCranes, craneParts } from "./cranes.js";
 import {
@@ -32,6 +33,14 @@ import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE,
 } from "./tutorial.js";
+
+// [I] Inclinazione VISIVA delle gocce di pioggia (drawRotated() sotto,
+// game/src/weather.js) — un dettaglio puramente estetico, indipendente
+// dalla fisica di caduta vera (weather.js, RAIN_DIR): un'unica inclinazione
+// fissa per tutte le gocce invece di ricalcolarla per ognuna dalla sua
+// velocita' istante per istante (costo per un dettaglio che a schermo non
+// si nota).
+const RAIN_TILT_DEG = 20;
 
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
 // export mountMatch(ctx, params) invece di uno script a livello di modulo —
@@ -114,31 +123,33 @@ export async function mountMatch(ctx, params = {}) {
   const SCENE_BG_RGB = [scene.bgColor & 0xff, (scene.bgColor >> 8) & 0xff, (scene.bgColor >> 16) & 0xff].map((v) => v / 255);
   cam.bounds = { left: 0, top: 0, right: scene.width, bottom: scene.height };
   // [Bug corretto, gap dichiarato STUDIO.md: "match mostra ancora perlopiu'
-  // cielo/nuvole al primo avvio"] Il centro GEOMETRICO della room (usato qui
+  // cielo/nuvole al primo avvio"; poi decisione dell'autore: "in ogni room
+  // centra la camera su chies"] Il centro GEOMETRICO della room (usato qui
   // sotto, e di nuovo in resize() piu' sotto per il ramo mobile) non e' dove
   // sta la citta': su `match` la piattaforma volante vive nella meta'
   // superiore della room (`match.json` e' alta 2090px, ma le istanze vere —
   // strade, edifici, la base — si affollano ben sopra la sua meta', il resto
-  // e' cielo vuoto sotto/intorno). La MEDIANA della y di tutte le istanze
-  // della scena (non filtrate: anche solo poche decine di outlier — pu1,
-  // reversi, honda1/2, rimossi da `staticWorld` piu' sotto — non spostano una
-  // mediana su centinaia di istanze) e' un proxy semplice e senza bisogno di
-  // conoscere la room in anticipo per "dove sta il contenuto vero", usata
-  // solo sull'asse Y (l'asse X resta il centro geometrico: la citta' e' gia'
-  // ragionevolmente centrata in orizzontale, il problema segnalato era solo
-  // verticale). Effettivo solo su DESKTOP: su mobile lo zoom iniziale
-  // "cover" (resize() piu' sotto, gia' un fix precedente per non lasciare
-  // bordi) inquadra l'ALTEZZA della room esattamente pari a quella dello
-  // schermo per ogni room giocabile (tutte piu' larghe che alte, ogni
-  // telefono in portrait l'opposto) — zero margine di panoramica verticale,
-  // quindi `cam.clamp()` (camera.js) ricentra comunque sul centro
-  // geometrico qualunque valore le si passi. Non toccato: e' il comportamento
-  // "cover" voluto da quel fix, non un effetto collaterale di questo.
-  const instanceYs = scene.instances.map((it) => it.y).sort((a, b) => a - b);
-  const midIdx = instanceYs.length >> 1;
-  const initialFocusY = instanceYs.length === 0 ? scene.height / 2
-    : instanceYs.length % 2 ? instanceYs[midIdx] : (instanceYs[midIdx - 1] + instanceYs[midIdx]) / 2;
-  cam.x = scene.width / 2;
+  // e' cielo vuoto sotto/intorno) e su `tutorial` (allargata a 3900x2090,
+  // le dimensioni di `match`, per fare spazio alla piattaforma — game/src/
+  // platform.js) il contenuto vero resta raccolto nella meta' sinistra. Una
+  // versione precedente qui usava la MEDIANA di x/y di tutte le istanze
+  // della scena come proxy di "dove sta il contenuto vero" — `chies` (il
+  // municipio, edificio principale e unico di ogni room, STUDIO.md §9) e'
+  // un'ancora piu' semplice e piu' precisa: e' letteralmente il centro
+  // amministrativo della citta', sempre presente, non una stima statistica
+  // che poteva comunque cadere qualche schermata lontano dal punto giusto.
+  // Effettivo solo su DESKTOP: su mobile lo zoom iniziale "cover" (resize()
+  // piu' sotto, gia' un fix precedente per non lasciare bordi) inquadra
+  // l'ALTEZZA della room esattamente pari a quella dello schermo per ogni
+  // room giocabile (tutte piu' larghe che alte, ogni telefono in portrait
+  // l'opposto) — zero margine di panoramica verticale, quindi `cam.clamp()`
+  // (camera.js) ricentra comunque sul centro geometrico qualunque valore le
+  // si passi. Non toccato: e' il comportamento "cover" voluto da quel fix,
+  // non un effetto collaterale di questo.
+  const chiesFocus = scene.instances.find((it) => it.obj === "chies");
+  const initialFocusX = chiesFocus ? chiesFocus.x : scene.width / 2;
+  const initialFocusY = chiesFocus ? chiesFocus.y : scene.height / 2;
+  cam.x = initialFocusX;
   cam.y = initialFocusY;
   // minZoom = quanto ci si puo' avvicinare: sotto 0.5 gli sprite (disegnati
   // alla risoluzione nativa dell'atlas) si vedono sgranati, ingranditi oltre
@@ -336,6 +347,29 @@ export async function mountMatch(ctx, params = {}) {
   for (const p of placeholders) { p.id = `ph_${p.x}_${p.y}`; p.consumed = false; p.depth = PLACEHOLDER_DEPTH; }
   const placeholderById = new Map(placeholders.map((p) => [p.id, p]));
 
+  // [Decisione dell'autore: "la rovina ruspata deve creare sempre un
+  // placeholder vuoto, non un nuovo edificio"] Sgombera una rovina (rudere
+  // VERO da battaglia o lotto-rudere del tutorial, sotto) lasciando un
+  // lotto libero al suo posto, invece di avviare subito un cantiere —
+  // prima di questa decisione la ruspa su una rovina "ricostruiva"
+  // direttamente una `casa` (fedele al decompilato, ma il giocatore si
+  // aspetta uno sgombero puro, poi una scelta libera di cosa costruirci
+  // sopra). Riusa lo stesso `id`/`depth` dei placeholder veri della scena
+  // (sopra) cosi' il lotto si comporta esattamente come uno qualunque
+  // (hover, tap, findPlacementCluster) — se un placeholder con quell'id
+  // esiste gia' (mai il caso per una rovina, ma difensivo) lo riattiva
+  // invece di duplicarlo.
+  function clearedPlaceholder(x, y) {
+    const id = `ph_${x}_${y}`;
+    let ph = placeholderById.get(id);
+    if (ph) { ph.consumed = false; return ph; }
+    ph = { obj: "placeholder", x, y, depth: PLACEHOLDER_DEPTH, spr: "phold", _f: frameFor("phold"), id, consumed: false };
+    placeholders.push(ph);
+    placeholderById.set(id, ph);
+    staticWorld.push(ph);
+    return ph;
+  }
+
   // `chies` e' gia' un'istanza vera nella room (src/rooms/match_easy.json:
   // un solo `chies` a (851,513), STUDIO.md §5.3), non nasce da un
   // placeholder. Va tolta da `staticWorld` (altrimenti sarebbe disegnata due
@@ -344,6 +378,39 @@ export async function mountMatch(ctx, params = {}) {
   // esattamente come per gli edifici piazzati dal giocatore.
   const chiesIndex = staticWorld.findIndex((it) => it.obj === "chies");
   const chiesScene = chiesIndex >= 0 ? staticWorld.splice(chiesIndex, 1)[0] : null;
+
+  // [Bug corretto, segnalato dall'autore: "le strutture di difesa esistenti
+  // nel tutorial non sembrano funzionanti"] Solo sulla room "tutorial"
+  // (game/src/tutorial.js): a differenza di match/match_easy (che pre-
+  // piazzano solo `chies`, sopra), la sua scena include gia' diversi
+  // edifici VERI — casa2/casa3/industria1/industria2/parco/gatlinggun/
+  // rocket_launcher, la meta' di citta' sopravvissuta al bombardamento
+  // della cutscene iniziale (STUDIO.md/tutorial.js) — mai tolti da
+  // `staticWorld` finora: restavano puro decoro statico, MAI in
+  // `buildings`, quindi invisibili a stepTurretAim()/stepProjectiles() (le
+  // torrette di difesa non rispondevano mai a una minaccia vera) e ad ogni
+  // altra simulazione che legge quell'array (produzione/crescita/consumo,
+  // ruspa, potenziamenti). Le stesse baseline `tutpar`/`tutind`/`tutrl`
+  // (tutorial.js/createTutorialState()) gia' presupponevano che lo
+  // fossero: contano quanti ne esistono GIA' apposta per sottrarli dal
+  // conteggio di cio' che il giocatore costruisce durante il tutorial — un
+  // conto che senza questo fix non tornava mai (un parco pre-esistente non
+  // contava mai in `builtAtLevel("parco",1)`, quindi il tutorial avrebbe
+  // richiesto di costruirne 5 di nuovi invece di uno solo per superare la
+  // fase). Tolte qui da `staticWorld` (stesso principio di chies sopra);
+  // seedTutorialBuildings() piu' sotto (dopo che r12 esiste davvero) le
+  // trasforma in `buildings` veri, gia' finiti al livello che il loro nome
+  // implica.
+  const TUTORIAL_PREBUILT_TYPES = {
+    casa2: { type: "casa", level: 2 }, casa3: { type: "casa", level: 3 },
+    industria1: { type: "industria", level: 1 }, industria2: { type: "industria", level: 2 },
+    parco: { type: "parco", level: 1 },
+    gatlinggun: { type: "gatling", level: 1 }, rocket_launcher: { type: "missile", level: 1 },
+  };
+  const tutorialPrebuilt = roomName === "tutorial"
+    ? staticWorld.filter((it) => TUTORIAL_PREBUILT_TYPES[it.obj])
+    : [];
+  for (const it of tutorialPrebuilt) staticWorld.splice(staticWorld.indexOf(it), 1);
 
   // `pu1` e' anche lei gia' un'istanza vera nella room ([C] src/rooms/
   // match_easy.json, sprite "p1" = la stessa casetta del bottone "casa" qui
@@ -416,12 +483,24 @@ export async function mountMatch(ctx, params = {}) {
   // restava sospeso nel vuoto, "tagliato" a meta' — esattamente lo stesso
   // bug di `match` (sopra) gia' risolto una volta, ripresentatosi qui
   // perche' la room non era mai stata inclusa in questa chiamata.
-  // `interactive:false` su tutorial (nessuna catena fari/r22/r32: fuori
-  // scopo per una guida, STUDIO.md) — stesso trattamento gia' usato dallo
-  // sfondo sfocato della title screen (game/src/title.js) sulla stessa
-  // piattaforma.
+  // [Decisione dell'autore: "estendi le dimensioni della room [tutorial] in
+  // modo che siano pari a quelle di match e verifica che la piattaforma sia
+  // rappresentata completamente come in match"] `interactive:true` anche su
+  // tutorial (non piu' solo `match`): la catena fari/r22/r32 (game/src/
+  // platform.js, sotto) diventa raggiungibile anche li' — stesso
+  // trattamento riservato PRIMA solo allo sfondo sfocato della title screen
+  // (game/src/title.js, sempre `interactive:false` la', una scena mai
+  // giocata) resta quello, il tutorial no: e' una partita vera. La room
+  // stessa (game/data/tutorial.scene.json, width/height) e' stata allargata
+  // a 3900x2090 (le dimensioni di `match`, sotto SCENE_WIDTH in
+  // platform.js) apposta per questo — la piattaforma vera (r120/motori/
+  // fari/le due espansioni r32/r22, tutte a coordinate ASSOLUTE fisse in
+  // platform.js, indipendenti dal contenuto proprio della room) si estende
+  // ben oltre i vecchi 1920x1086 di `match_easy` che tutorial riusava
+  // finora: senza spazio a sufficienza la camera non avrebbe mai potuto
+  // panoramicare fin li', anche a `platformState` gia' inizializzato sotto.
   if (roomName === "match" || roomName === "tutorial") {
-    applyMatchPlatform(staticWorld, { interactive: roomName === "match" });
+    applyMatchPlatform(staticWorld, { interactive: roomName === "match" || roomName === "tutorial" });
   }
   // [Bug corretto] `applyMatchPlatform()` PUSHA istanze nuove in `staticWorld`
   // (r120/baa12) DOPO il ciclo che assegna `_f` a tutto il resto (sopra,
@@ -439,10 +518,13 @@ export async function mountMatch(ctx, params = {}) {
   // giro, in tempo.
   for (const it of staticWorld) if (!it._f) it._f = frameFor(it.spr);
   missingArt = staticWorld.filter((it) => !it._f).length;
-  // Catena fari -> seconda piattaforma (game/src/platform.js): solo su
-  // `match`, come r120/applyMatchPlatform() sopra — `match_easy` non ha ne'
-  // la base volante ne' `chies` a livello 2 (STUDIO.md, gap dichiarati).
-  let platformState = roomName === "match" ? createFaroState() : null;
+  // Catena fari -> seconda piattaforma (game/src/platform.js): su `match` e
+  // `tutorial` (decisione dell'autore, vedi il commento su
+  // applyMatchPlatform() sopra), come r120 li' — `match_easy` resta
+  // l'unica room senza, non avendo ne' la base volante ne' `chies` capace
+  // di raggiungere i livelli che sbloccano i fari (STUDIO.md, gap
+  // dichiarati).
+  let platformState = (roomName === "match" || roomName === "tutorial") ? createFaroState() : null;
 
   // Semafori (game/src/semaphores.js, STUDIO.md): `object8` ("se", il palo —
   // mai rinominato dall'autore originale) resta in staticWorld com'e', un
@@ -573,6 +655,11 @@ export async function mountMatch(ctx, params = {}) {
   // effettivamente colpiti durante una tempesta, vedi entrambe le chiamate
   // piu' sotto.
   let lightning = [];
+  // La pioggia vera del temporale (game/src/weather.js) — sia quello vero
+  // di `match` (r12.storm) sia quello cosmetico di `match_easy`
+  // (r12.stormeasy): stepRain() piu' sotto decide da solo se e' il momento
+  // di farla cadere, in base a quale dei due e' attivo.
+  let weatherState = createWeatherState();
   // Minacce vere (game/src/threats.js): `threats` sono aerei/bombardieri/
   // zeppelin, fatti nascere da stepThreatSpawner (r12/Alarm_4|5|6.gml) ogni
   // volta che una mongolfiera spia viene ignorata abbastanza a lungo da
@@ -777,13 +864,34 @@ export async function mountMatch(ctx, params = {}) {
   const CLUB_SNAP = 2 * TICK;
 
   function addDecor(building, spawns, { transient = false } = {}) {
+    // [Bug corretto, segnalato dall'autore: "in alcuni casi c'e' un overlay
+    // sbagliato tra edifici e luci degli edifici dietro, forse legato al
+    // fatto che sono quelli a due slot?"] Il decoro (qui il bagliore delle
+    // finestre notturne, spawnDecor() sopra) calcolava il proprio depth da
+    // `-building.y` grezzo, IGNORANDO l'eventuale depth "vero" gia' scelto
+    // per l'edificio stesso (`building.depth`, il campo che effDepth() legge
+    // quando non e' 0 — vedi il commento li' sopra). Per un edificio normale
+    // i due coincidono (`building.depth` resta 0, quindi coincide con
+    // `-building.y`) — ma un edificio "a due lotti" (palazzo/museoRd,
+    // resolvePlacement() piu' sotto) nasce apposta con un depth SCOSTATO
+    // dalla propria y (la MEDIA fra i due lotti del cluster, non solo il
+    // proprio: la sua sagoma e' grande abbastanza da coprire ANCHE il lotto
+    // vicino bloccato, commento li'). Il suo decoro, ricalcolando `-y` da
+    // zero, restava ancorato alla y "vera" invece che a quel depth scostato:
+    // contro un terzo edificio vicino la cui y ricade fra i due, l'edificio
+    // stesso si ordinava correttamente ma le sue luci no, comparendo davanti
+    // o dietro nel punto sbagliato — l'esatto difetto segnalato. Stessa
+    // baseline di effDepth() invece di ricalcolarla: `building.depth` quando
+    // e' un vero scostamento (2 lotti, o `parco`/fixedDepth), altrimenti
+    // `-building.y` come prima.
+    const baseDepth = building.depth === 0 ? -building.y : building.depth;
     for (const { spr, dx, dy, lit = true, fadeTicks, depthOffset = 0 } of spawns) {
       const y = building.y + dy;
       const isClub = building.type === "club";
       const scrubSpr = lit && !isClub ? scrubSpriteFor(spr) : null;
       decorEntities.push({
         obj: "decor", buildingId: building.id,
-        x: building.x + dx, y, depth: (lit ? -y - 1 : -y) + depthOffset,
+        x: building.x + dx, y, depth: (lit ? baseDepth - dy - 1 : baseDepth - dy) + depthOffset,
         spr, _f: frameFor(spr),
         // `fadeTicks` (grattacielo, buildings.js): dissolvenza propria invece
         // della LIGHT_FADE condivisa da tutti gli altri decori — vedi stepLights().
@@ -1235,6 +1343,19 @@ export async function mountMatch(ctx, params = {}) {
     spawnDecor(b, currentDecor(b));
   }
 
+  /** Come seedChies() sopra, ma per gli edifici pre-esistenti della room
+   * "tutorial" (tutorialPrebuilt/TUTORIAL_PREBUILT_TYPES sopra) — ognuno
+   * gia' finito al livello che il suo nome implica invece che a livello 1,
+   * via placeFinishedBuilding() (buildings.js). */
+  function seedTutorialBuildings() {
+    for (const it of tutorialPrebuilt) {
+      const spec = TUTORIAL_PREBUILT_TYPES[it.obj];
+      const b = placeFinishedBuilding(spec.type, it.x, it.y, it.depth, spec.level, r12);
+      buildings.push(b);
+      spawnDecor(b, currentDecor(b));
+    }
+  }
+
   /**
    * Un edificio la cui vita e' scesa a 0 (fulmine in tempesta, o una bomba
    * sganciata da una minaccia vera — game/src/threats.js, stepBombs). [C]
@@ -1250,11 +1371,14 @@ export async function mountMatch(ctx, params = {}) {
    * `demobasia/Collision_*.gml`** (che infatti collide solo con edifici
    * FINITI, MAI con un rudere — quella parte era corretta, la conclusione
    * "quindi nessuno strumento lo tocca" no): **[C]** `ruin1|2|3/
-   * Mouse_LeftPressed.gml` ricostruisce per davvero sotto ruspa, pagando —
-   * `ruinRebuildCost()`/`ruinRebuildConstruction()` (buildings.js) lo
-   * fanno ora anche per i ruderi VERI da battaglia (non solo per i lotti-
-   * rudere pre-piazzati del tutorial, `ruinLots` sotto, che usano la
-   * STESSA funzione da prima). `level`/`cost` salvati qui sul rudere: la
+   * Mouse_LeftPressed.gml` risponde davvero sotto ruspa, a pagamento —
+   * `ruinRebuildCost()` (buildings.js) calcola quel costo qui anche per i
+   * ruderi VERI da battaglia (non solo per i lotti-rudere pre-piazzati del
+   * tutorial, `ruinLots` sotto, che usano la STESSA funzione da prima). Il
+   * tocco vero e proprio, piu' sotto (`clearedPlaceholder()`), lascia un
+   * lotto libero invece di ricostruire — [Decisione dell'autore: "la
+   * rovina ruspata deve creare sempre un placeholder vuoto, non un nuovo
+   * edificio"]. `level`/`cost` salvati qui sul rudere: la
    * "taglia" e' `b.level` dell'edificio al momento della morte, letta
    * UNA VOLTA qui invece che ricalcolata ad ogni tap.
    *
@@ -1417,6 +1541,14 @@ export async function mountMatch(ctx, params = {}) {
     return true;
   }
   seedChies();
+  seedTutorialBuildings();
+  // I fuochi d'artificio sopra chies a Gennaio (game/src/fireworks.js —
+  // [C] chies/Create.gml: `action_create_object(fireworker, 0, -400)`,
+  // nessun gate di room: chies esiste sempre, in ogni room). `chiesScene`
+  // (sopra) e' la posizione VERA della sua istanza nella scena — chies non
+  // si sposta mai, quindi il punto sopra la sua testa resta fisso per
+  // tutta la partita.
+  const fireworksState = chiesScene ? createFireworksState(chiesScene.x, chiesScene.y) : null;
   // [C] standma|easma/Mouse_LeftPressed.gml: `action_load_game(...)` scatta
   // SUBITO al tap del bottone, prima ancora che il gioco vero appaia — qui
   // equivale a questa singola chiamata all'avvio, solo quando si arriva
@@ -1536,6 +1668,31 @@ export async function mountMatch(ctx, params = {}) {
       rgb: a.rgb.map((v, j) => v + (b.rgb[j] - v) * s),
       label: k < 0.75 ? a.name : a.name + " → " + b.name,
     };
+  }
+  // [Decisione dell'autore: "il temporale vero creava un sistema
+  // particellare di pioggia, e SOLO durante quella c'era la possibilita' di
+  // fulmini"] Il cielo che si scurisce durante il temporale — **[C]**
+  // `thunderclap` (r12/Alarm_2.gml, ramo `match`) copre l'intera view con
+  // uno sprite animato ("nitedis"/"nite", mai estratto in questo porting)
+  // che entra in 120 tick (2s) e resta finche' il temporale non finisce
+  // (r12/Alarm_7.gml gli dice di uscire, altri 2s). **[I]** Un tassello
+  // scalato per coprire l'intero schermo non e' replicabile con questo
+  // renderer (gli atlas sono impacchettati senza tiling/wrap, vedi
+  // STUDIO.md) — qui lo stesso effetto pratico (tutto si scurisce durante
+  // il temporale) si ottiene scurendo la tinta ambientale gia' calcolata da
+  // ambientAt() sopra, con lo stesso fade-in/fade-out di 2s: stesso
+  // risultato visivo (il mondo si scurisce e schiarisce con lo stesso
+  // ritmo), tecnica diversa, riusando la pipeline di tinta gia' esistente
+  // (mulTint()) invece di un quad in piu' da gestire a parte. Solo `match`
+  // (r12.storm): `stormeasy` (match_easy) e' pioggia pura, l'originale non
+  // crea mai `thunderclap` in quel ramo.
+  const STORM_DARKEN_FADE = 2;      // [C] 120 tick, nitedis
+  const STORM_DARKEN_MAX = 0.35;    // [I] quanto scurisce al buio massimo
+  function stormDarkenFactor(r12) {
+    if (!r12.storm) return 0;
+    const elapsed = r12.stormDuration - r12.stormT;
+    const k = Math.min(elapsed / STORM_DARKEN_FADE, r12.stormT / STORM_DARKEN_FADE, 1);
+    return Math.max(0, k) * STORM_DARKEN_MAX;
   }
   // [C] casa1/Alarm_3.gml: `aura.night` — booleano secco, a differenza della
   // tinta ambientale che sfuma. Usa la stessa fase di ambientAt() (nessuno
@@ -2403,7 +2560,20 @@ export async function mountMatch(ctx, params = {}) {
     for (const btn of uiButtons) {
       if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) {
         if (btn.kind === "menu") menoo = btn.menoo;                      // gru/occhio/indietro
-        else if (btn.kind === "deselect") { selectedType = null; r12.selec = 0; }  // handbutton
+        else if (btn.kind === "deselect") {
+          // [Bug corretto, segnalato dall'autore: la mano non deseleziona
+          // sempre lo strumento attivo] Azzerare `selectedType`/`r12.selec`
+          // toglie solo l'evidenziazione del bottone edificio premuto: la
+          // ruspa (selec===11) puo' aver gia' armato un popup si'/no su un
+          // edificio specifico (`ruspaPending`, sopra) che restava aperto e
+          // "vivo" — un tocco altrove veniva ancora letto come conferma/
+          // rifiuto di QUELLA demolizione anche dopo aver premuto la mano.
+          // La mano deve annullare qualunque strumento sia armato, non solo
+          // il bottone evidenziato: anche il popup di conferma della ruspa.
+          selectedType = null;
+          r12.selec = 0;
+          ruspaPending = null;
+        }  // handbutton
         else if (btn.kind === "zoom") {                                  // zoom+/zoom-
           userMoved = true;
           cam.setZoom(cam.targetZoom * btn.zoom, canvas.clientWidth / 2, canvas.clientHeight / 2);
@@ -2440,19 +2610,32 @@ export async function mountMatch(ctx, params = {}) {
     // prescindere dal depth, non solo per z-order — e vince comunque contro
     // l'edificio sotto di lui perche' il suo depth (UPSIGN_DEPTH, sempre in
     // primo piano) e' piu' negativo. "ruspaYes"/"ruspaNo" (il popup si'/no
-    // della ruspa, stesso depth) sono qui per lo stesso motivo. "flyingBalloon"
-    // (le mongolfiere di risorse/spia in volo, non il pacco di cantiere — vedi
-    // il commento sul push piu' sotto): richiesto dall'autore, un tap diretto
-    // sulla mongolfiera la distrugge — le torrette non lo fanno piu' da sole
-    // (game/src/projectiles.js) — quindi deve restare raggiungibile a
-    // prescindere dal depth, non solo per z-order, come casse/monete sopra.
+    // della ruspa, stesso depth) sono qui per lo stesso motivo.
+    //
+    // [Bug corretto, segnalato dall'autore: "se clicco su una mongolfiera
+    // questa esplode da sola, non dovrebbe succedere"] "flyingBalloon" era
+    // stato aggiunto qui in una sessione precedente ("un tap diretto sulla
+    // mongolfiera la distrugge — le torrette non lo fanno piu' da sole") per
+    // aggirare una regressione nella mira automatica delle torrette. Quella
+    // regressione non c'e' piu': stepTurretAim() (buildings.js) punta gia' da
+    // solo a una mongolfiera quando non c'e' nessuna minaccia vera in
+    // portata, e stepProjectiles() (projectiles.js) la distrugge davvero al
+    // colpo andato a segno — nessun oggetto mongolfiera dell'originale
+    // (monviolo/monvo/mongo/monbo/monspi, src/objects/) ha mai avuto un
+    // Mouse_LeftPressed.gml: in gioco non si "clicca" una mongolfiera per
+    // farla esplodere, la si abbatte con una torretta. Lasciarla raggiungibile
+    // a prescindere dal depth la faceva esplodere gratis a ogni tap che le
+    // capitava sopra (anche solo per piazzare/ispezionare qualcos'altro
+    // dietro di lei) — rimossa dalla lista, resta raggiungibile solo dal
+    // vecchio fallback per z-order (usato solo per l'HUD di debug), come nel
+    // gioco originale.
     for (const it of frameList) {
       if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
         && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo"
         && it.obj !== "bankIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
         && it.obj !== "faroDockerSignal" && it.obj !== "faro3Button" && it.obj !== "faro3WaveSignal"
         && it.obj !== "faro3DockerSignal" && it.obj !== "cargoShip" && it.obj !== "ruinLot"
-        && it.obj !== "ruin" && it.obj !== "flyingBalloon") continue;
+        && it.obj !== "ruin") continue;
       // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
       // stessa ragione della raccolta hover piu' sotto. Tutto il resto
       // (edifici, casse, monete, segnale di potenziamento) resta sul
@@ -2460,7 +2643,26 @@ export async function mountMatch(ctx, params = {}) {
       const hit = it.obj === "placeholder"
         ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
         : inFrameRect(w.x, w.y, it.x, it.y, it._f);
-      if (hit && (!picked || it.depth < picked.depth)) picked = it;
+      // [Bug corretto, segnalato dall'autore: "l'area cliccabile delle
+      // torrette e' troppo piccola, sembra solo quella vicina alla bocca di
+      // fuoco"] La sagoma vera (`it._f`, sopra) e' gia' l'intero sprite
+      // dell'edificio — base+cannone, non solo il cannone — ma il concorso
+      // fra AABB sovrapposte qui sotto si decide per `it.depth` (piu' vicino
+      // alla telecamera vince, `-b.y`): in una citta' fitta il rettangolo di
+      // UN VICINO davanti (che quindi vince) puo' sovrapporre la META'
+      // INFERIORE/base di una torre alta come una torretta senza coprirla
+      // davvero a schermo (le AABB non seguono la sagoma reale, `f.w/f.h`
+      // e' il rettangolo minimo che la contiene) — restava cliccabile solo
+      // la punta in alto (il cannone) che nessun vicino arriva a coprire.
+      // Col nemico gia' addosso e il giocatore di fretta (serve un tap
+      // rapido su un'area precisa) questo non e' accettabile: le torrette
+      // vincono sempre il concorso di profondita' contro un edificio
+      // normale che le si sovrappone (stesso trattamento di "upsign"/
+      // "ruspaYes/No" sopra, un pelo piu' permissivo di UPSIGN_DEPTH cosi'
+      // quei popup restano comunque sopra una torretta se mai si
+      // sovrapponessero), mai contro un'altra torretta o contro se stesse.
+      const turretPriority = (o) => (o.obj === "building" && BUILDING_TYPES[o.ref.type]?.turret) ? -8000 : o.depth;
+      if (hit && (!picked || turretPriority(it) < turretPriority(picked))) picked = it;
     }
     if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
       const it = frameList[i];
@@ -2484,39 +2686,35 @@ export async function mountMatch(ctx, params = {}) {
       }
     }
     if (!picked) return;
-    // Tutorial (game/src/tutorial.js): lotto-rudere — [C] ruin1|2/
-    // Mouse_LeftPressed.gml, solo con la ruspa selezionata e fondi
-    // sufficienti. Avvia un cantiere vero (stesso BUILDING_TYPES.casa gia'
-    // esistente) invece di un oggetto dedicato — vedi ruinRebuildConstruction().
+    // Tutorial (game/src/tutorial.js): lotto-rudere — solo con la ruspa
+    // selezionata e fondi sufficienti. [Decisione dell'autore: "la rovina
+    // ruspata deve creare sempre un placeholder vuoto, non un nuovo
+    // edificio"] Sgombera il lotto (clearedPlaceholder(), sopra) invece di
+    // avviare subito un cantiere di `casa` — una versione precedente
+    // seguiva alla lettera `ruin1|2/Mouse_LeftPressed.gml` (che nel
+    // decompilato ricostruisce davvero, non sgombera soltanto), ma qui la
+    // scelta esplicita e' che demolire lasci un lotto libero, non gia'
+    // occupato da una nuova costruzione.
     if (picked.obj === "ruinLot") {
       const lot = picked.ref;
       message = ""; messageT = 0;
       if (r12.selec === 11 && canAfford(r12, { mon: lot.cost })) {
         r12.mon -= lot.cost;
-        const b = placeBuilding("casa", lot.x, lot.y, lot.depth);
-        b.level = lot.level === 2 ? 1 : 0;
-        b.construction = ruinRebuildConstruction(lot.level);
-        buildings.push(b);
+        clearedPlaceholder(lot.x, lot.y);
         ruinLots.splice(ruinLots.indexOf(lot), 1);
       }
       picked = null;
       return;
     }
-    // [Bug corretto, richiesto dall'autore: "in match non riesco a
-    // demolire le rovine"] Rudere VERO da battaglia (destroyBuilding()
-    // sopra) — stessa identica meccanica di "ruinLot" appena sopra
-    // (**[C]** e' letteralmente lo stesso oggetto `ruin1|2|3` nel
-    // decompilato, buildings.js/ruinRebuildCost|Construction()), solo su
-    // `ruins` invece di `ruinLots`.
+    // Rudere VERO da battaglia (destroyBuilding() sopra) — stessa identica
+    // meccanica di "ruinLot" appena sopra (stesso `clearedPlaceholder()`),
+    // solo su `ruins` invece di `ruinLots`.
     if (picked.obj === "ruin") {
       const ru = picked.ref;
       message = ""; messageT = 0;
       if (r12.selec === 11 && canAfford(r12, { mon: ru.cost })) {
         r12.mon -= ru.cost;
-        const b = placeBuilding("casa", ru.x, ru.y, ru.depth);
-        b.level = Math.max(0, ru.level - 1);
-        b.construction = ruinRebuildConstruction(ru.level);
-        buildings.push(b);
+        clearedPlaceholder(ru.x, ru.y);
         ruins.splice(ruins.indexOf(ru), 1);
       }
       picked = null;
@@ -2637,24 +2835,6 @@ export async function mountMatch(ctx, params = {}) {
       message = `+${item.amount} ${item.key}`;
       messageT = 3;
       picked = null;   // raccolta, non c'e' piu' niente da tenere selezionato
-    } else if (picked.obj === "flyingBalloon") {
-      // Un tap diretto su una mongolfiera in volo (risorsa o spia) la
-      // distrugge — sempre disponibile, indipendentemente da dove si trovi
-      // rispetto a una torretta (che ora puo' abbatterla anche lei col tap
-      // sul cannone quando nessuna minaccia vera e' in portata, fireTurretManual/
-      // stepTurretAim in buildings.js/projectiles.js). Stessa risposta di un
-      // colpo andato a segno (game/src/projectiles.js, stepProjectiles):
-      // un'esplosione + la cassa di risorse se ne lascia una (mai per la
-      // spia, monspi/recogn — nessun `def.loot`).
-      const b = picked.ref;
-      const idx = balloons.indexOf(b);
-      if (idx >= 0) balloons.splice(idx, 1);
-      explosions.push(spawnExplosion(b.x, b.y));
-      const def = BALLOON_TYPES[b.type];
-      if (def?.loot) loot.push(spawnLoot(def.loot, b.x, b.y));
-      message = def?.isSpy ? "mongolfiera spia abbattuta" : "mongolfiera abbattuta";
-      messageT = 3;
-      picked = null;
     } else if (picked.obj === "coin") {
       const item = picked.ref;
       collectCoinAt(item);
@@ -2766,13 +2946,14 @@ export async function mountMatch(ctx, params = {}) {
       cam.maxZoom = fitZoom * 1.3;
       if (!userMoved) {
         cam.setZoomImmediate(fitZoom);
-        // `initialFocusY` (calcolato sopra, dove viene spiegato) invece di
-        // `scene.height / 2`: senza effetto pratico oggi (cam.clamp() sotto
-        // ricentra comunque quando la room "cover" non lascia margine
-        // verticale, il caso comune — vedi sopra), ma corretto per il caso in
-        // cui in futuro lo lasciasse (una room piu' quadrata, un tablet in
-        // landscape trattato come mobile via `pointer: coarse`).
-        cam.x = scene.width / 2;
+        // `initialFocusX`/`initialFocusY` (calcolati sopra, dove viene
+        // spiegato) invece di `scene.width|height / 2`: stesso principio,
+        // stessa correzione — senza effetto pratico su Y oggi (cam.clamp()
+        // sotto ricentra comunque quando la room "cover" non lascia margine
+        // verticale, il caso comune), ma X conta davvero per `tutorial`
+        // (contenuto non piu' centrato nei bound allargati, vedi sopra) anche
+        // sul ramo mobile qui.
+        cam.x = initialFocusX;
         cam.y = initialFocusY;
       }
     }
@@ -2783,6 +2964,24 @@ export async function mountMatch(ctx, params = {}) {
   let last = performance.now();
   function frame(now) {
     if (stopped) return;
+    // [Bug corretto, segnalato dall'autore: "su desktop non riesco ad
+    // avviare match, rimane fermo in caricamento con schermo nero"] Un
+    // errore imprevisto in un punto qualunque del ciclo di frame (migliaia
+    // di righe di simulazione/disegno, ogni frame) non aveva NESSUN
+    // recupero: un'eccezione dentro un callback di requestAnimationFrame non
+    // rientra nel try/catch di app.js/navigate() (quello copre solo il MOUNT
+    // iniziale, gia' concluso con successo a questo punto) — il browser si
+    // limita a fermare silenziosamente quel singolo callback, senza mai
+    // pianificarne un altro: se capita al primissimo frame (prima che
+    // qualunque cosa di reale sia mai stata disegnata) il nero pieno-schermo
+    // disegnato da app.js PRIMA del mount (STUDIO.md/app.js, navigate())
+    // resta l'ultimo frame per sempre — indistinguibile da un caricamento
+    // bloccato, la stessa identica classe di bug gia' corretta altrove per
+    // il mount stesso (app.js) e per l'atlas (assets.js). Qui lo stesso
+    // principio: mai lasciare il giocatore su uno schermo morto senza via
+    // d'uscita — un errore qui si logga (visibile in console per il debug)
+    // e riporta al menu invece di restare bloccato in silenzio.
+    try {
     // Math.max(0, ...): il timestamp di requestAnimationFrame puo' precedere
     // di poco l'ultimo `last` (performance.now() catturato prima di registrare
     // il callback) — soprattutto al primissimo frame, o con WebGL software —
@@ -2850,14 +3049,38 @@ export async function mountMatch(ctx, params = {}) {
       stepLightning(lightning, dt);
       stepGrowth(buildings, dt, r12, (b) => pedestrians.push(spawnPedestrian(b.x, b.y)));
       stepConsumption(buildings, dt, r12, night);
-      stepWeather(r12, dt, scene.name === "match");
+      stepWeather(r12, dt, scene.name === "match", scene.name === "match_easy");
       stepStormDamage(buildings, dt, r12, (x, y) => lightning.push(spawnLightning(x, y)));
-      tickR12(r12, dt, buildings);
+      // Pioggia vera del temporale (game/src/weather.js) — attiva sia sotto
+      // il temporale vero di `match` (r12.storm) sia sotto quello cosmetico
+      // di `match_easy` (r12.stormeasy): stepRain() la fa cadere o la
+      // svuota di scatto a seconda di quale (se uno) e' attivo ORA.
+      stepRain(weatherState, dt, !!(r12.storm || r12.stormeasy), scene.width, scene.height);
+      // Fuochi d'artificio sopra chies (game/src/fireworks.js) — sempre
+      // "in ascolto", scoppiano davvero solo a Gennaio (r12.month === 1,
+      // state.js/stepCalendar()).
+      if (fireworksState) stepFireworks(fireworksState, dt, r12.month === 1);
+      // [Bug corretto, segnalato dall'autore: "avevi inserito popolazione (e
+      // forse anche soldi?) che salgono da soli a ogni secondo, rimuoviamolo"]
+      // Qui prima girava anche `tickR12()` (state.js, rimossa): una
+      // simulazione economica **[I]** placeholder, mai confermata dal
+      // decompilato, che ogni secondo faceva crescere `r12.pop` da sola per
+      // OGNI edificio senza una vera regola di crescita nota (casa e' gia'
+      // simulata per davvero da stepGrowth() sopra, `[C]` da casa1/Alarm_2.gml)
+      // e aggiungeva soldi (`r12.mon`) come una tassa continua sulla
+      // popolazione — nessuna delle due esiste nel decompilato: i soldi veri
+      // arrivano solo da azioni del giocatore (monete raccolte, coins.js) o
+      // da meccaniche confermate altrove, mai da un ticchettio automatico.
+      // Resta solo `clampR12()` (oil>=0/tetto, crys<=99, ele, mon<=999999,
+      // pop>=0 — tutti [C] da r12/Step.gml), che va comunque chiamata ogni
+      // frame per applicare quei limiti alla produzione/crescita VERA appena
+      // simulata sopra (stepProduction/stepGrowth/stepConsumption/...).
+      clampR12(r12, buildings);
       // Sconfitta, l'olio a zero (`outcome` sopra) — SOLO su `match`/
       // `tutorial`, le uniche due room con la piattaforma volante
       // (game/src/platform.js): `r12.oil` e' gia' il valore finale di questo
-      // frame qui (clampR12(), chiamata in coda a tickR12() appena sopra, lo
-      // ha gia' pavimentato a 0). `motorFreezeT`: il valore di `phaseT` di
+      // frame qui (clampR12() appena sopra lo ha gia' pavimentato a 0).
+      // `motorFreezeT`: il valore di `phaseT` di
       // QUESTO istante, cosi' le turbine di r120 (r120MotorDecor() piu'
       // sotto, nel disegno) smettono di lampeggiare invece di continuare
       // finche' non arriva il buio della cutscene — "i rotori si bloccano",
@@ -2971,8 +3194,10 @@ export async function mountMatch(ctx, params = {}) {
       // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
       // bombardieri/zeppelin man mano che le spie ignorate si accumulano
       // (contatori alzati in stepBalloons() sopra), poi ognuno vola, bombarda,
-      // e sparisce da solo.
-      stepThreatSpawner(r12, threats, dt);
+      // e sparisce da solo. `!!platformState`: solo su una room con una
+      // piattaforma vera gli `air` possono nascere "di sfondo" (dietro di
+      // lei, threats.js/spawnThreat()) — decisione dell'autore.
+      stepThreatSpawner(r12, threats, dt, !!platformState);
       stepThreats(threats, bombs, explosions, dt, r12, aerSmoke, debris);
       stepAerSmoke(aerSmoke, dt);
       stepDebris(debris, explosions, dt);
@@ -3051,7 +3276,7 @@ export async function mountMatch(ctx, params = {}) {
       // Le gru di cantiere (game/src/cranes.js) — stesso principio, decoro
       // puro (nessun `_selfLit`: `gru/grutop/Create.gml` si scuriscono di
       // notte come ogni altro oggetto, STUDIO.md).
-      for (const p of craneParts(b)) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
+      for (const p of craneParts(b)) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, p.frame) });
       // Il segnale verde di potenziamento (obj: "upsign") — [C] upsign12|23/
       // upcrc12|23/upind12|23, tutti la stessa icona "upico" (un pin verde
       // con una freccia in su): compare quando il potenziamento e' davvero
@@ -3102,11 +3327,10 @@ export async function mountMatch(ctx, params = {}) {
     }
     for (const d of decorEntities) dynamic.push(d);
     // Ruderi (destroyBuilding() sopra): niente da avanzare ogni frame (non si
-    // muovono, non cambiano sprite). [Bug corretto, richiesto dall'autore:
-    // "in match non riesco a demolire le rovine"] Sotto ruspa si ricostruiscono
-    // per davvero (STUDIO.md/buildings.js, ruinRebuildConstruction()) — stesso
-    // trattamento hover/tinta rossa gia' in uso per i lotti-rudere del
-    // tutorial (`ruinLots` sotto), qui esteso a QUALUNQUE room: un rudere da
+    // muovono, non cambiano sprite). Sotto ruspa lasciano un placeholder
+    // vuoto (clearedPlaceholder(), sopra) — stesso trattamento hover/tinta
+    // rossa gia' in uso per i lotti-rudere del tutorial (`ruinLots` sotto),
+    // qui esteso a QUALUNQUE room: un rudere da
     // battaglia puo' comparire su `match`/`match_easy` quanto su `tutorial`.
     // [I] Nessun cartellino prezzo all'hover (a differenza del popup ruspa
     // su un edificio vivo, `ruspaPending` sopra): ne' `ruinLot` lo mostra
@@ -3287,6 +3511,17 @@ export async function mountMatch(ctx, params = {}) {
       const frameIdx = Math.min(AER_SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
       dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, AER_SMOKE_LIFE) });
     }
+    // Fuochi d'artificio sopra chies a Gennaio (game/src/fireworks.js):
+    // scintille colorate, stesso quad a tinta unita gia' usato per i flash
+    // altrove nel motore — nessuno sprite dedicato, `_tint` sceglie il
+    // colore del lanciatore.
+    if (fireworksState) for (const s of fireworksState.sparks) {
+      dynamic.push({
+        obj: "decor", x: s.x, y: s.y, depth: FIREWORK_DEPTH,
+        _f: { ...solidFrame(white, FIREWORK_SPARK_SIZE, FIREWORK_SPARK_SIZE), ox: FIREWORK_SPARK_SIZE / 2, oy: FIREWORK_SPARK_SIZE / 2 },
+        _tint: s.tint, _alpha: Math.max(0, 1 - s.t / s.life),
+      });
+    }
     // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
     // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
     // (`_alpha`, 0 di giorno) che il ciclo di disegno rispetta da solo — a
@@ -3346,8 +3581,43 @@ export async function mountMatch(ctx, params = {}) {
     }
     for (const p of placeholders) p._hovered = p === hoveredPh;
 
+    // Anteprima di piazzamento per gli edifici a piu' lotti (eolico/
+    // grattacielo, `def.multiTile`) — **[Nuova funzionalita', richiesta
+    // dall'autore]**: prima di piazzarli il giocatore non ha modo di sapere
+    // dove finira' davvero il centro visivo dell'edificio (l'ancora e' a un
+    // offset FISSO dal lotto toccato, non il lotto stesso — vedi il commento
+    // su `anchorOffset` in placeAt() sopra) ne' se la posizione e' valida
+    // (serve un cluster di `count` lotti liberi vicini all'ancora, non solo
+    // il lotto toccato). Stessa identica logica di placeAt()/
+    // findPlacementCluster() sopra, senza spendere ne' consumare nulla:
+    // un fantasma semitrasparente, con lo sprite del PRIMO passo di
+    // cantiere dell'edificio (`def.construct.steps[0].spr` — la fondamenta,
+    // non l'edificio finito: e' quello che il giocatore vedra' comparire per
+    // primo), appare solo quando il lotto sotto il puntatore e' quello che
+    // verrebbe davvero toccato (`hoveredPh`, sopra: gia' esclude aree non
+    // ancora sulla piattaforma) E il cluster di 4 lotti liberi esiste
+    // davvero — sparisce da solo (nessun fantasma "bugiardo") se la
+    // posizione non e' valida, invece di sempre mostrarne uno che poi al
+    // tocco fallirebbe con un messaggio d'errore.
+    let multiTilePreview = null;
+    const selDefForPreview = selectedType ? BUILDING_TYPES[selectedType] : null;
+    if (hoveredPh && selDefForPreview?.multiTile) {
+      const off = selDefForPreview.multiTile.anchorOffset;
+      const anchorX = off ? hoveredPh.x + off.dx : hoveredPh.x;
+      const anchorY = off ? hoveredPh.y + off.dy : hoveredPh.y;
+      const cluster = findPlacementCluster(
+        hoveredPh, anchorX, anchorY, selDefForPreview.multiTile.count, selDefForPreview.multiTile.radius);
+      if (cluster) {
+        const stepSpr = selDefForPreview.construct?.steps?.[0]?.spr;
+        const f = stepSpr ? frameFor(stepSpr) : null;
+        if (f) multiTilePreview = { x: anchorX, y: anchorY, f };
+      }
+    }
+
     r.beginFrame(canvas.width, canvas.height, SCENE_BG_RGB);
     const amb = ambientAt(phaseT);
+    const darken = stormDarkenFactor(r12);
+    if (darken > 0.002) amb.rgb = amb.rgb.map((v) => v * (1 - darken));
 
     // --- layer mondo: segue la camera. La tinta giorno/notte e' moltiplicata
     // qui in JS invece che nello shader (u_ambient resta a [1,1,1,1], mai
@@ -3391,6 +3661,25 @@ export async function mountMatch(ctx, params = {}) {
       const tint = it._selfLit ? base : mulTint(base, amb.rgb);
       r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
       drawn++;
+    }
+    // Fantasma di anteprima per eolico/grattacielo (multiTilePreview, sopra):
+    // alpha 0.5, nessuna tinta ambientale (come le luci/`_selfLit` sopra —
+    // deve leggersi come UN'ANTEPRIMA, non come un pezzo di scena vera che si
+    // scurisce di notte) — disegnato per ultimo, sopra a tutto il resto del
+    // mondo cosi' non resta mai nascosto da un edificio vicino.
+    if (multiTilePreview) {
+      r.draw(multiTilePreview.f, multiTilePreview.x, multiTilePreview.y, 1, 0xffffff, 0.5);
+    }
+    // Pioggia vera del temporale (game/src/weather.js, stepRain() sopra):
+    // gocce oblique disegnate come quad sottili ruotati (drawRotated() —
+    // niente atlas, `solidFrame` come per ogni altro flash/overlay del
+    // motore). Fuori dal ciclo frameList sopra (le gocce non hanno un `_f`
+    // da ordinare per depth con il resto — vedi il commento in weather.js
+    // su RAIN_DEPTH) ma sempre dentro la proiezione mondo di questo frame,
+    // quindi seguono comunque la camera come ogni altro decoro.
+    if (weatherState.drops.length) {
+      const rainFrame = { ...solidFrame(white, RAIN_STREAK_WIDTH, RAIN_STREAK_LENGTH), ox: RAIN_STREAK_WIDTH / 2, oy: RAIN_STREAK_LENGTH / 2 };
+      for (const d of weatherState.drops) drawRotated(rainFrame, d.x, d.y, RAIN_TILT_DEG, 1, RAIN_TINT, RAIN_ALPHA);
     }
     // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che
     // cresce e sfuma sul punto della moneta appena presa, in primo piano come
@@ -3530,13 +3819,19 @@ export async function mountMatch(ctx, params = {}) {
     // barra risorse letta sopra) ha solo le quattro icone originali —
     // pop/olio/energia/denaro sono TUTTO cio' che l'originale mostrava li',
     // i cristalli sono un sistema aggiunto in questo motore (STUDIO.md).
-    // Icona "monviola_bar" (lo stesso sprite gia' usato per la cassa/il
-    // gettone di cristalli quando viene raccolto, balloons.js/platform.js)
-    // invece di disegnarne una nuova da zero — riga propria appena sotto la
-    // barra, non stipata nello stretto spazio libero a destra della faccina
-    // (troppo poco per icona+numero senza sovrapporsi a lei).
-    const crysFrame = frameFor("monviola_bar");
-    if (crysFrame) r.draw(crysFrame, barX + 6, barY + 60, 0.4, 0xffffff, 1);
+    // [Bug corretto, segnalato dall'autore: "il simbolo delle gemme nella
+    // GUI e' sbagliato, dovrebbe essere nero come gli altri"] Prima usava
+    // "monviola_bar" — lo sprite viola a colori della cassa/del gettone di
+    // cristalli raccolto in mondo (balloons.js/platform.js), fuori posto
+    // accanto alle icone monocrome nere di pop/olio/energia/denaro/faccina.
+    // "crys_ico" e' invece un'icona romboidale NERA della stessa famiglia
+    // dei pittogrammi di `icone_oriz` (stessa area di texture, stesso stile
+    // — data/sprites.json la elenca subito prima di "crys_ico_hc", la
+    // variante "hover" mai usata in questo motore touch-first, STUDIO.md
+    // §7): coerente con le altre, invece di stonare come unica icona
+    // colorata della barra.
+    const crysFrame = frameFor("crys_ico");
+    if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
     drawText(r, fontMini, String(Math.round(r12.crys)), barX + 34, barY + 68, 1, 0x000000, 1);
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
@@ -3692,9 +3987,25 @@ export async function mountMatch(ctx, params = {}) {
           }
           break;
         }
-        case 6: case 11: case 24:
-          target = { x: canvas.clientWidth / 2, y: 100, angle: 90 };
+        // [Bug corretto, segnalato dall'autore: "la freccia punta a caso
+        // invece che puntare le monete"] Le tre fasi che parlano di una
+        // risorsa specifica della barra in alto (6: denaro appena
+        // raccolto, 11: energia/centrali, 24: olio/consumo) puntavano tutte
+        // allo stesso bersaglio sbagliato — il CENTRO dell'intero schermo a
+        // y=100, un punto nel bel mezzo della mappa di gioco, non vicino
+        // alla barra risorse (che vive in alto a sinistra, `barX`/`barY`
+        // sotto — dichiarata piu' in basso in questa stessa funzione, dove
+        // si disegna la barra vera). Qui invece punta all'icona/numero
+        // VERO della risorsa di cui parla il testo di QUELLA fase (stessi
+        // offset "pop 30/olio 142/energia 228/denaro 340" gia' letti dal
+        // decompilato per disegnare i numeri, sotto), dal basso verso
+        // l'alto (`angle:90`, gia' la convenzione per "punta alla barra
+        // risorse in alto" — solo le coordinate erano sbagliate).
+        case 6: case 11: case 24: {
+          const resX = tutorialState.phase === 6 ? 340 : tutorialState.phase === 11 ? 228 : 142;
+          target = { x: barX + resX, y: barY + 43, angle: 90 };
           break;
+        }
         case 7: {
           const b = byKind((btn) => btn.kind === "deselect");
           if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
@@ -3778,6 +4089,17 @@ export async function mountMatch(ctx, params = {}) {
       // il punto giusto da passare, non il suo angolo in alto a sinistra.
       if (ainco && Math.floor((ALERT_DURATION - r12.alertT) / 0.5) % 2 === 0) {
         r.draw(ainco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
+      }
+    }
+    // Avviso "il temporale sta arrivando" (src/objects/tincom, solo su
+    // `match` — game/src/state.js, stepWeather()): stesso identico
+    // trattamento di "ainco" appena sopra (lampeggia ogni 0.5s per 4s al
+    // centro dello schermo), stessa origine gia' centrata dello sprite
+    // (data/sprites.json: "tinco" 1370x59, origin 685,29).
+    if (r12.tincomT > 0) {
+      const tinco = frameFor("tinco");
+      if (tinco && Math.floor((TINCOM_DURATION - r12.tincomT) / 0.5) % 2 === 0) {
+        r.draw(tinco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
       }
     }
     // Il pannello prestiti (bankPanelOpen, state.js LOANS) — vero modale in
@@ -3941,6 +4263,11 @@ export async function mountMatch(ctx, params = {}) {
       `trascina, rotella/pinch, tap — [S] salva [L] carica [P] pausa`;
 
     requestAnimationFrame(frame);
+    } catch (err) {
+      console.error("nimbus: errore nel ciclo di frame di match, torno al menu", err);
+      stopped = true;
+      navigate("menu");
+    }
   }
   requestAnimationFrame(frame);
 
@@ -3959,7 +4286,8 @@ export async function mountMatch(ctx, params = {}) {
     get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
     get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
     get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
-    get lightning() { return lightning; },
+    get lightning() { return lightning; }, get weatherState() { return weatherState; },
+    get fireworksState() { return fireworksState; },
     get beams() { return beams; },
     get aerSmoke() { return aerSmoke; }, get debris() { return debris; }, get ruins() { return ruins; },
     get blockedSlots() { return blockedSlots; }, get placeholders() { return placeholders; },

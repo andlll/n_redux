@@ -10,7 +10,7 @@
 // (§6 "Cosa non so ancora": le regole vere dell'economia non sono note) e'
 // marcato [I]: plausibile, da rivedere quando studieremo gli edifici reali.
 
-import { BUILDING_TYPES, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
+import { DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 
 /**
  * `isMatch`: **[C]** `r12/Create.gml` da' un oil/hap di partenza diverso a
@@ -38,7 +38,18 @@ export function createR12(isMatch = false) {
     // nome che non collide con `mon` (i soldi) — `month`, 1..12.
     month: 1,
     hap: isMatch ? 400 : 600,   // [C] r12/Create.gml: 400 base, +200 solo su match_easy
-    crys: 0, storm: 0, stormT: 0, stormeasy: 0, biotech: 0, autocore: 0,
+    // `tincomT`: **[C]** r12/Alarm_2.gml, ramo `match` — il banner "il
+    // temporale sta arrivando" (tincom, main.js) creato insieme al
+    // temporale vero, indipendente dal countdown del temporale stesso
+    // (`stormT` sotto): resta a schermo solo i primi 4s (240 tick,
+    // tincom/Alarm_0), non l'intera durata del temporale. `stormDuration`:
+    // [I] non e' un campo del decompilato — la durata TOTALE pescata a
+    // dado quando il temporale comincia (stormT parte gia' a quel valore e
+    // conta alla rovescia), salvata a parte solo per calcolare quanto e'
+    // trascorso dall'inizio (stepWeather()/main.js, l'oscuramento del
+    // cielo durante il temporale).
+    crys: 0, storm: 0, stormT: 0, stormDuration: 0, tincomT: 0,
+    stormeasy: 0, stormeasyT: 0, biotech: 0, autocore: 0,
     allerta: 0, selec: 0,
     // [C] pu1/Create.gml: contatore caccia (`air`, non bombar/dirig)
     // abbattuti — incrementato da air/Destroy.gml, letto da pu1/Step.gml
@@ -123,30 +134,6 @@ export function oilCap(buildings) {
   return Infinity;
 }
 
-/**
- * [I] Simulazione economica placeholder per i tipi di cui NON conosciamo
- * ancora la regola vera (STUDIO.md §6): un ciclo plausibile e reversibile
- * solo per rendere il gioco giocabile mentre si studia il resto, applicato
- * solo agli edifici il cui tipo non dichiari una simulazione reale in
- * buildings.js (`production`: industria, industria1|2|3/Alarm_2.gml;
- * `growth`: casa, casa1/Alarm_2.gml; `solarProduction`: solare,
- * sooool/Alarm_4.gml). Escluderli evita di contare due volte lo stesso
- * olio/popolazione gia' simulati per davvero altrove.
- */
-export function tickR12(r12, dt, buildings) {
-  const guessed = buildings.filter((b) => {
-    const def = BUILDING_TYPES[b.type];
-    return !def.production && !def.growth && !def.solarProduction;
-  });
-  const n = guessed.length;
-  if (n > 0) {
-    r12.oil -= 0.3 * n * dt;                    // consumo: piu' edifici, piu' olio bruciato
-    r12.pop += (1.5 + 0.4 * n) * dt;             // crescita: base + un contributo per edificio
-  }
-  r12.mon += (2 + 0.08 * r12.pop) * dt;          // entrate: base + tassazione sulla popolazione
-  clampR12(r12, buildings);
-}
-
 // [TEST] DEBUG_INFINITE_RESOURCES: l'ultimo mon/oil "usabile" impostato da
 // clampR12() alla chiamata precedente — serve solo a misurare quanto la
 // simulazione VERA ha spostato mon/oil da allora (produzione/consumo/costi/
@@ -215,18 +202,27 @@ export function stepCalendar(r12, dt) {
   }
 }
 
-// [C] r12/Alarm_2.gml, ramo `match` (non `match_easy`): ogni 60 tick, un
-// dado 1 su 800 fa iniziare una tempesta; dura 1800 o 2100 tick (meta' e
-// meta', r12/Alarm_7.gml la spegne). Su `match_easy` l'originale usa invece
-// `stormeasy`, che non ha alcun effetto di gioco — solo nuvole/pioggia
-// cosmetiche (STUDIO.md §9: "le tempeste sono cosmetiche in match_easy").
-// Simuliamo comunque la regola vera di `storm` perche' e' quella che il
-// danno da fulmine di industria/casa legge davvero, ed e' quella che conta
-// su `match`, la mappa difficile — non ha senso lasciarla ferma in attesa
-// di quella room quando costa cosi' poco tenerla viva fin da ora.
+// [C] r12/Alarm_2.gml, ogni 60 tick due dadi INDIPENDENTI, uno per ramo:
+// `match` (flag 736==0) — 1 su 800 fa iniziare il temporale VERO (`storm`),
+// che oltre alla pioggia crea anche il banner "in arrivo" (tincom) e da'
+// davvero fulmini/danno (game/src/buildings.js, stepStormDamage — letto da
+// li'); `match_easy` (736>0) — 1 su 450, PIU' probabile, fa iniziare invece
+// `stormeasy`: **[C]** nessun tincom, nessun danno, solo pioggia cosmetica
+// (STUDIO.md §9: "le tempeste sono cosmetiche in match_easy" — verificato
+// ora riga per riga, non piu' solo dedotto: `r12/Alarm_2.gml` per
+// `match_easy` crea SOLO `rainlauncher`, mai `tincom`/`thunderclap`).
+// Entrambi durano 1800 o 2100 tick (meta' e meta', r12/Alarm_7.gml li
+// spegne — stessa tabella durate per i due, letta cosi' com'e').
 const STORM_CHECK = 1;                  // [C] 60 tick
-const STORM_DICE = 800;                  // [C]
+const STORM_DICE = 800;                  // [C] match: r12/Alarm_2.gml, ramo 736==0
+const STORMEASY_DICE = 450;             // [C] match_easy: r12/Alarm_2.gml, ramo 736>0
 const STORM_DURATIONS = [30, 35];        // [C] 1800/2100 tick, dado 50/50
+// [C] tincom/Create.gml: action_set_alarm(240,0) — il banner resta a
+// schermo 240 tick (4s) dalla nascita del temporale VERO, indipendente
+// dalla durata del temporale stesso (quasi sempre molto piu' lungo).
+// Esportata: main.js la riusa per il blink del banner (stesso schema di
+// ALERT_DURATION/"ATTACK INCOMING", balloons.js).
+export const TINCOM_DURATION = 4;
 
 /**
  * [C] r12/Alarm_2.gml: il drenaggio di `oil` dovuto al peso (`wewe`) della
@@ -257,23 +253,28 @@ function wewOilDrain(wewe) {
 }
 
 /**
- * `isMatch`: **[C]** `r12/Alarm_2.gml` legge sia il drenaggio da `wewe` sia
- * l'innesco della tempesta VERA dietro lo stesso flag (`action_if_number(
- * 736,0,0)` — 0 su `match`, diverso da 0 su `match_easy`, dove scatta invece
- * il ramo cosmetico `stormeasy`, mai letto qui). L'autore: il peso vale solo
- * per la piattaforma volante di `match` — su `match_easy` la base e' a
- * terra, una citta' "normale" che non deve reggersi in volo. A differenza
- * della tempesta (gia' simulata "vera" anche su `match_easy` per una scelta
- * dichiarata altrove, STUDIO.md: costava poco tenerla pronta per `match`),
- * qui la distinzione per room e' voluta: `main.js` passa `scene.name ===
- * "match"`, oggi sempre `false` (il motore carica solo `match_easy`) — il
- * codice resta comunque corretto e pronto per quando quella room esistera'.
+ * `isMatch`/`isMatchEasy`: **[C]** `r12/Alarm_2.gml` legge il drenaggio da
+ * `wewe`, l'innesco del temporale VERO e quello del temporale cosmetico
+ * dietro lo stesso flag (`action_if_number(736,...)` — 0 su `match`, >0 su
+ * `match_easy`), tre controlli distinti ma sullo stesso singolo flag di
+ * room: main.js passa entrambi i booleani (derivati da `scene.name`,
+ * mutuamente esclusivi) invece di un solo `isMatch` come prima, perche' ora
+ * le due room vogliono comportamenti DIVERSI (non solo "attivo/spento"):
+ * `match` innesca `storm` (vero, fulmini/danno/tincom), `match_easy`
+ * innesca `stormeasy` (solo pioggia cosmetica, game/src/weather.js). Il
+ * peso (`wewe`) resta gate solo da `isMatch`, invariato: vale solo per la
+ * piattaforma volante di `match`, su `match_easy` la base e' a terra.
  */
-export function stepWeather(r12, dt, isMatch) {
+export function stepWeather(r12, dt, isMatch, isMatchEasy) {
   if (r12.storm) {
     r12.stormT -= dt;
     if (r12.stormT <= 0) { r12.storm = 0; r12.stormT = 0; }
   }
+  if (r12.stormeasy) {
+    r12.stormeasyT -= dt;
+    if (r12.stormeasyT <= 0) { r12.stormeasy = 0; r12.stormeasyT = 0; }
+  }
+  if (r12.tincomT > 0) r12.tincomT = Math.max(0, r12.tincomT - dt);
   r12.stormCheckT = (r12.stormCheckT ?? 0) + dt;
   while (r12.stormCheckT >= STORM_CHECK) {
     r12.stormCheckT -= STORM_CHECK;
@@ -283,9 +284,15 @@ export function stepWeather(r12, dt, isMatch) {
     // niente `return` anticipato come prima (quello fermava anche questo
     // conteggio mentre una tempesta era attiva, un bug di questa porting).
     if (isMatch) r12.oil -= wewOilDrain(r12.wewe ?? 0);
-    if (!r12.storm && Math.random() < 1 / STORM_DICE) {
+    if (isMatch && !r12.storm && Math.random() < 1 / STORM_DICE) {
       r12.storm = 1;
-      r12.stormT = STORM_DURATIONS[(Math.random() * STORM_DURATIONS.length) | 0];
+      r12.stormDuration = STORM_DURATIONS[(Math.random() * STORM_DURATIONS.length) | 0];
+      r12.stormT = r12.stormDuration;
+      r12.tincomT = TINCOM_DURATION;   // [C] action_create_object(tincom, ...), stesso tap del dado
+    }
+    if (isMatchEasy && !r12.stormeasy && Math.random() < 1 / STORMEASY_DICE) {
+      r12.stormeasy = 1;
+      r12.stormeasyT = STORM_DURATIONS[(Math.random() * STORM_DURATIONS.length) | 0];
     }
   }
 }

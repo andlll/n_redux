@@ -23,6 +23,7 @@ import { Input } from "./input.js";
 const canvas = document.getElementById("view");
 const hud = document.getElementById("hud");
 const loading = document.getElementById("loading");
+const levelLoading = document.getElementById("levelLoading");
 
 const r = new Renderer(canvas);
 const gl = r.gl;
@@ -113,11 +114,18 @@ async function navigate(screen, params = {}) {
     // fetch di scene/atlas/texture della prossima room.
     r.beginFrame(canvas.width, canvas.height, [0, 0, 0]);
     r.flush();
+    // Scritta "loading" sopra il nero (vedi il commento su #levelLoading,
+    // index.html): resta finche' mount() non ha finito di scaricare
+    // scene/atlas/texture della room, cosi' il nero pieno-schermo qui sopra
+    // non sembra un blocco del gioco durante un fetch lento.
+    levelLoading.classList.add("show");
     const mod = await SCREEN_MODULES[screen]();
     const mount = screen === "menu" ? mod.mountTitle : mod.mountMatch;
     current = await mount(ctx, params);
+    levelLoading.classList.remove("show");
   } catch (err) {
     console.error(`nimbus: caricamento di "${screen}" fallito`, err);
+    levelLoading.classList.remove("show");
     hideLoading();
     // `setTimeout(..., 0)`, non una chiamata diretta: questo stesso
     // navigate() e' ancora in corso (dentro il proprio try/finally, ne'

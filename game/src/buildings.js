@@ -272,9 +272,8 @@ export const BUILDING_TYPES = {
     // Create.gml, uguale per tutti e tre i livelli); da li' in poi ogni
     // avanzamento riarma con uno dei 4 valori scelti a dado uniforme
     // (diversi per livello: casa1/2/3/Alarm_2.gml). Ogni avanzamento
-    // aggiunge pop reale, non un contributo generico: e' per questo che
-    // tickR12() (state.js) esclude i tipi con `growth` dalla sua formula
-    // placeholder.
+    // aggiunge pop reale, gia' simulata per davvero da stepGrowth()
+    // (main.js) — nessuna crescita automatica generica altrove (state.js).
     growth: [
       { firstInterval: 2000, intervals: [3500, 5796, 11565, 14656], popPerStage: 2, maxAva: 5 },   // [C] casa1
       { firstInterval: 2000, intervals: [6000, 7314, 9945, 11154], popPerStage: 4, maxAva: 5 },     // [C] casa2
@@ -1758,6 +1757,32 @@ export function placeBuilding(type, x, y, depth) {
   return b;
 }
 
+/**
+ * Come placeBuilding(), ma gia' finito al `level` dato invece che a livello
+ * 1 (o 0, in cantiere) — per gli edifici PRE-ESISTENTI di una room (main.js,
+ * game/src/tutorial.js: casa2/casa3/industria1/industria2/parco/gatlinggun/
+ * rocket_launcher nella scena "tutorial", mai nati da un cantiere del
+ * giocatore). Applica applyLevelFinish() un salto di livello per volta, dal
+ * cantiere ex novo (`def.construct`, livello 0->1) fino al livello
+ * richiesto (`def.upgrades[L-1]` per ogni salto successivo) — lo stesso
+ * percorso che l'edificio avrebbe fatto se costruito per davvero, cosi'
+ * hap/wewe/pop (r12) restano coerenti con quanto un edificio arrivato li'
+ * avrebbe gia' accumulato, invece di comparire "gratis" senza quegli
+ * effetti economici. `onDecor` no-op qui: il decoro si applica DOPO, da chi
+ * chiama, leggendo `currentDecor(b)` sullo stato finale (stesso schema di
+ * `seedChies()`, main.js) — non serve durante i salti intermedi.
+ */
+export function placeFinishedBuilding(type, x, y, depth, level, r12) {
+  const def = BUILDING_TYPES[type];
+  const b = placeBuilding(type, x, y, depth);
+  for (let l = 0; l < level; l++) {
+    const up = l === 0 ? def.construct : def.upgrades[l - 1];
+    applyLevelFinish(b, def, up, { upgradeIndex: l === 0 ? -1 : l - 1 }, r12, () => {});
+  }
+  b.construction = null;
+  return b;
+}
+
 // [TEST] Richiesto dall'autore mentre si testano le meccaniche economiche
 // appena collegate (wewe/oil, costi della ruspa): con questo flag a `true`
 // nessun costo blocca piu' niente — NON e' comportamento dell'originale, va
@@ -1837,35 +1862,23 @@ export function ruinSpriteFor(b) {
 // precedente di "I ruderi", STUDIO.md, concludeva "nessun rudere ha un
 // ramo Mouse_LeftPressed" guardando solo `casaX/Step.gml` — chi crea il
 // rudere — senza controllare l'oggetto ruin1/2/3 stesso): sotto ruspa
-// (`r12.selec===11`) un tap sul rudere ricostruisce SUL POSTO pagando —
-// ruin1 (edificio morto al livello 1, taglia condivisa fra piu' tipi,
-// STUDIO.md) 500 mon -> `casa` costruzione ex novo; ruin2 (livello 2) 2000
-// mon -> `casa` upgrade 1->2; ruin3 (livello 3) 5000 mon -> `casa` upgrade
-// 2->3. `ruinsol` (solare, un solo livello possibile) usa lo STESSO ramo di
-// ruin1 (500 mon, "casa" ex novo) — fedele, non un refuso di trascrizione:
-// cosi' e' scritto nel decompilato. Sempre `casa`, mai il tipo originale
-// dell'edificio morto (`impacasaNr` in ognuno dei tre, mai `impaindNr` o
-// simili). `chies` resta fuori (non crea mai un rudere a parte, STUDIO.md:
-// cambia sprite a se stessa e resta piazzata) — l'unico tipo la cui morte
-// non passa mai di qui. Il "livello" del rudere e' `b.level` dell'edificio
-// al momento della morte (1/2/3) — la stessa colonna "taglia" che
-// ruinSpriteFor() sopra legge dallo stesso `b`; main.js lo salva sul
-// rudere insieme allo sprite scelto.
+// (`r12.selec===11`) un tap sul rudere risponde a pagamento — nel
+// decompilato ricostruisce SUL POSTO (ruin1 500 mon -> `casa` ex novo,
+// ruin2 2000 mon -> upgrade 1->2, ruin3 5000 mon -> upgrade 2->3), ma qui
+// (main.js) lo stesso costo lascia invece un placeholder vuoto al posto
+// del rudere — **[Decisione dell'autore: "la rovina ruspata deve creare
+// sempre un placeholder vuoto, non un nuovo edificio"]**, non piu' fedele
+// al decompilato su questo punto specifico. `ruinsol` (solare, un solo
+// livello possibile) userebbe lo STESSO costo di ruin1 (500 mon) per
+// coerenza con l'originale. `chies` resta fuori (non crea mai un rudere a
+// parte, STUDIO.md: cambia sprite a se stessa e resta piazzata) — l'unico
+// tipo la cui morte non passa mai di qui. Il "livello" del rudere e'
+// `b.level` dell'edificio al momento della morte (1/2/3) — la stessa
+// colonna "taglia" che ruinSpriteFor() sopra legge dallo stesso `b`;
+// main.js lo salva sul rudere insieme allo sprite scelto, solo per
+// calcolare questo costo (non piu' per scegliere cosa ricostruire).
 export function ruinRebuildCost(level) {
   return level === 1 ? 500 : level === 2 ? 2000 : 5000;
-}
-
-/** Avvia il cantiere di ricostruzione su un rudere (chi chiama, main.js,
- * fa `placeBuilding()`/push su `buildings` — questa funzione decide solo
- * con quale `construction` iniziale, vedi il commento sopra).
- * `rebuilding: true` marca il PRIMO passo come "sgombero" invece che vera
- * fondamenta (buildings.js/stepConstructions, `clearingLot`/
- * `ruspaFirstStepDur`) — stesso principio gia' in uso per la ruspa su un
- * edificio ancora vivo. */
-export function ruinRebuildConstruction(level) {
-  return level === 1
-    ? { upgradeIndex: -1, stepIndex: 0, t: 0, rebuilding: true }
-    : { upgradeIndex: level - 2, stepIndex: 0, t: 0, rebuilding: true };
 }
 
 /** Il potenziamento che l'edificio potrebbe iniziare ora, se lo tocchi (null se il tipo non ne ha). */
@@ -2181,15 +2194,20 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     // ruspa non lo sgombera per davvero, invece di sparire di scatto in una
     // fondamenta spoglia ancora prima che il cantiere sia davvero iniziato.
     // `&& b.spr`: SOLO se c'e' davvero un edificio vecchio da preservare —
-    // il lotto-rudere del tutorial (tutorial.js/ruinRebuildConstruction(),
-    // main.js) marca `rebuilding:true` allo STESSO modo ma parte da
-    // `placeBuilding()`, che per un tipo con `construct` lascia `b.spr` a
-    // `null` (nessun edificio precedente, mai esistito): senza questo
+    // un lotto-rudere marcava `rebuilding:true` allo STESSO modo ma partiva
+    // da `placeBuilding()`, che per un tipo con `construct` lascia `b.spr`
+    // a `null` (nessun edificio precedente, mai esistito): senza questo
     // controllo in piu' quel `null` restava tale per l'intero primo passo
     // invece del vero sprite di cantiere, ed il lotto spariva del tutto
     // (nessun `_f`, scartato in silenzio dal ciclo di disegno) — segnalato
     // dall'autore verificando che la demolizione di un rudere avviasse un
-    // cantiere vero e non un edificio gia' finito.
+    // cantiere vero e non un edificio gia' finito. Un rudere non avvia piu'
+    // nessun cantiere (main.js, clearedPlaceholder() — decisione
+    // dell'autore: "la rovina ruspata deve creare sempre un placeholder
+    // vuoto"), quindi oggi `c.rebuilding` nasce solo da tryRuspaRebuild()
+    // su un edificio gia' vivo (sempre con `b.spr` valorizzato) — il
+    // controllo resta comunque qui, difensivo, per lo stesso motivo di
+    // sempre.
     const clearingLot = c.rebuilding && c.stepIndex === 0 && b.spr;
     // Finche' non e' l'ultimo passo lo sprite disegnato e' ancora il
     // cantiere generico (`c.curSpr`); da quando applyLevelFinish() sopra ha
@@ -2579,11 +2597,14 @@ function turretSprFor(type, angleDeg, recoiling) {
  * minaccia vera sia davvero in `fireRange` prima di far partire un colpo
  * senza tocco, quindi un `aimTarget` di tipo mongolfiera (nessuna minaccia
  * intorno) non fa mai scattare nulla da solo — resta un'azione che il
- * giocatore deve chiedere esplicitamente col tap, come gia' era il tap
- * diretto sulla mongolfiera stessa (main.js, invariato, resta l'altra via
- * per abbatterle). Le auto decorative (`cars`, un tempo incluse come
- * "veicoli_target" dell'originale) restano fuori da entrambi i giri: non
- * sono un bersaglio, ne' ostile ne' cliccabile.
+ * giocatore deve chiedere esplicitamente col tap sul cannone. [Bug corretto,
+ * segnalato dall'autore: "se clicco su una mongolfiera questa esplode da
+ * sola"] Il tap diretto sulla mongolfiera stessa (un tempo l'ALTRA via per
+ * abbatterle, main.js) e' stato rimosso: nessun oggetto mongolfiera
+ * dell'originale ha mai avuto un Mouse_LeftPressed.gml, la torretta (questo
+ * fallback incluso) resta l'unico modo di abbatterle. Le auto decorative
+ * (`cars`, un tempo incluse come "veicoli_target" dell'originale) restano
+ * fuori da entrambi i giri: non sono un bersaglio, ne' ostile ne' cliccabile.
  *
  * **[I]** Se nessuna minaccia NE' mongolfiera e' in portata, `aimAngle`/
  * `aimTarget` vengono azzerati (non lasciati all'ultima direzione come

@@ -169,10 +169,23 @@ export function stepDebris(debris, explosions, dt) {
 // posto (nessun moto: smoko_aer non insegue l'aereo che l'ha creata,
 // resta dov'e' nata) e con una crescita diversa — parte da scala 2 (il
 // doppio del fumo delle centrali) e cresce piu' in fretta (+0.2/tick =
-// 12/s contro 3/s). depth **[C]** -4000 fisso (data/objects.json), la
-// stessa quota delle esplosioni/del fuoco vero, non -9000 come il fumo di
-// scia dei proiettili (game/src/projectiles.js, spawnSmoko) — diversa
-// famiglia di oggetto nel decompilato, diversa quota.
+// 12/s contro 3/s).
+//
+// [Bug corretto, segnalato dall'autore: "controlla anche il depth del
+// fumo che sia corretto"] Il depth **[C]** era -4000 fisso (data/
+// objects.json) — corretto per un aereo "in prima fella" (depth -3990,
+// spawnThreat() sotto: la stessa quota delle esplosioni/del fuoco vero,
+// 10 dietro l'aereo che lo lascia), ma un aereo "di sfondo" (depth 2, puro
+// traffico decorativo dietro la piattaforma — vedi il commento su
+// spawnThreat() sotto) lascerebbe una scia a -4000 comunque: 4000+ punti
+// PIU' avanti di se stesso invece di restargli dietro, un fumo che
+// galleggia ben davanti a tutta la scena mentre l'aereo che l'ha prodotto
+// resta nascosto dietro la piattaforma/la citta'. Qui la quota della scia
+// e' relativa a quella VERA dell'aereo che la lascia (`depth - 10`,
+// passato da stepThreats() sotto) — per un aereo "in prima fila" da'
+// l'identico -4000 di prima (nessun cambiamento per il caso comune), per
+// uno "di sfondo" la scia resta coerentemente 10 dietro di lui invece di
+// saltare in primissimo piano.
 export const AER_SMOKE_FRAME_COUNT = 70;
 const AER_SMOKE_PERIOD = 8 * TICK;    // [C] air|bombar/Alarm_6.gml: si riarma ogni 8 tick
 export const AER_SMOKE_LIFE = 36 * TICK; // [C] smoko_aer/Create.gml: action_set_alarm(36, 0). Esportata per la
@@ -180,17 +193,26 @@ export const AER_SMOKE_LIFE = 36 * TICK; // [C] smoko_aer/Create.gml: action_set
 // sparire di scatto ad `action_kill_object`, stesso trattamento di
 // smoke.js/SMOKE_LIFE e projectiles.js/SMOKO_LIFE.
 const AER_SMOKE_GROWTH = 12;          // [C] Step.gml: xsca += 0.2/tick = 12/s a 60fps
-function spawnAerSmoke(x, y) {
-  return { x, y, t: 0, spr: Math.random() < 0.5 ? "cc2" : "cc3", scale: 2, depth: -4000 };
+const AER_SMOKE_DEPTH_OFFSET = -10;
+function spawnAerSmoke(x, y, sourceDepth) {
+  return { x, y, t: 0, spr: Math.random() < 0.5 ? "cc2" : "cc3", scale: 2, depth: sourceDepth + AER_SMOKE_DEPTH_OFFSET };
 }
 
 /** [C] air/Create.gml: meta' delle volte nasce "in prima fila" (depth
  * -3990, sgancia bombe davvero — `desto`), l'altra meta' piu' piccola e
  * dietro (depth 2, scala 0.75) e non bombarda mai: puro traffico aereo di
- * sfondo. bombar/dirig sono sempre "in prima fila". */
-export function spawnThreat(type) {
+ * sfondo, pensato per volare dietro/sotto la piattaforma volante (depth 1,
+ * game/src/platform.js) — bombar/dirig sono sempre "in prima fila".
+ * [Decisione dell'autore: "in match easy gli aerei che vanno sotto la
+ * piattaforma come depth (quelli estetici) non vanno generati"] Su una
+ * room senza piattaforma vera (`hasPlatform` false — oggi solo
+ * `match_easy`, STUDIO.md) quell'effetto non ha senso: non c'e' nessuna
+ * piattaforma sotto cui sparire, un aereo "di sfondo" finirebbe solo per
+ * volare dietro agli edifici in modo incoerente. Li' il dado non gira
+ * nemmeno: ogni `air` nasce sempre "in prima fila", come bombar/dirig. */
+export function spawnThreat(type, hasPlatform) {
   const def = THREAT_TYPES[type];
-  const front = type !== "air" || dice(2);
+  const front = type !== "air" || !hasPlatform || dice(2);
   const air = type === "air" ? pickAirSpr() : null;
   return {
     type, x: def.spawnX, y: rand(def.spawnY[0], def.spawnY[1]),
@@ -304,9 +326,16 @@ export function stepThreats(threats, bombs, explosions, dt, r12, trails, debris)
       th.y -= SIN30 * pxPerSec * dt;
     }
 
-    if (def.smokeTrail) {
+    // [Bug corretto, segnalato dall'autore: "gli aerei emettono fumo solo
+    // se feriti, non sempre"] `th.life < def.maxLife`: solo un aereo che ha
+    // gia' incassato almeno un colpo vero (game/src/projectiles.js scala
+    // `th.life` sotto il massimo di partenza) lascia la scia — non ogni
+    // aereo fin dalla nascita, sano o no. Un aereo in piro (gia' colpito a
+    // vita 0 o sotto, quindi sempre < maxLife) continua a fumare per tutta
+    // la caduta, coerente con l'essere "ferito".
+    if (def.smokeTrail && th.life < def.maxLife) {
       th.smokeT += dt;
-      while (th.smokeT >= AER_SMOKE_PERIOD) { th.smokeT -= AER_SMOKE_PERIOD; trails.push(spawnAerSmoke(th.x, th.y)); }
+      while (th.smokeT >= AER_SMOKE_PERIOD) { th.smokeT -= AER_SMOKE_PERIOD; trails.push(spawnAerSmoke(th.x, th.y, th.depth)); }
     }
 
     let struck = false;
@@ -445,20 +474,23 @@ const AIR_PERIOD = 60 * TICK, AIR_DECAY = 0.5;         // [C] r12/Alarm_4.gml
 const BOMBAR_PERIOD = 200 * TICK, BOMBAR_DECAY = 0.5;   // [C] r12/Alarm_5.gml
 const DIRIG_PERIOD = 600 * TICK, DIRIG_DECAY = 1;        // [C] r12/Alarm_6.gml
 
-export function stepThreatSpawner(r12, threats, dt) {
+/** `hasPlatform`: passato a spawnThreat() sotto — solo `air` lo legge (il
+ * dado "in prima fila"/"di sfondo", vedi il commento li'), bombar/dirig
+ * sono sempre "in prima fila" a prescindere. */
+export function stepThreatSpawner(r12, threats, dt, hasPlatform) {
   r12.airSpawnT = (r12.airSpawnT ?? 0) + dt;
   while (r12.airSpawnT >= AIR_PERIOD) {
     r12.airSpawnT -= AIR_PERIOD;
-    if ((r12.ondan ?? 0) > 0) { r12.ondan -= AIR_DECAY; threats.push(spawnThreat("air")); }
+    if ((r12.ondan ?? 0) > 0) { r12.ondan -= AIR_DECAY; threats.push(spawnThreat("air", hasPlatform)); }
   }
   r12.bombarSpawnT = (r12.bombarSpawnT ?? 0) + dt;
   while (r12.bombarSpawnT >= BOMBAR_PERIOD) {
     r12.bombarSpawnT -= BOMBAR_PERIOD;
-    if ((r12.bombn ?? 0) > 0) { r12.bombn -= BOMBAR_DECAY; threats.push(spawnThreat("bombar")); }
+    if ((r12.bombn ?? 0) > 0) { r12.bombn -= BOMBAR_DECAY; threats.push(spawnThreat("bombar", hasPlatform)); }
   }
   r12.dirigSpawnT = (r12.dirigSpawnT ?? 0) + dt;
   while (r12.dirigSpawnT >= DIRIG_PERIOD) {
     r12.dirigSpawnT -= DIRIG_PERIOD;
-    if ((r12.diron ?? 0) > 0) { r12.diron -= DIRIG_DECAY; threats.push(spawnThreat("dirig")); }
+    if ((r12.diron ?? 0) > 0) { r12.diron -= DIRIG_DECAY; threats.push(spawnThreat("dirig", hasPlatform)); }
   }
 }

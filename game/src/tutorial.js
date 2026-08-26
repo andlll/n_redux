@@ -65,12 +65,13 @@ export const TUTORIAL_TEXTS = [
 // Mouse_LeftPressed": quel gap riguarda i ruderi da battaglia, un oggetto
 // diverso. ruin1/ruin2 hanno invece un proprio Mouse_LeftPressed/MouseEnter
 // dedicato: sotto ruspa (r12.selec===11) mostrano un cartellino costo
-// all'hover e, al tocco con fondi sufficienti, avviano un cantiere vero
-// (impacasa1r/impacasa2r nel decompilato — qui lo stesso
-// BUILDING_TYPES.casa gia' esistente, con `construction.rebuilding=true`
-// per il primo passo accorciato, STUDIO.md/buildings.js
-// ruspaFirstStepDur). ruin1 -> casa livello 1 (500 mon), ruin2 -> casa
-// livello 2 (2000 mon, salta dritto al livello 1->2).
+// all'hover e, al tocco con fondi sufficienti, sgomberano il lotto
+// (main.js, clearedPlaceholder()) — **[Decisione dell'autore: "la rovina
+// ruspata deve creare sempre un placeholder vuoto, non un nuovo
+// edificio"]**, non piu' fedele al decompilato (che li ricostruiva sul
+// posto, impacasa1r/impacasa2r). `level` (1/2, ora usato solo per
+// distinguere quale sprite/costo mostrare, non piu' cosa costruire) resta
+// comunque una taglia diversa fra i due: ruin1 costa 500 mon, ruin2 2000.
 const RUIN_POOL = {
   ruin1: { level: 1, cost: 500, sprites: ["ru11", "ru12", "ru13", "ru14"] },
   ruin2: { level: 2, cost: 2000, sprites: ["ru21", "ru22", "ru23", "ru24"] },
