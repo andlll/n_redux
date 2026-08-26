@@ -3572,13 +3572,19 @@ export async function mountMatch(ctx, params = {}) {
       dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, AER_SMOKE_LIFE) });
     }
     // Fuochi d'artificio sopra chies a Gennaio (game/src/fireworks.js):
-    // scintille colorate, stesso quad a tinta unita gia' usato per i flash
-    // altrove nel motore — nessuno sprite dedicato, `_tint` sceglie il
-    // colore del lanciatore.
+    // scintille colorate — nessuno sprite dedicato, `_tint` sceglie il
+    // colore del lanciatore. [Bug corretto, richiesto dall'autore: "le
+    // particelle dei fireworks possiamo farle tonde invece che
+    // rettangolari?"] Un quad a tinta unita (`solidFrame(white, ...)`, come
+    // i flash altrove nel motore) e' sempre un quadrato pieno — sbagliato
+    // per una scintilla, che deve leggersi come un puntino. Qui riusa
+    // `bubbleTex` (sopra, gia' caricata per la "bolla" delle monete
+    // raccolte): lo stesso cerchio morbido, sfumato dal centro al bordo
+    // trasparente, invece del quadrato netto.
     if (fireworksState) for (const s of fireworksState.sparks) {
       dynamic.push({
         obj: "decor", x: s.x, y: s.y, depth: FIREWORK_DEPTH,
-        _f: { ...solidFrame(white, FIREWORK_SPARK_SIZE, FIREWORK_SPARK_SIZE), ox: FIREWORK_SPARK_SIZE / 2, oy: FIREWORK_SPARK_SIZE / 2 },
+        _f: { ...solidFrame(bubbleTex, FIREWORK_SPARK_SIZE, FIREWORK_SPARK_SIZE), ox: FIREWORK_SPARK_SIZE / 2, oy: FIREWORK_SPARK_SIZE / 2 },
         _tint: s.tint, _alpha: Math.max(0, 1 - s.t / s.life),
       });
     }
