@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -118,26 +118,40 @@ export async function mountMatch(ctx, params = {}) {
   // sta la citta': su `match` la piattaforma volante vive nella meta'
   // superiore della room (`match.json` e' alta 2090px, ma le istanze vere —
   // strade, edifici, la base — si affollano ben sopra la sua meta', il resto
-  // e' cielo vuoto sotto/intorno). La MEDIANA della y di tutte le istanze
+  // e' cielo vuoto sotto/intorno). La MEDIANA della x/y di tutte le istanze
   // della scena (non filtrate: anche solo poche decine di outlier — pu1,
   // reversi, honda1/2, rimossi da `staticWorld` piu' sotto — non spostano una
   // mediana su centinaia di istanze) e' un proxy semplice e senza bisogno di
-  // conoscere la room in anticipo per "dove sta il contenuto vero", usata
-  // solo sull'asse Y (l'asse X resta il centro geometrico: la citta' e' gia'
-  // ragionevolmente centrata in orizzontale, il problema segnalato era solo
-  // verticale). Effettivo solo su DESKTOP: su mobile lo zoom iniziale
-  // "cover" (resize() piu' sotto, gia' un fix precedente per non lasciare
-  // bordi) inquadra l'ALTEZZA della room esattamente pari a quella dello
-  // schermo per ogni room giocabile (tutte piu' larghe che alte, ogni
-  // telefono in portrait l'opposto) — zero margine di panoramica verticale,
-  // quindi `cam.clamp()` (camera.js) ricentra comunque sul centro
-  // geometrico qualunque valore le si passi. Non toccato: e' il comportamento
-  // "cover" voluto da quel fix, non un effetto collaterale di questo.
+  // conoscere la room in anticipo per "dove sta il contenuto vero". Effettivo
+  // solo su DESKTOP: su mobile lo zoom iniziale "cover" (resize() piu' sotto,
+  // gia' un fix precedente per non lasciare bordi) inquadra l'ALTEZZA della
+  // room esattamente pari a quella dello schermo per ogni room giocabile
+  // (tutte piu' larghe che alte, ogni telefono in portrait l'opposto) — zero
+  // margine di panoramica verticale, quindi `cam.clamp()` (camera.js)
+  // ricentra comunque sul centro geometrico qualunque valore le si passi.
+  // Non toccato: e' il comportamento "cover" voluto da quel fix, non un
+  // effetto collaterale di questo.
+  //
+  // [Bug corretto, decisione dell'autore: "estendi le dimensioni della room
+  // [tutorial] in modo che siano pari a quelle di match"] Prima qui l'asse X
+  // restava il centro GEOMETRICO (`scene.width / 2`, non la mediana come Y):
+  // valido finche' ogni room aveva davvero la propria citta' centrata in
+  // orizzontale nei propri bound — vero per `match`/`match_easy`, ma non piu'
+  // per `tutorial` una volta allargata a 3900x2090 (le dimensioni di `match`,
+  // sopra) pur mantenendo il proprio contenuto tutto raccolto nella meta'
+  // sinistra (com'era prima, a 1920 di larghezza) — lo spazio in piu' serve
+  // alla piattaforma (game/src/platform.js, r22/r32), non a nuovo contenuto
+  // di citta'. Il vecchio centro geometrico (1950) avrebbe aperto la partita
+  // inquadrando cielo vuoto a destra invece della citta' vera — stessa
+  // classe di bug gia' risolta sopra per Y, qui generalizzata anche a X.
+  const instanceXs = scene.instances.map((it) => it.x).sort((a, b) => a - b);
   const instanceYs = scene.instances.map((it) => it.y).sort((a, b) => a - b);
   const midIdx = instanceYs.length >> 1;
+  const initialFocusX = instanceXs.length === 0 ? scene.width / 2
+    : instanceXs.length % 2 ? instanceXs[midIdx] : (instanceXs[midIdx - 1] + instanceXs[midIdx]) / 2;
   const initialFocusY = instanceYs.length === 0 ? scene.height / 2
     : instanceYs.length % 2 ? instanceYs[midIdx] : (instanceYs[midIdx - 1] + instanceYs[midIdx]) / 2;
-  cam.x = scene.width / 2;
+  cam.x = initialFocusX;
   cam.y = initialFocusY;
   // minZoom = quanto ci si puo' avvicinare: sotto 0.5 gli sprite (disegnati
   // alla risoluzione nativa dell'atlas) si vedono sgranati, ingranditi oltre
@@ -367,6 +381,39 @@ export async function mountMatch(ctx, params = {}) {
   const chiesIndex = staticWorld.findIndex((it) => it.obj === "chies");
   const chiesScene = chiesIndex >= 0 ? staticWorld.splice(chiesIndex, 1)[0] : null;
 
+  // [Bug corretto, segnalato dall'autore: "le strutture di difesa esistenti
+  // nel tutorial non sembrano funzionanti"] Solo sulla room "tutorial"
+  // (game/src/tutorial.js): a differenza di match/match_easy (che pre-
+  // piazzano solo `chies`, sopra), la sua scena include gia' diversi
+  // edifici VERI — casa2/casa3/industria1/industria2/parco/gatlinggun/
+  // rocket_launcher, la meta' di citta' sopravvissuta al bombardamento
+  // della cutscene iniziale (STUDIO.md/tutorial.js) — mai tolti da
+  // `staticWorld` finora: restavano puro decoro statico, MAI in
+  // `buildings`, quindi invisibili a stepTurretAim()/stepProjectiles() (le
+  // torrette di difesa non rispondevano mai a una minaccia vera) e ad ogni
+  // altra simulazione che legge quell'array (produzione/crescita/consumo,
+  // ruspa, potenziamenti). Le stesse baseline `tutpar`/`tutind`/`tutrl`
+  // (tutorial.js/createTutorialState()) gia' presupponevano che lo
+  // fossero: contano quanti ne esistono GIA' apposta per sottrarli dal
+  // conteggio di cio' che il giocatore costruisce durante il tutorial — un
+  // conto che senza questo fix non tornava mai (un parco pre-esistente non
+  // contava mai in `builtAtLevel("parco",1)`, quindi il tutorial avrebbe
+  // richiesto di costruirne 5 di nuovi invece di uno solo per superare la
+  // fase). Tolte qui da `staticWorld` (stesso principio di chies sopra);
+  // seedTutorialBuildings() piu' sotto (dopo che r12 esiste davvero) le
+  // trasforma in `buildings` veri, gia' finiti al livello che il loro nome
+  // implica.
+  const TUTORIAL_PREBUILT_TYPES = {
+    casa2: { type: "casa", level: 2 }, casa3: { type: "casa", level: 3 },
+    industria1: { type: "industria", level: 1 }, industria2: { type: "industria", level: 2 },
+    parco: { type: "parco", level: 1 },
+    gatlinggun: { type: "gatling", level: 1 }, rocket_launcher: { type: "missile", level: 1 },
+  };
+  const tutorialPrebuilt = roomName === "tutorial"
+    ? staticWorld.filter((it) => TUTORIAL_PREBUILT_TYPES[it.obj])
+    : [];
+  for (const it of tutorialPrebuilt) staticWorld.splice(staticWorld.indexOf(it), 1);
+
   // `pu1` e' anche lei gia' un'istanza vera nella room ([C] src/rooms/
   // match_easy.json, sprite "p1" = la stessa casetta del bottone "casa" qui
   // sotto, a depth -9998 = sempre in primo piano). Nell'originale e' un
@@ -438,12 +485,24 @@ export async function mountMatch(ctx, params = {}) {
   // restava sospeso nel vuoto, "tagliato" a meta' — esattamente lo stesso
   // bug di `match` (sopra) gia' risolto una volta, ripresentatosi qui
   // perche' la room non era mai stata inclusa in questa chiamata.
-  // `interactive:false` su tutorial (nessuna catena fari/r22/r32: fuori
-  // scopo per una guida, STUDIO.md) — stesso trattamento gia' usato dallo
-  // sfondo sfocato della title screen (game/src/title.js) sulla stessa
-  // piattaforma.
+  // [Decisione dell'autore: "estendi le dimensioni della room [tutorial] in
+  // modo che siano pari a quelle di match e verifica che la piattaforma sia
+  // rappresentata completamente come in match"] `interactive:true` anche su
+  // tutorial (non piu' solo `match`): la catena fari/r22/r32 (game/src/
+  // platform.js, sotto) diventa raggiungibile anche li' — stesso
+  // trattamento riservato PRIMA solo allo sfondo sfocato della title screen
+  // (game/src/title.js, sempre `interactive:false` la', una scena mai
+  // giocata) resta quello, il tutorial no: e' una partita vera. La room
+  // stessa (game/data/tutorial.scene.json, width/height) e' stata allargata
+  // a 3900x2090 (le dimensioni di `match`, sotto SCENE_WIDTH in
+  // platform.js) apposta per questo — la piattaforma vera (r120/motori/
+  // fari/le due espansioni r32/r22, tutte a coordinate ASSOLUTE fisse in
+  // platform.js, indipendenti dal contenuto proprio della room) si estende
+  // ben oltre i vecchi 1920x1086 di `match_easy` che tutorial riusava
+  // finora: senza spazio a sufficienza la camera non avrebbe mai potuto
+  // panoramicare fin li', anche a `platformState` gia' inizializzato sotto.
   if (roomName === "match" || roomName === "tutorial") {
-    applyMatchPlatform(staticWorld, { interactive: roomName === "match" });
+    applyMatchPlatform(staticWorld, { interactive: roomName === "match" || roomName === "tutorial" });
   }
   // [Bug corretto] `applyMatchPlatform()` PUSHA istanze nuove in `staticWorld`
   // (r120/baa12) DOPO il ciclo che assegna `_f` a tutto il resto (sopra,
@@ -461,10 +520,13 @@ export async function mountMatch(ctx, params = {}) {
   // giro, in tempo.
   for (const it of staticWorld) if (!it._f) it._f = frameFor(it.spr);
   missingArt = staticWorld.filter((it) => !it._f).length;
-  // Catena fari -> seconda piattaforma (game/src/platform.js): solo su
-  // `match`, come r120/applyMatchPlatform() sopra — `match_easy` non ha ne'
-  // la base volante ne' `chies` a livello 2 (STUDIO.md, gap dichiarati).
-  let platformState = roomName === "match" ? createFaroState() : null;
+  // Catena fari -> seconda piattaforma (game/src/platform.js): su `match` e
+  // `tutorial` (decisione dell'autore, vedi il commento su
+  // applyMatchPlatform() sopra), come r120 li' — `match_easy` resta
+  // l'unica room senza, non avendo ne' la base volante ne' `chies` capace
+  // di raggiungere i livelli che sbloccano i fari (STUDIO.md, gap
+  // dichiarati).
+  let platformState = (roomName === "match" || roomName === "tutorial") ? createFaroState() : null;
 
   // Semafori (game/src/semaphores.js, STUDIO.md): `object8` ("se", il palo —
   // mai rinominato dall'autore originale) resta in staticWorld com'e', un
@@ -1278,6 +1340,19 @@ export async function mountMatch(ctx, params = {}) {
     spawnDecor(b, currentDecor(b));
   }
 
+  /** Come seedChies() sopra, ma per gli edifici pre-esistenti della room
+   * "tutorial" (tutorialPrebuilt/TUTORIAL_PREBUILT_TYPES sopra) — ognuno
+   * gia' finito al livello che il suo nome implica invece che a livello 1,
+   * via placeFinishedBuilding() (buildings.js). */
+  function seedTutorialBuildings() {
+    for (const it of tutorialPrebuilt) {
+      const spec = TUTORIAL_PREBUILT_TYPES[it.obj];
+      const b = placeFinishedBuilding(spec.type, it.x, it.y, it.depth, spec.level, r12);
+      buildings.push(b);
+      spawnDecor(b, currentDecor(b));
+    }
+  }
+
   /**
    * Un edificio la cui vita e' scesa a 0 (fulmine in tempesta, o una bomba
    * sganciata da una minaccia vera — game/src/threats.js, stepBombs). [C]
@@ -1463,6 +1538,7 @@ export async function mountMatch(ctx, params = {}) {
     return true;
   }
   seedChies();
+  seedTutorialBuildings();
   // [C] standma|easma/Mouse_LeftPressed.gml: `action_load_game(...)` scatta
   // SUBITO al tap del bottone, prima ancora che il gioco vero appaia — qui
   // equivale a questa singola chiamata all'avvio, solo quando si arriva
@@ -2835,13 +2911,14 @@ export async function mountMatch(ctx, params = {}) {
       cam.maxZoom = fitZoom * 1.3;
       if (!userMoved) {
         cam.setZoomImmediate(fitZoom);
-        // `initialFocusY` (calcolato sopra, dove viene spiegato) invece di
-        // `scene.height / 2`: senza effetto pratico oggi (cam.clamp() sotto
-        // ricentra comunque quando la room "cover" non lascia margine
-        // verticale, il caso comune — vedi sopra), ma corretto per il caso in
-        // cui in futuro lo lasciasse (una room piu' quadrata, un tablet in
-        // landscape trattato come mobile via `pointer: coarse`).
-        cam.x = scene.width / 2;
+        // `initialFocusX`/`initialFocusY` (calcolati sopra, dove viene
+        // spiegato) invece di `scene.width|height / 2`: stesso principio,
+        // stessa correzione — senza effetto pratico su Y oggi (cam.clamp()
+        // sotto ricentra comunque quando la room "cover" non lascia margine
+        // verticale, il caso comune), ma X conta davvero per `tutorial`
+        // (contenuto non piu' centrato nei bound allargati, vedi sopra) anche
+        // sul ramo mobile qui.
+        cam.x = initialFocusX;
         cam.y = initialFocusY;
       }
     }

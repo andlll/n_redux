@@ -1757,6 +1757,32 @@ export function placeBuilding(type, x, y, depth) {
   return b;
 }
 
+/**
+ * Come placeBuilding(), ma gia' finito al `level` dato invece che a livello
+ * 1 (o 0, in cantiere) — per gli edifici PRE-ESISTENTI di una room (main.js,
+ * game/src/tutorial.js: casa2/casa3/industria1/industria2/parco/gatlinggun/
+ * rocket_launcher nella scena "tutorial", mai nati da un cantiere del
+ * giocatore). Applica applyLevelFinish() un salto di livello per volta, dal
+ * cantiere ex novo (`def.construct`, livello 0->1) fino al livello
+ * richiesto (`def.upgrades[L-1]` per ogni salto successivo) — lo stesso
+ * percorso che l'edificio avrebbe fatto se costruito per davvero, cosi'
+ * hap/wewe/pop (r12) restano coerenti con quanto un edificio arrivato li'
+ * avrebbe gia' accumulato, invece di comparire "gratis" senza quegli
+ * effetti economici. `onDecor` no-op qui: il decoro si applica DOPO, da chi
+ * chiama, leggendo `currentDecor(b)` sullo stato finale (stesso schema di
+ * `seedChies()`, main.js) — non serve durante i salti intermedi.
+ */
+export function placeFinishedBuilding(type, x, y, depth, level, r12) {
+  const def = BUILDING_TYPES[type];
+  const b = placeBuilding(type, x, y, depth);
+  for (let l = 0; l < level; l++) {
+    const up = l === 0 ? def.construct : def.upgrades[l - 1];
+    applyLevelFinish(b, def, up, { upgradeIndex: l === 0 ? -1 : l - 1 }, r12, () => {});
+  }
+  b.construction = null;
+  return b;
+}
+
 // [TEST] Richiesto dall'autore mentre si testano le meccaniche economiche
 // appena collegate (wewe/oil, costi della ruspa): con questo flag a `true`
 // nessun costo blocca piu' niente — NON e' comportamento dell'originale, va
