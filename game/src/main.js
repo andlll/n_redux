@@ -3819,9 +3819,25 @@ export async function mountMatch(ctx, params = {}) {
           }
           break;
         }
-        case 6: case 11: case 24:
-          target = { x: canvas.clientWidth / 2, y: 100, angle: 90 };
+        // [Bug corretto, segnalato dall'autore: "la freccia punta a caso
+        // invece che puntare le monete"] Le tre fasi che parlano di una
+        // risorsa specifica della barra in alto (6: denaro appena
+        // raccolto, 11: energia/centrali, 24: olio/consumo) puntavano tutte
+        // allo stesso bersaglio sbagliato — il CENTRO dell'intero schermo a
+        // y=100, un punto nel bel mezzo della mappa di gioco, non vicino
+        // alla barra risorse (che vive in alto a sinistra, `barX`/`barY`
+        // sotto — dichiarata piu' in basso in questa stessa funzione, dove
+        // si disegna la barra vera). Qui invece punta all'icona/numero
+        // VERO della risorsa di cui parla il testo di QUELLA fase (stessi
+        // offset "pop 30/olio 142/energia 228/denaro 340" gia' letti dal
+        // decompilato per disegnare i numeri, sotto), dal basso verso
+        // l'alto (`angle:90`, gia' la convenzione per "punta alla barra
+        // risorse in alto" — solo le coordinate erano sbagliate).
+        case 6: case 11: case 24: {
+          const resX = tutorialState.phase === 6 ? 340 : tutorialState.phase === 11 ? 228 : 142;
+          target = { x: barX + resX, y: barY + 43, angle: 90 };
           break;
+        }
         case 7: {
           const b = byKind((btn) => btn.kind === "deselect");
           if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
