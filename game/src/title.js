@@ -21,6 +21,7 @@
 // nodo DOM del messaggio), cosi' rientrare nel menu piu' volte nella stessa
 // sessione non accumula loop/listener fantasma.
 import { solidFrame } from "./gl.js";
+import { loadFromFile } from "./save.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
 import { applyMatchPlatform, r120MotorDecor } from "./platform.js";
@@ -469,12 +470,67 @@ export async function mountTitle(ctx) {
     msgEl.style.opacity = messageT > 0 ? "1" : "0";
   }, 100);
 
+  // [Nuova funzionalita', richiesta dall'autore: "aggiungere una funzione
+  // carica partita nel menu principale, in modo da proseguire nel file
+  // salvato"] Nessuno sprite del menu originale copre questo caso (i tre
+  // bottoni `BUTTONS` sopra vengono dalla room decompilata `title.json` —
+  // STUDIO.md, nessun quarto bottone "carica" e' mai esistito li'): un vero
+  // elemento HTML invece, stesso principio gia' scelto per `msgEl` sopra e
+  // per la scritta "loading" delle schermate di caricamento (index.html) —
+  // niente sprite da disegnare, un bottone vero e accessibile a costo zero.
+  // Il caricamento vero e proprio (dialog di sistema, save.js/
+  // loadFromFile()) e' fuori dal layer WebGL apposta: main.js non sa ancora
+  // quale room montare finche' il file scelto non rivela `data.scene`.
+  const loadFileBtn = document.createElement("button");
+  loadFileBtn.textContent = "Carica partita";
+  loadFileBtn.style.cssText = "position:fixed;left:24px;bottom:24px;z-index:5;" +
+    "font:700 14px/1 system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;" +
+    "letter-spacing:0.08em;text-transform:uppercase;color:#fff;" +
+    "background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.35);border-radius:6px;" +
+    "padding:10px 16px;cursor:pointer;";
+  let loadingFile = false;
+  loadFileBtn.addEventListener("click", async () => {
+    // `navigateTo` (sotto, gia' usato da input.onTap): stessa guardia contro
+    // un secondo tap/click mentre il fade verso "match" e' gia' in corso.
+    // `loadingFile` in piu': il dialog di sistema e' async (l'utente puo'
+    // restarci sopra qualche secondo), un secondo click prima che risponda
+    // non deve aprirne un secondo.
+    if (navigateTo || loadingFile) return;
+    loadingFile = true;
+    loadFileBtn.disabled = true;
+    try {
+      const result = await loadFromFile();
+      // `null`: dialog annullato dall'utente — silenzioso, non e' un
+      // errore. `"invalid"`: un file e' stato scelto davvero ma non e' un
+      // salvataggio valido (JSON malformato, un altro gioco, o il
+      // checksum non combacia — modificato a mano, save.js/verify()): qui
+      // SI vale la pena dirlo, a differenza del dialog annullato.
+      if (result === "invalid") {
+        message = "file non valido o modificato"; messageT = 3;
+      } else if (result) {
+        navigateTo = {
+          room: result.data.scene ?? "match_easy", autoload: false,
+          loadedData: result.data, fileHandle: result.handle,
+        };
+        fadeT = 0;
+      }
+    } catch (err) {
+      console.error("nimbus: caricamento da file fallito", err);
+      message = "caricamento da file fallito"; messageT = 3;
+    } finally {
+      loadingFile = false;
+      loadFileBtn.disabled = false;
+    }
+  });
+  document.body.appendChild(loadFileBtn);
+
   return {
     dispose() {
       stopped = true;
       window.removeEventListener("resize", resize);
       clearInterval(msgInterval);
       msgEl.remove();
+      loadFileBtn.remove();
     },
   };
 }

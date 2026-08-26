@@ -441,7 +441,23 @@ export class PauseBlur {
   }
 }
 
-export async function loadTexture(gl, url) {
+/**
+ * `nearest`: campionamento NEAREST invece di LINEAR — solo il font bitmap
+ * (font.js/loadFont()) lo chiede. [Bug corretto, segnalato dall'autore: "il
+ * font del tutorial e' sgranato"] Ogni texture del motore (compreso l'atlas
+ * dei font) usava sempre LINEAR (necessario per lo sprite-work del gioco,
+ * che DEVE restare morbido quando scala/ruota) — ma un atlas di glifi
+ * disegnato in spazio schermo (font.js/drawText(), niente zoom di camera in
+ * mezzo) non scala mai: LINEAR ci sfuma comunque i bordi ad ogni frazione di
+ * pixel fra texel e schermo (frequente sugli schermi hidpi, dove 1px CSS
+ * copre dpr^2 pixel fisici — STUDIO.md, lo stesso motivo per cui index.html
+ * preferisce testo HTML vettoriale al font bitmap per le schermate di
+ * caricamento), leggibile come "sgranato" a piccola taglia. NEAREST lo
+ * disegna sempre allo stesso identico dettaglio dell'atlas sorgente, un
+ * bordo netto invece che sfumato — lo stesso principio "pixel perfect" gia'
+ * scelto per l'overlay HTML, qui applicato al font vero nel canvas.
+ */
+export async function loadTexture(gl, url, { nearest = false } = {}) {
   const img = await new Promise((res, rej) => {
     const i = new Image();
     i.onload = () => res(i);
@@ -454,7 +470,8 @@ export async function loadTexture(gl, url) {
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  const filter = nearest ? gl.NEAREST : gl.LINEAR;
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
   return { tex: t, width: img.width, height: img.height };
 }

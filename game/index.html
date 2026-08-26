@@ -22,50 +22,62 @@
      dissolvenza quando il caricamento asset e' completo e il primo frame e'
      stato disegnato (title.js chiama ctx.hideLoading(), game/src/app.js). */
   #loading { position: fixed; inset: 0; z-index: 10; background: #000;
-             display: flex; align-items: center; justify-content: center;
+             display: flex; flex-direction: column; align-items: center;
+             justify-content: center; gap: 18px;
              pointer-events: none; transition: opacity 0.6s ease; }
   #loading.hide { opacity: 0; }
   #loading img { width: min(45vw, 340px); height: auto; opacity: 0;
                  transition: opacity 0.8s ease; }
   #loading.show img { opacity: 1; }
+  /* Scritta "loading" sotto il logo — piccola, bianca su nero, nello stesso
+     stile della UI vera del gioco (font.js: un sans grottesco/geometrico,
+     "Gotham" — mai monospace: il precedente `ui-monospace` non assomigliava
+     per niente al font reale del gioco, solo alla stessa famiglia usata per
+     l'HUD di debug). Resta comunque testo HTML vettoriale, non il font
+     bitmap vero (font.js/drawText()): quell'atlas campiona con filtro
+     NEAREST apposta per restare nitido (vedi il fix su loadFont(), font.js)
+     ma e' comunque un asset da scaricare — proprio quello che questa
+     schermata deve coprire MENTRE arriva, quindi non e' disponibile cosi'
+     presto. */
+  #loading span, #levelLoading span {
+    font: 700 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+    letter-spacing: 0.14em; color: #fff; text-transform: uppercase;
+  }
   /* HUD di debug di main.js: nascosto di default (mostrato solo mentre e'
      montata una partita, game/src/app.js/mountMatch()) cosi' non lampeggia
      vuoto sul menu prima che lo script parta. */
   #hud { display: none; position: fixed; left: 8px; top: 56px;
          font: 12px/1.5 ui-monospace, monospace; color: #9fb4d8;
          pointer-events: none; white-space: pre; text-shadow: 0 1px 2px #000; }
-  /* Scritta "loading" fra il tap su un livello nel menu e il primo frame
-     disegnato da main.js — [Bug corretto, segnalato dall'autore: "sembra
-     che il gioco si sia bloccato" cliccando un livello] `navigate()`
-     (game/src/app.js) disegna gia' un frame nero pieno-schermo prima di
-     aspettare fetch di scene/atlas/texture della room (puo' richiedere
-     diversi secondi su rete lenta), ma un rettangolo nero senza alcun
-     testo e' indistinguibile da un blocco vero. Overlay HTML, non testo
-     bitmap disegnato dal renderer WebGL (game/src/font.js): quel font e'
-     un'immagine ("atlas" di glifi) campionata con filtro LINEAR (STUDIO.md
-     — necessario per lo sprite-work del gioco), quindi si sgranerebbe
-     ingrandendola per farla leggibile da lontano — e i suoi stessi dati
-     (font_*.json/png) sono fra le cose che questo overlay deve coprire
-     MENTRE vengono ancora scaricate, quindi non e' nemmeno disponibile
-     cosi' presto. Il testo di un elemento HTML e' invece vettoriale: la
-     stessa nitidezza a qualunque dimensione, "pixel perfect" a costo
-     zero — nessun asset da aspettare. `-webkit-font-smoothing:none` (con
-     l'equivalente Firefox `moz-osx-font-smoothing`) toglie l'antialiasing
-     sub-pixel del testo: bordi netti a scalino invece che sfumati, piu'
-     coerente con la grafica a pixel del resto del gioco che un
-     antialiasing morbido. Mostrato/nascosto da app.js/navigate(), non da
-     una singola schermata: serve identico per ogni cambio room (match,
-     match_easy, tutorial), non solo il primo avvio come #loading sopra. */
+  /* Schermata fra il tap su un livello nel menu e il primo frame disegnato
+     da main.js — [Bug corretto, segnalato dall'autore: "sembra che il
+     gioco si sia bloccato" cliccando un livello] `navigate()` (game/src/
+     app.js) disegna gia' un frame nero pieno-schermo prima di aspettare
+     fetch di scene/atlas/texture della room (puo' richiedere diversi
+     secondi su rete lenta), ma un rettangolo nero senza nulla sopra e'
+     indistinguibile da un blocco vero. Stesso logo Mount Fuji + scritta
+     "loading" di #loading sopra (richiesto dall'autore: le due schermate
+     di caricamento devono essere coerenti fra loro), non testo bitmap
+     disegnato dal renderer WebGL (game/src/font.js): quel font e' un
+     asset da scaricare, proprio quello che questo overlay deve coprire
+     MENTRE arriva — non e' ancora disponibile cosi' presto. Overlay HTML
+     vettoriale invece: nitido a qualunque dimensione, nessun asset da
+     aspettare. Mostrato/nascosto da app.js/navigate(), non da una singola
+     schermata: serve identico per ogni cambio room (match, match_easy,
+     tutorial), non solo il primo avvio come #loading sopra — qui pero'
+     senza la dissolvenza in entrata del logo (`show img`, sopra): un
+     cambio room e' gia' un'attesa breve e frequente, non il primo impatto
+     con l'app. */
   #levelLoading { position: fixed; inset: 0; z-index: 11; background: #000;
-                  display: flex; align-items: center; justify-content: center;
+                  display: flex; flex-direction: column; align-items: center;
+                  justify-content: center; gap: 18px;
                   pointer-events: none; opacity: 0; transition: opacity 0.25s ease; }
   #levelLoading.show { opacity: 1; }
-  #levelLoading span { font: 700 8vh/1 ui-monospace, "Courier New", monospace;
-                        letter-spacing: 0.08em; color: #fff; text-transform: uppercase;
-                        -webkit-font-smoothing: none; -moz-osx-font-smoothing: grayscale; }
+  #levelLoading img { width: min(45vw, 340px); height: auto; }
 </style>
 <canvas id="view"></canvas>
-<div id="loading"><img src="./assets/mount_logo.png" alt="Mount Fuji Software"></div>
-<div id="levelLoading"><span>loading</span></div>
+<div id="loading"><img src="./assets/mount_logo.png" alt="Mount Fuji Software"><span>loading</span></div>
+<div id="levelLoading"><img src="./assets/mount_logo.png" alt="Mount Fuji Software"><span>loading</span></div>
 <div id="hud"></div>
 <script type="module" src="./src/app.js"></script>

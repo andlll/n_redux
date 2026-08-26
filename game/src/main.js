@@ -1,8 +1,8 @@
 import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
-import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
+import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES, TURRET_SPRITE_NAMES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -27,7 +27,7 @@ import {
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
-import { save, load } from "./save.js";
+import { save, load, serializeSave, saveToFile, loadFromFile } from "./save.js";
 import { loadFont, drawText, measureText } from "./font.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
@@ -265,6 +265,35 @@ export async function mountMatch(ctx, params = {}) {
   // all'ultimo frame (vedi "eol"/WIND_ANIM_FPS piu' sotto, buildings.js).
   function frameCountFor(sprName) {
     return atlas.sprites[sprName]?.length ?? 1;
+  }
+  // [Bug corretto, segnalato dall'autore: "l'area di tap delle strutture di
+  // difesa deve coprire tutto l'oggetto (un rettangolo grande come tutte le
+  // coordinate dello sprite)"] Il tap sulle torrette (missile/gatling/laser)
+  // usava sempre il bbox del frame CORRENTE (`_f`, sotto): uno sprite
+  // direzionale diverso per ogni angolo di mira (TURRET_SPRITE_TABLES,
+  // buildings.js), quindi l'area cliccabile si restringeva ogni volta che il
+  // cannone ruotava verso una direzione con un bbox piu' stretto, invece di
+  // restare un riquadro fisso. Qui l'UNIONE degli ingombri di TUTTI i
+  // fotogrammi direzionali (mira + rinculo, TURRET_SPRITE_NAMES) del tipo —
+  // non il frame disegnato in questo istante — usata SOLO per il tap
+  // (inFrameRect() piu' sotto), mai per il disegno (che resta lo sprite vero
+  // di ogni frame). Non cachata: chiamata solo al tap (poche volte al
+  // secondo al massimo), non ad ogni frame di rendering — le pagine
+  // "deferred" dell'atlas (assets.js) potrebbero non essere ancora arrivate
+  // per qualche nome all'inizio, una cache permanente le lascerebbe fuori
+  // per sempre anche dopo che sono arrivate.
+  function turretHitBox(type) {
+    const names = TURRET_SPRITE_NAMES[type];
+    if (!names) return null;
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+    for (const name of names) {
+      const f = frameFor(name);
+      if (!f) continue;
+      left = Math.min(left, -f.ox); top = Math.min(top, -f.oy);
+      right = Math.max(right, f.w - f.ox); bottom = Math.max(bottom, f.h - f.oy);
+    }
+    if (left >= right || top >= bottom) return null;
+    return { ox: -left, oy: -top, w: right - left, h: bottom - top };
   }
   /** Frame corrente per uno sprite di CANTIERE con sottoimmagini vere
    * ("impvent1"/"impvent3" della pala eolica — `c.curSpd`, buildings.js/
@@ -1473,7 +1502,7 @@ export async function mountMatch(ctx, params = {}) {
   // Serializzazione esplicita fin da subito (STUDIO.md §5.6/§7.1): lo stato
   // che conta e' gia' dati semplici, quindi non c'e' uno snapshot binario da
   // imitare, solo JSON. Stessi nomi di slot dell'originale ("nimsav_eas" per
-  // la mappa facile).
+  // la mappa facile) per il quicksave in localStorage.
   //
   // NON e' piu' automatico: il gioco e' ancora in sviluppo attivo, e un
   // autoload silenzioso al boot fa ripartire ogni sessione di test da uno
@@ -1483,16 +1512,83 @@ export async function mountMatch(ctx, params = {}) {
   // pagina e' quindi una partita nuova, come il primissimo avvio. S/L restano
   // per salvare/ricaricare a mano DENTRO la stessa sessione di test, se
   // serve, ma non sopravvivono piu' da soli a un refresh.
-  function doSave() { save(scene.name, r12, buildings, ruins, blockedSlots, platformState); }
-  function doLoad() {
-    const data = load(scene.name);
-    if (!data) return false;
+  //
+  // [Nuova funzionalita', richiesta dall'autore: "vogliamo file salvabili
+  // dove vuole l'utente, cosi' non si perde"] Accanto al quicksave in
+  // localStorage (S/L, Salva/Carica partita nel menu di pausa — invariati,
+  // pensati per restare veloci durante un test) c'e' ora un salvataggio VERO
+  // su file (save.js, saveToFile()/loadFromFile()): "Salva su file"/"Carica
+  // da file" nel menu di pausa, e "Carica partita" nel menu principale
+  // (title.js) — l'unico modo di riprendere una partita che non e' mai stata
+  // aperta prima in QUESTO browser. `fileHandle` (sotto): quando l'API File
+  // System Access c'e' (Chrome/Edge — non Safari ne' Firefox, save.js), il
+  // primo "Salva su file" apre il dialog "Salva come" UNA volta sola; ogni
+  // salvataggio successivo nella stessa sessione riscrive silenziosamente
+  // lo stesso file. Seminato da `params.fileHandle` quando si arriva da un
+  // "Carica partita" del menu principale (si e' gia' scelto un file, non
+  // ha senso chiederne un secondo al primo salvataggio).
+  let fileHandle = params.fileHandle ?? null;
+
+  // [Nuova funzionalita', richiesta dall'autore: "eviterei di far salvare in
+  // situazioni critiche (sotto attacco, con poco oil ecc)"] Ritorna una
+  // breve spiegazione (mostrata come messaggio, vedi doSave()/
+  // doSaveToFile() sotto) se il salvataggio va bloccato adesso, altrimenti
+  // `null`. Tre condizioni, tutte e sole quelle discusse con l'autore:
+  // - una minaccia vera (aereo/bombardiere/dirigibile) vicina alla citta'
+  //   (entro CRITICAL_THREAT_RADIUS da `chiesScene`, il municipio — sempre
+  //   presente, STUDIO.md — non "esiste una minaccia da qualche parte sulla
+  //   mappa", quasi sempre vero durante una partita lunga: qui serve un
+  //   pericolo imminente, non uno qualunque);
+  // - olio quasi esaurito (sotto il 10% del tetto — oilCap(), state.js —
+  //   non uno zero assoluto: la citta' e' gia' in affanno ben prima che
+  //   l'energia si spenga davvero);
+  // - temporale VERO in corso (`r12.storm`, solo `match` — non `stormeasy`,
+  //   puramente cosmetico su `match_easy`, STUDIO.md: nessun danno, nessun
+  //   motivo di bloccare nulla) o l'allarme "attacco in arrivo"
+  //   (`r12.alertT`, balloons.js: una spia ha completato il giro).
+  // Blocco netto (non solo un avviso): il tap su "Salva"/"Salva su file"
+  // semplicemente non salva, un messaggio spiega perche' — coerente con
+  // "S/L restano un quicksave di sessione", non un vero e proprio permesso
+  // di salvare in qualunque momento.
+  const CRITICAL_THREAT_RADIUS = 500;
+  function criticalSaveReason() {
+    // `oilCap()` (state.js) resta `Infinity` finche' chies non arriva a
+    // livello 2 (nessun tetto dichiarato prima) — un 10% di `Infinity` e'
+    // ancora `Infinity`, quindi "sotto il 10% del tetto" sarebbe sempre
+    // vero a inizio partita (bloccherebbe OGNI salvataggio, altro che solo
+    // quelli critici). Soglia assoluta di riserva quando il tetto non e'
+    // ancora un numero vero, proporzionata all'olio di partenza (5000-7500,
+    // state.js `createR12()`).
+    const cap = oilCap(buildings);
+    const oilThreshold = Number.isFinite(cap) ? cap * 0.1 : 500;
+    if (r12.oil <= oilThreshold) return "l'olio e' quasi esaurito";
+    if (r12.storm) return "un temporale sta colpendo la citta'";
+    if (r12.alertT > 0) return "un attacco e' in arrivo";
+    if (chiesScene) {
+      const r2 = CRITICAL_THREAT_RADIUS * CRITICAL_THREAT_RADIUS;
+      const near = threats.some((th) => (th.x - chiesScene.x) ** 2 + (th.y - chiesScene.y) ** 2 < r2);
+      if (near) return "una minaccia e' vicina alla citta'";
+    }
+    return null;
+  }
+
+  function doSave() {
+    const reason = criticalSaveReason();
+    if (reason) { message = "Non puoi salvare adesso: " + reason; messageT = 3; return; }
+    save(scene.name, r12, buildings, ruins, blockedSlots, platformState);
+    message = "partita salvata"; messageT = 3;
+  }
+  // Applica un salvataggio gia' letto/parsato (da localStorage O da file,
+  // save.js) allo stato vivo della partita — corpo unico riusato da
+  // doLoad() (localStorage) e doLoadFromFile() sotto, cosi' i due percorsi
+  // non possono disallinearsi silenziosamente col tempo.
+  function applyLoadedData(data) {
     r12 = data.r12;
     buildings = data.buildings;
     // `?.tier1`: scarta anche un salvataggio con la forma vecchia (prima
     // dei due livelli fari/piattaforma) invece di rompersi su di lui — lo
     // stesso principio "niente stato vecchio da onorare" gia' scelto per
-    // l'autoload (STUDIO.md, commento sopra doSave()).
+    // l'autoload (commento sopra).
     if (platformState) platformState = data.platformState?.tier1 ? data.platformState : createFaroState();
     decorEntities = [];
     const usedIds = new Set();
@@ -1540,6 +1636,61 @@ export async function mountMatch(ctx, params = {}) {
     }
     return true;
   }
+  function doLoad() {
+    const data = load(scene.name);
+    if (!data) return false;
+    return applyLoadedData(data);
+  }
+  // Async (save.js/saveToFile() apre un dialog nativo): il chiamante (input.
+  // onTap sotto) non aspetta la Promise, aggiorna `message` da dentro questa
+  // funzione stessa quando la scrittura finisce — coerente con ogni altro
+  // messaggio "a fuoco e dimentica" del motore.
+  async function doSaveToFile() {
+    const reason = criticalSaveReason();
+    if (reason) { message = "Non puoi salvare adesso: " + reason; messageT = 3; return; }
+    const data = serializeSave(scene.name, r12, buildings, ruins, blockedSlots, platformState);
+    try {
+      const h = await saveToFile(data, fileHandle);
+      if (h === undefined) return;   // dialog annullato dall'utente, nessun messaggio
+      if (h) fileHandle = h;
+      message = "partita salvata su file"; messageT = 3;
+    } catch (err) {
+      console.error("nimbus: salvataggio su file fallito", err);
+      message = "salvataggio su file fallito"; messageT = 3;
+    }
+  }
+  async function doLoadFromFile() {
+    let result;
+    try {
+      result = await loadFromFile();
+    } catch (err) {
+      console.error("nimbus: caricamento da file fallito", err);
+      message = "caricamento da file fallito"; messageT = 3;
+      return;
+    }
+    if (!result) return;   // dialog annullato dall'utente, nessun messaggio
+    // "invalid" (save.js/loadFromFile()): un file e' stato scelto davvero,
+    // ma non e' un salvataggio valido — JSON malformato, un altro gioco, o
+    // il checksum non combacia (modificato a mano, save.js/verify()). A
+    // differenza del dialog annullato (sopra) qui vale la pena dirlo.
+    if (result === "invalid") {
+      message = "file non valido o modificato"; messageT = 3;
+      return;
+    }
+    // Un file salvato per un'ALTRA room (es. si apre un salvataggio di
+    // `match` mentre si sta giocando `match_easy`) non puo' essere applicato
+    // qui: gli edifici/la piattaforma dell'una non hanno senso nell'altra.
+    // Rimanda alla navigazione vera (title.js/"Carica partita" gia' lo fa
+    // per il primo avvio) invece di lasciare lo stato a meta' fra due room.
+    if (result.data.scene && result.data.scene !== scene.name) {
+      navigate("match", { room: result.data.scene, autoload: false, loadedData: result.data, fileHandle: result.handle });
+      return;
+    }
+    if (result.handle) fileHandle = result.handle;
+    applyLoadedData(result.data);
+    picked = null;
+    message = "partita caricata da file"; messageT = 3;
+  }
   seedChies();
   seedTutorialBuildings();
   // I fuochi d'artificio sopra chies a Gennaio (game/src/fireworks.js —
@@ -1553,10 +1704,14 @@ export async function mountMatch(ctx, params = {}) {
   // SUBITO al tap del bottone, prima ancora che il gioco vero appaia — qui
   // equivale a questa singola chiamata all'avvio, solo quando si arriva
   // davvero dalla title screen (vedi il commento su `autoloadOnBoot` sopra).
-  if (autoloadOnBoot) doLoad();
+  // `params.loadedData` (nuovo, "Carica partita" del menu principale, file
+  // vero): ha gia' precedenza implicita, semplicemente scavalca l'autoload —
+  // title.js non manda mai entrambi insieme (vedi navigate() li').
+  if (params.loadedData) applyLoadedData(params.loadedData);
+  else if (autoloadOnBoot) doLoad();
 
   function onKeydown(e) {
-    if (e.key === "s" || e.key === "S") { doSave(); message = "partita salvata"; messageT = 3; }
+    if (e.key === "s" || e.key === "S") doSave();
     if (e.key === "l" || e.key === "L") {
       const ok = doLoad();
       if (ok) picked = null;   // il riferimento selezionato apparteneva allo stato precedente
@@ -1932,10 +2087,12 @@ export async function mountMatch(ctx, params = {}) {
    * Menu di pausa (`paused`, sopra): cattura il canvas gia' disegnato per
    * questo frame (il mondo, congelato — la simulazione non e' avanzata) e lo
    * sfuma con `PauseBlur.blurScreen()` (game/src/gl.js), poi ci disegna sopra
-   * un oscuramento leggero + un pannello con titolo e tre bottoni
-   * (Riprendi/Salva/Carica, riusando `doSave()`/`doLoad()` gia' esistenti per
-   * S/L da tastiera). Nessun equivalente nel decompilato (STUDIO.md,
-   * `paused` sopra): puramente nostro.
+   * un oscuramento leggero + un pannello con titolo e i bottoni (Riprendi/
+   * Salva/Carica in localStorage, riusando `doSave()`/`doLoad()` gia'
+   * esistenti per S/L da tastiera; Salva/Carica su FILE, doSaveToFile()/
+   * doLoadFromFile() — vedi il commento su `fileHandle` piu' sopra).
+   * Nessun equivalente nel decompilato (STUDIO.md, `paused` sopra): puramente
+   * nostro.
    *
    * Chiamata FUORI dal batch GUI appena chiuso (`r.flush()` prima di questa
    * chiamata, nel ciclo di frame): `pauseBlur.blurScreen()` legge il
@@ -1959,10 +2116,16 @@ export async function mountMatch(ctx, params = {}) {
     // un mondo comunque colorato/luminoso.
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
+    // "Salva partita"/"Carica partita": quicksave rapido in localStorage
+    // (S/L da tastiera, invariato). "Salva su file"/"Carica da file": il
+    // salvataggio vero e portabile (save.js/saveToFile()/loadFromFile()) —
+    // vedi il commento su `fileHandle` sopra per come i due si incontrano.
     const rows = [
       { label: "Riprendi", action: "resume" },
       { label: "Salva partita", action: "save" },
       { label: "Carica partita", action: "load" },
+      { label: "Salva su file", action: "saveFile" },
+      { label: "Carica da file", action: "loadFile" },
       { label: "Torna al menu", action: "title" },
     ];
     const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
@@ -2510,12 +2673,15 @@ export async function mountMatch(ctx, params = {}) {
       if (hit?.action === "resume") {
         paused = false;
       } else if (hit?.action === "save") {
-        doSave();
-        message = "partita salvata"; messageT = 3;
+        doSave();   // messaggio (incluso il blocco su situazione critica) gestito dentro
       } else if (hit?.action === "load") {
         const ok = doLoad();
         if (ok) picked = null;
         message = ok ? "partita caricata" : "nessun salvataggio"; messageT = 3;
+      } else if (hit?.action === "saveFile") {
+        doSaveToFile();   // async, messaggio gestito dentro (fuoco e dimentica)
+      } else if (hit?.action === "loadFile") {
+        doLoadFromFile();   // async, idem
       } else if (hit?.action === "title") {
         navigate("menu");
       }
@@ -2640,9 +2806,14 @@ export async function mountMatch(ctx, params = {}) {
       // stessa ragione della raccolta hover piu' sotto. Tutto il resto
       // (edifici, casse, monete, segnale di potenziamento) resta sul
       // bounding box rettangolare, piu' leggero e gia' fedele alla loro sagoma.
+      // Le torrette (missile/gatling/laser) usano l'unione di tutti i loro
+      // frame direzionali (turretHitBox(), sopra) invece del frame corrente:
+      // vedi il commento li' per il perche'.
+      const turretBox = it.obj === "building" && BUILDING_TYPES[it.ref.type]?.turret
+        ? turretHitBox(it.ref.type) : null;
       const hit = it.obj === "placeholder"
         ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
-        : inFrameRect(w.x, w.y, it.x, it.y, it._f);
+        : inFrameRect(w.x, w.y, it.x, it.y, turretBox ?? it._f);
       // [Bug corretto, segnalato dall'autore: "l'area cliccabile delle
       // torrette e' troppo piccola, sembra solo quella vicina alla bocca di
       // fuoco"] La sagoma vera (`it._f`, sopra) e' gia' l'intero sprite
@@ -2924,8 +3095,17 @@ export async function mountMatch(ctx, params = {}) {
       // dal ramo mobile sotto, cosi' un resize (finestra ridimensionata,
       // spostata su un monitor a dpr diverso) non scavalca piu' uno zoom
       // scelto dal giocatore.
-      cam.maxZoom = pixelPerfectZoom();
-      if (!userMoved) cam.setZoomImmediate(cam.maxZoom);
+      // [Bug corretto, richiesto dall'autore: "consenti anche uno zoom out
+      // fino a 0.5"] Prima `maxZoom` COINCIDEVA col default pixel-perfect:
+      // la rotella poteva solo avvicinare, mai allontanare oltre il primo
+      // frame — su `match`/`tutorial` non si poteva mai vedere piu' mappa di
+      // quella iniziale. `* 2` raddoppia il limite di zoom-OUT (`cam.zoom`
+      // piu' grande = piu' mondo inquadrato, camera.js): al doppio del
+      // pixel-perfect uno sprite finisce a meta' della propria taglia
+      // nativa a schermo (scala 0.5, la stessa unita' di `cam.minZoom`
+      // sopra, dove 0.5 e' invece il limite di zoom-IN).
+      cam.maxZoom = pixelPerfectZoom() * 2;
+      if (!userMoved) cam.setZoomImmediate(pixelPerfectZoom());
     } else if (canvas.clientWidth > 0) {
       // `Math.min`, non `Math.max`: la room e' quasi sempre piu' larga che
       // alta (match_easy 1920x1086, match 3900x2090 — orizzontali) mentre lo
@@ -2941,9 +3121,12 @@ export async function mountMatch(ctx, params = {}) {
       // clamp() sotto gestisce gia' il pan quando il mondo e' piu' stretto
       // della room).
       const fitZoom = Math.min(scene.width / cam.viewW, scene.height / cam.viewH);
-      // Stesso motivo di prima (non allontanarsi troppo oltre il fit), solo
-      // ricalcolato sul nuovo fitZoom "cover".
-      cam.maxZoom = fitZoom * 1.3;
+      // [Bug corretto, richiesto dall'autore: "consenti anche uno zoom out
+      // fino a 0.5"] `* 1.3` (poco oltre il fit "cover") non arrivava alla
+      // meta' scala richiesta — `* 2`, stessa scelta del ramo desktop sopra,
+      // porta anche qui il limite di zoom-OUT fino a scala 0.5 rispetto al
+      // fit di partenza.
+      cam.maxZoom = fitZoom * 2;
       if (!userMoved) {
         cam.setZoomImmediate(fitZoom);
         // `initialFocusX`/`initialFocusY` (calcolati sopra, dove viene
@@ -3173,12 +3356,24 @@ export async function mountMatch(ctx, params = {}) {
           }
           stepTutorialAuto(tutorialState, { r12, buildings });
         }
-        // HUD (balloon di testo + bottone avanti/esci): nascosto durante la
-        // cutscene e nelle fasi ad avanzamento automatico (HIDE_ADVANCE_
-        // BUTTON — tutorial_thumb/Step.gml, le stesse 8 fasi gia' viste in
-        // stepTutorialAuto()), visibile in tutte le altre.
+        // Bottone avanti/esci: nascosto durante la cutscene e nelle fasi ad
+        // avanzamento automatico (HIDE_ADVANCE_BUTTON — tutorial_thumb/
+        // Step.gml, le stesse 8 fasi gia' viste in stepTutorialAuto()), visibile
+        // in tutte le altre — [C] fedele, non si puo' avanzare a mano una fase
+        // gameplay-gated.
         tutorialState.showOkButton = !tutorialState.cutscene && !HIDE_ADVANCE_BUTTON.has(tutorialState.phase);
-        if (tutorialState.showOkButton) {
+        // [Bug corretto, segnalato dall'autore: "spesso non si capisce come
+        // avanzare allo step successivo"] **[I]** Il balloon di testo restava
+        // legato a `showOkButton` (nascosto insieme al bottone): proprio nelle
+        // 8 fasi gameplay-gated, quelle che chiedono un'azione vera (demolisci
+        // quel rudere, seleziona quel bottone, costruisci 5 case...), il
+        // giocatore perdeva l'UNICA frase che gliela spiega — restava solo la
+        // freccia (quando c'era, vedi il fix su `target` piu' sotto), muta su
+        // COSA fare. Testo e bottone ora separati: il testo (l'"obiettivo" da
+        // perseguire) resta visibile per l'intera fase, gated o no — solo il
+        // bottone "avanti" sparisce quando la fase non si supera a tocco.
+        tutorialState.showText = !tutorialState.cutscene;
+        if (tutorialState.showText) {
           // Il balloon/bottone non devono coprire la barra azioni sotto
           // (segnalato dall'autore: si sovrapponevano) — `uiButtons` (un
           // frame indietro, ricalcolata piu' sotto: differenza impercettibile,
@@ -3186,7 +3381,9 @@ export async function mountMatch(ctx, params = {}) {
           // bordo superiore VERO della barra, qualunque sia menoo/dispositivo,
           // invece di un margine fisso indovinato. Salvato su `tutorialState`
           // cosi' anche il disegno del balloon/pollice (piu' sotto, layer
-          // GUI) puo' riusarlo senza ricalcolarlo.
+          // GUI) puo' riusarlo senza ricalcolarlo. Calcolato per ENTRAMBI
+          // (testo/bottone, non solo quest'ultimo) da quando i due si sono
+          // separati sopra.
           const barTop = uiButtons.length ? Math.min(...uiButtons.map((b) => b.y)) : canvas.clientHeight - 100;
           tutorialState.uiGap = Math.max(8, canvas.clientHeight - barTop + 10);
         }
@@ -3512,13 +3709,19 @@ export async function mountMatch(ctx, params = {}) {
       dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, AER_SMOKE_LIFE) });
     }
     // Fuochi d'artificio sopra chies a Gennaio (game/src/fireworks.js):
-    // scintille colorate, stesso quad a tinta unita gia' usato per i flash
-    // altrove nel motore — nessuno sprite dedicato, `_tint` sceglie il
-    // colore del lanciatore.
+    // scintille colorate — nessuno sprite dedicato, `_tint` sceglie il
+    // colore del lanciatore. [Bug corretto, richiesto dall'autore: "le
+    // particelle dei fireworks possiamo farle tonde invece che
+    // rettangolari?"] Un quad a tinta unita (`solidFrame(white, ...)`, come
+    // i flash altrove nel motore) e' sempre un quadrato pieno — sbagliato
+    // per una scintilla, che deve leggersi come un puntino. Qui riusa
+    // `bubbleTex` (sopra, gia' caricata per la "bolla" delle monete
+    // raccolte): lo stesso cerchio morbido, sfumato dal centro al bordo
+    // trasparente, invece del quadrato netto.
     if (fireworksState) for (const s of fireworksState.sparks) {
       dynamic.push({
         obj: "decor", x: s.x, y: s.y, depth: FIREWORK_DEPTH,
-        _f: { ...solidFrame(white, FIREWORK_SPARK_SIZE, FIREWORK_SPARK_SIZE), ox: FIREWORK_SPARK_SIZE / 2, oy: FIREWORK_SPARK_SIZE / 2 },
+        _f: { ...solidFrame(bubbleTex, FIREWORK_SPARK_SIZE, FIREWORK_SPARK_SIZE), ox: FIREWORK_SPARK_SIZE / 2, oy: FIREWORK_SPARK_SIZE / 2 },
         _tint: s.tint, _alpha: Math.max(0, 1 - s.t / s.life),
       });
     }
@@ -3561,8 +3764,14 @@ export async function mountMatch(ctx, params = {}) {
     // precedente (segnalato dall'autore). Il tocco per costruire resta
     // valido ovunque (picking sotto usa sempre `frameList`, indipendente da
     // questo flag): solo il disegno lo rispetta, piu' sotto.
+    // [Bug corretto, segnalato dall'autore: "quando e' attivo lo strumento
+    // mano le caselle placeholder non devono illuminarsi di viola con
+    // l'hovering"] `r12.selec === 0` e' esattamente lo stato "mano"/
+    // deselezionato (handbutton, piu' sotto: `{ kind: "deselect", ...
+    // r12.selec = 0 }") — nessun edificio da piazzare, quindi il rombo
+    // viola (il "qui puoi costruire") non ha piu' senso da mostrare.
     let hoveredPh = null;
-    if (input.hover) {
+    if (input.hover && r12.selec !== 0) {
       const w = cam.screenToWorld(input.hover.x, input.hover.y);
       for (const p of placeholders) {
         if (p.consumed) continue;
@@ -3923,7 +4132,15 @@ export async function mountMatch(ctx, params = {}) {
       // motore, qui serve anche a non lasciare hitbox "fantasma" fuori
       // schermo che intercetterebbero un tap sulla mappa sottostante.
       if (rx + w >= 0 && rx <= canvas.clientWidth) {
-        r.draw(f, rx, baseY, UI_SCALE, 0xffffff, 1);
+        // [Bug corretto, richiesto dall'autore: "la mano stessa deve avere
+        // una tint blu" quando lo strumento mano e' attivo] Nessun altro
+        // bottone di questa riga ha uno sprite "selezionato" a parte
+        // (`sprSel`, solo i bottoni edificio in menoo 1) — qui una tinta
+        // blu al posto del bianco neutro basta a segnalare "strumento
+        // attivo", coerente con `r12.selec === 0` = mano/deselezionato
+        // gia' usato sopra per spegnere l'hover viola dei placeholder.
+        const tint = b.kind === "deselect" && r12.selec === 0 ? 0x66aaff : 0xffffff;
+        r.draw(f, rx, baseY, UI_SCALE, tint, 1);
         uiButtons.push({ x: rx, y: baseY - h, w, h, ...b });
         rowTop = Math.min(rowTop, baseY - h);
       }
@@ -3963,6 +4180,40 @@ export async function mountMatch(ctx, params = {}) {
     if (tutorialState && !tutorialState.cutscene) {
       tutorialState.arrowFrame = (tutorialState.arrowFrame + dt * 20) % 20;
       const byKind = (pred) => uiButtons.find(pred);
+      // [Bug corretto, segnalato dall'autore: "quando l'oggetto da premere
+      // non e' in quel menu' consiglia di premere lo strumento indietro
+      // (sempre con la freccia indicante) e poi il sottomenu in cui
+      // recarsi"] Il bottone bersaglio di una fase vive quasi sempre nel
+      // menu' edifici (menoo 1): se il giocatore e' li' la freccia lo punta
+      // gia' direttamente; se e' a casa (menoo 0) punta al bottone che apre
+      // quel menu' — ma se e' nel menu' VISTA (menoo 2, tutto un altro
+      // sottomenu) nessuno dei due bottoni esiste in questa riga, e prima
+      // la freccia spariva senza indicare nulla. Ultimo anello della
+      // catena: "Indietro" (`menoo:0`, presente in OGNI sottomenu diverso
+      // da casa) — un passo alla volta verso il bersaglio vero, mai piu'
+      // muta su cosa premere.
+      const findIndietro = () => byKind((btn) => btn.kind === "menu" && btn.menoo === 0);
+      // [Bug corretto, richiesto dall'autore: "se per avanzare serve
+      // costruire degli edifici consiglia anche placeholder random una
+      // volta cliccato il bottone corretto"] Una volta selezionato il tipo
+      // giusto (`selectedType`, sopra) non resta piu' nulla da puntare nel
+      // selettore: senza questo la freccia spariva anche qui, lasciando il
+      // giocatore a cercare da solo un lotto libero (il rombo viola,
+      // "phold") in mezzo alla mappa. Sceglie un lotto libero valido a
+      // caso (isPlaceholderActive(), platform.js — mai uno su una parte di
+      // piattaforma non ancora costruita) e lo mantiene finche' resta
+      // valido, cosi' la freccia non salta da un lotto all'altro ad ogni
+      // frame.
+      const suggestedPlotTarget = () => {
+        const sp = tutorialState.suggestedPlot;
+        if (!sp || sp.consumed || !isPlaceholderActive(sp.x, sp.y, platformState)) {
+          const free = placeholders.filter((p) => !p.consumed && isPlaceholderActive(p.x, p.y, platformState));
+          tutorialState.suggestedPlot = free.length ? free[(Math.random() * free.length) | 0] : null;
+        }
+        if (!tutorialState.suggestedPlot) return null;
+        const s = cam.worldToScreen(tutorialState.suggestedPlot.x, tutorialState.suggestedPlot.y);
+        return { x: s.x, y: s.y - ARROW_GAP, angle: 270 };
+      };
       // [Bug corretto] La punta della freccia (drawRotated() sopra, dopo il
       // fix del verso di rotazione) finisce esattamente su `target`: senza
       // un margine, puntare al bordo pixel-esatto del bottone (`b.y`)
@@ -3972,12 +4223,13 @@ export async function mountMatch(ctx, params = {}) {
       // altri bersagli. Un margine piccolo ma costante qui, riusato da ogni
       // caso "punta in giu' al bottone sotto".
       const ARROW_GAP = 12;
+      const pointAtButton = (b) => b && { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
       let target = null;   // { x, y, angle }
       switch (tutorialState.phase) {
         case 2: {
-          const b = byKind((btn) => btn.kind === "building" && btn.type === "ruspa")
-            ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1);
-          if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
+          target = pointAtButton(byKind((btn) => btn.kind === "building" && btn.type === "ruspa")
+            ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1)
+            ?? findIndietro());
           break;
         }
         case 5: {
@@ -4007,21 +4259,33 @@ export async function mountMatch(ctx, params = {}) {
           break;
         }
         case 7: {
-          const b = byKind((btn) => btn.kind === "deselect");
-          if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
+          target = pointAtButton(byKind((btn) => btn.kind === "deselect") ?? findIndietro());
+          break;
+        }
+        // Fase 9: gia' scelto il tipo "casa" (fase 8), qui manca solo un
+        // lotto libero — nessun bottone da puntare, solo il suggerimento
+        // sopra.
+        case 9: {
+          target = suggestedPlotTarget();
           break;
         }
         case 8: case 12: case 16: case 19: {
           const type = tutorialState.phase === 8 ? "casa" : tutorialState.phase === 12 ? "industria"
             : tutorialState.phase === 16 ? "parco" : "missile";
-          const b = byKind((btn) => btn.kind === "building" && btn.type === type)
-            ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1);
-          if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
+          // 12/16/19 coprono SIA la selezione del tipo SIA il piazzamento
+          // vero (a differenza di 8, che avanza gia' alla sola selezione,
+          // fase 9 sopra): una volta selezionato il tipo giusto la freccia
+          // passa dal bottone al lotto suggerito, invece di restare ferma
+          // su un bottone gia' premuto.
+          target = selectedType === type && tutorialState.phase !== 8
+            ? suggestedPlotTarget()
+            : pointAtButton(byKind((btn) => btn.kind === "building" && btn.type === type)
+                ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1)
+                ?? findIndietro());
           break;
         }
         case 31: {
-          const b = byKind((btn) => btn.kind === "menu" && btn.menoo === 2);
-          if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
+          target = pointAtButton(byKind((btn) => btn.kind === "menu" && btn.menoo === 2) ?? findIndietro());
           break;
         }
       }
@@ -4039,14 +4303,16 @@ export async function mountMatch(ctx, params = {}) {
     // arrotondato, tutorialBoxFrame()/makeRoundedRectTexture() sopra) —
     // **[I]** larghezza/testo a capo qui invece che nel motore GML nativo
     // (wrapText() sopra, via measureText()).
-    if (tutorialState?.showOkButton && fontMobile) {
+    if (tutorialState?.showText && fontMobile) {
       const textScale = 1;
       const pad = 20;
       // boxRight lascia spazio al pollice (tut_ok, disegnato subito sotto:
-      // stessa larghezza 45*1.3 li' usata, + margine) — l'originale non
-      // aveva questo problema (il suo bottone "avanti" vive altrove nello
-      // schermo), ma qui i due condividono la stessa fascia in basso.
-      const boxLeft = 30, boxRight = canvas.clientWidth - 30 - (45 * 1.3 + 45);
+      // stessa larghezza 45*1.3 li' usata, + margine) SOLO quando il
+      // bottone e' davvero disegnato — nelle fasi gameplay-gated
+      // (showOkButton false, testo comunque visibile: vedi il fix sopra) il
+      // box usa tutta la larghezza, senza lasciare un vuoto a destra per un
+      // pollice che non c'e'.
+      const boxLeft = 30, boxRight = canvas.clientWidth - 30 - (tutorialState.showOkButton ? 45 * 1.3 + 45 : 0);
       const lineH = fontMobile.meta.emSize * textScale * 1.35;
       const lines = wrapText(fontMobile, TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "", textScale, boxRight - boxLeft - pad * 2);
       const boxH = lines.length * lineH + pad * 2;
