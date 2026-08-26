@@ -10,7 +10,7 @@
 // (§6 "Cosa non so ancora": le regole vere dell'economia non sono note) e'
 // marcato [I]: plausibile, da rivedere quando studieremo gli edifici reali.
 
-import { BUILDING_TYPES, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
+import { DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 
 /**
  * `isMatch`: **[C]** `r12/Create.gml` da' un oil/hap di partenza diverso a
@@ -121,30 +121,6 @@ export function oilCap(buildings) {
   if (maxLevel >= 3) return 30000;
   if (maxLevel >= 2) return 20000;
   return Infinity;
-}
-
-/**
- * [I] Simulazione economica placeholder per i tipi di cui NON conosciamo
- * ancora la regola vera (STUDIO.md §6): un ciclo plausibile e reversibile
- * solo per rendere il gioco giocabile mentre si studia il resto, applicato
- * solo agli edifici il cui tipo non dichiari una simulazione reale in
- * buildings.js (`production`: industria, industria1|2|3/Alarm_2.gml;
- * `growth`: casa, casa1/Alarm_2.gml; `solarProduction`: solare,
- * sooool/Alarm_4.gml). Escluderli evita di contare due volte lo stesso
- * olio/popolazione gia' simulati per davvero altrove.
- */
-export function tickR12(r12, dt, buildings) {
-  const guessed = buildings.filter((b) => {
-    const def = BUILDING_TYPES[b.type];
-    return !def.production && !def.growth && !def.solarProduction;
-  });
-  const n = guessed.length;
-  if (n > 0) {
-    r12.oil -= 0.3 * n * dt;                    // consumo: piu' edifici, piu' olio bruciato
-    r12.pop += (1.5 + 0.4 * n) * dt;             // crescita: base + un contributo per edificio
-  }
-  r12.mon += (2 + 0.08 * r12.pop) * dt;          // entrate: base + tassazione sulla popolazione
-  clampR12(r12, buildings);
 }
 
 // [TEST] DEBUG_INFINITE_RESOURCES: l'ultimo mon/oil "usabile" impostato da

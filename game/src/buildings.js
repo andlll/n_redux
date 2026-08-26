@@ -272,9 +272,8 @@ export const BUILDING_TYPES = {
     // Create.gml, uguale per tutti e tre i livelli); da li' in poi ogni
     // avanzamento riarma con uno dei 4 valori scelti a dado uniforme
     // (diversi per livello: casa1/2/3/Alarm_2.gml). Ogni avanzamento
-    // aggiunge pop reale, non un contributo generico: e' per questo che
-    // tickR12() (state.js) esclude i tipi con `growth` dalla sua formula
-    // placeholder.
+    // aggiunge pop reale, gia' simulata per davvero da stepGrowth()
+    // (main.js) — nessuna crescita automatica generica altrove (state.js).
     growth: [
       { firstInterval: 2000, intervals: [3500, 5796, 11565, 14656], popPerStage: 2, maxAva: 5 },   // [C] casa1
       { firstInterval: 2000, intervals: [6000, 7314, 9945, 11154], popPerStage: 4, maxAva: 5 },     // [C] casa2

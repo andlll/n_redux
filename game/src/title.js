@@ -329,6 +329,16 @@ export async function mountTitle(ctx) {
   let elapsed = 0;
   function frame(now) {
     if (stopped) return;
+    // Stesso principio applicato a game/src/main.js (segnalato dall'autore:
+    // "su desktop non riesco ad avviare match, rimane fermo in caricamento
+    // con schermo nero") — un errore qui dentro (requestAnimationFrame, mai
+    // coperto dal try/catch di app.js/navigate(), gia' concluso col successo
+    // del mount) fermerebbe il ciclo in silenzio, stavolta sul MENU: se
+    // capitasse mentre l'utente e' gia' nel mezzo del fade verso "match"
+    // (`navigateTo`/`fadeT` sotto) resterebbe bloccato a meta' fade per
+    // sempre, con la stessa identica UX "sembra si sia bloccato". Loggato e
+    // ritentato dallo stesso menu invece di restare morto in silenzio.
+    try {
     const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
     last = now;
     elapsed += dt;
@@ -441,6 +451,11 @@ export async function mountTitle(ctx) {
     hideLoading();
 
     requestAnimationFrame(frame);
+    } catch (err) {
+      console.error("nimbus: errore nel ciclo di frame del menu, ricarico il menu", err);
+      stopped = true;
+      navigate("menu");
+    }
   }
   requestAnimationFrame(frame);
 

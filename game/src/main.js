@@ -1,7 +1,7 @@
 import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
-import { createR12, tickR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan } from "./state.js";
+import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, ruinRebuildConstruction, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
@@ -2830,6 +2830,24 @@ export async function mountMatch(ctx, params = {}) {
   let last = performance.now();
   function frame(now) {
     if (stopped) return;
+    // [Bug corretto, segnalato dall'autore: "su desktop non riesco ad
+    // avviare match, rimane fermo in caricamento con schermo nero"] Un
+    // errore imprevisto in un punto qualunque del ciclo di frame (migliaia
+    // di righe di simulazione/disegno, ogni frame) non aveva NESSUN
+    // recupero: un'eccezione dentro un callback di requestAnimationFrame non
+    // rientra nel try/catch di app.js/navigate() (quello copre solo il MOUNT
+    // iniziale, gia' concluso con successo a questo punto) — il browser si
+    // limita a fermare silenziosamente quel singolo callback, senza mai
+    // pianificarne un altro: se capita al primissimo frame (prima che
+    // qualunque cosa di reale sia mai stata disegnata) il nero pieno-schermo
+    // disegnato da app.js PRIMA del mount (STUDIO.md/app.js, navigate())
+    // resta l'ultimo frame per sempre — indistinguibile da un caricamento
+    // bloccato, la stessa identica classe di bug gia' corretta altrove per
+    // il mount stesso (app.js) e per l'atlas (assets.js). Qui lo stesso
+    // principio: mai lasciare il giocatore su uno schermo morto senza via
+    // d'uscita — un errore qui si logga (visibile in console per il debug)
+    // e riporta al menu invece di restare bloccato in silenzio.
+    try {
     // Math.max(0, ...): il timestamp di requestAnimationFrame puo' precedere
     // di poco l'ultimo `last` (performance.now() catturato prima di registrare
     // il callback) — soprattutto al primissimo frame, o con WebGL software —
@@ -2899,12 +2917,27 @@ export async function mountMatch(ctx, params = {}) {
       stepConsumption(buildings, dt, r12, night);
       stepWeather(r12, dt, scene.name === "match");
       stepStormDamage(buildings, dt, r12, (x, y) => lightning.push(spawnLightning(x, y)));
-      tickR12(r12, dt, buildings);
+      // [Bug corretto, segnalato dall'autore: "avevi inserito popolazione (e
+      // forse anche soldi?) che salgono da soli a ogni secondo, rimuoviamolo"]
+      // Qui prima girava anche `tickR12()` (state.js, rimossa): una
+      // simulazione economica **[I]** placeholder, mai confermata dal
+      // decompilato, che ogni secondo faceva crescere `r12.pop` da sola per
+      // OGNI edificio senza una vera regola di crescita nota (casa e' gia'
+      // simulata per davvero da stepGrowth() sopra, `[C]` da casa1/Alarm_2.gml)
+      // e aggiungeva soldi (`r12.mon`) come una tassa continua sulla
+      // popolazione — nessuna delle due esiste nel decompilato: i soldi veri
+      // arrivano solo da azioni del giocatore (monete raccolte, coins.js) o
+      // da meccaniche confermate altrove, mai da un ticchettio automatico.
+      // Resta solo `clampR12()` (oil>=0/tetto, crys<=99, ele, mon<=999999,
+      // pop>=0 — tutti [C] da r12/Step.gml), che va comunque chiamata ogni
+      // frame per applicare quei limiti alla produzione/crescita VERA appena
+      // simulata sopra (stepProduction/stepGrowth/stepConsumption/...).
+      clampR12(r12, buildings);
       // Sconfitta, l'olio a zero (`outcome` sopra) — SOLO su `match`/
       // `tutorial`, le uniche due room con la piattaforma volante
       // (game/src/platform.js): `r12.oil` e' gia' il valore finale di questo
-      // frame qui (clampR12(), chiamata in coda a tickR12() appena sopra, lo
-      // ha gia' pavimentato a 0). `motorFreezeT`: il valore di `phaseT` di
+      // frame qui (clampR12() appena sopra lo ha gia' pavimentato a 0).
+      // `motorFreezeT`: il valore di `phaseT` di
       // QUESTO istante, cosi' le turbine di r120 (r120MotorDecor() piu'
       // sotto, nel disegno) smettono di lampeggiare invece di continuare
       // finche' non arriva il buio della cutscene — "i rotori si bloccano",
@@ -3393,6 +3426,39 @@ export async function mountMatch(ctx, params = {}) {
     }
     for (const p of placeholders) p._hovered = p === hoveredPh;
 
+    // Anteprima di piazzamento per gli edifici a piu' lotti (eolico/
+    // grattacielo, `def.multiTile`) — **[Nuova funzionalita', richiesta
+    // dall'autore]**: prima di piazzarli il giocatore non ha modo di sapere
+    // dove finira' davvero il centro visivo dell'edificio (l'ancora e' a un
+    // offset FISSO dal lotto toccato, non il lotto stesso — vedi il commento
+    // su `anchorOffset` in placeAt() sopra) ne' se la posizione e' valida
+    // (serve un cluster di `count` lotti liberi vicini all'ancora, non solo
+    // il lotto toccato). Stessa identica logica di placeAt()/
+    // findPlacementCluster() sopra, senza spendere ne' consumare nulla:
+    // un fantasma semitrasparente, con lo sprite del PRIMO passo di
+    // cantiere dell'edificio (`def.construct.steps[0].spr` — la fondamenta,
+    // non l'edificio finito: e' quello che il giocatore vedra' comparire per
+    // primo), appare solo quando il lotto sotto il puntatore e' quello che
+    // verrebbe davvero toccato (`hoveredPh`, sopra: gia' esclude aree non
+    // ancora sulla piattaforma) E il cluster di 4 lotti liberi esiste
+    // davvero — sparisce da solo (nessun fantasma "bugiardo") se la
+    // posizione non e' valida, invece di sempre mostrarne uno che poi al
+    // tocco fallirebbe con un messaggio d'errore.
+    let multiTilePreview = null;
+    const selDefForPreview = selectedType ? BUILDING_TYPES[selectedType] : null;
+    if (hoveredPh && selDefForPreview?.multiTile) {
+      const off = selDefForPreview.multiTile.anchorOffset;
+      const anchorX = off ? hoveredPh.x + off.dx : hoveredPh.x;
+      const anchorY = off ? hoveredPh.y + off.dy : hoveredPh.y;
+      const cluster = findPlacementCluster(
+        hoveredPh, anchorX, anchorY, selDefForPreview.multiTile.count, selDefForPreview.multiTile.radius);
+      if (cluster) {
+        const stepSpr = selDefForPreview.construct?.steps?.[0]?.spr;
+        const f = stepSpr ? frameFor(stepSpr) : null;
+        if (f) multiTilePreview = { x: anchorX, y: anchorY, f };
+      }
+    }
+
     r.beginFrame(canvas.width, canvas.height, SCENE_BG_RGB);
     const amb = ambientAt(phaseT);
 
@@ -3438,6 +3504,14 @@ export async function mountMatch(ctx, params = {}) {
       const tint = it._selfLit ? base : mulTint(base, amb.rgb);
       r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
       drawn++;
+    }
+    // Fantasma di anteprima per eolico/grattacielo (multiTilePreview, sopra):
+    // alpha 0.5, nessuna tinta ambientale (come le luci/`_selfLit` sopra —
+    // deve leggersi come UN'ANTEPRIMA, non come un pezzo di scena vera che si
+    // scurisce di notte) — disegnato per ultimo, sopra a tutto il resto del
+    // mondo cosi' non resta mai nascosto da un edificio vicino.
+    if (multiTilePreview) {
+      r.draw(multiTilePreview.f, multiTilePreview.x, multiTilePreview.y, 1, 0xffffff, 0.5);
     }
     // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che
     // cresce e sfuma sul punto della moneta appena presa, in primo piano come
@@ -3994,6 +4068,11 @@ export async function mountMatch(ctx, params = {}) {
       `trascina, rotella/pinch, tap — [S] salva [L] carica [P] pausa`;
 
     requestAnimationFrame(frame);
+    } catch (err) {
+      console.error("nimbus: errore nel ciclo di frame di match, torno al menu", err);
+      stopped = true;
+      navigate("menu");
+    }
   }
   requestAnimationFrame(frame);
 
