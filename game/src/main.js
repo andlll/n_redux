@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES, TURRET_SPRITE_NAMES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -265,6 +265,35 @@ export async function mountMatch(ctx, params = {}) {
   // all'ultimo frame (vedi "eol"/WIND_ANIM_FPS piu' sotto, buildings.js).
   function frameCountFor(sprName) {
     return atlas.sprites[sprName]?.length ?? 1;
+  }
+  // [Bug corretto, segnalato dall'autore: "l'area di tap delle strutture di
+  // difesa deve coprire tutto l'oggetto (un rettangolo grande come tutte le
+  // coordinate dello sprite)"] Il tap sulle torrette (missile/gatling/laser)
+  // usava sempre il bbox del frame CORRENTE (`_f`, sotto): uno sprite
+  // direzionale diverso per ogni angolo di mira (TURRET_SPRITE_TABLES,
+  // buildings.js), quindi l'area cliccabile si restringeva ogni volta che il
+  // cannone ruotava verso una direzione con un bbox piu' stretto, invece di
+  // restare un riquadro fisso. Qui l'UNIONE degli ingombri di TUTTI i
+  // fotogrammi direzionali (mira + rinculo, TURRET_SPRITE_NAMES) del tipo —
+  // non il frame disegnato in questo istante — usata SOLO per il tap
+  // (inFrameRect() piu' sotto), mai per il disegno (che resta lo sprite vero
+  // di ogni frame). Non cachata: chiamata solo al tap (poche volte al
+  // secondo al massimo), non ad ogni frame di rendering — le pagine
+  // "deferred" dell'atlas (assets.js) potrebbero non essere ancora arrivate
+  // per qualche nome all'inizio, una cache permanente le lascerebbe fuori
+  // per sempre anche dopo che sono arrivate.
+  function turretHitBox(type) {
+    const names = TURRET_SPRITE_NAMES[type];
+    if (!names) return null;
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+    for (const name of names) {
+      const f = frameFor(name);
+      if (!f) continue;
+      left = Math.min(left, -f.ox); top = Math.min(top, -f.oy);
+      right = Math.max(right, f.w - f.ox); bottom = Math.max(bottom, f.h - f.oy);
+    }
+    if (left >= right || top >= bottom) return null;
+    return { ox: -left, oy: -top, w: right - left, h: bottom - top };
   }
   /** Frame corrente per uno sprite di CANTIERE con sottoimmagini vere
    * ("impvent1"/"impvent3" della pala eolica — `c.curSpd`, buildings.js/
@@ -2640,9 +2669,14 @@ export async function mountMatch(ctx, params = {}) {
       // stessa ragione della raccolta hover piu' sotto. Tutto il resto
       // (edifici, casse, monete, segnale di potenziamento) resta sul
       // bounding box rettangolare, piu' leggero e gia' fedele alla loro sagoma.
+      // Le torrette (missile/gatling/laser) usano l'unione di tutti i loro
+      // frame direzionali (turretHitBox(), sopra) invece del frame corrente:
+      // vedi il commento li' per il perche'.
+      const turretBox = it.obj === "building" && BUILDING_TYPES[it.ref.type]?.turret
+        ? turretHitBox(it.ref.type) : null;
       const hit = it.obj === "placeholder"
         ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
-        : inFrameRect(w.x, w.y, it.x, it.y, it._f);
+        : inFrameRect(w.x, w.y, it.x, it.y, turretBox ?? it._f);
       // [Bug corretto, segnalato dall'autore: "l'area cliccabile delle
       // torrette e' troppo piccola, sembra solo quella vicina alla bocca di
       // fuoco"] La sagoma vera (`it._f`, sopra) e' gia' l'intero sprite
@@ -2924,8 +2958,17 @@ export async function mountMatch(ctx, params = {}) {
       // dal ramo mobile sotto, cosi' un resize (finestra ridimensionata,
       // spostata su un monitor a dpr diverso) non scavalca piu' uno zoom
       // scelto dal giocatore.
-      cam.maxZoom = pixelPerfectZoom();
-      if (!userMoved) cam.setZoomImmediate(cam.maxZoom);
+      // [Bug corretto, richiesto dall'autore: "consenti anche uno zoom out
+      // fino a 0.5"] Prima `maxZoom` COINCIDEVA col default pixel-perfect:
+      // la rotella poteva solo avvicinare, mai allontanare oltre il primo
+      // frame — su `match`/`tutorial` non si poteva mai vedere piu' mappa di
+      // quella iniziale. `* 2` raddoppia il limite di zoom-OUT (`cam.zoom`
+      // piu' grande = piu' mondo inquadrato, camera.js): al doppio del
+      // pixel-perfect uno sprite finisce a meta' della propria taglia
+      // nativa a schermo (scala 0.5, la stessa unita' di `cam.minZoom`
+      // sopra, dove 0.5 e' invece il limite di zoom-IN).
+      cam.maxZoom = pixelPerfectZoom() * 2;
+      if (!userMoved) cam.setZoomImmediate(pixelPerfectZoom());
     } else if (canvas.clientWidth > 0) {
       // `Math.min`, non `Math.max`: la room e' quasi sempre piu' larga che
       // alta (match_easy 1920x1086, match 3900x2090 — orizzontali) mentre lo
@@ -2941,9 +2984,12 @@ export async function mountMatch(ctx, params = {}) {
       // clamp() sotto gestisce gia' il pan quando il mondo e' piu' stretto
       // della room).
       const fitZoom = Math.min(scene.width / cam.viewW, scene.height / cam.viewH);
-      // Stesso motivo di prima (non allontanarsi troppo oltre il fit), solo
-      // ricalcolato sul nuovo fitZoom "cover".
-      cam.maxZoom = fitZoom * 1.3;
+      // [Bug corretto, richiesto dall'autore: "consenti anche uno zoom out
+      // fino a 0.5"] `* 1.3` (poco oltre il fit "cover") non arrivava alla
+      // meta' scala richiesta — `* 2`, stessa scelta del ramo desktop sopra,
+      // porta anche qui il limite di zoom-OUT fino a scala 0.5 rispetto al
+      // fit di partenza.
+      cam.maxZoom = fitZoom * 2;
       if (!userMoved) {
         cam.setZoomImmediate(fitZoom);
         // `initialFocusX`/`initialFocusY` (calcolati sopra, dove viene
@@ -3173,12 +3219,24 @@ export async function mountMatch(ctx, params = {}) {
           }
           stepTutorialAuto(tutorialState, { r12, buildings });
         }
-        // HUD (balloon di testo + bottone avanti/esci): nascosto durante la
-        // cutscene e nelle fasi ad avanzamento automatico (HIDE_ADVANCE_
-        // BUTTON — tutorial_thumb/Step.gml, le stesse 8 fasi gia' viste in
-        // stepTutorialAuto()), visibile in tutte le altre.
+        // Bottone avanti/esci: nascosto durante la cutscene e nelle fasi ad
+        // avanzamento automatico (HIDE_ADVANCE_BUTTON — tutorial_thumb/
+        // Step.gml, le stesse 8 fasi gia' viste in stepTutorialAuto()), visibile
+        // in tutte le altre — [C] fedele, non si puo' avanzare a mano una fase
+        // gameplay-gated.
         tutorialState.showOkButton = !tutorialState.cutscene && !HIDE_ADVANCE_BUTTON.has(tutorialState.phase);
-        if (tutorialState.showOkButton) {
+        // [Bug corretto, segnalato dall'autore: "spesso non si capisce come
+        // avanzare allo step successivo"] **[I]** Il balloon di testo restava
+        // legato a `showOkButton` (nascosto insieme al bottone): proprio nelle
+        // 8 fasi gameplay-gated, quelle che chiedono un'azione vera (demolisci
+        // quel rudere, seleziona quel bottone, costruisci 5 case...), il
+        // giocatore perdeva l'UNICA frase che gliela spiega — restava solo la
+        // freccia (quando c'era, vedi il fix su `target` piu' sotto), muta su
+        // COSA fare. Testo e bottone ora separati: il testo (l'"obiettivo" da
+        // perseguire) resta visibile per l'intera fase, gated o no — solo il
+        // bottone "avanti" sparisce quando la fase non si supera a tocco.
+        tutorialState.showText = !tutorialState.cutscene;
+        if (tutorialState.showText) {
           // Il balloon/bottone non devono coprire la barra azioni sotto
           // (segnalato dall'autore: si sovrapponevano) — `uiButtons` (un
           // frame indietro, ricalcolata piu' sotto: differenza impercettibile,
@@ -3186,7 +3244,9 @@ export async function mountMatch(ctx, params = {}) {
           // bordo superiore VERO della barra, qualunque sia menoo/dispositivo,
           // invece di un margine fisso indovinato. Salvato su `tutorialState`
           // cosi' anche il disegno del balloon/pollice (piu' sotto, layer
-          // GUI) puo' riusarlo senza ricalcolarlo.
+          // GUI) puo' riusarlo senza ricalcolarlo. Calcolato per ENTRAMBI
+          // (testo/bottone, non solo quest'ultimo) da quando i due si sono
+          // separati sopra.
           const barTop = uiButtons.length ? Math.min(...uiButtons.map((b) => b.y)) : canvas.clientHeight - 100;
           tutorialState.uiGap = Math.max(8, canvas.clientHeight - barTop + 10);
         }
@@ -3561,8 +3621,14 @@ export async function mountMatch(ctx, params = {}) {
     // precedente (segnalato dall'autore). Il tocco per costruire resta
     // valido ovunque (picking sotto usa sempre `frameList`, indipendente da
     // questo flag): solo il disegno lo rispetta, piu' sotto.
+    // [Bug corretto, segnalato dall'autore: "quando e' attivo lo strumento
+    // mano le caselle placeholder non devono illuminarsi di viola con
+    // l'hovering"] `r12.selec === 0` e' esattamente lo stato "mano"/
+    // deselezionato (handbutton, piu' sotto: `{ kind: "deselect", ...
+    // r12.selec = 0 }") — nessun edificio da piazzare, quindi il rombo
+    // viola (il "qui puoi costruire") non ha piu' senso da mostrare.
     let hoveredPh = null;
-    if (input.hover) {
+    if (input.hover && r12.selec !== 0) {
       const w = cam.screenToWorld(input.hover.x, input.hover.y);
       for (const p of placeholders) {
         if (p.consumed) continue;
@@ -3923,7 +3989,15 @@ export async function mountMatch(ctx, params = {}) {
       // motore, qui serve anche a non lasciare hitbox "fantasma" fuori
       // schermo che intercetterebbero un tap sulla mappa sottostante.
       if (rx + w >= 0 && rx <= canvas.clientWidth) {
-        r.draw(f, rx, baseY, UI_SCALE, 0xffffff, 1);
+        // [Bug corretto, richiesto dall'autore: "la mano stessa deve avere
+        // una tint blu" quando lo strumento mano e' attivo] Nessun altro
+        // bottone di questa riga ha uno sprite "selezionato" a parte
+        // (`sprSel`, solo i bottoni edificio in menoo 1) — qui una tinta
+        // blu al posto del bianco neutro basta a segnalare "strumento
+        // attivo", coerente con `r12.selec === 0` = mano/deselezionato
+        // gia' usato sopra per spegnere l'hover viola dei placeholder.
+        const tint = b.kind === "deselect" && r12.selec === 0 ? 0x66aaff : 0xffffff;
+        r.draw(f, rx, baseY, UI_SCALE, tint, 1);
         uiButtons.push({ x: rx, y: baseY - h, w, h, ...b });
         rowTop = Math.min(rowTop, baseY - h);
       }
@@ -3963,6 +4037,40 @@ export async function mountMatch(ctx, params = {}) {
     if (tutorialState && !tutorialState.cutscene) {
       tutorialState.arrowFrame = (tutorialState.arrowFrame + dt * 20) % 20;
       const byKind = (pred) => uiButtons.find(pred);
+      // [Bug corretto, segnalato dall'autore: "quando l'oggetto da premere
+      // non e' in quel menu' consiglia di premere lo strumento indietro
+      // (sempre con la freccia indicante) e poi il sottomenu in cui
+      // recarsi"] Il bottone bersaglio di una fase vive quasi sempre nel
+      // menu' edifici (menoo 1): se il giocatore e' li' la freccia lo punta
+      // gia' direttamente; se e' a casa (menoo 0) punta al bottone che apre
+      // quel menu' — ma se e' nel menu' VISTA (menoo 2, tutto un altro
+      // sottomenu) nessuno dei due bottoni esiste in questa riga, e prima
+      // la freccia spariva senza indicare nulla. Ultimo anello della
+      // catena: "Indietro" (`menoo:0`, presente in OGNI sottomenu diverso
+      // da casa) — un passo alla volta verso il bersaglio vero, mai piu'
+      // muta su cosa premere.
+      const findIndietro = () => byKind((btn) => btn.kind === "menu" && btn.menoo === 0);
+      // [Bug corretto, richiesto dall'autore: "se per avanzare serve
+      // costruire degli edifici consiglia anche placeholder random una
+      // volta cliccato il bottone corretto"] Una volta selezionato il tipo
+      // giusto (`selectedType`, sopra) non resta piu' nulla da puntare nel
+      // selettore: senza questo la freccia spariva anche qui, lasciando il
+      // giocatore a cercare da solo un lotto libero (il rombo viola,
+      // "phold") in mezzo alla mappa. Sceglie un lotto libero valido a
+      // caso (isPlaceholderActive(), platform.js — mai uno su una parte di
+      // piattaforma non ancora costruita) e lo mantiene finche' resta
+      // valido, cosi' la freccia non salta da un lotto all'altro ad ogni
+      // frame.
+      const suggestedPlotTarget = () => {
+        const sp = tutorialState.suggestedPlot;
+        if (!sp || sp.consumed || !isPlaceholderActive(sp.x, sp.y, platformState)) {
+          const free = placeholders.filter((p) => !p.consumed && isPlaceholderActive(p.x, p.y, platformState));
+          tutorialState.suggestedPlot = free.length ? free[(Math.random() * free.length) | 0] : null;
+        }
+        if (!tutorialState.suggestedPlot) return null;
+        const s = cam.worldToScreen(tutorialState.suggestedPlot.x, tutorialState.suggestedPlot.y);
+        return { x: s.x, y: s.y - ARROW_GAP, angle: 270 };
+      };
       // [Bug corretto] La punta della freccia (drawRotated() sopra, dopo il
       // fix del verso di rotazione) finisce esattamente su `target`: senza
       // un margine, puntare al bordo pixel-esatto del bottone (`b.y`)
@@ -3972,12 +4080,13 @@ export async function mountMatch(ctx, params = {}) {
       // altri bersagli. Un margine piccolo ma costante qui, riusato da ogni
       // caso "punta in giu' al bottone sotto".
       const ARROW_GAP = 12;
+      const pointAtButton = (b) => b && { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
       let target = null;   // { x, y, angle }
       switch (tutorialState.phase) {
         case 2: {
-          const b = byKind((btn) => btn.kind === "building" && btn.type === "ruspa")
-            ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1);
-          if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
+          target = pointAtButton(byKind((btn) => btn.kind === "building" && btn.type === "ruspa")
+            ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1)
+            ?? findIndietro());
           break;
         }
         case 5: {
@@ -4007,21 +4116,33 @@ export async function mountMatch(ctx, params = {}) {
           break;
         }
         case 7: {
-          const b = byKind((btn) => btn.kind === "deselect");
-          if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
+          target = pointAtButton(byKind((btn) => btn.kind === "deselect") ?? findIndietro());
+          break;
+        }
+        // Fase 9: gia' scelto il tipo "casa" (fase 8), qui manca solo un
+        // lotto libero — nessun bottone da puntare, solo il suggerimento
+        // sopra.
+        case 9: {
+          target = suggestedPlotTarget();
           break;
         }
         case 8: case 12: case 16: case 19: {
           const type = tutorialState.phase === 8 ? "casa" : tutorialState.phase === 12 ? "industria"
             : tutorialState.phase === 16 ? "parco" : "missile";
-          const b = byKind((btn) => btn.kind === "building" && btn.type === type)
-            ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1);
-          if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
+          // 12/16/19 coprono SIA la selezione del tipo SIA il piazzamento
+          // vero (a differenza di 8, che avanza gia' alla sola selezione,
+          // fase 9 sopra): una volta selezionato il tipo giusto la freccia
+          // passa dal bottone al lotto suggerito, invece di restare ferma
+          // su un bottone gia' premuto.
+          target = selectedType === type && tutorialState.phase !== 8
+            ? suggestedPlotTarget()
+            : pointAtButton(byKind((btn) => btn.kind === "building" && btn.type === type)
+                ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1)
+                ?? findIndietro());
           break;
         }
         case 31: {
-          const b = byKind((btn) => btn.kind === "menu" && btn.menoo === 2);
-          if (b) target = { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
+          target = pointAtButton(byKind((btn) => btn.kind === "menu" && btn.menoo === 2) ?? findIndietro());
           break;
         }
       }
@@ -4039,14 +4160,16 @@ export async function mountMatch(ctx, params = {}) {
     // arrotondato, tutorialBoxFrame()/makeRoundedRectTexture() sopra) —
     // **[I]** larghezza/testo a capo qui invece che nel motore GML nativo
     // (wrapText() sopra, via measureText()).
-    if (tutorialState?.showOkButton && fontMobile) {
+    if (tutorialState?.showText && fontMobile) {
       const textScale = 1;
       const pad = 20;
       // boxRight lascia spazio al pollice (tut_ok, disegnato subito sotto:
-      // stessa larghezza 45*1.3 li' usata, + margine) — l'originale non
-      // aveva questo problema (il suo bottone "avanti" vive altrove nello
-      // schermo), ma qui i due condividono la stessa fascia in basso.
-      const boxLeft = 30, boxRight = canvas.clientWidth - 30 - (45 * 1.3 + 45);
+      // stessa larghezza 45*1.3 li' usata, + margine) SOLO quando il
+      // bottone e' davvero disegnato — nelle fasi gameplay-gated
+      // (showOkButton false, testo comunque visibile: vedi il fix sopra) il
+      // box usa tutta la larghezza, senza lasciare un vuoto a destra per un
+      // pollice che non c'e'.
+      const boxLeft = 30, boxRight = canvas.clientWidth - 30 - (tutorialState.showOkButton ? 45 * 1.3 + 45 : 0);
       const lineH = fontMobile.meta.emSize * textScale * 1.35;
       const lines = wrapText(fontMobile, TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "", textScale, boxRight - boxLeft - pad * 2);
       const boxH = lines.length * lineH + pad * 2;

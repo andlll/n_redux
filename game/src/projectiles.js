@@ -318,40 +318,70 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beam
     const mx = b.x + off.dx, my = b.y + off.dy;
     payAmmo(weapon, r12);
     explosions.push(spawnExplosion(mx, my, MUZZLE_FLASH_SCALE));
-    // [C] il fascio non si ferma al primo bersaglio (vedi il commento su
-    // WEAPONS.laser sopra): TUTTE le minacce vere entro `aim.fireRange`
-    // vengono danneggiate, non solo la piu' vicina — ma solo danneggiate:
-    // se la vita non basta a portarle a 0 restano in volo, la vera morte
-    // (con l'eventuale stato piro) la decide threats.js/stepThreats() al
-    // prossimo frame, non qui.
     const fireRange = BUILDING_TYPES[b.type].aim.fireRange;
-    const r2 = fireRange * fireRange;
-    // Effetto visivo (spawnBeam sopra): un raggio nella direzione di mira —
-    // non verso un singolo bersaglio, perche' il colpo stesso non ne ha uno
-    // solo (danneggia tutto cio' che e' entro `fireRange`, vedi sopra).
-    // [Bug corretto, richiesto dall'autore: "vorrei che il fascio laser
-    // fosse lungo infinito e non una distanza fissa"] **[I]** il fascio
-    // DISEGNATO ora si estende per `BEAM_VISUAL_LENGTH` (sotto), non per
-    // `fireRange` — il danno vero resta comunque limitato a `fireRange`
-    // (il ciclo su `threats`/`balloons` sotto non cambia): fermare il
+    // [Bug corretto, segnalato dall'autore: "il laser mi sembra impreciso,
+    // il fascio deve colpire l'oggetto che punta"] **[I]** Il danno era un
+    // cerchio di raggio `fireRange` intorno al CENTRO della torretta,
+    // indipendente dalla direzione di mira: poteva colpire una minaccia
+    // fuori dal fascio disegnato (dietro/di lato, dentro il cerchio ma mai
+    // toccata dal quad del fascio) e mancarne una proprio sul percorso del
+    // fascio ma appena oltre il cerchio. La stessa correzione gia' fatta
+    // sotto per missile/gatling (`fireAngle` ricalcolato dalla bocca vera,
+    // non da `b.aimAngle` letto cosi' com'e' — vedi buildings.js/
+    // stepTurretAim, "l'offset del cannone e' ~100-350px, differenza
+    // notabile quando il bersaglio e' vicino") non era mai stata applicata
+    // qui: il fascio partiva dalla bocca ma continuava lungo l'angolo
+    // calcolato dal CENTRO dell'edificio, non da dove parte davvero.
+    // **[I]** direzione ricalcolata dalla bocca verso `b.aimTarget` (lo
+    // stesso bersaglio che la torretta sta visibilmente inseguendo), poi
+    // danno per hit-test vero contro il fascio (proiezione lungo il raggio
+    // + distanza perpendicolare dalla sua linea, non piu' un cerchio):
+    // colpisce cio' che il fascio attraversa DAVVERO, non tutto cio' che
+    // capita entro `fireRange` in qualunque direzione.
+    const target = b.aimTarget;
+    const beamAngle = target
+      ? (Math.atan2(-(target.y - my), target.x - mx) * 180) / Math.PI
+      : b.aimAngle;
+    const rad = (beamAngle * Math.PI) / 180;
+    const dirX = Math.cos(rad), dirY = -Math.sin(rad);
+    // Effetto visivo (spawnBeam sopra): [Bug corretto, richiesto dall'autore:
+    // "vorrei che il fascio laser fosse lungo infinito e non una distanza
+    // fissa"] **[I]** il fascio DISEGNATO si estende per `BEAM_VISUAL_LENGTH`
+    // (sotto), non per `fireRange` — il danno vero resta comunque limitato a
+    // `fireRange` (il ciclo su `threats`/`balloons` sotto): fermare il
     // fascio disegnato esattamente al bordo della portata rendeva visibile
     // "il punto in cui il colpo smette di funzionare", un dettaglio di
-    // bilanciamento che l'autore non voleva vedere — un fascio che esce
-    // dallo schermo (o dalla mappa) in ogni direzione, come un vero raggio
-    // laser, comunica "arma a lungo raggio" meglio di un segmento che si
-    // interrompe a meta' strada nel vuoto. `beams` e' opzionale (`?.`) solo
-    // per non spezzare eventuali test/chiamate dirette a fireFrom() che non
-    // lo passano.
+    // bilanciamento che l'autore non voleva vedere. `beams` e' opzionale
+    // (`?.`) solo per non spezzare eventuali test/chiamate dirette a
+    // fireFrom() che non lo passano.
     if (beams) {
-      const rad = (b.aimAngle * Math.PI) / 180;
-      beams.push(spawnBeam(mx, my, mx + Math.cos(rad) * BEAM_VISUAL_LENGTH, my - Math.sin(rad) * BEAM_VISUAL_LENGTH));
+      beams.push(spawnBeam(mx, my, mx + dirX * BEAM_VISUAL_LENGTH, my + dirY * BEAM_VISUAL_LENGTH));
     }
+    // Meta' larghezza della "corsia" di impatto del fascio intorno alla sua
+    // linea — abbastanza larga da coprire la sagoma di un aereo/mongolfiera
+    // (comparabile a `hitRadius` di missile/gatling sopra), abbastanza
+    // stretta da non tornare un cerchio pieno: il bersaglio inseguito
+    // (`target`, sopra) e' comunque colpito con certezza, perche' il fascio
+    // e' calcolato per passare esattamente su di lui.
+    const BEAM_HIT_HALF_WIDTH = 90;
+    const hitsBeam = (tx, ty) => {
+      const dx = tx - mx, dy = ty - my;
+      const along = dx * dirX + dy * dirY;
+      if (along < 0 || along > fireRange) return false;
+      const perp = dy * dirX - dx * dirY;
+      return Math.abs(perp) <= BEAM_HIT_HALF_WIDTH;
+    };
+    // [C] il fascio non si ferma al primo bersaglio (vedi il commento su
+    // WEAPONS.laser sopra): TUTTE le minacce vere lungo il fascio vengono
+    // danneggiate, non solo la piu' vicina — ma solo danneggiate: se la
+    // vita non basta a portarle a 0 restano in volo, la vera morte (con
+    // l'eventuale stato piro) la decide threats.js/stepThreats() al
+    // prossimo frame, non qui.
     for (const th of threats) {
-      const dx = th.x - b.x, dy = th.y - b.y;
-      if (dx * dx + dy * dy > r2) continue;
+      if (!hitsBeam(th.x, th.y)) continue;
       th.life -= DAMAGE.laser[th.type];
     }
-    // [Bug corretto] Le mongolfiere entro lo stesso raggio: un solo colpo
+    // [Bug corretto] Le mongolfiere lungo lo stesso fascio: un solo colpo
     // le abbatte (stesso trattamento di stepProjectiles per missile/
     // gatling, mai una vita "vera" come le minacce), esplosione + eventuale
     // cassa di loot. Senza `balloons` (chiamate che non lo passano) questo
@@ -359,8 +389,7 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beam
     if (balloons) {
       for (let i = balloons.length - 1; i >= 0; i--) {
         const bal = balloons[i];
-        const dx = bal.x - b.x, dy = bal.y - b.y;
-        if (dx * dx + dy * dy > r2) continue;
+        if (!hitsBeam(bal.x, bal.y)) continue;
         balloons.splice(i, 1);
         explosions.push(spawnExplosion(bal.x, bal.y));
         const def = BALLOON_TYPES[bal.type];

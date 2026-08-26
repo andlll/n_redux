@@ -2564,6 +2564,27 @@ const TURRET_SPRITE_TABLES = {
   gatlingRecoil: dirTable("nm", "b"),
   laser: dirTable("lan"),
 };
+// [Bug corretto, segnalato dall'autore: "l'area di tap delle strutture di
+// difesa deve coprire tutto l'oggetto"] Ogni sprite direzionale di una
+// torretta ha un bounding box diverso (il cannone "si allunga" di lato per
+// certe direzioni, meno per altre) — main.js usa il frame CORRENTE per
+// l'hit test del tap, quindi l'area cliccabile si restringeva ad ogni
+// cambio di direzione invece di restare un riquadro fisso grande quanto lo
+// sprite piu' esteso che il tipo puo' assumere. Qui solo l'elenco dei nomi
+// sprite per tipo (mira + rinculo): main.js unisce i loro bbox in un solo
+// rettangolo di tap la prima volta che serve (l'atlas vive li', non qui).
+export const TURRET_SPRITE_NAMES = Object.fromEntries(
+  Object.keys(TURRET_SPRITE_TABLES)
+    .filter((k) => !k.endsWith("Recoil"))
+    .map((type) => {
+      const names = new Set();
+      for (const key of [type, type + "Recoil"]) {
+        const table = TURRET_SPRITE_TABLES[key];
+        if (table) for (const o of table) names.add(o.spr);
+      }
+      return [type, [...names]];
+    }),
+);
 // [C] gatlinggun/Alarm_9.gml: 50 tick dall'ultimo sparo prima che la posa di
 // rinculo ("b") torni alla posa di mira ("a") — vedi il commento sopra.
 const GATLING_RECOIL_HOLD = 50 * TICK;
