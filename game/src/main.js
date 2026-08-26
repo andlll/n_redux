@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, ruinRebuildConstruction, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -334,6 +334,29 @@ export async function mountMatch(ctx, params = {}) {
   const PLACEHOLDER_DEPTH = -2;
   for (const p of placeholders) { p.id = `ph_${p.x}_${p.y}`; p.consumed = false; p.depth = PLACEHOLDER_DEPTH; }
   const placeholderById = new Map(placeholders.map((p) => [p.id, p]));
+
+  // [Decisione dell'autore: "la rovina ruspata deve creare sempre un
+  // placeholder vuoto, non un nuovo edificio"] Sgombera una rovina (rudere
+  // VERO da battaglia o lotto-rudere del tutorial, sotto) lasciando un
+  // lotto libero al suo posto, invece di avviare subito un cantiere —
+  // prima di questa decisione la ruspa su una rovina "ricostruiva"
+  // direttamente una `casa` (fedele al decompilato, ma il giocatore si
+  // aspetta uno sgombero puro, poi una scelta libera di cosa costruirci
+  // sopra). Riusa lo stesso `id`/`depth` dei placeholder veri della scena
+  // (sopra) cosi' il lotto si comporta esattamente come uno qualunque
+  // (hover, tap, findPlacementCluster) — se un placeholder con quell'id
+  // esiste gia' (mai il caso per una rovina, ma difensivo) lo riattiva
+  // invece di duplicarlo.
+  function clearedPlaceholder(x, y) {
+    const id = `ph_${x}_${y}`;
+    let ph = placeholderById.get(id);
+    if (ph) { ph.consumed = false; return ph; }
+    ph = { obj: "placeholder", x, y, depth: PLACEHOLDER_DEPTH, spr: "phold", _f: frameFor("phold"), id, consumed: false };
+    placeholders.push(ph);
+    placeholderById.set(id, ph);
+    staticWorld.push(ph);
+    return ph;
+  }
 
   // `chies` e' gia' un'istanza vera nella room (src/rooms/match_easy.json:
   // un solo `chies` a (851,513), STUDIO.md §5.3), non nasce da un
@@ -1270,11 +1293,14 @@ export async function mountMatch(ctx, params = {}) {
    * `demobasia/Collision_*.gml`** (che infatti collide solo con edifici
    * FINITI, MAI con un rudere — quella parte era corretta, la conclusione
    * "quindi nessuno strumento lo tocca" no): **[C]** `ruin1|2|3/
-   * Mouse_LeftPressed.gml` ricostruisce per davvero sotto ruspa, pagando —
-   * `ruinRebuildCost()`/`ruinRebuildConstruction()` (buildings.js) lo
-   * fanno ora anche per i ruderi VERI da battaglia (non solo per i lotti-
-   * rudere pre-piazzati del tutorial, `ruinLots` sotto, che usano la
-   * STESSA funzione da prima). `level`/`cost` salvati qui sul rudere: la
+   * Mouse_LeftPressed.gml` risponde davvero sotto ruspa, a pagamento —
+   * `ruinRebuildCost()` (buildings.js) calcola quel costo qui anche per i
+   * ruderi VERI da battaglia (non solo per i lotti-rudere pre-piazzati del
+   * tutorial, `ruinLots` sotto, che usano la STESSA funzione da prima). Il
+   * tocco vero e proprio, piu' sotto (`clearedPlaceholder()`), lascia un
+   * lotto libero invece di ricostruire — [Decisione dell'autore: "la
+   * rovina ruspata deve creare sempre un placeholder vuoto, non un nuovo
+   * edificio"]. `level`/`cost` salvati qui sul rudere: la
    * "taglia" e' `b.level` dell'edificio al momento della morte, letta
    * UNA VOLTA qui invece che ricalcolata ad ogni tap.
    *
@@ -2549,39 +2575,35 @@ export async function mountMatch(ctx, params = {}) {
       }
     }
     if (!picked) return;
-    // Tutorial (game/src/tutorial.js): lotto-rudere — [C] ruin1|2/
-    // Mouse_LeftPressed.gml, solo con la ruspa selezionata e fondi
-    // sufficienti. Avvia un cantiere vero (stesso BUILDING_TYPES.casa gia'
-    // esistente) invece di un oggetto dedicato — vedi ruinRebuildConstruction().
+    // Tutorial (game/src/tutorial.js): lotto-rudere — solo con la ruspa
+    // selezionata e fondi sufficienti. [Decisione dell'autore: "la rovina
+    // ruspata deve creare sempre un placeholder vuoto, non un nuovo
+    // edificio"] Sgombera il lotto (clearedPlaceholder(), sopra) invece di
+    // avviare subito un cantiere di `casa` — una versione precedente
+    // seguiva alla lettera `ruin1|2/Mouse_LeftPressed.gml` (che nel
+    // decompilato ricostruisce davvero, non sgombera soltanto), ma qui la
+    // scelta esplicita e' che demolire lasci un lotto libero, non gia'
+    // occupato da una nuova costruzione.
     if (picked.obj === "ruinLot") {
       const lot = picked.ref;
       message = ""; messageT = 0;
       if (r12.selec === 11 && canAfford(r12, { mon: lot.cost })) {
         r12.mon -= lot.cost;
-        const b = placeBuilding("casa", lot.x, lot.y, lot.depth);
-        b.level = lot.level === 2 ? 1 : 0;
-        b.construction = ruinRebuildConstruction(lot.level);
-        buildings.push(b);
+        clearedPlaceholder(lot.x, lot.y);
         ruinLots.splice(ruinLots.indexOf(lot), 1);
       }
       picked = null;
       return;
     }
-    // [Bug corretto, richiesto dall'autore: "in match non riesco a
-    // demolire le rovine"] Rudere VERO da battaglia (destroyBuilding()
-    // sopra) — stessa identica meccanica di "ruinLot" appena sopra
-    // (**[C]** e' letteralmente lo stesso oggetto `ruin1|2|3` nel
-    // decompilato, buildings.js/ruinRebuildCost|Construction()), solo su
-    // `ruins` invece di `ruinLots`.
+    // Rudere VERO da battaglia (destroyBuilding() sopra) — stessa identica
+    // meccanica di "ruinLot" appena sopra (stesso `clearedPlaceholder()`),
+    // solo su `ruins` invece di `ruinLots`.
     if (picked.obj === "ruin") {
       const ru = picked.ref;
       message = ""; messageT = 0;
       if (r12.selec === 11 && canAfford(r12, { mon: ru.cost })) {
         r12.mon -= ru.cost;
-        const b = placeBuilding("casa", ru.x, ru.y, ru.depth);
-        b.level = Math.max(0, ru.level - 1);
-        b.construction = ruinRebuildConstruction(ru.level);
-        buildings.push(b);
+        clearedPlaceholder(ru.x, ru.y);
         ruins.splice(ruins.indexOf(ru), 1);
       }
       picked = null;
@@ -3182,11 +3204,10 @@ export async function mountMatch(ctx, params = {}) {
     }
     for (const d of decorEntities) dynamic.push(d);
     // Ruderi (destroyBuilding() sopra): niente da avanzare ogni frame (non si
-    // muovono, non cambiano sprite). [Bug corretto, richiesto dall'autore:
-    // "in match non riesco a demolire le rovine"] Sotto ruspa si ricostruiscono
-    // per davvero (STUDIO.md/buildings.js, ruinRebuildConstruction()) — stesso
-    // trattamento hover/tinta rossa gia' in uso per i lotti-rudere del
-    // tutorial (`ruinLots` sotto), qui esteso a QUALUNQUE room: un rudere da
+    // muovono, non cambiano sprite). Sotto ruspa lasciano un placeholder
+    // vuoto (clearedPlaceholder(), sopra) — stesso trattamento hover/tinta
+    // rossa gia' in uso per i lotti-rudere del tutorial (`ruinLots` sotto),
+    // qui esteso a QUALUNQUE room: un rudere da
     // battaglia puo' comparire su `match`/`match_easy` quanto su `tutorial`.
     // [I] Nessun cartellino prezzo all'hover (a differenza del popup ruspa
     // su un edificio vivo, `ruspaPending` sopra): ne' `ruinLot` lo mostra

@@ -1836,35 +1836,23 @@ export function ruinSpriteFor(b) {
 // precedente di "I ruderi", STUDIO.md, concludeva "nessun rudere ha un
 // ramo Mouse_LeftPressed" guardando solo `casaX/Step.gml` — chi crea il
 // rudere — senza controllare l'oggetto ruin1/2/3 stesso): sotto ruspa
-// (`r12.selec===11`) un tap sul rudere ricostruisce SUL POSTO pagando —
-// ruin1 (edificio morto al livello 1, taglia condivisa fra piu' tipi,
-// STUDIO.md) 500 mon -> `casa` costruzione ex novo; ruin2 (livello 2) 2000
-// mon -> `casa` upgrade 1->2; ruin3 (livello 3) 5000 mon -> `casa` upgrade
-// 2->3. `ruinsol` (solare, un solo livello possibile) usa lo STESSO ramo di
-// ruin1 (500 mon, "casa" ex novo) — fedele, non un refuso di trascrizione:
-// cosi' e' scritto nel decompilato. Sempre `casa`, mai il tipo originale
-// dell'edificio morto (`impacasaNr` in ognuno dei tre, mai `impaindNr` o
-// simili). `chies` resta fuori (non crea mai un rudere a parte, STUDIO.md:
-// cambia sprite a se stessa e resta piazzata) — l'unico tipo la cui morte
-// non passa mai di qui. Il "livello" del rudere e' `b.level` dell'edificio
-// al momento della morte (1/2/3) — la stessa colonna "taglia" che
-// ruinSpriteFor() sopra legge dallo stesso `b`; main.js lo salva sul
-// rudere insieme allo sprite scelto.
+// (`r12.selec===11`) un tap sul rudere risponde a pagamento — nel
+// decompilato ricostruisce SUL POSTO (ruin1 500 mon -> `casa` ex novo,
+// ruin2 2000 mon -> upgrade 1->2, ruin3 5000 mon -> upgrade 2->3), ma qui
+// (main.js) lo stesso costo lascia invece un placeholder vuoto al posto
+// del rudere — **[Decisione dell'autore: "la rovina ruspata deve creare
+// sempre un placeholder vuoto, non un nuovo edificio"]**, non piu' fedele
+// al decompilato su questo punto specifico. `ruinsol` (solare, un solo
+// livello possibile) userebbe lo STESSO costo di ruin1 (500 mon) per
+// coerenza con l'originale. `chies` resta fuori (non crea mai un rudere a
+// parte, STUDIO.md: cambia sprite a se stessa e resta piazzata) — l'unico
+// tipo la cui morte non passa mai di qui. Il "livello" del rudere e'
+// `b.level` dell'edificio al momento della morte (1/2/3) — la stessa
+// colonna "taglia" che ruinSpriteFor() sopra legge dallo stesso `b`;
+// main.js lo salva sul rudere insieme allo sprite scelto, solo per
+// calcolare questo costo (non piu' per scegliere cosa ricostruire).
 export function ruinRebuildCost(level) {
   return level === 1 ? 500 : level === 2 ? 2000 : 5000;
-}
-
-/** Avvia il cantiere di ricostruzione su un rudere (chi chiama, main.js,
- * fa `placeBuilding()`/push su `buildings` — questa funzione decide solo
- * con quale `construction` iniziale, vedi il commento sopra).
- * `rebuilding: true` marca il PRIMO passo come "sgombero" invece che vera
- * fondamenta (buildings.js/stepConstructions, `clearingLot`/
- * `ruspaFirstStepDur`) — stesso principio gia' in uso per la ruspa su un
- * edificio ancora vivo. */
-export function ruinRebuildConstruction(level) {
-  return level === 1
-    ? { upgradeIndex: -1, stepIndex: 0, t: 0, rebuilding: true }
-    : { upgradeIndex: level - 2, stepIndex: 0, t: 0, rebuilding: true };
 }
 
 /** Il potenziamento che l'edificio potrebbe iniziare ora, se lo tocchi (null se il tipo non ne ha). */
@@ -2180,15 +2168,20 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     // ruspa non lo sgombera per davvero, invece di sparire di scatto in una
     // fondamenta spoglia ancora prima che il cantiere sia davvero iniziato.
     // `&& b.spr`: SOLO se c'e' davvero un edificio vecchio da preservare —
-    // il lotto-rudere del tutorial (tutorial.js/ruinRebuildConstruction(),
-    // main.js) marca `rebuilding:true` allo STESSO modo ma parte da
-    // `placeBuilding()`, che per un tipo con `construct` lascia `b.spr` a
-    // `null` (nessun edificio precedente, mai esistito): senza questo
+    // un lotto-rudere marcava `rebuilding:true` allo STESSO modo ma partiva
+    // da `placeBuilding()`, che per un tipo con `construct` lascia `b.spr`
+    // a `null` (nessun edificio precedente, mai esistito): senza questo
     // controllo in piu' quel `null` restava tale per l'intero primo passo
     // invece del vero sprite di cantiere, ed il lotto spariva del tutto
     // (nessun `_f`, scartato in silenzio dal ciclo di disegno) — segnalato
     // dall'autore verificando che la demolizione di un rudere avviasse un
-    // cantiere vero e non un edificio gia' finito.
+    // cantiere vero e non un edificio gia' finito. Un rudere non avvia piu'
+    // nessun cantiere (main.js, clearedPlaceholder() — decisione
+    // dell'autore: "la rovina ruspata deve creare sempre un placeholder
+    // vuoto"), quindi oggi `c.rebuilding` nasce solo da tryRuspaRebuild()
+    // su un edificio gia' vivo (sempre con `b.spr` valorizzato) — il
+    // controllo resta comunque qui, difensivo, per lo stesso motivo di
+    // sempre.
     const clearingLot = c.rebuilding && c.stepIndex === 0 && b.spr;
     // Finche' non e' l'ultimo passo lo sprite disegnato e' ancora il
     // cantiere generico (`c.curSpr`); da quando applyLevelFinish() sopra ha
