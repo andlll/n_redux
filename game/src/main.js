@@ -113,44 +113,32 @@ export async function mountMatch(ctx, params = {}) {
   const SCENE_BG_RGB = [scene.bgColor & 0xff, (scene.bgColor >> 8) & 0xff, (scene.bgColor >> 16) & 0xff].map((v) => v / 255);
   cam.bounds = { left: 0, top: 0, right: scene.width, bottom: scene.height };
   // [Bug corretto, gap dichiarato STUDIO.md: "match mostra ancora perlopiu'
-  // cielo/nuvole al primo avvio"] Il centro GEOMETRICO della room (usato qui
+  // cielo/nuvole al primo avvio"; poi decisione dell'autore: "in ogni room
+  // centra la camera su chies"] Il centro GEOMETRICO della room (usato qui
   // sotto, e di nuovo in resize() piu' sotto per il ramo mobile) non e' dove
   // sta la citta': su `match` la piattaforma volante vive nella meta'
   // superiore della room (`match.json` e' alta 2090px, ma le istanze vere —
   // strade, edifici, la base — si affollano ben sopra la sua meta', il resto
-  // e' cielo vuoto sotto/intorno). La MEDIANA della x/y di tutte le istanze
-  // della scena (non filtrate: anche solo poche decine di outlier — pu1,
-  // reversi, honda1/2, rimossi da `staticWorld` piu' sotto — non spostano una
-  // mediana su centinaia di istanze) e' un proxy semplice e senza bisogno di
-  // conoscere la room in anticipo per "dove sta il contenuto vero". Effettivo
-  // solo su DESKTOP: su mobile lo zoom iniziale "cover" (resize() piu' sotto,
-  // gia' un fix precedente per non lasciare bordi) inquadra l'ALTEZZA della
-  // room esattamente pari a quella dello schermo per ogni room giocabile
-  // (tutte piu' larghe che alte, ogni telefono in portrait l'opposto) — zero
-  // margine di panoramica verticale, quindi `cam.clamp()` (camera.js)
-  // ricentra comunque sul centro geometrico qualunque valore le si passi.
-  // Non toccato: e' il comportamento "cover" voluto da quel fix, non un
-  // effetto collaterale di questo.
-  //
-  // [Bug corretto, decisione dell'autore: "estendi le dimensioni della room
-  // [tutorial] in modo che siano pari a quelle di match"] Prima qui l'asse X
-  // restava il centro GEOMETRICO (`scene.width / 2`, non la mediana come Y):
-  // valido finche' ogni room aveva davvero la propria citta' centrata in
-  // orizzontale nei propri bound — vero per `match`/`match_easy`, ma non piu'
-  // per `tutorial` una volta allargata a 3900x2090 (le dimensioni di `match`,
-  // sopra) pur mantenendo il proprio contenuto tutto raccolto nella meta'
-  // sinistra (com'era prima, a 1920 di larghezza) — lo spazio in piu' serve
-  // alla piattaforma (game/src/platform.js, r22/r32), non a nuovo contenuto
-  // di citta'. Il vecchio centro geometrico (1950) avrebbe aperto la partita
-  // inquadrando cielo vuoto a destra invece della citta' vera — stessa
-  // classe di bug gia' risolta sopra per Y, qui generalizzata anche a X.
-  const instanceXs = scene.instances.map((it) => it.x).sort((a, b) => a - b);
-  const instanceYs = scene.instances.map((it) => it.y).sort((a, b) => a - b);
-  const midIdx = instanceYs.length >> 1;
-  const initialFocusX = instanceXs.length === 0 ? scene.width / 2
-    : instanceXs.length % 2 ? instanceXs[midIdx] : (instanceXs[midIdx - 1] + instanceXs[midIdx]) / 2;
-  const initialFocusY = instanceYs.length === 0 ? scene.height / 2
-    : instanceYs.length % 2 ? instanceYs[midIdx] : (instanceYs[midIdx - 1] + instanceYs[midIdx]) / 2;
+  // e' cielo vuoto sotto/intorno) e su `tutorial` (allargata a 3900x2090,
+  // le dimensioni di `match`, per fare spazio alla piattaforma — game/src/
+  // platform.js) il contenuto vero resta raccolto nella meta' sinistra. Una
+  // versione precedente qui usava la MEDIANA di x/y di tutte le istanze
+  // della scena come proxy di "dove sta il contenuto vero" — `chies` (il
+  // municipio, edificio principale e unico di ogni room, STUDIO.md §9) e'
+  // un'ancora piu' semplice e piu' precisa: e' letteralmente il centro
+  // amministrativo della citta', sempre presente, non una stima statistica
+  // che poteva comunque cadere qualche schermata lontano dal punto giusto.
+  // Effettivo solo su DESKTOP: su mobile lo zoom iniziale "cover" (resize()
+  // piu' sotto, gia' un fix precedente per non lasciare bordi) inquadra
+  // l'ALTEZZA della room esattamente pari a quella dello schermo per ogni
+  // room giocabile (tutte piu' larghe che alte, ogni telefono in portrait
+  // l'opposto) — zero margine di panoramica verticale, quindi `cam.clamp()`
+  // (camera.js) ricentra comunque sul centro geometrico qualunque valore le
+  // si passi. Non toccato: e' il comportamento "cover" voluto da quel fix,
+  // non un effetto collaterale di questo.
+  const chiesFocus = scene.instances.find((it) => it.obj === "chies");
+  const initialFocusX = chiesFocus ? chiesFocus.x : scene.width / 2;
+  const initialFocusY = chiesFocus ? chiesFocus.y : scene.height / 2;
   cam.x = initialFocusX;
   cam.y = initialFocusY;
   // minZoom = quanto ci si puo' avvicinare: sotto 0.5 gli sprite (disegnati
