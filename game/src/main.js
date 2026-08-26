@@ -10,7 +10,6 @@ import { spawnPedestrian, stepPedestrians } from "./pedestrians.js";
 import {
   stepBalloonSpawner, stepBalloons, stepLoot, collectLoot,
   spawnConstructionBalloon, stepConstructionBalloons, stepConstructionBoxes, ALERT_DURATION,
-  BALLOON_TYPES, spawnLoot,
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
@@ -777,13 +776,34 @@ export async function mountMatch(ctx, params = {}) {
   const CLUB_SNAP = 2 * TICK;
 
   function addDecor(building, spawns, { transient = false } = {}) {
+    // [Bug corretto, segnalato dall'autore: "in alcuni casi c'e' un overlay
+    // sbagliato tra edifici e luci degli edifici dietro, forse legato al
+    // fatto che sono quelli a due slot?"] Il decoro (qui il bagliore delle
+    // finestre notturne, spawnDecor() sopra) calcolava il proprio depth da
+    // `-building.y` grezzo, IGNORANDO l'eventuale depth "vero" gia' scelto
+    // per l'edificio stesso (`building.depth`, il campo che effDepth() legge
+    // quando non e' 0 — vedi il commento li' sopra). Per un edificio normale
+    // i due coincidono (`building.depth` resta 0, quindi coincide con
+    // `-building.y`) — ma un edificio "a due lotti" (palazzo/museoRd,
+    // resolvePlacement() piu' sotto) nasce apposta con un depth SCOSTATO
+    // dalla propria y (la MEDIA fra i due lotti del cluster, non solo il
+    // proprio: la sua sagoma e' grande abbastanza da coprire ANCHE il lotto
+    // vicino bloccato, commento li'). Il suo decoro, ricalcolando `-y` da
+    // zero, restava ancorato alla y "vera" invece che a quel depth scostato:
+    // contro un terzo edificio vicino la cui y ricade fra i due, l'edificio
+    // stesso si ordinava correttamente ma le sue luci no, comparendo davanti
+    // o dietro nel punto sbagliato — l'esatto difetto segnalato. Stessa
+    // baseline di effDepth() invece di ricalcolarla: `building.depth` quando
+    // e' un vero scostamento (2 lotti, o `parco`/fixedDepth), altrimenti
+    // `-building.y` come prima.
+    const baseDepth = building.depth === 0 ? -building.y : building.depth;
     for (const { spr, dx, dy, lit = true, fadeTicks, depthOffset = 0 } of spawns) {
       const y = building.y + dy;
       const isClub = building.type === "club";
       const scrubSpr = lit && !isClub ? scrubSpriteFor(spr) : null;
       decorEntities.push({
         obj: "decor", buildingId: building.id,
-        x: building.x + dx, y, depth: (lit ? -y - 1 : -y) + depthOffset,
+        x: building.x + dx, y, depth: (lit ? baseDepth - dy - 1 : baseDepth - dy) + depthOffset,
         spr, _f: frameFor(spr),
         // `fadeTicks` (grattacielo, buildings.js): dissolvenza propria invece
         // della LIGHT_FADE condivisa da tutti gli altri decori — vedi stepLights().
@@ -2403,7 +2423,20 @@ export async function mountMatch(ctx, params = {}) {
     for (const btn of uiButtons) {
       if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) {
         if (btn.kind === "menu") menoo = btn.menoo;                      // gru/occhio/indietro
-        else if (btn.kind === "deselect") { selectedType = null; r12.selec = 0; }  // handbutton
+        else if (btn.kind === "deselect") {
+          // [Bug corretto, segnalato dall'autore: la mano non deseleziona
+          // sempre lo strumento attivo] Azzerare `selectedType`/`r12.selec`
+          // toglie solo l'evidenziazione del bottone edificio premuto: la
+          // ruspa (selec===11) puo' aver gia' armato un popup si'/no su un
+          // edificio specifico (`ruspaPending`, sopra) che restava aperto e
+          // "vivo" — un tocco altrove veniva ancora letto come conferma/
+          // rifiuto di QUELLA demolizione anche dopo aver premuto la mano.
+          // La mano deve annullare qualunque strumento sia armato, non solo
+          // il bottone evidenziato: anche il popup di conferma della ruspa.
+          selectedType = null;
+          r12.selec = 0;
+          ruspaPending = null;
+        }  // handbutton
         else if (btn.kind === "zoom") {                                  // zoom+/zoom-
           userMoved = true;
           cam.setZoom(cam.targetZoom * btn.zoom, canvas.clientWidth / 2, canvas.clientHeight / 2);
@@ -2440,19 +2473,32 @@ export async function mountMatch(ctx, params = {}) {
     // prescindere dal depth, non solo per z-order — e vince comunque contro
     // l'edificio sotto di lui perche' il suo depth (UPSIGN_DEPTH, sempre in
     // primo piano) e' piu' negativo. "ruspaYes"/"ruspaNo" (il popup si'/no
-    // della ruspa, stesso depth) sono qui per lo stesso motivo. "flyingBalloon"
-    // (le mongolfiere di risorse/spia in volo, non il pacco di cantiere — vedi
-    // il commento sul push piu' sotto): richiesto dall'autore, un tap diretto
-    // sulla mongolfiera la distrugge — le torrette non lo fanno piu' da sole
-    // (game/src/projectiles.js) — quindi deve restare raggiungibile a
-    // prescindere dal depth, non solo per z-order, come casse/monete sopra.
+    // della ruspa, stesso depth) sono qui per lo stesso motivo.
+    //
+    // [Bug corretto, segnalato dall'autore: "se clicco su una mongolfiera
+    // questa esplode da sola, non dovrebbe succedere"] "flyingBalloon" era
+    // stato aggiunto qui in una sessione precedente ("un tap diretto sulla
+    // mongolfiera la distrugge — le torrette non lo fanno piu' da sole") per
+    // aggirare una regressione nella mira automatica delle torrette. Quella
+    // regressione non c'e' piu': stepTurretAim() (buildings.js) punta gia' da
+    // solo a una mongolfiera quando non c'e' nessuna minaccia vera in
+    // portata, e stepProjectiles() (projectiles.js) la distrugge davvero al
+    // colpo andato a segno — nessun oggetto mongolfiera dell'originale
+    // (monviolo/monvo/mongo/monbo/monspi, src/objects/) ha mai avuto un
+    // Mouse_LeftPressed.gml: in gioco non si "clicca" una mongolfiera per
+    // farla esplodere, la si abbatte con una torretta. Lasciarla raggiungibile
+    // a prescindere dal depth la faceva esplodere gratis a ogni tap che le
+    // capitava sopra (anche solo per piazzare/ispezionare qualcos'altro
+    // dietro di lei) — rimossa dalla lista, resta raggiungibile solo dal
+    // vecchio fallback per z-order (usato solo per l'HUD di debug), come nel
+    // gioco originale.
     for (const it of frameList) {
       if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
         && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo"
         && it.obj !== "bankIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
         && it.obj !== "faroDockerSignal" && it.obj !== "faro3Button" && it.obj !== "faro3WaveSignal"
         && it.obj !== "faro3DockerSignal" && it.obj !== "cargoShip" && it.obj !== "ruinLot"
-        && it.obj !== "ruin" && it.obj !== "flyingBalloon") continue;
+        && it.obj !== "ruin") continue;
       // placeholder: maschera romboidale (inFrameDiamond sopra), non l'AABB —
       // stessa ragione della raccolta hover piu' sotto. Tutto il resto
       // (edifici, casse, monete, segnale di potenziamento) resta sul
@@ -2460,7 +2506,26 @@ export async function mountMatch(ctx, params = {}) {
       const hit = it.obj === "placeholder"
         ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
         : inFrameRect(w.x, w.y, it.x, it.y, it._f);
-      if (hit && (!picked || it.depth < picked.depth)) picked = it;
+      // [Bug corretto, segnalato dall'autore: "l'area cliccabile delle
+      // torrette e' troppo piccola, sembra solo quella vicina alla bocca di
+      // fuoco"] La sagoma vera (`it._f`, sopra) e' gia' l'intero sprite
+      // dell'edificio — base+cannone, non solo il cannone — ma il concorso
+      // fra AABB sovrapposte qui sotto si decide per `it.depth` (piu' vicino
+      // alla telecamera vince, `-b.y`): in una citta' fitta il rettangolo di
+      // UN VICINO davanti (che quindi vince) puo' sovrapporre la META'
+      // INFERIORE/base di una torre alta come una torretta senza coprirla
+      // davvero a schermo (le AABB non seguono la sagoma reale, `f.w/f.h`
+      // e' il rettangolo minimo che la contiene) — restava cliccabile solo
+      // la punta in alto (il cannone) che nessun vicino arriva a coprire.
+      // Col nemico gia' addosso e il giocatore di fretta (serve un tap
+      // rapido su un'area precisa) questo non e' accettabile: le torrette
+      // vincono sempre il concorso di profondita' contro un edificio
+      // normale che le si sovrappone (stesso trattamento di "upsign"/
+      // "ruspaYes/No" sopra, un pelo piu' permissivo di UPSIGN_DEPTH cosi'
+      // quei popup restano comunque sopra una torretta se mai si
+      // sovrapponessero), mai contro un'altra torretta o contro se stesse.
+      const turretPriority = (o) => (o.obj === "building" && BUILDING_TYPES[o.ref.type]?.turret) ? -8000 : o.depth;
+      if (hit && (!picked || turretPriority(it) < turretPriority(picked))) picked = it;
     }
     if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
       const it = frameList[i];
@@ -2637,24 +2702,6 @@ export async function mountMatch(ctx, params = {}) {
       message = `+${item.amount} ${item.key}`;
       messageT = 3;
       picked = null;   // raccolta, non c'e' piu' niente da tenere selezionato
-    } else if (picked.obj === "flyingBalloon") {
-      // Un tap diretto su una mongolfiera in volo (risorsa o spia) la
-      // distrugge — sempre disponibile, indipendentemente da dove si trovi
-      // rispetto a una torretta (che ora puo' abbatterla anche lei col tap
-      // sul cannone quando nessuna minaccia vera e' in portata, fireTurretManual/
-      // stepTurretAim in buildings.js/projectiles.js). Stessa risposta di un
-      // colpo andato a segno (game/src/projectiles.js, stepProjectiles):
-      // un'esplosione + la cassa di risorse se ne lascia una (mai per la
-      // spia, monspi/recogn — nessun `def.loot`).
-      const b = picked.ref;
-      const idx = balloons.indexOf(b);
-      if (idx >= 0) balloons.splice(idx, 1);
-      explosions.push(spawnExplosion(b.x, b.y));
-      const def = BALLOON_TYPES[b.type];
-      if (def?.loot) loot.push(spawnLoot(def.loot, b.x, b.y));
-      message = def?.isSpy ? "mongolfiera spia abbattuta" : "mongolfiera abbattuta";
-      messageT = 3;
-      picked = null;
     } else if (picked.obj === "coin") {
       const item = picked.ref;
       collectCoinAt(item);
@@ -3051,7 +3098,7 @@ export async function mountMatch(ctx, params = {}) {
       // Le gru di cantiere (game/src/cranes.js) — stesso principio, decoro
       // puro (nessun `_selfLit`: `gru/grutop/Create.gml` si scuriscono di
       // notte come ogni altro oggetto, STUDIO.md).
-      for (const p of craneParts(b)) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
+      for (const p of craneParts(b)) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, p.frame) });
       // Il segnale verde di potenziamento (obj: "upsign") — [C] upsign12|23/
       // upcrc12|23/upind12|23, tutti la stessa icona "upico" (un pin verde
       // con una freccia in su): compare quando il potenziamento e' davvero
@@ -3530,13 +3577,19 @@ export async function mountMatch(ctx, params = {}) {
     // barra risorse letta sopra) ha solo le quattro icone originali —
     // pop/olio/energia/denaro sono TUTTO cio' che l'originale mostrava li',
     // i cristalli sono un sistema aggiunto in questo motore (STUDIO.md).
-    // Icona "monviola_bar" (lo stesso sprite gia' usato per la cassa/il
-    // gettone di cristalli quando viene raccolto, balloons.js/platform.js)
-    // invece di disegnarne una nuova da zero — riga propria appena sotto la
-    // barra, non stipata nello stretto spazio libero a destra della faccina
-    // (troppo poco per icona+numero senza sovrapporsi a lei).
-    const crysFrame = frameFor("monviola_bar");
-    if (crysFrame) r.draw(crysFrame, barX + 6, barY + 60, 0.4, 0xffffff, 1);
+    // [Bug corretto, segnalato dall'autore: "il simbolo delle gemme nella
+    // GUI e' sbagliato, dovrebbe essere nero come gli altri"] Prima usava
+    // "monviola_bar" — lo sprite viola a colori della cassa/del gettone di
+    // cristalli raccolto in mondo (balloons.js/platform.js), fuori posto
+    // accanto alle icone monocrome nere di pop/olio/energia/denaro/faccina.
+    // "crys_ico" e' invece un'icona romboidale NERA della stessa famiglia
+    // dei pittogrammi di `icone_oriz` (stessa area di texture, stesso stile
+    // — data/sprites.json la elenca subito prima di "crys_ico_hc", la
+    // variante "hover" mai usata in questo motore touch-first, STUDIO.md
+    // §7): coerente con le altre, invece di stonare come unica icona
+    // colorata della barra.
+    const crysFrame = frameFor("crys_ico");
+    if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
     drawText(r, fontMini, String(Math.round(r12.crys)), barX + 34, barY + 68, 1, 0x000000, 1);
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non

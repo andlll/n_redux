@@ -2579,11 +2579,14 @@ function turretSprFor(type, angleDeg, recoiling) {
  * minaccia vera sia davvero in `fireRange` prima di far partire un colpo
  * senza tocco, quindi un `aimTarget` di tipo mongolfiera (nessuna minaccia
  * intorno) non fa mai scattare nulla da solo — resta un'azione che il
- * giocatore deve chiedere esplicitamente col tap, come gia' era il tap
- * diretto sulla mongolfiera stessa (main.js, invariato, resta l'altra via
- * per abbatterle). Le auto decorative (`cars`, un tempo incluse come
- * "veicoli_target" dell'originale) restano fuori da entrambi i giri: non
- * sono un bersaglio, ne' ostile ne' cliccabile.
+ * giocatore deve chiedere esplicitamente col tap sul cannone. [Bug corretto,
+ * segnalato dall'autore: "se clicco su una mongolfiera questa esplode da
+ * sola"] Il tap diretto sulla mongolfiera stessa (un tempo l'ALTRA via per
+ * abbatterle, main.js) e' stato rimosso: nessun oggetto mongolfiera
+ * dell'originale ha mai avuto un Mouse_LeftPressed.gml, la torretta (questo
+ * fallback incluso) resta l'unico modo di abbatterle. Le auto decorative
+ * (`cars`, un tempo incluse come "veicoli_target" dell'originale) restano
+ * fuori da entrambi i giri: non sono un bersaglio, ne' ostile ne' cliccabile.
  *
  * **[I]** Se nessuna minaccia NE' mongolfiera e' in portata, `aimAngle`/
  * `aimTarget` vengono azzerati (non lasciati all'ultima direzione come

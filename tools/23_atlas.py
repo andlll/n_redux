@@ -350,6 +350,7 @@ GAMEPLAY_SPRITES = {
     # diversi.
     "gui": [
         "icone_oriz",          # sfondo barra risorse (repre/DrawGUI.gml)
+        "crys_ico",            # icona nera dei cristalli (main.js, riga GUI sotto la barra risorse)
         # "faccina" della felicita' (src/objects/hapware): hap3 (sorriso) se
         # r12.hap>=r12.pop, hap1 (broncio) altrimenti — hap2/hap1hc/hap3hc
         # (variante colorata per lo stato hover, mai riprodotto in questo
