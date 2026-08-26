@@ -599,6 +599,16 @@ GAMEPLAY_SPRITES = {
     # `tutorial_thumb`/`tutorial_square` di base (mai disegnato per davvero,
     # ma incluso per coerenza con l'atlas — costo trascurabile).
     "tutorial": ["tut_ok", "fr_ros", "tuto_fig1", "tuto_fig2", "tuto_bomb", "tuto_sfondo", "empty2"],
+    # Il temporale vero (src/objects/tincom, r12/Alarm_2.gml — solo su
+    # `match`, mai su `match_easy`, STUDIO.md): "tinco" e' il banner
+    # "thunderstorm incoming" che compare per pochi secondi quando il
+    # temporale comincia (game/src/main.js, stesso trattamento gia' in uso
+    # per "ainco"/ATTACK INCOMING sopra). La pioggia vera (rainlauncher) usa
+    # il sistema particellare nativo di GameMaker, mai uno sprite proprio —
+    # game/src/weather.js la disegna con quad a tinta unita (solidFrame),
+    # stessa tecnica gia' in uso altrove nel motore per i flash/overlay:
+    # nessuno sprite in piu' da aggiungere qui per lei.
+    "weather": ["tinco"],
 }
 
 EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group})

@@ -1,7 +1,7 @@
 import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
-import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan } from "./state.js";
+import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
@@ -14,6 +14,8 @@ import {
 import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { spawnLightning, stepLightning, boltSprite, glowPosition, glowFrame, LIGHTNING_GLOW_LIFE } from "./lightning.js";
+import { createWeatherState, stepRain, RAIN_STREAK_LENGTH, RAIN_STREAK_WIDTH, RAIN_TINT, RAIN_ALPHA } from "./weather.js";
+import { createFireworksState, stepFireworks, FIREWORK_DEPTH, FIREWORK_SPARK_SIZE } from "./fireworks.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
 import { addCrane, stepCranes, craneParts } from "./cranes.js";
 import {
@@ -31,6 +33,14 @@ import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE,
 } from "./tutorial.js";
+
+// [I] Inclinazione VISIVA delle gocce di pioggia (drawRotated() sotto,
+// game/src/weather.js) — un dettaglio puramente estetico, indipendente
+// dalla fisica di caduta vera (weather.js, RAIN_DIR): un'unica inclinazione
+// fissa per tutte le gocce invece di ricalcolarla per ognuna dalla sua
+// velocita' istante per istante (costo per un dettaglio che a schermo non
+// si nota).
+const RAIN_TILT_DEG = 20;
 
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
 // export mountMatch(ctx, params) invece di uno script a livello di modulo —
@@ -645,6 +655,11 @@ export async function mountMatch(ctx, params = {}) {
   // effettivamente colpiti durante una tempesta, vedi entrambe le chiamate
   // piu' sotto.
   let lightning = [];
+  // La pioggia vera del temporale (game/src/weather.js) — sia quello vero
+  // di `match` (r12.storm) sia quello cosmetico di `match_easy`
+  // (r12.stormeasy): stepRain() piu' sotto decide da solo se e' il momento
+  // di farla cadere, in base a quale dei due e' attivo.
+  let weatherState = createWeatherState();
   // Minacce vere (game/src/threats.js): `threats` sono aerei/bombardieri/
   // zeppelin, fatti nascere da stepThreatSpawner (r12/Alarm_4|5|6.gml) ogni
   // volta che una mongolfiera spia viene ignorata abbastanza a lungo da
@@ -1527,6 +1542,13 @@ export async function mountMatch(ctx, params = {}) {
   }
   seedChies();
   seedTutorialBuildings();
+  // I fuochi d'artificio sopra chies a Gennaio (game/src/fireworks.js —
+  // [C] chies/Create.gml: `action_create_object(fireworker, 0, -400)`,
+  // nessun gate di room: chies esiste sempre, in ogni room). `chiesScene`
+  // (sopra) e' la posizione VERA della sua istanza nella scena — chies non
+  // si sposta mai, quindi il punto sopra la sua testa resta fisso per
+  // tutta la partita.
+  const fireworksState = chiesScene ? createFireworksState(chiesScene.x, chiesScene.y) : null;
   // [C] standma|easma/Mouse_LeftPressed.gml: `action_load_game(...)` scatta
   // SUBITO al tap del bottone, prima ancora che il gioco vero appaia — qui
   // equivale a questa singola chiamata all'avvio, solo quando si arriva
@@ -1646,6 +1668,31 @@ export async function mountMatch(ctx, params = {}) {
       rgb: a.rgb.map((v, j) => v + (b.rgb[j] - v) * s),
       label: k < 0.75 ? a.name : a.name + " → " + b.name,
     };
+  }
+  // [Decisione dell'autore: "il temporale vero creava un sistema
+  // particellare di pioggia, e SOLO durante quella c'era la possibilita' di
+  // fulmini"] Il cielo che si scurisce durante il temporale — **[C]**
+  // `thunderclap` (r12/Alarm_2.gml, ramo `match`) copre l'intera view con
+  // uno sprite animato ("nitedis"/"nite", mai estratto in questo porting)
+  // che entra in 120 tick (2s) e resta finche' il temporale non finisce
+  // (r12/Alarm_7.gml gli dice di uscire, altri 2s). **[I]** Un tassello
+  // scalato per coprire l'intero schermo non e' replicabile con questo
+  // renderer (gli atlas sono impacchettati senza tiling/wrap, vedi
+  // STUDIO.md) — qui lo stesso effetto pratico (tutto si scurisce durante
+  // il temporale) si ottiene scurendo la tinta ambientale gia' calcolata da
+  // ambientAt() sopra, con lo stesso fade-in/fade-out di 2s: stesso
+  // risultato visivo (il mondo si scurisce e schiarisce con lo stesso
+  // ritmo), tecnica diversa, riusando la pipeline di tinta gia' esistente
+  // (mulTint()) invece di un quad in piu' da gestire a parte. Solo `match`
+  // (r12.storm): `stormeasy` (match_easy) e' pioggia pura, l'originale non
+  // crea mai `thunderclap` in quel ramo.
+  const STORM_DARKEN_FADE = 2;      // [C] 120 tick, nitedis
+  const STORM_DARKEN_MAX = 0.35;    // [I] quanto scurisce al buio massimo
+  function stormDarkenFactor(r12) {
+    if (!r12.storm) return 0;
+    const elapsed = r12.stormDuration - r12.stormT;
+    const k = Math.min(elapsed / STORM_DARKEN_FADE, r12.stormT / STORM_DARKEN_FADE, 1);
+    return Math.max(0, k) * STORM_DARKEN_MAX;
   }
   // [C] casa1/Alarm_3.gml: `aura.night` — booleano secco, a differenza della
   // tinta ambientale che sfuma. Usa la stessa fase di ambientAt() (nessuno
@@ -3002,8 +3049,17 @@ export async function mountMatch(ctx, params = {}) {
       stepLightning(lightning, dt);
       stepGrowth(buildings, dt, r12, (b) => pedestrians.push(spawnPedestrian(b.x, b.y)));
       stepConsumption(buildings, dt, r12, night);
-      stepWeather(r12, dt, scene.name === "match");
+      stepWeather(r12, dt, scene.name === "match", scene.name === "match_easy");
       stepStormDamage(buildings, dt, r12, (x, y) => lightning.push(spawnLightning(x, y)));
+      // Pioggia vera del temporale (game/src/weather.js) — attiva sia sotto
+      // il temporale vero di `match` (r12.storm) sia sotto quello cosmetico
+      // di `match_easy` (r12.stormeasy): stepRain() la fa cadere o la
+      // svuota di scatto a seconda di quale (se uno) e' attivo ORA.
+      stepRain(weatherState, dt, !!(r12.storm || r12.stormeasy), scene.width, scene.height);
+      // Fuochi d'artificio sopra chies (game/src/fireworks.js) — sempre
+      // "in ascolto", scoppiano davvero solo a Gennaio (r12.month === 1,
+      // state.js/stepCalendar()).
+      if (fireworksState) stepFireworks(fireworksState, dt, r12.month === 1);
       // [Bug corretto, segnalato dall'autore: "avevi inserito popolazione (e
       // forse anche soldi?) che salgono da soli a ogni secondo, rimuoviamolo"]
       // Qui prima girava anche `tickR12()` (state.js, rimossa): una
@@ -3455,6 +3511,17 @@ export async function mountMatch(ctx, params = {}) {
       const frameIdx = Math.min(AER_SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
       dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, AER_SMOKE_LIFE) });
     }
+    // Fuochi d'artificio sopra chies a Gennaio (game/src/fireworks.js):
+    // scintille colorate, stesso quad a tinta unita gia' usato per i flash
+    // altrove nel motore — nessuno sprite dedicato, `_tint` sceglie il
+    // colore del lanciatore.
+    if (fireworksState) for (const s of fireworksState.sparks) {
+      dynamic.push({
+        obj: "decor", x: s.x, y: s.y, depth: FIREWORK_DEPTH,
+        _f: { ...solidFrame(white, FIREWORK_SPARK_SIZE, FIREWORK_SPARK_SIZE), ox: FIREWORK_SPARK_SIZE / 2, oy: FIREWORK_SPARK_SIZE / 2 },
+        _tint: s.tint, _alpha: Math.max(0, 1 - s.t / s.life),
+      });
+    }
     // Il decoro luce (bagliore delle finestre, STUDIO.md §5.3 "notte_target")
     // non va piu' filtrato qui: `stepLights()` sopra gli tiene un'alpha
     // (`_alpha`, 0 di giorno) che il ciclo di disegno rispetta da solo — a
@@ -3549,6 +3616,8 @@ export async function mountMatch(ctx, params = {}) {
 
     r.beginFrame(canvas.width, canvas.height, SCENE_BG_RGB);
     const amb = ambientAt(phaseT);
+    const darken = stormDarkenFactor(r12);
+    if (darken > 0.002) amb.rgb = amb.rgb.map((v) => v * (1 - darken));
 
     // --- layer mondo: segue la camera. La tinta giorno/notte e' moltiplicata
     // qui in JS invece che nello shader (u_ambient resta a [1,1,1,1], mai
@@ -3600,6 +3669,17 @@ export async function mountMatch(ctx, params = {}) {
     // mondo cosi' non resta mai nascosto da un edificio vicino.
     if (multiTilePreview) {
       r.draw(multiTilePreview.f, multiTilePreview.x, multiTilePreview.y, 1, 0xffffff, 0.5);
+    }
+    // Pioggia vera del temporale (game/src/weather.js, stepRain() sopra):
+    // gocce oblique disegnate come quad sottili ruotati (drawRotated() —
+    // niente atlas, `solidFrame` come per ogni altro flash/overlay del
+    // motore). Fuori dal ciclo frameList sopra (le gocce non hanno un `_f`
+    // da ordinare per depth con il resto — vedi il commento in weather.js
+    // su RAIN_DEPTH) ma sempre dentro la proiezione mondo di questo frame,
+    // quindi seguono comunque la camera come ogni altro decoro.
+    if (weatherState.drops.length) {
+      const rainFrame = { ...solidFrame(white, RAIN_STREAK_WIDTH, RAIN_STREAK_LENGTH), ox: RAIN_STREAK_WIDTH / 2, oy: RAIN_STREAK_LENGTH / 2 };
+      for (const d of weatherState.drops) drawRotated(rainFrame, d.x, d.y, RAIN_TILT_DEG, 1, RAIN_TINT, RAIN_ALPHA);
     }
     // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che
     // cresce e sfuma sul punto della moneta appena presa, in primo piano come
@@ -4011,6 +4091,17 @@ export async function mountMatch(ctx, params = {}) {
         r.draw(ainco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
       }
     }
+    // Avviso "il temporale sta arrivando" (src/objects/tincom, solo su
+    // `match` — game/src/state.js, stepWeather()): stesso identico
+    // trattamento di "ainco" appena sopra (lampeggia ogni 0.5s per 4s al
+    // centro dello schermo), stessa origine gia' centrata dello sprite
+    // (data/sprites.json: "tinco" 1370x59, origin 685,29).
+    if (r12.tincomT > 0) {
+      const tinco = frameFor("tinco");
+      if (tinco && Math.floor((TINCOM_DURATION - r12.tincomT) / 0.5) % 2 === 0) {
+        r.draw(tinco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
+      }
+    }
     // Il pannello prestiti (bankPanelOpen, state.js LOANS) — vero modale in
     // spazio schermo (vedi il commento su bankPanelOpen piu' sopra per il
     // perche'), disegnato per ultimo cosi' resta sempre sopra a tutto il
@@ -4195,7 +4286,8 @@ export async function mountMatch(ctx, params = {}) {
     get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
     get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
     get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
-    get lightning() { return lightning; },
+    get lightning() { return lightning; }, get weatherState() { return weatherState; },
+    get fireworksState() { return fireworksState; },
     get beams() { return beams; },
     get aerSmoke() { return aerSmoke; }, get debris() { return debris; }, get ruins() { return ruins; },
     get blockedSlots() { return blockedSlots; }, get placeholders() { return placeholders; },
