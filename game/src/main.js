@@ -1,7 +1,7 @@
 import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
-import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION } from "./state.js";
+import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES, TURRET_SPRITE_NAMES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
@@ -27,7 +27,7 @@ import {
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
-import { save, load } from "./save.js";
+import { save, load, serializeSave, saveToFile, loadFromFile } from "./save.js";
 import { loadFont, drawText, measureText } from "./font.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
@@ -1502,7 +1502,7 @@ export async function mountMatch(ctx, params = {}) {
   // Serializzazione esplicita fin da subito (STUDIO.md §5.6/§7.1): lo stato
   // che conta e' gia' dati semplici, quindi non c'e' uno snapshot binario da
   // imitare, solo JSON. Stessi nomi di slot dell'originale ("nimsav_eas" per
-  // la mappa facile).
+  // la mappa facile) per il quicksave in localStorage.
   //
   // NON e' piu' automatico: il gioco e' ancora in sviluppo attivo, e un
   // autoload silenzioso al boot fa ripartire ogni sessione di test da uno
@@ -1512,16 +1512,83 @@ export async function mountMatch(ctx, params = {}) {
   // pagina e' quindi una partita nuova, come il primissimo avvio. S/L restano
   // per salvare/ricaricare a mano DENTRO la stessa sessione di test, se
   // serve, ma non sopravvivono piu' da soli a un refresh.
-  function doSave() { save(scene.name, r12, buildings, ruins, blockedSlots, platformState); }
-  function doLoad() {
-    const data = load(scene.name);
-    if (!data) return false;
+  //
+  // [Nuova funzionalita', richiesta dall'autore: "vogliamo file salvabili
+  // dove vuole l'utente, cosi' non si perde"] Accanto al quicksave in
+  // localStorage (S/L, Salva/Carica partita nel menu di pausa — invariati,
+  // pensati per restare veloci durante un test) c'e' ora un salvataggio VERO
+  // su file (save.js, saveToFile()/loadFromFile()): "Salva su file"/"Carica
+  // da file" nel menu di pausa, e "Carica partita" nel menu principale
+  // (title.js) — l'unico modo di riprendere una partita che non e' mai stata
+  // aperta prima in QUESTO browser. `fileHandle` (sotto): quando l'API File
+  // System Access c'e' (Chrome/Edge — non Safari ne' Firefox, save.js), il
+  // primo "Salva su file" apre il dialog "Salva come" UNA volta sola; ogni
+  // salvataggio successivo nella stessa sessione riscrive silenziosamente
+  // lo stesso file. Seminato da `params.fileHandle` quando si arriva da un
+  // "Carica partita" del menu principale (si e' gia' scelto un file, non
+  // ha senso chiederne un secondo al primo salvataggio).
+  let fileHandle = params.fileHandle ?? null;
+
+  // [Nuova funzionalita', richiesta dall'autore: "eviterei di far salvare in
+  // situazioni critiche (sotto attacco, con poco oil ecc)"] Ritorna una
+  // breve spiegazione (mostrata come messaggio, vedi doSave()/
+  // doSaveToFile() sotto) se il salvataggio va bloccato adesso, altrimenti
+  // `null`. Tre condizioni, tutte e sole quelle discusse con l'autore:
+  // - una minaccia vera (aereo/bombardiere/dirigibile) vicina alla citta'
+  //   (entro CRITICAL_THREAT_RADIUS da `chiesScene`, il municipio — sempre
+  //   presente, STUDIO.md — non "esiste una minaccia da qualche parte sulla
+  //   mappa", quasi sempre vero durante una partita lunga: qui serve un
+  //   pericolo imminente, non uno qualunque);
+  // - olio quasi esaurito (sotto il 10% del tetto — oilCap(), state.js —
+  //   non uno zero assoluto: la citta' e' gia' in affanno ben prima che
+  //   l'energia si spenga davvero);
+  // - temporale VERO in corso (`r12.storm`, solo `match` — non `stormeasy`,
+  //   puramente cosmetico su `match_easy`, STUDIO.md: nessun danno, nessun
+  //   motivo di bloccare nulla) o l'allarme "attacco in arrivo"
+  //   (`r12.alertT`, balloons.js: una spia ha completato il giro).
+  // Blocco netto (non solo un avviso): il tap su "Salva"/"Salva su file"
+  // semplicemente non salva, un messaggio spiega perche' — coerente con
+  // "S/L restano un quicksave di sessione", non un vero e proprio permesso
+  // di salvare in qualunque momento.
+  const CRITICAL_THREAT_RADIUS = 500;
+  function criticalSaveReason() {
+    // `oilCap()` (state.js) resta `Infinity` finche' chies non arriva a
+    // livello 2 (nessun tetto dichiarato prima) — un 10% di `Infinity` e'
+    // ancora `Infinity`, quindi "sotto il 10% del tetto" sarebbe sempre
+    // vero a inizio partita (bloccherebbe OGNI salvataggio, altro che solo
+    // quelli critici). Soglia assoluta di riserva quando il tetto non e'
+    // ancora un numero vero, proporzionata all'olio di partenza (5000-7500,
+    // state.js `createR12()`).
+    const cap = oilCap(buildings);
+    const oilThreshold = Number.isFinite(cap) ? cap * 0.1 : 500;
+    if (r12.oil <= oilThreshold) return "l'olio e' quasi esaurito";
+    if (r12.storm) return "un temporale sta colpendo la citta'";
+    if (r12.alertT > 0) return "un attacco e' in arrivo";
+    if (chiesScene) {
+      const r2 = CRITICAL_THREAT_RADIUS * CRITICAL_THREAT_RADIUS;
+      const near = threats.some((th) => (th.x - chiesScene.x) ** 2 + (th.y - chiesScene.y) ** 2 < r2);
+      if (near) return "una minaccia e' vicina alla citta'";
+    }
+    return null;
+  }
+
+  function doSave() {
+    const reason = criticalSaveReason();
+    if (reason) { message = "Non puoi salvare adesso: " + reason; messageT = 3; return; }
+    save(scene.name, r12, buildings, ruins, blockedSlots, platformState);
+    message = "partita salvata"; messageT = 3;
+  }
+  // Applica un salvataggio gia' letto/parsato (da localStorage O da file,
+  // save.js) allo stato vivo della partita — corpo unico riusato da
+  // doLoad() (localStorage) e doLoadFromFile() sotto, cosi' i due percorsi
+  // non possono disallinearsi silenziosamente col tempo.
+  function applyLoadedData(data) {
     r12 = data.r12;
     buildings = data.buildings;
     // `?.tier1`: scarta anche un salvataggio con la forma vecchia (prima
     // dei due livelli fari/piattaforma) invece di rompersi su di lui — lo
     // stesso principio "niente stato vecchio da onorare" gia' scelto per
-    // l'autoload (STUDIO.md, commento sopra doSave()).
+    // l'autoload (commento sopra).
     if (platformState) platformState = data.platformState?.tier1 ? data.platformState : createFaroState();
     decorEntities = [];
     const usedIds = new Set();
@@ -1569,6 +1636,53 @@ export async function mountMatch(ctx, params = {}) {
     }
     return true;
   }
+  function doLoad() {
+    const data = load(scene.name);
+    if (!data) return false;
+    return applyLoadedData(data);
+  }
+  // Async (save.js/saveToFile() apre un dialog nativo): il chiamante (input.
+  // onTap sotto) non aspetta la Promise, aggiorna `message` da dentro questa
+  // funzione stessa quando la scrittura finisce — coerente con ogni altro
+  // messaggio "a fuoco e dimentica" del motore.
+  async function doSaveToFile() {
+    const reason = criticalSaveReason();
+    if (reason) { message = "Non puoi salvare adesso: " + reason; messageT = 3; return; }
+    const data = serializeSave(scene.name, r12, buildings, ruins, blockedSlots, platformState);
+    try {
+      const h = await saveToFile(data, fileHandle);
+      if (h === undefined) return;   // dialog annullato dall'utente, nessun messaggio
+      if (h) fileHandle = h;
+      message = "partita salvata su file"; messageT = 3;
+    } catch (err) {
+      console.error("nimbus: salvataggio su file fallito", err);
+      message = "salvataggio su file fallito"; messageT = 3;
+    }
+  }
+  async function doLoadFromFile() {
+    let result;
+    try {
+      result = await loadFromFile();
+    } catch (err) {
+      console.error("nimbus: caricamento da file fallito", err);
+      message = "caricamento da file fallito"; messageT = 3;
+      return;
+    }
+    if (!result) return;   // dialog annullato, o file non valido (silenzioso: save.js gia' lo scarta)
+    // Un file salvato per un'ALTRA room (es. si apre un salvataggio di
+    // `match` mentre si sta giocando `match_easy`) non puo' essere applicato
+    // qui: gli edifici/la piattaforma dell'una non hanno senso nell'altra.
+    // Rimanda alla navigazione vera (title.js/"Carica partita" gia' lo fa
+    // per il primo avvio) invece di lasciare lo stato a meta' fra due room.
+    if (result.data.scene && result.data.scene !== scene.name) {
+      navigate("match", { room: result.data.scene, autoload: false, loadedData: result.data, fileHandle: result.handle });
+      return;
+    }
+    if (result.handle) fileHandle = result.handle;
+    applyLoadedData(result.data);
+    picked = null;
+    message = "partita caricata da file"; messageT = 3;
+  }
   seedChies();
   seedTutorialBuildings();
   // I fuochi d'artificio sopra chies a Gennaio (game/src/fireworks.js —
@@ -1582,10 +1696,14 @@ export async function mountMatch(ctx, params = {}) {
   // SUBITO al tap del bottone, prima ancora che il gioco vero appaia — qui
   // equivale a questa singola chiamata all'avvio, solo quando si arriva
   // davvero dalla title screen (vedi il commento su `autoloadOnBoot` sopra).
-  if (autoloadOnBoot) doLoad();
+  // `params.loadedData` (nuovo, "Carica partita" del menu principale, file
+  // vero): ha gia' precedenza implicita, semplicemente scavalca l'autoload —
+  // title.js non manda mai entrambi insieme (vedi navigate() li').
+  if (params.loadedData) applyLoadedData(params.loadedData);
+  else if (autoloadOnBoot) doLoad();
 
   function onKeydown(e) {
-    if (e.key === "s" || e.key === "S") { doSave(); message = "partita salvata"; messageT = 3; }
+    if (e.key === "s" || e.key === "S") doSave();
     if (e.key === "l" || e.key === "L") {
       const ok = doLoad();
       if (ok) picked = null;   // il riferimento selezionato apparteneva allo stato precedente
@@ -1961,10 +2079,12 @@ export async function mountMatch(ctx, params = {}) {
    * Menu di pausa (`paused`, sopra): cattura il canvas gia' disegnato per
    * questo frame (il mondo, congelato — la simulazione non e' avanzata) e lo
    * sfuma con `PauseBlur.blurScreen()` (game/src/gl.js), poi ci disegna sopra
-   * un oscuramento leggero + un pannello con titolo e tre bottoni
-   * (Riprendi/Salva/Carica, riusando `doSave()`/`doLoad()` gia' esistenti per
-   * S/L da tastiera). Nessun equivalente nel decompilato (STUDIO.md,
-   * `paused` sopra): puramente nostro.
+   * un oscuramento leggero + un pannello con titolo e i bottoni (Riprendi/
+   * Salva/Carica in localStorage, riusando `doSave()`/`doLoad()` gia'
+   * esistenti per S/L da tastiera; Salva/Carica su FILE, doSaveToFile()/
+   * doLoadFromFile() — vedi il commento su `fileHandle` piu' sopra).
+   * Nessun equivalente nel decompilato (STUDIO.md, `paused` sopra): puramente
+   * nostro.
    *
    * Chiamata FUORI dal batch GUI appena chiuso (`r.flush()` prima di questa
    * chiamata, nel ciclo di frame): `pauseBlur.blurScreen()` legge il
@@ -1988,10 +2108,16 @@ export async function mountMatch(ctx, params = {}) {
     // un mondo comunque colorato/luminoso.
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
+    // "Salva partita"/"Carica partita": quicksave rapido in localStorage
+    // (S/L da tastiera, invariato). "Salva su file"/"Carica da file": il
+    // salvataggio vero e portabile (save.js/saveToFile()/loadFromFile()) —
+    // vedi il commento su `fileHandle` sopra per come i due si incontrano.
     const rows = [
       { label: "Riprendi", action: "resume" },
       { label: "Salva partita", action: "save" },
       { label: "Carica partita", action: "load" },
+      { label: "Salva su file", action: "saveFile" },
+      { label: "Carica da file", action: "loadFile" },
       { label: "Torna al menu", action: "title" },
     ];
     const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
@@ -2539,12 +2665,15 @@ export async function mountMatch(ctx, params = {}) {
       if (hit?.action === "resume") {
         paused = false;
       } else if (hit?.action === "save") {
-        doSave();
-        message = "partita salvata"; messageT = 3;
+        doSave();   // messaggio (incluso il blocco su situazione critica) gestito dentro
       } else if (hit?.action === "load") {
         const ok = doLoad();
         if (ok) picked = null;
         message = ok ? "partita caricata" : "nessun salvataggio"; messageT = 3;
+      } else if (hit?.action === "saveFile") {
+        doSaveToFile();   // async, messaggio gestito dentro (fuoco e dimentica)
+      } else if (hit?.action === "loadFile") {
+        doLoadFromFile();   // async, idem
       } else if (hit?.action === "title") {
         navigate("menu");
       }
