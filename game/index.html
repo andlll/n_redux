@@ -26,9 +26,74 @@
              justify-content: center; gap: 18px;
              pointer-events: none; transition: opacity 0.6s ease; }
   #loading.hide { opacity: 0; }
-  #loading img { width: min(45vw, 340px); height: auto; opacity: 0;
-                 transition: opacity 0.8s ease; }
-  #loading.show img { opacity: 1; }
+  /* Animazione + "post processing" sul logo, richiesta dall'autore per
+     rendere viva l'attesa invece del semplice fade statico di prima.
+     `--logo-url` e' referenziato sia dall'<img> (via src) sia dagli
+     "ghost" sotto (via mask-image): un solo file, riusato per la
+     maschera invece che duplicato come asset. */
+  :root { --logo-url: url("./assets/mount_logo.png"); }
+  .logoWrap { position: relative; width: min(45vw, 340px); }
+  /* Alone rosso pulsante dietro al logo — la "cornice" di luce che un
+     PNG statico non puo' avere da solo, z-index sotto l'immagine.
+     Keyframe dedicato (`auraPulse`, non `fujiGlow`): quello anima
+     `filter: drop-shadow(...)`, che SOSTITUISCE l'intero valore di
+     `filter` invece di sommarsi al `blur(2px)` statico qui sotto — usarlo
+     anche qui avrebbe fatto sparire la sfocatura appena l'animazione
+     partiva (parte sempre subito, e' infinita). */
+  .logoWrap::before {
+    content: ""; position: absolute; inset: -30%; z-index: 0;
+    background: radial-gradient(circle at 50% 55%, rgba(255,45,45,.4), rgba(255,45,45,0) 68%);
+    filter: blur(2px); animation: auraPulse 3.6s ease-in-out infinite;
+  }
+  .logoWrap img {
+    display: block; width: 100%; height: auto; position: relative; z-index: 1;
+    opacity: 0; clip-path: circle(0px at 50% 50%);
+    animation: fujiGlow 3.6s ease-in-out infinite;
+  }
+  /* Rivelazione "a timbro": un cerchio che si apre dal centro invece del
+     semplice fade in opacita' — solo su #loading (primo avvio): la
+     dissolvenza rapida di #levelLoading fra le room resta deliberatamente
+     senza questa entrata (vedi il commento su #levelLoading piu' sotto). */
+  #loading.show .logoWrap img {
+    opacity: 1; clip-path: circle(75% at 50% 50%);
+    transition: opacity 0.8s ease, clip-path 1.15s cubic-bezier(.22,.8,.25,1);
+  }
+  #levelLoading .logoWrap img { opacity: 1; clip-path: circle(75% at 50% 50%); }
+  /* Sdoppiamento cromatico (ciano/blu) periodico: due sagome piene,
+     ritagliate dall'alpha dello stesso PNG con `mask-image`, in
+     `mix-blend-mode: screen` sopra sfondo nero — la stessa tecnica di uno
+     split RGB da editing video, non un secondo asset. Restano invisibili
+     (opacity 0) per quasi tutto il ciclo e si vedono solo per una frazione
+     di secondo, come un artefatto di trasmissione. */
+  .logoWrap .ghost {
+    position: absolute; inset: 0; z-index: 2; opacity: 0; pointer-events: none;
+    -webkit-mask-image: var(--logo-url); mask-image: var(--logo-url);
+    -webkit-mask-size: contain; mask-size: contain;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+    -webkit-mask-position: center; mask-position: center;
+    mix-blend-mode: screen; animation: rgbGlitch 5.4s infinite;
+  }
+  .logoWrap .ghost.cyan { background: #00e5ff; }
+  .logoWrap .ghost.blue { background: #4d5bff; animation-delay: .06s; }
+  @keyframes fujiGlow {
+    0%, 100% { filter: drop-shadow(0 0 6px rgba(255,45,45,.55)) drop-shadow(0 0 14px rgba(255,45,45,.22)); }
+    50%      { filter: drop-shadow(0 0 16px rgba(255,45,45,.85)) drop-shadow(0 0 34px rgba(255,45,45,.4)); }
+  }
+  @keyframes auraPulse {
+    0%, 100% { opacity: .75; transform: scale(1); }
+    50%      { opacity: 1;   transform: scale(1.08); }
+  }
+  @keyframes rgbGlitch {
+    0%, 92%, 100% { opacity: 0; transform: translate(0, 0); }
+    93% { opacity: .55; transform: translate(-3px, 0); }
+    94% { opacity: .4;  transform: translate(2px, 1px); }
+    95% { opacity: .55; transform: translate(-2px, -1px); }
+    96% { opacity: 0;   transform: translate(0, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .logoWrap::before, .logoWrap img, .logoWrap .ghost { animation: none; }
+    .logoWrap .ghost { display: none; }
+  }
   /* Scritta "loading" sotto il logo — piccola, bianca su nero, nello stesso
      stile della UI vera del gioco (font.js: un sans grottesco/geometrico,
      "Gotham" — mai monospace: il precedente `ui-monospace` non assomigliava
@@ -74,10 +139,23 @@
                   justify-content: center; gap: 18px;
                   pointer-events: none; opacity: 0; transition: opacity 0.25s ease; }
   #levelLoading.show { opacity: 1; }
-  #levelLoading img { width: min(45vw, 340px); height: auto; }
 </style>
 <canvas id="view"></canvas>
-<div id="loading"><img src="./assets/mount_logo.png" alt="Mount Fuji Software"><span>loading</span></div>
-<div id="levelLoading"><img src="./assets/mount_logo.png" alt="Mount Fuji Software"><span>loading</span></div>
+<div id="loading">
+  <div class="logoWrap">
+    <img src="./assets/mount_logo.png" alt="Mount Fuji Software">
+    <div class="ghost cyan" aria-hidden="true"></div>
+    <div class="ghost blue" aria-hidden="true"></div>
+  </div>
+  <span>loading</span>
+</div>
+<div id="levelLoading">
+  <div class="logoWrap">
+    <img src="./assets/mount_logo.png" alt="Mount Fuji Software">
+    <div class="ghost cyan" aria-hidden="true"></div>
+    <div class="ghost blue" aria-hidden="true"></div>
+  </div>
+  <span>loading</span>
+</div>
 <div id="hud"></div>
 <script type="module" src="./src/app.js"></script>
