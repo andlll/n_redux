@@ -154,10 +154,19 @@ export const BUILDING_TYPES = {
       // a ora: sbloccava i pulsanti blu delle monete di `casa` (vedi sotto),
       // rimasto fuori finche' `r12.hap` non serviva a niente.
       hap: { create: -50, destroy: 50 },
+      // [Bug corretto, segnalato dall'autore: "impalcature volanti/sequenze
+      // fuori posto"] Stessa gru mancante di `casa` sopra (`ir11`, stesso
+      // passo): **[C]** `impaind0to1f/Alarm_4.gml` (mai riletta finora per
+      // il decoro transitorio) crea "tops1" a (0,-42), identico a
+      // `impa0to1f`/`impasolf`/`impavil_f` — industria e' l'unico altro
+      // "cantiere base a 5 passi" senza `spawn`, stesso motivo (portata
+      // prima che il meccanismo esistesse).
       steps: [                                    // [C] impaind0to1r/Create.gml + Alarm_0/1/2/3
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
         { spr: "ir12", dur: 30 },
-        { spr: "ir11", dur: 370 },
+        { spr: "ir11", dur: 370, spawn: [
+          { spr: "toppers", dx: 0, dy: -42, depthOffset: -80 },
+        ] },
         { spr: "ir12", dur: 30 },
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
       ],
@@ -343,10 +352,22 @@ export const BUILDING_TYPES = {
         { spr: "c151", decor: "c151l" }, { spr: "c152", decor: "c152l" },
         { spr: "c153", decor: "c153l" }, { spr: "c154", decor: "c154l" },
       ],
+      // [Bug corretto, segnalato dall'autore: "impalcature volanti/sequenze
+      // fuori posto"] Nessuna gru appariva durante il cantiere di una casa —
+      // l'unico dei "cantieri base a 5 passi" (stessa forma di villa/solare)
+      // senza `spawn`. **[C]** letto `impa0to1f/Alarm_4.gml` (la traccia "f"
+      // di casa, mai riletta finora per il decoro transitorio): crea "tops1"
+      // a (0,-42) circa a meta' del passo "ir11" — stesso oggetto/offset
+      // gia' corretto per `solare`/`villa` sotto (`impasolf`/`impavil_f`,
+      // Alarm_4 identico), qui mancava soltanto perche' casa e' stata
+      // portata PRIMA che il meccanismo `spawn` esistesse (STUDIO.md, punto
+      // 4) e non e' mai stata riallineata alle altre.
       steps: [                    // [C] impa0to1r/Create.gml + Alarm_0/1/2/3 (790 tic: 390+30+310+30+30)
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
         { spr: "ir12", dur: 30 },
-        { spr: "ir11", dur: 310 },
+        { spr: "ir11", dur: 310, spawn: [
+          { spr: "toppers", dx: 0, dy: -42, depthOffset: -80 },
+        ] },
         { spr: "ir12", dur: 30 },
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
       ],
