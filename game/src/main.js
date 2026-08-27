@@ -1316,7 +1316,18 @@ export async function mountMatch(ctx, params = {}) {
    * Rilascio del puntatore mentre un gesto e' armato (`input.onPointerUp`):
    * se cade su una delle direzioni valide, costruisce davvero; altrimenti
    * annulla. [C] Collision_dir1..4.gml: l'edificio nasce sul lotto con la y
-   * maggiore fra origine e vicino, l'altro resta bloccato per sempre.
+   * maggiore fra origine e vicino — [Bug corretto, richiesto dall'autore:
+   * "alcuni edifici disattivano i placeholder adiacenti anche se liberi, non
+   * deve succedere"] l'ALTRO lotto (`blockedSite`, sotto) non viene piu'
+   * bloccato per sempre com'era nel decompilato (`dirdel/Collision_
+   * placeholder.gml`, [C], uccideva anche lui): resta un placeholder libero
+   * come ogni altro, deviazione esplicita dall'originale. Palazzo/museo
+   * restano comunque grandi due lotti VISIVAMENTE (lo sprite finale copre
+   * anche l'area del vicino, vedi `depthY` sotto, invariato) — costruire
+   * qualcos'altro proprio li' puo' quindi sovrapporsi a schermo col loro
+   * sprite; accettato dall'autore, nessuna maschera di collisione vera per
+   * evitarlo (STUDIO.md, "pepazzittecollider" mai ricostruito, stesso limite
+   * gia' noto per le torrette).
    */
   function resolvePlacement(sx, sy) {
     if (!armedPlacement) return;
@@ -1336,8 +1347,6 @@ export async function mountMatch(ctx, params = {}) {
     origin._armed = false;
     for (const k in def.placeCost) r12[k] -= def.placeCost[k];
     buildSite.consumed = true;
-    blockedSite.consumed = true;
-    blockedSlots.push({ x: blockedSite.x, y: blockedSite.y });
     // L'asse (dir1/dir3 "r" contro dir2/dir4 "rd", vedi il commento su
     // DIAGONAL_DIRS sopra) sceglie una catena di cantiere/varianti
     // interamente diversa (sprite orientati, famiglia c4xx "dispari" contro
@@ -2891,8 +2900,37 @@ export async function mountMatch(ctx, params = {}) {
       // "ruspaYes/No" sopra, un pelo piu' permissivo di UPSIGN_DEPTH cosi'
       // quei popup restano comunque sopra una torretta se mai si
       // sovrapponessero), mai contro un'altra torretta o contro se stesse.
-      const turretPriority = (o) => (o.obj === "building" && BUILDING_TYPES[o.ref.type]?.turret) ? -8000 : o.depth;
-      if (hit && (!picked || turretPriority(it) < turretPriority(picked))) picked = it;
+      //
+      // [Bug corretto, segnalato dall'autore: "alcuni edifici, quando
+      // costruiti, disattivano anche i placeholder adiacenti anche se sono
+      // liberi, non deve succedere — soprattutto con i sistemi di difesa"]
+      // PLACEHOLDER_DEPTH (sopra, -2) e' un depth di DISEGNO — il rombo viola
+      // deve stare sopra la strada ma sotto edifici/alberi, vedi il commento
+      // li' — non un depth di PICKING: qui sotto pero' veniva riusato per
+      // ENTRAMBI gli scopi tramite `o.depth`. Il depth vero di un edificio e'
+      // sempre `-y` (effDepth()), quasi sempre molto piu' negativo di -2 (un
+      // edificio a y=500 ha depth -500): nel concorso qui sotto un edificio
+      // il cui bounding box (rettangolare, spesso piu' largo/alto della sua
+      // singola cella — un palazzo a due piani, la sagoma di una torretta)
+      // sconfina nella cella di un VICINO ancora libero vinceva quindi
+      // SEMPRE il tap contro il placeholder sottostante, anche se quel
+      // placeholder non era mai stato consumato — il tocco veniva
+      // interpretato come "seleziona l'edificio vicino" invece di "costruisci
+      // qui", rendendo quella cella di fatto inaccessibile. Le torrette
+      // (`turretHitBox()`, l'unione di tutti i frame direzionali — un
+      // rettangolo ancora piu' grande — piu' il -8000 esplicito qui sotto)
+      // erano il caso peggiore, ma qualunque edificio con uno sprite
+      // abbastanza ingombrante riproduceva lo stesso sintomo. Qui un
+      // placeholder ancora libero ha sempre la priorita' su qualunque
+      // edificio (torretta inclusa: PLACEHOLDER_PICK_PRIORITY sta sotto
+      // -8000), ma resta comunque sotto ai popup veri (upsign/coin/upfaro/
+      // ruspaYes|No/bankIcon, tutti fra -9001 e -9100) che devono continuare
+      // a vincere quando si sovrappongono a un edificio.
+      const PLACEHOLDER_PICK_PRIORITY = -8500;
+      const pickPriority = (o) => o.obj === "placeholder" ? PLACEHOLDER_PICK_PRIORITY
+        : (o.obj === "building" && BUILDING_TYPES[o.ref.type]?.turret) ? -8000
+        : o.depth;
+      if (hit && (!picked || pickPriority(it) < pickPriority(picked))) picked = it;
     }
     if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
       const it = frameList[i];
