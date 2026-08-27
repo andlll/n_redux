@@ -3010,7 +3010,7 @@ export async function mountMatch(ctx, params = {}) {
         message = `${BUILDING_LABEL[selectedType] ?? selectedType}: not rebuilt yet`;
       } else {
         const err = placeAt(picked, selectedType);
-        message = err ?? `${def.label.toLowerCase()} piazzata (-${def.placeCost.mon} mon)`;
+        message = err ?? `${def.label.toLowerCase()} placed (-${def.placeCost.mon} mon)`;
       }
       messageT = 3;
     } else if (picked.obj === "building") {
@@ -4717,6 +4717,7 @@ export async function mountMatch(ctx, params = {}) {
     get beams() { return beams; },
     get aerSmoke() { return aerSmoke; }, get debris() { return debris; }, get ruins() { return ruins; },
     get blockedSlots() { return blockedSlots; }, get placeholders() { return placeholders; },
+    get armedPlacement() { return armedPlacement; }, get selectedType() { return selectedType; }, get message() { return message; },
     get bankPanelOpen() { return bankPanelOpen; }, setBankPanelOpen: (v) => { bankPanelOpen = v; },
     // Fine partita (`outcome` sopra) — comodo per testare le tre condizioni
     // senza aspettare che l'olio scenda a zero per davvero o costruire un
