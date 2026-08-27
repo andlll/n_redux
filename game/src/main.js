@@ -1814,6 +1814,57 @@ export async function mountMatch(ctx, params = {}) {
     const k = Math.min(1, u / PHASES[i].dur);
     return { rgb: from.rgb.map((v, j) => v + (to.rgb[j] - v) * k), a: from.a + (to.a - from.a) * k };
   }
+  // [Nuova funzionalita', segnalato dall'autore: "aura e baura... uno andava
+  // sul fondo per colorare il cielo e l'altro sopra gli edifici"] `aura`
+  // sopra e' solo META' del sistema originale — c'e' un SECONDO oggetto,
+  // `baura` (src/objects/baura), mai letto finora. **[C]** letto Create.gml +
+  // Alarm_0..7.gml riga per riga: stessa identica scaletta di durate di
+  // `aura`/PHASES sopra (290/200/290/900/290/100/290/900 tick — non una
+  // coincidenza, i due oggetti sono sincronizzati), ma `depth` non cambia mai
+  // (resta fisso a 50, il valore di default in baura/_object.json — il PIU'
+  // arretrato di ogni oggetto nella room, "il fondo"), e i suoi sprite (day/
+  // dayset/sett/setnite/nite) sono campionati pixel per pixel dalle texture
+  // originali: colori PIENI e OPACHI (alpha 255 ovunque, non 64/255 come
+  // `aura`), non un multiplicatore di tinta ma uno sfondo vero e proprio —
+  // `day`=(216,239,255) azzurro cielo, `sett`=(255,162,130) pesca tramonto,
+  // `nite`=(45,49,104) blu notte; `dayset`/`setnite` sono le stesse 290
+  // animazioni-transizione di `amb00`/`ambtr1`, ma qui un lerp RGB lineare
+  // fra i due colori pieni (verificato campionando piu' frame: il frame a
+  // meta' e' esattamente la media dei due estremi), non un fade di alpha.
+  // Stessa scala enorme (`action_sprite_transform(90, 90, 0, 0)`, contro
+  // 150x90 di `aura`) e stessa posizione fissa (`move_to(0, -200)`): copre
+  // l'intera room e OLTRE, sempre — l'autore lo notava proprio "anche fuori
+  // dalla mappa", dove infatti e' l'UNICO posto in cui si vede davvero: `air2`
+  // (il terreno, STUDIO.md/main.js) e' completamente opaco e copre l'intera
+  // room, quindi dentro i confini `baura` resta sempre coperto — la sua unica
+  // superficie visibile e' lo sfondo FUORI dalla room, oggi la vignetta bianca
+  // fissa qui sotto (aggiunta per i "bordi strappati" del terreno in
+  // zoom-out, mai un vero sfondo). `bauraColorAt()` sostituisce quel bianco
+  // fisso con la tinta vera, mescolata con bianco (`VIGNETTE_TINT_MIX`) per
+  // restare leggibile sotto le icone nere della UI in ogni condizione — la
+  // stessa ragione (STUDIO.md, sotto) per cui la vignetta e' bianca e non
+  // nera: qui pero' un compromesso, non un colore fisso, dato che il
+  // giocatore ha chiesto esplicitamente il tint del cielo invece del bianco
+  // piatto.
+  const BAURA_DAY = [216 / 255, 239 / 255, 255 / 255];
+  const BAURA_SUNSET = [255 / 255, 162 / 255, 130 / 255];
+  const BAURA_NIGHT = [45 / 255, 49 / 255, 104 / 255];
+  const BAURA_OVERLAY = [
+    { from: BAURA_DAY, to: BAURA_SUNSET },      // giorno(290): dayset, cielo -> tramonto
+    { from: BAURA_SUNSET, to: BAURA_SUNSET },   // alba(200): sett, fisso
+    { from: BAURA_SUNSET, to: BAURA_NIGHT },    // giorno(290): setnite, tramonto -> notte
+    { from: BAURA_NIGHT, to: BAURA_NIGHT },     // notte(900): nite, fisso
+    { from: BAURA_NIGHT, to: BAURA_SUNSET },    // giorno(290): setnite al contrario, notte -> tramonto
+    { from: BAURA_SUNSET, to: BAURA_SUNSET },   // alba(100): sett, fisso
+    { from: BAURA_SUNSET, to: BAURA_DAY },      // giorno(290): dayset al contrario, tramonto -> cielo
+    { from: BAURA_DAY, to: BAURA_DAY },         // giorno(900): day, fisso
+  ];
+  function bauraColorAt(t) {
+    const { i, u } = phaseIndexAt(t);
+    const { from, to } = BAURA_OVERLAY[i];
+    const k = Math.min(1, u / PHASES[i].dur);
+    return from.map((v, j) => v + (to[j] - v) * k);
+  }
 
   let phaseT = 0;
   function phaseIndexAt(t) {
@@ -3949,28 +4000,37 @@ export async function mountMatch(ctx, params = {}) {
 
     // Fuori dai confini della room: vignetta piena invece dei bordi
     // "strappati" del terreno quando lo zoom indietro supera la mappa (il
-    // terreno non e' disegnato per essere visto da fuori dai suoi bordi). Non
-    // ho trovato un oggetto originale dedicato: l'originale aveva un limite
-    // minimo di zoom esplicito apposta per non mostrare mai la mappa intera
-    // su `match` (STUDIO.md §2), quindi il problema a monte non si poneva
-    // mai. Qui ricreiamo l'effetto (vignetta) invece del vincolo che lo
-    // evitava.
+    // terreno non e' disegnato per essere visto da fuori dai suoi bordi).
+    // [Corretto: un oggetto originale dedicato esiste davvero] `baura`
+    // (vedi bauraColorAt() sopra) e' esattamente questo: uno sfondo enorme e
+    // OPACO, sempre coperto dal terreno DENTRO la room (STUDIO.md, `air2` e'
+    // opaco), quindi visibile solo qui — fuori dai suoi confini. L'originale
+    // non aveva comunque bisogno di questa vignetta (limite minimo di zoom
+    // esplicito su `match`, STUDIO.md §2: la mappa intera non si vedeva mai),
+    // quindi non c'e' un secondo oggetto dedicato alla vignetta stessa — solo
+    // a cosa mostrare quando la si disegna.
     //
-    // Bianca, non nera: le icone della UI (bottoni edificio, testo risorse)
-    // sono nere, e con zoom-out sufficiente la vignetta arriva a toccarle —
-    // nero su nero, illeggibile. Decisione presa insieme (segnalato
-    // dall'autore): il bianco resta leggibile sotto qualunque icona/testo
-    // scuro in ogni condizione di zoom o fase giorno/notte, senza bisogno di
-    // asset o logica in piu'.
+    // Bianca mescolata alla tinta di `baura`, non bianca pura ne' la tinta
+    // piena: le icone della UI (bottoni edificio, testo risorse) sono nere
+    // senza alcuno sfondo proprio, e con zoom-out sufficiente la vignetta le
+    // tocca — la tinta piena di `baura` la notte (blu scuro, 45,49,104)
+    // sarebbe nera su blu scuro, quasi illeggibile quanto nero su nero.
+    // `VIGNETTE_TINT_MIX` la stempera verso il bianco: resta un cielo che si
+    // riconosce (azzurro di giorno, pesca al tramonto, blu smorzato di
+    // notte) ma mai abbastanza scuro da inghiottire un'icona nera sopra.
     {
+      const VIGNETTE_TINT_MIX = 0.55;
+      const bauraRgb = bauraColorAt(phaseT).map((v) => 1 + (v - 1) * VIGNETTE_TINT_MIX);
+      const vignetteTint = (Math.round(bauraRgb[0] * 255) << 16)
+        | (Math.round(bauraRgb[1] * 255) << 8) | Math.round(bauraRgb[2] * 255);
       const b = cam.bounds;
       const p0 = cam.worldToScreen(b.left, b.top);
       const p1 = cam.worldToScreen(b.right, b.bottom);
       const cw = canvas.clientWidth, ch = canvas.clientHeight;
-      if (p0.y > 0) r.draw(solidFrame(white, cw, p0.y), 0, 0, 1, 0xffffff, 1);
-      if (p1.y < ch) r.draw(solidFrame(white, cw, ch - p1.y), 0, p1.y, 1, 0xffffff, 1);
-      if (p0.x > 0) r.draw(solidFrame(white, p0.x, ch), 0, 0, 1, 0xffffff, 1);
-      if (p1.x < cw) r.draw(solidFrame(white, cw - p1.x, ch), p1.x, 0, 1, 0xffffff, 1);
+      if (p0.y > 0) r.draw(solidFrame(white, cw, p0.y), 0, 0, 1, vignetteTint, 1);
+      if (p1.y < ch) r.draw(solidFrame(white, cw, ch - p1.y), 0, p1.y, 1, vignetteTint, 1);
+      if (p0.x > 0) r.draw(solidFrame(white, p0.x, ch), 0, 0, 1, vignetteTint, 1);
+      if (p1.x < cw) r.draw(solidFrame(white, cw - p1.x, ch), p1.x, 0, 1, vignetteTint, 1);
     }
 
     // Barra risorse vera (STUDIO.md §9 "GUI vera"). [C] src/objects/repre/
