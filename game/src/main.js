@@ -4010,25 +4010,20 @@ export async function mountMatch(ctx, params = {}) {
     // quindi non c'e' un secondo oggetto dedicato alla vignetta stessa — solo
     // a cosa mostrare quando la si disegna.
     //
-    // Bianca mescolata alla tinta di `baura`, non bianca pura ne' la tinta
-    // piena: le icone della UI (bottoni edificio, testo risorse) sono nere
-    // senza alcuno sfondo proprio, e con zoom-out sufficiente la vignetta le
-    // tocca — la tinta piena di `baura` la notte (blu scuro, 45,49,104)
-    // sarebbe nera su blu scuro, quasi illeggibile quanto nero su nero.
-    // `VIGNETTE_TINT_MIX` la stempera verso il bianco: resta un cielo che si
-    // riconosce (azzurro di giorno, pesca al tramonto, blu smorzato di
-    // notte) ma mai abbastanza scuro da inghiottire un'icona nera sopra.
+    // Tinta VERA di `baura` (nessuna diluizione verso il bianco), non piu'
+    // stemperata: **[Richiesto dall'autore]** la protezione per le icone
+    // nere della UI ora e' la loro stessa, sotto (`setColorize()`,
+    // `ICON_DARK_THRESHOLD` — vedi il commento li'), quindi lo sfondo qui
+    // puo' restare fedele a `baura` invece di doversi tenere chiaro per
+    // conto proprio.
     // [Deciso dall'autore, senza motivo specificato: "lo sfondo di match
     // easy lasciamolo bianco"] Su `match_easy` la vignetta resta bianca
     // pura, niente tint — `match`/`tutorial` restano col tint vero di
     // `baura` sopra.
     {
-      const VIGNETTE_TINT_MIX = 0.55;
-      const vignetteTint = roomParam === "match_easy" ? 0xffffff : (() => {
-        const bauraRgb = bauraColorAt(phaseT).map((v) => 1 + (v - 1) * VIGNETTE_TINT_MIX);
-        return (Math.round(bauraRgb[0] * 255) << 16)
-          | (Math.round(bauraRgb[1] * 255) << 8) | Math.round(bauraRgb[2] * 255);
-      })();
+      const bauraRgb = bauraColorAt(phaseT);
+      const vignetteTint = roomParam === "match_easy" ? 0xffffff
+        : (Math.round(bauraRgb[0] * 255) << 16) | (Math.round(bauraRgb[1] * 255) << 8) | Math.round(bauraRgb[2] * 255);
       const b = cam.bounds;
       const p0 = cam.worldToScreen(b.left, b.top);
       const p1 = cam.worldToScreen(b.right, b.bottom);
@@ -4197,6 +4192,41 @@ export async function mountMatch(ctx, params = {}) {
     uiButtons = [];
     let rx = UI_MARGIN - uiScrollX;
     let rowTop = baseY;
+    // [Nuova funzionalita', richiesta dall'autore: "le icone nere della UI,
+    // quando lo sfondo diventa troppo scuro, rendiamole bianche con un
+    // tint"] Queste icone (mano/gru/occhio/edifici non selezionati) sono
+    // sagome NERE pure senza sfondo proprio (STUDIO.md, vedi il commento
+    // su bauraColorAt() sopra): sul mondo di notte o dentro la vignetta
+    // scura fuori mappa (`match`/`tutorial`, baura, ora a tinta piena — vedi
+    // sopra) restano leggibili solo per contrasto col resto della scena, mai
+    // garantito. Moltiplicare per una tinta piu' chiara non serve a niente
+    // su nero puro (0*x=0, vedi Renderer.setColorize() in gl.js) — sotto una
+    // soglia di luminanza le disegniamo con `setColorize(true)`: sagoma
+    // (alpha) della texture, colore preso da `tint` direttamente invece che
+    // moltiplicato.
+    //
+    // La luminanza da controllare e' la PIU' SCURA fra due candidati, non
+    // solo l'ambient del mondo: la fila di bottoni vive in basso a schermo
+    // (`baseY`, vicino al bordo) — con zoom indietro sufficiente su
+    // `match`/`tutorial` puo' finire sopra la vignetta invece che sul mondo.
+    // Non vale la pena calcolare l'esatta sovrapposizione pixel per pixel:
+    // prendere sempre il minimo fra i due (quando la vignetta e' un
+    // candidato possibile) e' una scelta prudente, mai sbagliata in difetto
+    // — nel peggiore dei casi le icone diventano bianche un frame prima del
+    // necessario, mai il contrario. Soglia (0.4) scelta sotto la luminanza
+    // della notte "normale" del mondo (~0.74, PHASES sopra: la notte piatta
+    // da sola non basta a scurirle) ma sopra quella della tinta piena di
+    // `baura` di notte (~0.2, la stessa usata dalla vignetta sopra) — dove
+    // il nero puro sparirebbe davvero.
+    // I bottoni edificio SELEZIONATI (sprite `sprSel`, sotto) restano
+    // esclusi: quello NON e' un'icona nera ma un disegno a colori scelto a
+    // mano nell'arte originale (STUDIO.md, "GUI vera" — "non un tint, sono
+    // disegni diversi"), colorize lo appiattirebbe perdendo quella scelta.
+    function luma(rgb) { return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722; }
+    const worldLuma = luma(amb.rgb);
+    const vignetteLuma = roomParam === "match_easy" ? 1 : luma(bauraColorAt(phaseT));
+    const ICON_DARK_THRESHOLD = 0.4;
+    const iconsDark = Math.min(worldLuma, vignetteLuma) < ICON_DARK_THRESHOLD;
     for (let i = 0; i < row.length; i++) {
       const b = row[i], f = frames[i];
       if (!f) continue;
@@ -4214,12 +4244,15 @@ export async function mountMatch(ctx, params = {}) {
         // attivo", coerente con `r12.selec === 0` = mano/deselezionato
         // gia' usato sopra per spegnere l'hover viola dei placeholder.
         const tint = b.kind === "deselect" && r12.selec === 0 ? 0x66aaff : 0xffffff;
+        const usingSelSprite = b.kind === "building" && selectedType === b.type;
+        r.setColorize(iconsDark && !usingSelSprite);
         r.draw(f, rx, baseY, UI_SCALE, tint, 1);
         uiButtons.push({ x: rx, y: baseY - h, w, h, ...b });
         rowTop = Math.min(rowTop, baseY - h);
       }
       rx += w + GAP;
     }
+    r.setColorize(false);
     // Banda di trascinamento per lo scroll: tutta la larghezza schermo, dal
     // bordo superiore della riga fino in fondo — non solo i pixel dei
     // bottoni, cosi' anche un dito che parte fra due bottoni o dopo l'ultimo

@@ -21,9 +21,15 @@ in vec2 v_uv;
 in vec4 v_tint;
 uniform sampler2D u_tex;
 uniform vec4 u_ambient;                // tinta globale (ciclo giorno/notte)
+uniform bool u_colorize;               // vedi Renderer.setColorize() sotto
 out vec4 outColor;
 void main() {
-  vec4 c = texture(u_tex, v_uv) * v_tint;
+  vec4 tex = texture(u_tex, v_uv);
+  // u_colorize: ignora l'RGB della texture, usa solo la sua alpha come
+  // sagoma - l'unico modo di schiarire uno sprite che e' NERO puro (0,0,0):
+  // moltiplicare per qualunque tinta resta comunque nero (0*x=0), serve
+  // sostituire il colore, non moltiplicarlo. Vedi Renderer.setColorize().
+  vec4 c = u_colorize ? vec4(v_tint.rgb, tex.a * v_tint.a) : tex * v_tint;
   c.rgb *= u_ambient.rgb;
   if (c.a < 0.003) discard;
   outColor = c;
@@ -62,6 +68,7 @@ export class Renderer {
     this.uProj = gl.getUniformLocation(prog, "u_proj");
     this.uTex = gl.getUniformLocation(prog, "u_tex");
     this.uAmbient = gl.getUniformLocation(prog, "u_ambient");
+    this.uColorize = gl.getUniformLocation(prog, "u_colorize");
 
     this.maxQuads = maxQuads;
     this.data = new Float32Array(maxQuads * VERTS_PER_QUAD * FLOATS_PER_VERT);
@@ -86,6 +93,7 @@ export class Renderer {
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
     this.ambient = [1, 1, 1, 1];
+    this.colorize = false;
     this.drawCalls = 0;
   }
 
@@ -102,6 +110,11 @@ export class Renderer {
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(this.prog);
     gl.uniform1i(this.uTex, 0);
+    // Sempre spento all'inizio di ogni frame: setColorize(true) e' per
+    // pochi disegni mirati (icone UI scure che vanno schiarite, main.js),
+    // mai uno stato che deve sopravvivere al frame successivo.
+    this.colorize = false;
+    gl.uniform1i(this.uColorize, 0);
     this.drawCalls = 0;
   }
 
@@ -115,6 +128,22 @@ export class Renderer {
     this.flush();
     this.ambient = [r, g, b, 1];
     this.gl.uniform4f(this.uAmbient, r, g, b, 1);
+  }
+
+  /**
+   * Attiva/disattiva la "colorize mode" (FRAG sopra, `u_colorize`): mentre
+   * e' attiva, `draw()`/`drawQuad()` ignorano l'RGB della texture e
+   * disegnano `tint` a tinta piena, usando solo l'alpha della texture come
+   * sagoma — l'unico modo di schiarire uno sprite nero puro, dato che
+   * moltiplicare (il modo normale) non puo' farlo. Come `setAmbient()`,
+   * cambia uno uniform del batch: `flush()` prima di applicarlo, cosi' i
+   * quad gia' accodati restano nella modalita' in cui sono stati disegnati.
+   */
+  setColorize(on) {
+    if (this.colorize === on) return;
+    this.flush();
+    this.colorize = on;
+    this.gl.uniform1i(this.uColorize, on ? 1 : 0);
   }
 
   /**
