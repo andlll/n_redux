@@ -121,12 +121,6 @@
   .progressBar .fill { height: 100%; width: 0%; background: #fff;
                         border-radius: 2px; transition: width 0.2s ease; }
   .progressPct { font-variant-numeric: tabular-nums; opacity: .85; }
-  /* HUD di debug di main.js: nascosto di default (mostrato solo mentre e'
-     montata una partita, game/src/app.js/mountMatch()) cosi' non lampeggia
-     vuoto sul menu prima che lo script parta. */
-  #hud { display: none; position: fixed; left: 8px; top: 56px;
-         font: 12px/1.5 ui-monospace, monospace; color: #9fb4d8;
-         pointer-events: none; white-space: pre; text-shadow: 0 1px 2px #000; }
   /* Schermata fra il tap su un livello nel menu e il primo frame disegnato
      da main.js — [Bug corretto, segnalato dall'autore: "sembra che il
      gioco si sia bloccato" cliccando un livello] `navigate()` (game/src/
@@ -171,7 +165,6 @@
   <div class="progressBar"><div class="fill"></div></div>
   <span>loading <span class="progressPct">0%</span></span>
 </div>
-<div id="hud"></div>
 <!-- `./dist/app.js`, non `./src/app.js`: bundle minificato con code-splitting
      (STUDIO.md, "da PNG a WebP" + il seguito su JS) — generato da
      `game/package.json` ("npm run build", esbuild), MAI versionato (come

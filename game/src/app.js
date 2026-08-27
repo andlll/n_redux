@@ -22,7 +22,6 @@ import { Input } from "./input.js";
 import { evictUnneededRoomAtlases } from "./assets.js";
 
 const canvas = document.getElementById("view");
-const hud = document.getElementById("hud");
 const loading = document.getElementById("loading");
 const levelLoading = document.getElementById("levelLoading");
 
@@ -152,7 +151,6 @@ async function navigate(screen, params = {}) {
   try {
     resetInput();
     if (current) { current.dispose(); current = null; }
-    hud.style.display = "none";
     // [Bug corretto, segnalato dall'autore: "su iPhone tutorial/match facile
     // continuano a far ripartire il sito"] Libera SUBITO le texture GPU di
     // qualunque room-atlas non serva alla schermata che sta per montare

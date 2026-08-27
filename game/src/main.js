@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, nextUpgrade, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, DEBUG_INFINITE_RESOURCES, TURRET_SPRITE_NAMES } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -55,8 +55,6 @@ const RAIN_TILT_DEG = 20;
 // nella stessa sessione non accumula loop/listener fantasma.
 export async function mountMatch(ctx, params = {}) {
   const { gl, r, canvas, input, pauseBlur, white, navigate, reportProgress } = ctx;
-  const hud = document.getElementById("hud");
-  hud.style.display = "block";
   let stopped = false;
   // Cerchio morbido per l'animazione "bolla" delle monete raccolte (vedi
   // coinPops/collectCoinAt() piu' sotto) — nessun asset dell'originale la
@@ -335,7 +333,6 @@ export async function mountMatch(ctx, params = {}) {
   }
 
   for (const it of staticWorld) it._f = frameFor(it.spr);
-  let missingArt = staticWorld.filter((it) => !it._f).length;
 
   // Font bitmap reale della barra risorse (tools/25_font.py). [C]
   // src/objects/repre/DrawGUI.gml: action_font(gotham_mini, 0) — un font
@@ -545,7 +542,6 @@ export async function mountMatch(ctx, params = {}) {
   // scena PRIMA di questo file), quindi il suo `_f` viene assegnato nel primo
   // giro, in tempo.
   for (const it of staticWorld) if (!it._f) it._f = frameFor(it.spr);
-  missingArt = staticWorld.filter((it) => !it._f).length;
   // Catena fari -> seconda piattaforma (game/src/platform.js): su `match` e
   // `tutorial` (decisione dell'autore, vedi il commento su
   // applyMatchPlatform() sopra), come r120 li' — `match_easy` resta
@@ -1728,13 +1724,6 @@ export async function mountMatch(ctx, params = {}) {
   else if (autoloadOnBoot) doLoad();
 
   function onKeydown(e) {
-    if (e.key === "s" || e.key === "S") doSave();
-    if (e.key === "l" || e.key === "L") {
-      const ok = doLoad();
-      if (ok) picked = null;   // il riferimento selezionato apparteneva allo stato precedente
-      message = ok ? "game loaded" : "no save found";
-      messageT = 3;
-    }
     // Scorciatoia da tastiera per lo stesso bottone di pausa in basso a
     // destra (vedi `paused` sopra) — comoda su desktop, dove il bottone
     // resta comunque toccabile col mouse come su touch. Disabilitata mentre
@@ -3852,21 +3841,7 @@ export async function mountMatch(ctx, params = {}) {
     // soli), questi non verrebbero mai piu' ritentati altrimenti: un
     // edificio di fascia alta o di livello 2+ resterebbe invisibile per
     // sempre invece di comparire (pop-in) appena la sua pagina arriva.
-    // `missingArt` (HUD di debug) va ricalcolato qui insieme: prima del
-    // caricamento a due tempi restava valido per tutta la sessione una
-    // volta scritto (ogni pagina era gia' pronta al mount, quindi "senza
-    // sprite" era per forza un vuoto vero, nell'atlas non nel download).
-    // Ora un edificio "deferred" appare qui SENZA `_f` per i primi
-    // istanti (la sua pagina non e' ancora arrivata) — se il numero
-    // restasse quello del primo frame, un developer che lo legge in HUD
-    // penserebbe che quegli sprite mancano per sempre invece che stiano
-    // ancora per arrivare in background.
-    let stillMissing = 0;
-    for (const it of staticWorld) {
-      if (!it._f) it._f = frameFor(it.spr);
-      if (!it._f) stillMissing++;
-    }
-    missingArt = stillMissing;
+    for (const it of staticWorld) if (!it._f) it._f = frameFor(it.spr);
     frameList = staticWorld.filter((it) => !(it.obj === "placeholder" && it.consumed))
       .concat(dynamic).sort(sortWorld);
 
@@ -3957,31 +3932,26 @@ export async function mountMatch(ctx, params = {}) {
       const auraTint = (Math.round(aura.rgb[0] * 255) << 16) | (Math.round(aura.rgb[1] * 255) << 8) | Math.round(aura.rgb[2] * 255);
       r.draw(solidFrame(white, scene.width, scene.height), 0, 0, 1, auraTint, aura.a);
     }
-    let drawn = 0;
     const vw = cam.worldW, vh = cam.worldH;
     const l = cam.x - vw / 2, t = cam.y - vh / 2, rr = l + vw, bb = t + vh;
     for (const it of frameList) {
       if (it.obj === "placeholder" && !it._hovered && !it._armed) continue;
       const f = it._f;
-      // Istanze senza sprite (`missingArt` sopra): nel decompilato sono
-      // esattamente questo, non "arte persa" — controller/collisori invisibili
-      // by design (`pepazzittecollider`: sprite:null, visible:0, STUDIO.md "27
-      // istanze in match_easy, mai piu' ricostruite: fanno rimbalzare i
-      // pedoni"; `scroller`/`scroller2`/`scriptfucker`: idem). Un tempo
-      // disegnate come quadratino colorato semitrasparente per "vederle" in
-      // sviluppo — ma quel marcatore restava visibile a QUALUNQUE giocatore,
-      // sparsi per la mappa come se fossero un edificio/zona segnaposto
-      // (segnalato dall'autore: "i rettangolini rossi intorno alla citta'").
-      // `missingArt` in HUD resta il modo giusto per uno sviluppatore di sapere
-      // quanti sono — un conteggio testuale, non qualcosa che finisce davanti
-      // agli occhi di chi gioca soltanto.
+      // Istanze senza sprite: nel decompilato sono esattamente questo, non
+      // "arte persa" — controller/collisori invisibili by design
+      // (`pepazzittecollider`: sprite:null, visible:0, STUDIO.md "27 istanze
+      // in match_easy, mai piu' ricostruite: fanno rimbalzare i pedoni";
+      // `scroller`/`scroller2`/`scriptfucker`: idem). Un tempo disegnate come
+      // quadratino colorato semitrasparente per "vederle" in sviluppo — ma
+      // quel marcatore restava visibile a QUALUNQUE giocatore, sparsi per la
+      // mappa come se fossero un edificio/zona segnaposto (segnalato
+      // dall'autore: "i rettangolini rossi intorno alla citta'").
       if (!f) continue;
       const x0 = it.x - f.ox, y0 = it.y - f.oy;
       if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < t) continue;
       const base = (it.obj === "placeholder" && it._armed) ? ARMED_TINT : (it._tint ?? 0xffffff);
       const tint = it._selfLit ? base : mulTint(base, amb.rgb);
       r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
-      drawn++;
     }
     // Fantasma di anteprima per eolico/grattacielo (multiTilePreview, sopra):
     // alpha 0.5, nessuna tinta ambientale (come le luci/`_selfLit` sopra —
@@ -4606,46 +4576,6 @@ export async function mountMatch(ctx, params = {}) {
     if (outcome) drawOutcomeOverlay();
     else if (paused) drawPauseOverlay();
 
-    // --- HUD testuale di debug: numeri e stato dettagliato per lo sviluppo,
-    // sovrapposto in DOM. La barra sopra e' la UI "vera", in canvas.
-    let status = "";
-    if (picked?.obj === "building") {
-      const b = picked.ref;
-      const up = nextUpgrade(b);
-      status = `${BUILDING_TYPES[b.type].label} level ${b.level}  health ${b.life}`;
-      const g = BUILDING_TYPES[b.type].growth?.[b.level - 1];
-      if (b.construction) status += `  [construction in progress]`;
-      else if (up) {
-        if (upgradeUnlocked(b, r12, buildings)) {
-          status += `  upgrade ready (${Object.entries(up.cost).map(([k, v]) => v + " " + k).join(", ")})`;
-        } else if (up.atMakee != null) {
-          status += `  next upgrade at ${up.atMakee} production cycles (now ${b.makee ?? 0})`;
-        } else if (up.atAva != null) {
-          // [C] casa4s|d/Alarm_2.gml: ava==5 da solo non basta per palazzo —
-          // serve anche chies al livello 3 (up.requiresChiesLevel, letto sopra
-          // da upgradeUnlocked/tryStartUpgrade). Segnalato solo quando e'
-          // DAVVERO il gate mancante (crescita gia' completa), altrimenti resta
-          // il messaggio di crescita come per ogni altro edificio ad ava.
-          const avaDone = (b.ava ?? 0) >= up.atAva;
-          status += avaDone && up.requiresChiesLevel != null
-            ? `  requires the church at level ${up.requiresChiesLevel}`
-            : `  next upgrade at full growth (${b.ava ?? 0}/${up.atAva})`;
-        } else {
-          status += `  next upgrade at pop ${up.atPop}`;
-        }
-      } else if (g) {
-        status += (b.ava ?? 0) >= g.maxAva ? `  growth complete` : `  growth ${b.ava ?? 0}/${g.maxAva}`;
-      }
-    } else if (picked?.obj === "placeholder") {
-      const def = selectedType ? BUILDING_TYPES[selectedType] : null;
-      status = picked.consumed ? "occupied"
-        : !selectedType ? "empty — no building selected"
-        : def ? `empty — tap to build ${def.label.toLowerCase()} (${def.placeCost.mon} mon)`
-        : `empty — ${BUILDING_LABEL[selectedType] ?? selectedType} not rebuilt yet`;
-    } else if (picked) {
-      status = `${picked.obj}${picked.spr ? " [" + picked.spr + "]" : ""}`;
-    }
-
     // Cutscene iniziale del tutorial (game/src/tutorial.js): disegnata per
     // ultima, in spazio schermo, sopra a TUTTO il resto (mondo + UI vera) —
     // una vera cutscene a schermo pieno, non un livello del mondo qualunque.
@@ -4670,23 +4600,6 @@ export async function mountMatch(ctx, params = {}) {
       }
       r.flush();
     }
-
-    hud.textContent =
-      `${scene.name}  ${scene.width}x${scene.height}\n` +
-      `instances ${frameList.length}  drawn ${drawn}  drawcalls ${r.drawCalls}\n` +
-      `atlas ${atlas.pages.length} pages  missing art ${missingArt}\n` +
-      `zoom ${cam.zoom.toFixed(2)}  camera ${cam.x.toFixed(0)},${cam.y.toFixed(0)}\n` +
-      `phase ${amb.label}  buildings ${buildings.length}` +
-      (r12.storm ? `  ⛈ storm (${r12.stormT.toFixed(0)}s)\n` : `\n`) +
-      (platformState ? `crystals ${r12.crys}  r32: ${platformState.tier1.stage}  r22: ${platformState.tier2.stage}\n` : "") +
-      // [TEST] DEBUG_INFINITE_RESOURCES (buildings.js): mon/oil in barra sono
-      // gonfiati apposta — questa riga e' l'unico punto dove restano visibili
-      // i valori veri (r12.monReal/oilReal, state.js), per non perderli di
-      // vista mentre si testa senza restare mai a corto.
-      (DEBUG_INFINITE_RESOURCES ? `[TEST infinite resources] real: ${r12.monReal.toFixed(0)} mon, ${r12.oilReal.toFixed(0)} oil\n` : "") +
-      (status ? status + "\n" : "") +
-      (messageT > 0 ? message + "\n" : "") +
-      `drag, wheel/pinch, tap — [S] save [L] load [P] pause`;
 
     requestAnimationFrame(frame);
     } catch (err) {
@@ -4738,7 +4651,6 @@ export async function mountMatch(ctx, params = {}) {
     dispose() {
       stopped = true;
       window.removeEventListener("keydown", onKeydown);
-      hud.style.display = "none";
       delete window.__nimbus;
     },
   };
