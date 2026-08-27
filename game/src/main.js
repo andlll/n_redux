@@ -4018,11 +4018,17 @@ export async function mountMatch(ctx, params = {}) {
     // `VIGNETTE_TINT_MIX` la stempera verso il bianco: resta un cielo che si
     // riconosce (azzurro di giorno, pesca al tramonto, blu smorzato di
     // notte) ma mai abbastanza scuro da inghiottire un'icona nera sopra.
+    // [Deciso dall'autore, senza motivo specificato: "lo sfondo di match
+    // easy lasciamolo bianco"] Su `match_easy` la vignetta resta bianca
+    // pura, niente tint — `match`/`tutorial` restano col tint vero di
+    // `baura` sopra.
     {
       const VIGNETTE_TINT_MIX = 0.55;
-      const bauraRgb = bauraColorAt(phaseT).map((v) => 1 + (v - 1) * VIGNETTE_TINT_MIX);
-      const vignetteTint = (Math.round(bauraRgb[0] * 255) << 16)
-        | (Math.round(bauraRgb[1] * 255) << 8) | Math.round(bauraRgb[2] * 255);
+      const vignetteTint = roomParam === "match_easy" ? 0xffffff : (() => {
+        const bauraRgb = bauraColorAt(phaseT).map((v) => 1 + (v - 1) * VIGNETTE_TINT_MIX);
+        return (Math.round(bauraRgb[0] * 255) << 16)
+          | (Math.round(bauraRgb[1] * 255) << 8) | Math.round(bauraRgb[2] * 255);
+      })();
       const b = cam.bounds;
       const p0 = cam.worldToScreen(b.left, b.top);
       const p1 = cam.worldToScreen(b.right, b.bottom);
