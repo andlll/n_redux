@@ -1206,7 +1206,18 @@ export const BUILDING_TYPES = {
           { spr: "sr73", dur: 40 }, { spr: "sr74", dur: 40 },
           { spr: ["sr81", "sr82"], dur: 40 },
           { spr: "sr83", dur: 40 },
-          { spr: "sr84", dur: 1200, spawn: [{ spr: "tops5s", dx: 0, dy: -340, depthOffset: -344 }] },
+          // [Bug corretto] **[C]** tops5s/_object.json: "sprite": "topls",
+          // NON "tops5s" — `tops5s` e' il nome dell'OGGETTO GameMaker (che
+          // qui disegna il decoro transitorio del cantiere, src/objects/
+          // tops5s/Create.gml: `depth = -y - 344`, da cui il `depthOffset`
+          // gia' corretto sotto), non quello dello SPRITE che disegna: lo
+          // sprite vero e' lo stesso "topls" gia' usato dal topper di
+          // livello 1 (tops4s, sopra). L'atlas (data/match.atlas.json) non
+          // contiene affatto uno sprite chiamato "tops5s" (mai esistito con
+          // quel nome), quindi frameFor() tornava sempre `null`: il topper
+          // del secondo livello non spariva ne' appariva ruotato male, era
+          // semplicemente invisibile.
+          { spr: "sr84", dur: 1200, spawn: [{ spr: "topls", dx: 0, dy: -340, depthOffset: -344 }] },
         ],
       },
     ],
@@ -1340,7 +1351,12 @@ export const BUILDING_TYPES = {
           { spr: "dr73", dur: 40 }, { spr: "dr74", dur: 40 },
           { spr: ["dr81", "dr82"], dur: 40 },
           { spr: "dr83", dur: 40 },
-          { spr: "dr84", dur: 1200, spawn: [{ spr: "tops5d", dx: 0, dy: -340, depthOffset: -344 }] },
+          // [Bug corretto] Stesso bug di tops5s sopra (palazzo, vedi il
+          // commento li'): tops5d/_object.json dichiara "sprite": "topld",
+          // non "tops5d" — l'atlas non ha nessuno sprite chiamato "tops5d",
+          // quindi il topper del secondo livello su questo asse era
+          // altrettanto invisibile.
+          { spr: "dr84", dur: 1200, spawn: [{ spr: "topld", dx: 0, dy: -340, depthOffset: -344 }] },
         ],
       },
     ],
@@ -1458,7 +1474,14 @@ export const BUILDING_TYPES = {
         { spr: "rd35", dur: 40 }, { spr: "rd36", dur: 40 },
         { spr: ["rd41", "rd42", "rd43", "rd44"], dur: 40 },
         { spr: "rd45", dur: 40 },
-        { spr: "rd46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170, depthOffset: -172 }] },
+        // [Bug corretto] Stesso bug gia' risolto per palazzoRd sopra (vedi il
+        // commento li'): questa e' la catena "rd" (asse dir2/dir4), ma il
+        // topper spawnato restava "topls" (l'oggetto dell'asse "s"/dir1-3),
+        // copiato pari pari da museo invece di seguire l'asse — segnalato
+        // dall'autore ("il topper... risulta sempre nella stessa
+        // posizione"): "topld" e' il topper reale dell'asse "d" (tops4d/
+        // _object.json, stesso sprite gia' letto per palazzoRd).
+        { spr: "rd46", dur: 700, spawn: [{ spr: "topld", dx: 0, dy: -170, depthOffset: -172 }] },
       ],
     },
     consumption: [[{ day: 60, night: 150, mon: 60 }]],
