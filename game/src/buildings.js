@@ -1458,7 +1458,14 @@ export const BUILDING_TYPES = {
         { spr: "rd35", dur: 40 }, { spr: "rd36", dur: 40 },
         { spr: ["rd41", "rd42", "rd43", "rd44"], dur: 40 },
         { spr: "rd45", dur: 40 },
-        { spr: "rd46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170, depthOffset: -172 }] },
+        // [Bug corretto] Stesso bug gia' risolto per palazzoRd sopra (vedi il
+        // commento li'): questa e' la catena "rd" (asse dir2/dir4), ma il
+        // topper spawnato restava "topls" (l'oggetto dell'asse "s"/dir1-3),
+        // copiato pari pari da museo invece di seguire l'asse — segnalato
+        // dall'autore ("il topper... risulta sempre nella stessa
+        // posizione"): "topld" e' il topper reale dell'asse "d" (tops4d/
+        // _object.json, stesso sprite gia' letto per palazzoRd).
+        { spr: "rd46", dur: 700, spawn: [{ spr: "topld", dx: 0, dy: -170, depthOffset: -172 }] },
       ],
     },
     consumption: [[{ day: 60, night: 150, mon: 60 }]],
