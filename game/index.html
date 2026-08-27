@@ -31,7 +31,7 @@
      `--logo-url` e' referenziato sia dall'<img> (via src) sia dagli
      "ghost" sotto (via mask-image): un solo file, riusato per la
      maschera invece che duplicato come asset. */
-  :root { --logo-url: url("./assets/mount_logo.png"); }
+  :root { --logo-url: url("./assets/mount_logo.webp"); }
   .logoWrap { position: relative; width: min(45vw, 340px); }
   /* Alone rosso pulsante dietro al logo — la "cornice" di luce che un
      PNG statico non puo' avere da solo, z-index sotto l'immagine.
@@ -143,7 +143,7 @@
 <canvas id="view"></canvas>
 <div id="loading">
   <div class="logoWrap">
-    <img src="./assets/mount_logo.png" alt="Mount Fuji Software">
+    <img src="./assets/mount_logo.webp" alt="Mount Fuji Software">
     <div class="ghost cyan" aria-hidden="true"></div>
     <div class="ghost blue" aria-hidden="true"></div>
   </div>
@@ -151,7 +151,7 @@
 </div>
 <div id="levelLoading">
   <div class="logoWrap">
-    <img src="./assets/mount_logo.png" alt="Mount Fuji Software">
+    <img src="./assets/mount_logo.webp" alt="Mount Fuji Software">
     <div class="ghost cyan" aria-hidden="true"></div>
     <div class="ghost blue" aria-hidden="true"></div>
   </div>

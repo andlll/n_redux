@@ -37,6 +37,22 @@ foreach ($b in $plan.blits) {
     $gfx[[int]$b.dst].DrawImage($src[$b.src], $d, $s, [System.Drawing.GraphicsUnit]::Pixel)
 }
 
+# GDI+ (System.Drawing) non ha un encoder WebP nativo: da quando
+# 23_atlas.py/25_font.py/26_logo.py emettono "*.webp" in blitplan.json
+# (24_blit.py, la versione Python usata da CI, salva davvero in WebP —
+# vedi il commento li'), questo script scriverebbe comunque byte PNG dentro
+# un file chiamato ".webp": un formato sbagliato spacciato per un altro,
+# rotto in un modo silenzioso (nessun errore, il file esiste ed e' persino
+# un'immagine valida — solo con l'estensione sbagliata). Meglio fermarsi
+# subito con un errore chiaro: usa tools/24_blit.py (Python) per la build
+# vera, questo resta solo per chi lavora su Windows senza Python a portata
+# di mano e puo' accettare un PNG rinominato a mano.
+foreach ($p in $plan.pages) {
+    if ($p.file -like "*.webp") {
+        throw "24_blit.ps1 non sa scrivere WebP (GDI+ non ha un encoder). Usa 'python3 tools/24_blit.py $Room' invece."
+    }
+}
+
 $total = 0
 for ($i = 0; $i -lt $dst.Count; $i++) {
     $gfx[$i].Dispose()

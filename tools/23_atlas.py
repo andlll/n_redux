@@ -798,7 +798,7 @@ heights = [pow2(p["bottom"]) for p in pages]
 # ---------------------------------------------------------------- output
 atlas = {"room": room_name, "corePages": CORE_PAGE_COUNT, "pages": [], "sprites": {}}
 for pi, h in enumerate(heights):
-    atlas["pages"].append({"file": "%s_%d.png" % (room_name, pi), "w": PAGE, "h": h})
+    atlas["pages"].append({"file": "%s_%d.webp" % (room_name, pi), "w": PAGE, "h": h})
 
 by_sprite = {}
 for r in rects:

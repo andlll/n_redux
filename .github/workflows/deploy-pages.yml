@@ -1,9 +1,10 @@
 name: Deploy static site
 
 # Il repo versiona solo la fonte (dati, texture originali, codice del motore).
-# Gli atlas per room (game/assets/*.png) sono derivati e volutamente non
-# versionati: questa pipeline li rigenera ad ogni deploy e pubblica game/
-# cosi' com'e' come sito statico, senza nessun passo lato server a runtime.
+# Gli atlas per room (game/assets/*.webp, PNG fino a STUDIO.md "da PNG a
+# WebP") sono derivati e volutamente non versionati: questa pipeline li
+# rigenera ad ogni deploy e pubblica game/ cosi' com'e' come sito statico,
+# senza nessun passo lato server a runtime.
 
 on:
   push:

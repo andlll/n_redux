@@ -25,7 +25,7 @@ if not font:
 
 tex = font["texture"]
 page = page_by_id[tex["tex"]]
-out_file = "font_%s.png" % font_name
+out_file = "font_%s.webp" % font_name
 
 glyphs = {}
 for g in font["glyphs"]:

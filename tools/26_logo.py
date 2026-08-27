@@ -25,7 +25,7 @@ if not spr:
     sys.exit("sprite non trovato: %s" % spr_name)
 fr = spr["frames"][0]
 page = page_by_id[fr["tex"]]
-out_file = "%s.png" % spr_name
+out_file = "%s.webp" % spr_name
 
 plan = {
     "srcDir": os.path.join(ARCHIVE, "assets", "textures"),
