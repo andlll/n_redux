@@ -28,7 +28,7 @@ import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
-import { loadFont, drawText, measureText } from "./font.js";
+import { loadFont, drawText, measureText, fitTextScale } from "./font.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE,
@@ -2151,6 +2151,16 @@ export async function mountMatch(ctx, params = {}) {
     }
   }
 
+  // Tavolozza del menu di pausa (drawPauseOverlay()/drawSavingOptionsOverlay()
+  // sotto, richiesto dall'autore: pannello e bottoni "sulla tonalita' del
+  // bianco" con "un effetto di trasparenza figo" invece del riquadro scuro
+  // opaco di prima) — bottoni piu' opachi/bianchi del pannello cosi' restano
+  // riconoscibili come elementi cliccabili distinti sopra il "vetro" del
+  // pannello, che lascia intravedere di piu' il mondo sfocato dietro.
+  const PANEL_TINT = 0xffffff, PANEL_ALPHA = 0.78;
+  const BUTTON_TINT = 0xffffff, BUTTON_ALPHA = 0.92;
+  const TEXT_TINT = 0x232838;
+
   /**
    * Menu di pausa (`paused`, sopra): cattura il canvas gia' disegnato per
    * questo frame (il mondo, congelato — la simulazione non e' avanzata) e lo
@@ -2200,19 +2210,28 @@ export async function mountMatch(ctx, params = {}) {
     ];
     const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
-    r.draw(solidFrame(white, panelW, panelH), px, py, 1, 0x20242c, 0.95);
+    // Pannello "vetro smerigliato": bianco traslucido invece del rettangolo
+    // scuro opaco di prima, angoli arrotondati (pausePanelFrame(), sopra) al
+    // posto degli angoli vivi — appoggiato sullo sfondo gia' sfumato/
+    // scurito qualche riga sopra, cosi' la trasparenza lascia intravedere il
+    // mondo sfocato invece di un bianco piatto.
+    r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
-    const titleScale = 2.4;
     const title = "PAUSE";
-    drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 22, titleScale, 0xffffff, 1);
+    const titleScale = fitTextScale(fontMini, title, panelW - 24, 3);
+    drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 22, titleScale, TEXT_TINT, 1);
 
     pauseMenuButtons = [];
-    const btnW = panelW - 60, btnH = 46, btnGap = 14, textScale = 1.3;
+    const btnW = panelW - 60, btnH = 46, btnGap = 14;
+    // Una sola scala per tutti i bottoni (il minimo che ci sta per
+    // l'etichetta piu' lunga), non una per riga: bottoni di taglia diversa
+    // nello stesso menu sembrerebbero un errore, non una scelta.
+    const textScale = Math.min(...rows.map((row) => fitTextScale(fontMini, row.label, btnW - 20, 2)));
     let by = py + 96;
     for (const row of rows) {
       const bx = px + (panelW - btnW) / 2;
-      r.draw(solidFrame(white, btnW, btnH), bx, by, 1, 0x3a4152, 0.95);
-      drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, 0xffffff, 1);
+      r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
+      drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, TEXT_TINT, 1);
       pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
@@ -2245,19 +2264,20 @@ export async function mountMatch(ctx, params = {}) {
     ];
     const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
-    r.draw(solidFrame(white, panelW, panelH), px, py, 1, 0x20242c, 0.95);
+    r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
-    const titleScale = 1.7;
     const title = "SAVING OPTIONS";
-    drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 26, titleScale, 0xffffff, 1);
+    const titleScale = fitTextScale(fontMini, title, panelW - 24, 3);
+    drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 26, titleScale, TEXT_TINT, 1);
 
     pauseMenuButtons = [];
-    const btnW = panelW - 60, btnH = 46, btnGap = 14, textScale = 1.1;
+    const btnW = panelW - 60, btnH = 46, btnGap = 14;
+    const textScale = Math.min(...rows.map((row) => fitTextScale(fontMini, row.label, btnW - 20, 2)));
     let by = py + 96;
     for (const row of rows) {
       const bx = px + (panelW - btnW) / 2;
-      r.draw(solidFrame(white, btnW, btnH), bx, by, 1, 0x3a4152, 0.95);
-      drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, 0xffffff, 1);
+      r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
+      drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, TEXT_TINT, 1);
       pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
@@ -2439,6 +2459,31 @@ export async function mountMatch(ctx, params = {}) {
     }
     return solidFrame(tutorialBoxTex, w, h);
   }
+
+  /**
+   * Stessa idea di cache di tutorialBoxFrame() sopra, generalizzata: un solo
+   * slot di texture per un dato raggio, rigenerata solo quando (w,h)
+   * cambiano davvero. Usata per il pannello e i bottoni del menu di pausa
+   * (drawPauseOverlay()/drawSavingOptionsOverlay() piu' sopra): due raggi
+   * diversi (pannello piu' arrotondato dei bottoni al suo interno), quindi
+   * due cache separate — un solo slot condiviso fra le due forme le
+   * farebbe invalidare a vicenda ad ogni draw, ricreando la texture ogni
+   * frame invece di riusarla.
+   */
+  function makeRoundRectCache(radius) {
+    let tex = null, key = "";
+    return (w, h) => {
+      const k = Math.round(w) + "x" + Math.round(h);
+      if (k !== key) {
+        if (tex) gl.deleteTexture(tex);
+        tex = makeRoundedRectTexture(gl, Math.round(w), Math.round(h), radius);
+        key = k;
+      }
+      return solidFrame(tex, w, h);
+    };
+  }
+  const pausePanelFrame = makeRoundRectCache(20);
+  const pauseButtonFrame = makeRoundRectCache(14);
 
   /** Test punto-in-rombo, centrato sul bounding box di un frame: i placeholder
    * sono disegnati come sprite romboidali ("phold", il rombo viola —
