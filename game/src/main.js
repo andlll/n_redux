@@ -54,7 +54,7 @@ const RAIN_TILT_DEG = 20;
 // window.__nimbus), cosi' tornare al menu e rientrare in partita piu' volte
 // nella stessa sessione non accumula loop/listener fantasma.
 export async function mountMatch(ctx, params = {}) {
-  const { gl, r, canvas, input, pauseBlur, white, navigate } = ctx;
+  const { gl, r, canvas, input, pauseBlur, white, navigate, reportProgress } = ctx;
   const hud = document.getElementById("hud");
   hud.style.display = "block";
   let stopped = false;
@@ -151,15 +151,12 @@ export async function mountMatch(ctx, params = {}) {
   const initialFocusY = chiesFocus ? chiesFocus.y : scene.height / 2;
   cam.x = initialFocusX;
   cam.y = initialFocusY;
-  // minZoom = quanto ci si puo' avvicinare: sotto 0.5 gli sprite (disegnati
-  // alla risoluzione nativa dell'atlas) si vedono sgranati, ingranditi oltre
-  // il loro dettaglio reale. Vale su entrambe le piattaforme: su mobile
-  // maxZoom si ricalcola ad ogni resize() in base a quanto serve per
-  // inquadrare tutta la room (vedi sotto — non ha senso lasciar allontanare
-  // lo zoom molto oltre "si vede tutta la mappa"); su desktop maxZoom resta
-  // pixelPerfectZoom() (sotto), lo zoom di default: richiesto dall'autore,
-  // la rotella puo' avvicinare (ingrandire, zoom < default) ma non
-  // allontanare oltre il pixel-perfect com'era prima di questo giro.
+  // minZoom = quanto ci si puo' avvicinare: sotto meta' della risoluzione
+  // nativa dell'atlas gli sprite si vedono sgranati, ingranditi oltre il
+  // loro dettaglio reale. Valore INIZIALE soltanto — ricalcolato ad ogni
+  // resize() (sotto, `cam.minZoom = pixelPerfectZoom() * 0.5`) una volta che
+  // il devicePixelRatio vero e' noto, vedi il commento li' sul perche' un
+  // valore assoluto fisso qui sarebbe sbagliato su schermi hidpi.
   cam.minZoom = 0.5;
   // Finche' non tocchi niente la camera inquadra tutta la room (mobile) o
   // resta al pixel-perfect di default (desktop), e si riadatta se lo
@@ -222,7 +219,9 @@ export async function mountMatch(ctx, params = {}) {
   // perche' e' il giocatore a farle comparire. `loadRoomAtlas()` (game/src/
   // assets.js) cache atlas+texture per room: rientrare in questa stessa room
   // piu' volte nella sessione (SPA, game/src/app.js) non le riscarica.
-  const { atlas, pageTex } = await loadRoomAtlas(gl, roomName);
+  const { atlas, pageTex } = await loadRoomAtlas(gl, roomName, {
+    onProgress: (loaded, total) => reportProgress(roomName, loaded, total),
+  });
   // `frameIdx` (default 0): quasi tutti gli sprite del motore sono statici,
   // una sola posa (STUDIO.md, "nessun sistema di image_speed") — ma alcuni
   // (le svolte delle auto, game/src/cars.js) sono davvero multi-frame
@@ -1091,7 +1090,7 @@ export async function mountMatch(ctx, params = {}) {
     // sono disponibili da subito anche se le espansioni non sono state
     // costruite").
     if (!isPlaceholderActive(placeholder.x, placeholder.y, platformState)) {
-      return "quest'area non fa ancora parte della piattaforma";
+      return "this area isn't part of the platform yet";
     }
     // [C] placeholder/Mouse_LeftReleased.gml, selec==3: il piazzamento vero e
     // proprio richiede anche `close==0` (nessun'altra torretta troppo vicina,
@@ -1099,7 +1098,7 @@ export async function mountMatch(ctx, params = {}) {
     // del costo, come nel decompilato (il blocco intero e' innestato dentro
     // quel controllo, non dopo aver gia' scalato i mon).
     if (def.turret && tooCloseToTurret(buildings, placeholder.x, placeholder.y)) {
-      return "troppo vicino a un'altra torretta di difesa";
+      return "too close to another defense turret";
     }
     // [C] placeholder/Mouse_LeftReleased.gml, ramo selec==71 (monum): scala
     // 20000 mon senza controllare prima `mon>=20000`, a differenza di OGNI
@@ -1107,7 +1106,7 @@ export async function mountMatch(ctx, params = {}) {
     // questa asimmetria (buildings.js, BUILDING_TYPES.monum) invece di
     // "correggerla" silenziosamente: puo' davvero portare mon sotto zero.
     if (!def.noAffordCheck && !canAfford(r12, def.placeCost)) {
-      return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
+      return `need ${def.placeCost.mon} mon (have ${r12.mon.toFixed(0)})`;
     }
     // `eolico`/`grattacielo` (def.multiTile.anchorOffset): il centro visivo
     // e' il placeholder TOCCATO piu' l'offset FISSO letto dal decompilato
@@ -1125,7 +1124,7 @@ export async function mountMatch(ctx, params = {}) {
     let cluster = [placeholder];
     if (def.multiTile) {
       cluster = findWindCluster(placeholder);
-      if (!cluster) return `serve un'area libera di ${def.multiTile.count} lotti adiacenti (un rettangolo)`;
+      if (!cluster) return `need a free area of ${def.multiTile.count} adjacent lots (a rectangle)`;
     }
     for (const k in def.placeCost) r12[k] -= def.placeCost[k];
     // [C] `impavent`, una volta nato, uccide con la propria maschera ogni
@@ -1206,9 +1205,9 @@ export async function mountMatch(ctx, params = {}) {
     // pagando 1000 mon ogni volta — segnalato dall'autore giocando. `parco`
     // resta un solo `oversolar` booleano (nessuna lista): un secondo tocco
     // con un pannello gia' presente non deve costare ne' creare nulla.
-    if (parco.oversolar) return "c'e' gia' un pannello solare su questo parco";
+    if (parco.oversolar) return "there's already a solar panel on this park";
     const def = BUILDING_TYPES.solare;
-    if (!canAfford(r12, def.placeCost)) return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
+    if (!canAfford(r12, def.placeCost)) return `need ${def.placeCost.mon} mon (have ${r12.mon.toFixed(0)})`;
     for (const k in def.placeCost) r12[k] -= def.placeCost[k];
     const b = placeBuilding("solare", parco.x, parco.y, 0);
     b.overpark = true;
@@ -1290,17 +1289,17 @@ export async function mountMatch(ctx, params = {}) {
     // Stesso gate di placeAt() sopra (platform.js, isPlaceholderActive()): un
     // lotto non ancora su un pezzo di piattaforma esistente non arma niente.
     if (!isPlaceholderActive(origin.x, origin.y, platformState)) {
-      return "quest'area non fa ancora parte della piattaforma";
+      return "this area isn't part of the platform yet";
     }
     if (!canAfford(r12, def.placeCost)) {
-      return `serve ${def.placeCost.mon} mon (hai ${r12.mon.toFixed(0)})`;
+      return `need ${def.placeCost.mon} mon (have ${r12.mon.toFixed(0)})`;
     }
     const targets = findDiagonalTargets(origin);
     // [I] l'originale arma comunque (crea cre1..cre4 a vuoto) anche con zero
     // lotti liberi vicini, lasciando il giocatore trascinare per niente: qui,
     // come gia' scelto per eolico, un messaggio chiaro subito invece di un
     // gesto che puo' solo fallire.
-    if (targets.length === 0) return "serve un lotto libero adiacente in diagonale";
+    if (targets.length === 0) return "need a free lot diagonally adjacent";
     armedPlacement = { type, origin, targets };
     origin._armed = true;
     return null;
@@ -1326,7 +1325,7 @@ export async function mountMatch(ctx, params = {}) {
     const hit = targets.find((t) => inFrameDiamond(w.x, w.y, t.placeholder.x, t.placeholder.y, t.placeholder._f));
     if (!hit) {
       cancelPlacement();
-      message = "piazzamento annullato";
+      message = "placement cancelled";
       messageT = 3;
       return;
     }
@@ -1368,7 +1367,7 @@ export async function mountMatch(ctx, params = {}) {
     if (b.level >= 1) spawnDecor(b, currentDecor(b));
     constructionBalloons.push(spawnConstructionBalloon(buildSite.x, buildSite.y));
     armedPlacement = null;
-    message = `${def.label.toLowerCase()} piazzato (-${def.placeCost.mon} mon)`;
+    message = `${def.label.toLowerCase()} placed (-${def.placeCost.mon} mon)`;
     messageT = 3;
   }
 
@@ -1570,22 +1569,22 @@ export async function mountMatch(ctx, params = {}) {
     // state.js `createR12()`).
     const cap = oilCap(buildings);
     const oilThreshold = Number.isFinite(cap) ? cap * 0.1 : 500;
-    if (r12.oil <= oilThreshold) return "l'olio e' quasi esaurito";
-    if (r12.storm) return "un temporale sta colpendo la citta'";
-    if (r12.alertT > 0) return "un attacco e' in arrivo";
+    if (r12.oil <= oilThreshold) return "oil is almost depleted";
+    if (r12.storm) return "a storm is hitting the city";
+    if (r12.alertT > 0) return "an attack is incoming";
     if (chiesScene) {
       const r2 = CRITICAL_THREAT_RADIUS * CRITICAL_THREAT_RADIUS;
       const near = threats.some((th) => (th.x - chiesScene.x) ** 2 + (th.y - chiesScene.y) ** 2 < r2);
-      if (near) return "una minaccia e' vicina alla citta'";
+      if (near) return "a threat is near the city";
     }
     return null;
   }
 
   function doSave() {
     const reason = criticalSaveReason();
-    if (reason) { message = "Non puoi salvare adesso: " + reason; messageT = 3; return; }
+    if (reason) { message = "You can't save right now: " + reason; messageT = 3; return; }
     save(scene.name, r12, buildings, ruins, blockedSlots, platformState);
-    message = "partita salvata"; messageT = 3;
+    message = "game saved"; messageT = 3;
   }
   // Applica un salvataggio gia' letto/parsato (da localStorage O da file,
   // save.js) allo stato vivo della partita — corpo unico riusato da
@@ -1656,16 +1655,16 @@ export async function mountMatch(ctx, params = {}) {
   // messaggio "a fuoco e dimentica" del motore.
   async function doSaveToFile() {
     const reason = criticalSaveReason();
-    if (reason) { message = "Non puoi salvare adesso: " + reason; messageT = 3; return; }
+    if (reason) { message = "You can't save right now: " + reason; messageT = 3; return; }
     const data = serializeSave(scene.name, r12, buildings, ruins, blockedSlots, platformState);
     try {
       const h = await saveToFile(data, fileHandle);
       if (h === undefined) return;   // dialog annullato dall'utente, nessun messaggio
       if (h) fileHandle = h;
-      message = "partita salvata su file"; messageT = 3;
+      message = "game saved to file"; messageT = 3;
     } catch (err) {
       console.error("nimbus: salvataggio su file fallito", err);
-      message = "salvataggio su file fallito"; messageT = 3;
+      message = "save to file failed"; messageT = 3;
     }
   }
   async function doLoadFromFile() {
@@ -1674,7 +1673,7 @@ export async function mountMatch(ctx, params = {}) {
       result = await loadFromFile();
     } catch (err) {
       console.error("nimbus: caricamento da file fallito", err);
-      message = "caricamento da file fallito"; messageT = 3;
+      message = "load from file failed"; messageT = 3;
       return;
     }
     if (!result) return;   // dialog annullato dall'utente, nessun messaggio
@@ -1683,7 +1682,7 @@ export async function mountMatch(ctx, params = {}) {
     // il checksum non combacia (modificato a mano, save.js/verify()). A
     // differenza del dialog annullato (sopra) qui vale la pena dirlo.
     if (result === "invalid") {
-      message = "file non valido o modificato"; messageT = 3;
+      message = "invalid or modified file"; messageT = 3;
       return;
     }
     // Un file salvato per un'ALTRA room (es. si apre un salvataggio di
@@ -1698,7 +1697,7 @@ export async function mountMatch(ctx, params = {}) {
     if (result.handle) fileHandle = result.handle;
     applyLoadedData(result.data);
     picked = null;
-    message = "partita caricata da file"; messageT = 3;
+    message = "game loaded from file"; messageT = 3;
   }
   seedChies();
   seedTutorialBuildings();
@@ -1724,7 +1723,7 @@ export async function mountMatch(ctx, params = {}) {
     if (e.key === "l" || e.key === "L") {
       const ok = doLoad();
       if (ok) picked = null;   // il riferimento selezionato apparteneva allo stato precedente
-      message = ok ? "partita caricata" : "nessun salvataggio";
+      message = ok ? "game loaded" : "no save found";
       messageT = 3;
     }
     // Scorciatoia da tastiera per lo stesso bottone di pausa in basso a
@@ -1761,14 +1760,14 @@ export async function mountMatch(ctx, params = {}) {
   // ad alarm in quella room, non solo il cielo.
   const TICKS_PER_SEC = 60;
   const PHASES = [
-    { name: "giorno", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
-    { name: "alba", rgb: [1, 0.949, 0.906], dur: 200 / TICKS_PER_SEC },
-    { name: "giorno", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
-    { name: "notte", rgb: [0.725, 0.725, 0.976], dur: 900 / TICKS_PER_SEC },
-    { name: "giorno", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
-    { name: "alba", rgb: [1, 0.949, 0.906], dur: 100 / TICKS_PER_SEC },
-    { name: "giorno", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
-    { name: "giorno", rgb: [1, 1, 1], dur: 900 / TICKS_PER_SEC },
+    { name: "day", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
+    { name: "dawn", rgb: [1, 0.949, 0.906], dur: 200 / TICKS_PER_SEC },
+    { name: "day", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
+    { name: "night", rgb: [0.725, 0.725, 0.976], dur: 900 / TICKS_PER_SEC },
+    { name: "day", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
+    { name: "dawn", rgb: [1, 0.949, 0.906], dur: 100 / TICKS_PER_SEC },
+    { name: "day", rgb: [1, 1, 1], dur: 290 / TICKS_PER_SEC },
+    { name: "day", rgb: [1, 1, 1], dur: 900 / TICKS_PER_SEC },
   ];
   // [C] aura/Create.gml + Alarm_0..7.gml: oltre a ricolorare gli oggetti
   // (PHASES/ambientAt() sopra), l'originale disegna anche un OVERLAY vero —
@@ -1913,12 +1912,12 @@ export async function mountMatch(ctx, params = {}) {
   // tinta ambientale che sfuma. Usa la stessa fase di ambientAt() (nessuno
   // smoothstep: qui serve un confine netto, com'era nell'originale).
   function isNight(t) {
-    return PHASES[phaseIndexAt(t).i].name === "notte";
+    return PHASES[phaseIndexAt(t).i].name === "night";
   }
   // [C] sooool/Alarm_4.gml: `aura.dawn` — lo stesso confine netto di isNight()
   // sopra, per la produzione elettrica di `solare` (stepSolarProduction()).
   function isDawn(t) {
-    return PHASES[phaseIndexAt(t).i].name === "alba";
+    return PHASES[phaseIndexAt(t).i].name === "dawn";
   }
 
   // `baura` (STUDIO.md, gap minore "nifast/mud/baura mai investigati") —
@@ -2181,19 +2180,19 @@ export async function mountMatch(ctx, params = {}) {
     // salvataggio vero e portabile (save.js/saveToFile()/loadFromFile()) —
     // vedi il commento su `fileHandle` sopra per come i due si incontrano.
     const rows = [
-      { label: "Riprendi", action: "resume" },
-      { label: "Salva partita", action: "save" },
-      { label: "Carica partita", action: "load" },
-      { label: "Salva su file", action: "saveFile" },
-      { label: "Carica da file", action: "loadFile" },
-      { label: "Torna al menu", action: "title" },
+      { label: "Resume", action: "resume" },
+      { label: "Save game", action: "save" },
+      { label: "Load game", action: "load" },
+      { label: "Save to file", action: "saveFile" },
+      { label: "Load from file", action: "loadFile" },
+      { label: "Back to menu", action: "title" },
     ];
     const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
     r.draw(solidFrame(white, panelW, panelH), px, py, 1, 0x20242c, 0.95);
 
     const titleScale = 2.4;
-    const title = "PAUSA";
+    const title = "PAUSE";
     drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 22, titleScale, 0xffffff, 1);
 
     pauseMenuButtons = [];
@@ -2257,15 +2256,15 @@ export async function mountMatch(ctx, params = {}) {
 
     outcomeButtons = [];
     if (showPanel) {
-      const title = defeat ? "GAME OVER" : "COMPLIMENTI!";
+      const title = defeat ? "GAME OVER" : "CONGRATULATIONS!";
       const subtitle = !defeat
-        ? "Hai completato il Grattacielo. La partita continua."
+        ? "You've completed the Skyscraper. The game continues."
         : outcome.reason === "chies"
-        ? "La Chiesa, l'edificio storico della citta', e' stata distrutta."
-        : "L'olio e' finito: i rotori si sono fermati e la piattaforma e' precipitata.";
+        ? "The Church, the city's historic building, has been destroyed."
+        : "The oil has run out: the rotors have stopped and the platform has crashed.";
       const rows = defeat
-        ? [{ label: "Carica partita", action: "load" }, { label: "Torna al menu", action: "title" }]
-        : [{ label: "Continua a giocare", action: "continue" }];
+        ? [{ label: "Load game", action: "load" }, { label: "Back to menu", action: "title" }]
+        : [{ label: "Keep playing", action: "continue" }];
 
       const textScale = 1.1;
       const panelW = Math.min(360, cw - 40);
@@ -2425,7 +2424,7 @@ export async function mountMatch(ctx, params = {}) {
     const ph = placeholders.find((p) => !p.consumed && inFrameDiamond(w.x, w.y, p.x, p.y, p._f));
     if (!ph) return;
     const err = armPlacement(ph, selectedType);
-    message = err ?? "trascina verso un lotto libero adiacente";
+    message = err ?? "drag to a free adjacent lot";
     messageT = 3;
   };
   input.onPointerUp = (sx, sy) => { if (!paused) resolvePlacement(sx, sy); };
@@ -2552,9 +2551,9 @@ export async function mountMatch(ctx, params = {}) {
   // quattro bottoni mutuamente esclusivi non tracciati qui): l'ordine qui e'
   // solo "tutti visibili, uno per slot", non quello esatto.
   const OTHER_BUILDINGS = [
-    { type: "parco", selec: 7, spr: "p7", sprSel: "p7ss", label: "Parco", cost: 500 },
-    { type: "missile", selec: 3, spr: "p3", sprSel: "p3ss", label: "Lanciamissili", cost: 5000 },
-    { type: "eolico", selec: 4, spr: "p4", sprSel: "p4ss", label: "Pala eolica", cost: 50000 },   // ora vero, BUILDING_TYPES.eolico
+    { type: "parco", selec: 7, spr: "p7", sprSel: "p7ss", label: "Park", cost: 500 },
+    { type: "missile", selec: 3, spr: "p3", sprSel: "p3ss", label: "Missile Launcher", cost: 5000 },
+    { type: "eolico", selec: 4, spr: "p4", sprSel: "p4ss", label: "Wind Turbine", cost: 50000 },   // ora vero, BUILDING_TYPES.eolico
     { type: "laser", selec: 5, spr: "p5", sprSel: "p5ss", label: "Laser", cost: 20000 },
     // "Grattacielo" era il nome (mai verificato) di una versione precedente
     // di questa riga: **[C]** src/objects/level2palazz (il popup "livello 2
@@ -2565,16 +2564,16 @@ export async function mountMatch(ctx, params = {}) {
     // `BUILDING_TYPES.grattacielo` (STAR_BUILDINGS sotto, la terza stella),
     // un edificio completamente diverso da questo — nessuna relazione se non
     // l'omonimia mai risolta a suo tempo.
-    { type: "palazzo", selec: 6, spr: "p6", sprSel: "p6ss", label: "Palazzo", cost: 6000 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "palazzo", selec: 6, spr: "p6", sprSel: "p6ss", label: "Building", cost: 6000 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
     { type: "club", selec: 60, spr: "pdj", sprSel: "pdjss", label: "Club", cost: 3500 },   // ora vero, BUILDING_TYPES.club
-    { type: "solare", selec: 61, spr: "psolare", sprSel: "psolaress", label: "Pannelli solari", cost: 1000 },
-    { type: "gatling", selec: 62, spr: "pgatling", sprSel: "pgatlingss", label: "Mitragliatrice", cost: 10000 },
+    { type: "solare", selec: 61, spr: "psolare", sprSel: "psolaress", label: "Solar Panels", cost: 1000 },
+    { type: "gatling", selec: 62, spr: "pgatling", sprSel: "pgatlingss", label: "Gatling Gun", cost: 10000 },
     { type: "villa", selec: 63, spr: "pvilla", sprSel: "pvillass", label: "Villa", cost: 7500 },
-    { type: "museo", selec: 70, spr: "pmuseo", sprSel: "pmuseoss", label: "Museo", cost: 35000 },   // ora vero, BUILDING_TYPES.museo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "museo", selec: 70, spr: "pmuseo", sprSel: "pmuseoss", label: "Museum", cost: 35000 },   // ora vero, BUILDING_TYPES.museo — piazzamento a trascinamento, vedi armPlacement()
     // [C] STUDIO.md "cosa manca": lo strumento vero di demolizione/
     // riparazione (selec==11), mai ricostruito — la distruzione oggi e'
     // immediata (destroyBuilding()) invece di passare da questo strumento.
-    { type: "ruspa", selec: 11, spr: "ru", sprSel: "russ", label: "Ruspa", cost: null },
+    { type: "ruspa", selec: 11, spr: "ru", sprSel: "russ", label: "Bulldozer", cost: null },
   ];
   for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
   const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
@@ -2598,11 +2597,11 @@ export async function mountMatch(ctx, params = {}) {
   // gia' un edificio di quel tipo.
   const STAR_BUILDINGS = [
     {
-      type: "monum", selec: 71, spr: "sta1", sprSel: "sta1s", label: "Monumento", cost: 20000,
+      type: "monum", selec: 71, spr: "sta1", sprSel: "sta1s", label: "Monument", cost: 20000,
       unlocked: () => (r12.distrutti ?? 0) > 49 && !buildings.some((b) => b.type === "monum"),
     },
     {
-      type: "banca", selec: 72, spr: "sta2", sprSel: "sta2s", label: "Banca", cost: 0,
+      type: "banca", selec: 72, spr: "sta2", sprSel: "sta2s", label: "Bank", cost: 0,
       // [Bug corretto, segnalato dall'autore: "lo sblocco della banca
       // dovrebbe essere subordinato... alla creazione del monumento"]
       // **[C]** `pu1/Step.gml`: la create di `stella2` e' annidata dentro
@@ -2639,7 +2638,7 @@ export async function mountMatch(ctx, params = {}) {
     // mai una piattaforma da espandere, resta percio' irraggiungibile
     // (fedele, non un buco: `platformState` e' `null` li').
     {
-      type: "grattacielo", selec: 82, spr: "sta3", sprSel: "sta3s", label: "Grattacielo", cost: 200000,
+      type: "grattacielo", selec: 82, spr: "sta3", sprSel: "sta3s", label: "Skyscraper", cost: 200000,
       unlocked: () => buildings.some((b) => b.type === "banca")
         && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded"
         && !buildings.some((b) => b.type === "grattacielo"),
@@ -2705,7 +2704,7 @@ export async function mountMatch(ctx, params = {}) {
       if (hit?.action === "load") {
         const ok = doLoad();
         if (ok) { picked = null; outcome = null; }
-        message = ok ? "partita caricata" : "nessun salvataggio";
+        message = ok ? "game loaded" : "no save found";
         messageT = 3;
       } else if (hit?.action === "title") {
         navigate("menu");
@@ -2737,7 +2736,7 @@ export async function mountMatch(ctx, params = {}) {
       } else if (hit?.action === "load") {
         const ok = doLoad();
         if (ok) picked = null;
-        message = ok ? "partita caricata" : "nessun salvataggio"; messageT = 3;
+        message = ok ? "game loaded" : "no save found"; messageT = 3;
       } else if (hit?.action === "saveFile") {
         doSaveToFile();   // async, messaggio gestito dentro (fuoco e dimentica)
       } else if (hit?.action === "loadFile") {
@@ -2767,7 +2766,7 @@ export async function mountMatch(ctx, params = {}) {
       const hit = bankButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       if (hit) {
         takeLoan(r12, hit.index);
-        message = `prestito di ${LOANS[hit.index].amount} mon ottenuto`;
+        message = `loan of ${LOANS[hit.index].amount} mon obtained`;
       } else {
         message = "";
       }
@@ -2807,7 +2806,7 @@ export async function mountMatch(ctx, params = {}) {
           selectedType = btn.type;
           r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
         } else {
-          message = `${btn.label}: non ancora ricostruito`;
+          message = `${btn.label}: not rebuilt yet`;
           messageT = 3;
         }
         return;
@@ -2966,11 +2965,11 @@ export async function mountMatch(ctx, params = {}) {
       if (!selectedType) {
         // [C] handbutton/Mouse_LeftPressed.gml: `r12.selec = 0`, nessun
         // edificio armato — la modalita' di default prima di aprire il menu.
-        message = "nessun edificio selezionato — apri il menu con la gru";
+        message = "no building selected — open the menu with the crane";
       } else if (!def) {
         // Uno degli `OTHER_BUILDINGS` sopra: nel menu, ma non in
         // BUILDING_TYPES — nessuna catena di piazzamento ricostruita.
-        message = `${BUILDING_LABEL[selectedType] ?? selectedType}: non ancora ricostruito`;
+        message = `${BUILDING_LABEL[selectedType] ?? selectedType}: not rebuilt yet`;
       } else {
         const err = placeAt(picked, selectedType);
         message = err ?? `${def.label.toLowerCase()} piazzata (-${def.placeCost.mon} mon)`;
@@ -2988,7 +2987,7 @@ export async function mountMatch(ctx, params = {}) {
       // collisione: e' l'UNICO modo in cui potrebbero mai toccarsi).
       if (!b.construction && b.type === "parco" && r12.selec === 61) {
         const err = placeSolarOverPark(b);
-        message = err ?? "pannelli solari piazzati sul parco (-1000 mon)";
+        message = err ?? "solar panels placed on the park (-1000 mon)";
         messageT = 3;
         return;
       }
@@ -3001,12 +3000,12 @@ export async function mountMatch(ctx, params = {}) {
       // arriva dal tocco su "ruspaYes" sotto.
       if (r12.selec === 11) {
         const cost = ruspaCostFor(b);
-        if (b.construction) message = "cantiere gia' in corso";
-        else if (cost == null) message = `${BUILDING_LABEL[b.type] ?? b.type}: non demolibile/riparabile con la ruspa`;
-        else if (!canAfford(r12, { mon: cost })) message = `serve ${cost} mon (hai ${r12.mon.toFixed(0)})`;
+        if (b.construction) message = "construction already in progress";
+        else if (cost == null) message = `${BUILDING_LABEL[b.type] ?? b.type}: not demolishable/repairable with the bulldozer`;
+        else if (!canAfford(r12, { mon: cost })) message = `need ${cost} mon (have ${r12.mon.toFixed(0)})`;
         else {
           ruspaPending = { buildingId: b.id, cost };
-          message = `demolizione/riparazione: tocca "si'" per confermare (-${cost} mon)`;
+          message = `demolish/repair: tap "yes" to confirm (-${cost} mon)`;
         }
         messageT = 3;
         return;
@@ -3024,13 +3023,13 @@ export async function mountMatch(ctx, params = {}) {
       // edificio (che gia' risponderebbe da solo "cantiere gia' in corso").
       if (!b.construction && BUILDING_TYPES[b.type]?.manualFire) {
         const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails, beams, balloons, loot);
-        message = fired ? "fuoco!"
-          : !b.aimTarget ? "nessun bersaglio in portata"
-          : b.type === "laser" && r12.ele < 200 ? "energia insufficiente"
-          : "cannone in ricarica";
+        message = fired ? "fire!"
+          : !b.aimTarget ? "no target in range"
+          : b.type === "laser" && r12.ele < 200 ? "insufficient energy"
+          : "cannon reloading";
       } else {
         const err = startUpgrade(b);
-        message = err ?? "cantiere avviato";
+        message = err ?? "construction started";
       }
       messageT = 3;
     } else if (picked.obj === "ruspaYes") {
@@ -3043,15 +3042,15 @@ export async function mountMatch(ctx, params = {}) {
       if (def?.construct?.ruspaDemolish) {
         const cost = ruspaCostFor(b);
         if (!canAfford(r12, { mon: cost })) {
-          message = `serve ${cost} mon (hai ${r12.mon.toFixed(0)})`;
+          message = `need ${cost} mon (have ${r12.mon.toFixed(0)})`;
         } else {
           r12.mon -= cost;
           demolishMultiTile(b);
-          message = "demolita — lotti liberi";
+          message = "demolished — lots free";
         }
       } else {
         const err = ruspaRebuild(b);
-        message = err ?? "cantiere avviato (ruspa)";
+        message = err ?? "construction started (bulldozer)";
       }
       ruspaPending = null;
       messageT = 3;
@@ -3078,7 +3077,7 @@ export async function mountMatch(ctx, params = {}) {
       // soglia e costo) — qui e' solo il bersaglio VISIBILE e prioritario
       // quando il potenziamento e' davvero pronto.
       const err = startUpgrade(picked.ref);
-      message = err ?? "cantiere avviato";
+      message = err ?? "construction started";
       messageT = 3;
       picked = null;
     } else if (picked.obj === "bankIcon") {
@@ -3086,7 +3085,7 @@ export async function mountMatch(ctx, params = {}) {
       // NESSUN prestito e' gia' attivo (`loaned==0` nel decompilato, qui
       // `loanActive()` — vedi il commento li' per il perche').
       if (loanActive(r12)) {
-        message = "prestito gia' attivo";
+        message = "loan already active";
       } else {
         bankPanelOpen = true;
       }
@@ -3144,12 +3143,28 @@ export async function mountMatch(ctx, params = {}) {
       canvas.width = w; canvas.height = h;
     }
     cam.resize(canvas.clientWidth, canvas.clientHeight);
+    // [Bug corretto, segnalato dall'autore: "lo zoom in massimo e' eccessivo,
+    // sgrana troppo" su iPhone] `cam.minZoom` (limite di zoom-IN, sotto il
+    // quale gli sprite si vedono ingranditi oltre il loro dettaglio nativo)
+    // era un valore ASSOLUTO fisso (0.5), scelto pensando a un dpr di
+    // riferimento 1 (desktop): a quel dpr, 0.5 = al piu' 2x la risoluzione
+    // nativa dell'atlas (pixelPerfectZoom() = 1, quindi 1 / 0.5 = 2x),
+    // giudicato accettabile. Su un iPhone (`pixelPerfectZoom()` = dpr reale,
+    // capato a 2) lo STESSO 0.5 assoluto permetteva pero' fino a 2 / 0.5 =
+    // 4x — il doppio dell'ingrandimento rispetto a desktop, quindi il doppio
+    // della sgranatura, per un valore che avrebbe dovuto essere lo stesso
+    // limite relativo su ogni schermo. Qui `minZoom` e' invece proporzionale
+    // a `pixelPerfectZoom()` (ricalcolato ad ogni resize, cosi' un cambio di
+    // dpr — rotazione, spostamento fra monitor — lo aggiorna da solo): lo
+    // stesso 2x massimo di ingrandimento su qualunque dispositivo, mobile
+    // incluso.
+    cam.minZoom = pixelPerfectZoom() * 0.5;
     if (!isMobile) {
       // Desktop: lo zoom di default resta pixel-perfect (mai un "fit to
       // screen" frazionario, che sfumerebbe gli sprite) — ma ora e' solo il
       // limite di zoom-OUT (`maxZoom`), non piu' un valore fisso: la rotella
       // (input.onZoom sopra) puo' avvicinare oltre (zoom < maxZoom, fino a
-      // `cam.minZoom` = 0.5) senza mai poter allontanare oltre il default.
+      // `cam.minZoom` sopra) senza mai poter allontanare oltre il default.
       // `setZoomImmediate` solo finche' l'utente non ha ancora zoomato/
       // panoramicato da solo (`userMoved`, sopra) — stesso schema gia' usato
       // dal ramo mobile sotto, cosi' un resize (finestra ridimensionata,
@@ -3163,7 +3178,7 @@ export async function mountMatch(ctx, params = {}) {
       // piu' grande = piu' mondo inquadrato, camera.js): al doppio del
       // pixel-perfect uno sprite finisce a meta' della propria taglia
       // nativa a schermo (scala 0.5, la stessa unita' di `cam.minZoom`
-      // sopra, dove 0.5 e' invece il limite di zoom-IN).
+      // sopra, dove e' invece il limite di zoom-IN).
       cam.maxZoom = pixelPerfectZoom() * 2;
       if (!userMoved) cam.setZoomImmediate(pixelPerfectZoom());
     } else if (canvas.clientWidth > 0) {
@@ -4151,7 +4166,7 @@ export async function mountMatch(ctx, params = {}) {
           { kind: "building", type: "industria", spr: "p2", sprSel: "p2ss" },
           ...OTHER_BUILDINGS.map((b) => ({ kind: "building", type: b.type, spr: b.spr, sprSel: b.sprSel })),
           ...STAR_BUILDINGS.filter((b) => b.unlocked()).map((b) => ({ kind: "building", type: b.type, spr: b.spr, sprSel: b.sprSel })),
-          { kind: "menu", menoo: 0, spr: "baccc", label: "Indietro" },
+          { kind: "menu", menoo: 0, spr: "baccc", label: "Back" },
         ]
       : menoo === 2
       // menoo 2 "vista" ([C] eyebutton1/2/3 + zoom_plus/zoom_minus): le tre
@@ -4159,22 +4174,22 @@ export async function mountMatch(ctx, params = {}) {
       // ma solo su mobile: su desktop lo zoom e' fisso (vedi isMobile sopra),
       // due bottoni per un'azione che non fa niente sarebbero solo confusione.
       ? [
-          { kind: "info", spr: "eyee1", label: "Vista 1" },
-          { kind: "info", spr: "eyee2", label: "Vista 2" },
-          { kind: "info", spr: "eyee3", label: "Vista 3" },
+          { kind: "info", spr: "eyee1", label: "View 1" },
+          { kind: "info", spr: "eyee2", label: "View 2" },
+          { kind: "info", spr: "eyee3", label: "View 3" },
           ...(isMobile ? [
             { kind: "zoom", spr: "zoomplus", label: "Zoom +", zoom: 0.8 },
             { kind: "zoom", spr: "zoomminus", label: "Zoom -", zoom: 1.25 },
           ] : []),
-          { kind: "menu", menoo: 0, spr: "baccc", label: "Indietro" },
+          { kind: "menu", menoo: 0, spr: "baccc", label: "Back" },
         ]
       // menoo 0 "casa" ([C] handbutton/buildbutton/eyebutton): la riga di
       // partenza. handbutton deseleziona (r12.selec=0); gru e occhio aprono
       // le altre due righe.
       : [
-          { kind: "deselect", spr: "handee", label: "Deseleziona" },
-          { kind: "menu", menoo: 1, spr: "groo", label: "Menu edifici" },
-          { kind: "menu", menoo: 2, spr: "eyeee", label: "Menu vista" },
+          { kind: "deselect", spr: "handee", label: "Deselect" },
+          { kind: "menu", menoo: 1, spr: "groo", label: "Buildings menu" },
+          { kind: "menu", menoo: 2, spr: "eyeee", label: "View menu" },
         ];
     // Prima passata, solo misure: serve la larghezza totale della riga PRIMA
     // di disegnare, per sapere quanto scroll orizzontale ha senso concedere
@@ -4559,14 +4574,14 @@ export async function mountMatch(ctx, params = {}) {
     if (picked?.obj === "building") {
       const b = picked.ref;
       const up = nextUpgrade(b);
-      status = `${BUILDING_TYPES[b.type].label} livello ${b.level}  vita ${b.life}`;
+      status = `${BUILDING_TYPES[b.type].label} level ${b.level}  health ${b.life}`;
       const g = BUILDING_TYPES[b.type].growth?.[b.level - 1];
-      if (b.construction) status += `  [cantiere in corso]`;
+      if (b.construction) status += `  [construction in progress]`;
       else if (up) {
         if (upgradeUnlocked(b, r12, buildings)) {
-          status += `  potenziamento pronto (${Object.entries(up.cost).map(([k, v]) => v + " " + k).join(", ")})`;
+          status += `  upgrade ready (${Object.entries(up.cost).map(([k, v]) => v + " " + k).join(", ")})`;
         } else if (up.atMakee != null) {
-          status += `  prossimo potenziamento a ${up.atMakee} cicli di produzione (ora ${b.makee ?? 0})`;
+          status += `  next upgrade at ${up.atMakee} production cycles (now ${b.makee ?? 0})`;
         } else if (up.atAva != null) {
           // [C] casa4s|d/Alarm_2.gml: ava==5 da solo non basta per palazzo —
           // serve anche chies al livello 3 (up.requiresChiesLevel, letto sopra
@@ -4575,20 +4590,20 @@ export async function mountMatch(ctx, params = {}) {
           // il messaggio di crescita come per ogni altro edificio ad ava.
           const avaDone = (b.ava ?? 0) >= up.atAva;
           status += avaDone && up.requiresChiesLevel != null
-            ? `  serve la chiesa al livello ${up.requiresChiesLevel}`
-            : `  prossimo potenziamento a crescita completa (${b.ava ?? 0}/${up.atAva})`;
+            ? `  requires the church at level ${up.requiresChiesLevel}`
+            : `  next upgrade at full growth (${b.ava ?? 0}/${up.atAva})`;
         } else {
-          status += `  prossimo potenziamento a pop ${up.atPop}`;
+          status += `  next upgrade at pop ${up.atPop}`;
         }
       } else if (g) {
-        status += (b.ava ?? 0) >= g.maxAva ? `  crescita completa` : `  crescita ${b.ava ?? 0}/${g.maxAva}`;
+        status += (b.ava ?? 0) >= g.maxAva ? `  growth complete` : `  growth ${b.ava ?? 0}/${g.maxAva}`;
       }
     } else if (picked?.obj === "placeholder") {
       const def = selectedType ? BUILDING_TYPES[selectedType] : null;
-      status = picked.consumed ? "occupato"
-        : !selectedType ? "vuoto — nessun edificio selezionato"
-        : def ? `vuoto — tocca per costruire ${def.label.toLowerCase()} (${def.placeCost.mon} mon)`
-        : `vuoto — ${BUILDING_LABEL[selectedType] ?? selectedType} non ancora ricostruito`;
+      status = picked.consumed ? "occupied"
+        : !selectedType ? "empty — no building selected"
+        : def ? `empty — tap to build ${def.label.toLowerCase()} (${def.placeCost.mon} mon)`
+        : `empty — ${BUILDING_LABEL[selectedType] ?? selectedType} not rebuilt yet`;
     } else if (picked) {
       status = `${picked.obj}${picked.spr ? " [" + picked.spr + "]" : ""}`;
     }
@@ -4620,20 +4635,20 @@ export async function mountMatch(ctx, params = {}) {
 
     hud.textContent =
       `${scene.name}  ${scene.width}x${scene.height}\n` +
-      `istanze ${frameList.length}  disegnate ${drawn}  drawcall ${r.drawCalls}\n` +
-      `atlas ${atlas.pages.length} pagine  senza sprite ${missingArt}\n` +
+      `instances ${frameList.length}  drawn ${drawn}  drawcalls ${r.drawCalls}\n` +
+      `atlas ${atlas.pages.length} pages  missing art ${missingArt}\n` +
       `zoom ${cam.zoom.toFixed(2)}  camera ${cam.x.toFixed(0)},${cam.y.toFixed(0)}\n` +
-      `fase ${amb.label}  edifici ${buildings.length}` +
-      (r12.storm ? `  ⛈ tempesta (${r12.stormT.toFixed(0)}s)\n` : `\n`) +
-      (platformState ? `cristalli ${r12.crys}  r32: ${platformState.tier1.stage}  r22: ${platformState.tier2.stage}\n` : "") +
+      `phase ${amb.label}  buildings ${buildings.length}` +
+      (r12.storm ? `  ⛈ storm (${r12.stormT.toFixed(0)}s)\n` : `\n`) +
+      (platformState ? `crystals ${r12.crys}  r32: ${platformState.tier1.stage}  r22: ${platformState.tier2.stage}\n` : "") +
       // [TEST] DEBUG_INFINITE_RESOURCES (buildings.js): mon/oil in barra sono
       // gonfiati apposta — questa riga e' l'unico punto dove restano visibili
       // i valori veri (r12.monReal/oilReal, state.js), per non perderli di
       // vista mentre si testa senza restare mai a corto.
-      (DEBUG_INFINITE_RESOURCES ? `[TEST risorse infinite] reale: ${r12.monReal.toFixed(0)} mon, ${r12.oilReal.toFixed(0)} oil\n` : "") +
+      (DEBUG_INFINITE_RESOURCES ? `[TEST infinite resources] real: ${r12.monReal.toFixed(0)} mon, ${r12.oilReal.toFixed(0)} oil\n` : "") +
       (status ? status + "\n" : "") +
       (messageT > 0 ? message + "\n" : "") +
-      `trascina, rotella/pinch, tap — [S] salva [L] carica [P] pausa`;
+      `drag, wheel/pinch, tap — [S] save [L] load [P] pause`;
 
     requestAnimationFrame(frame);
     } catch (err) {

@@ -36,13 +36,22 @@ import {
 const TICK = 1 / 60;
 
 export async function mountTitle(ctx) {
-  const { gl, r, canvas, input, pauseBlur, white, navigate, hideLoading } = ctx;
+  const { gl, r, canvas, input, pauseBlur, white, navigate, hideLoading, reportProgress } = ctx;
   let stopped = false;
   const SOLID = solidFrame(white, 1, 1);
 
   // ---------------------------------------------------------------- title UI
   const scene = await fetch("./data/title.scene.json").then((x) => x.json());
-  const { atlas, pageTex } = await loadRoomAtlas(gl, "title");
+  // `reportProgress("title", ...)`/`reportProgress("match", ...)` (chiave
+  // diversa per atlas, sotto): entrambe le chiamate alimentano la STESSA
+  // percentuale sulla schermata di caricamento (app.js/reportProgress()
+  // le somma), cosi' l'attesa del primissimo avvio (questo mount aspetta
+  // sia l'atlas dei bottoni sia quello — molto piu' grande — dello sfondo
+  // sfumato) mostra un unico avanzamento coerente invece di due barre che
+  // si sovrascriverebbero a vicenda.
+  const { atlas, pageTex } = await loadRoomAtlas(gl, "title", {
+    onProgress: (loaded, total) => reportProgress("title", loaded, total),
+  });
   function frameFor(sprName, frameIdx = 0) {
     const frames = atlas.sprites[sprName];
     if (!frames || !frames.length) return null;
@@ -80,7 +89,9 @@ export async function mountTitle(ctx) {
 
   // ------------------------------------------------------------- sfondo: match
   const mScene = await fetch("./data/match.scene.json").then((x) => x.json());
-  const { atlas: mAtlas, pageTex: mPageTex } = await loadRoomAtlas(gl, "match");
+  const { atlas: mAtlas, pageTex: mPageTex } = await loadRoomAtlas(gl, "match", {
+    onProgress: (loaded, total) => reportProgress("match", loaded, total),
+  });
   // [Bug corretto, segnalato dall'autore: "appena avvio match il sito si
   // refresha tornando alla schermata logo e poi al menu", su mobile] Qui
   // c'era un `prefetchRoomAtlas(gl, "match_easy")` — [I] richiesto
@@ -216,8 +227,8 @@ export async function mountTitle(ctx) {
   // giro giorno/notte completo ogni 36 minuti veri sarebbe invisibile su una
   // title screen, qui dura CYCLE_SECONDS.
   const PHASES = [
-    { name: "giorno", rgb: [1.00, 1.00, 1.00], dur: 14 }, { name: "alba", rgb: [1.00, 0.82, 0.62], dur: 5 },
-    { name: "notte", rgb: [0.45, 0.52, 0.82], dur: 12 }, { name: "alba", rgb: [0.92, 0.80, 0.78], dur: 5 },
+    { name: "day", rgb: [1.00, 1.00, 1.00], dur: 14 }, { name: "dawn", rgb: [1.00, 0.82, 0.62], dur: 5 },
+    { name: "night", rgb: [0.45, 0.52, 0.82], dur: 12 }, { name: "dawn", rgb: [0.92, 0.80, 0.78], dur: 5 },
   ];
   const CYCLE_SECONDS = 50;
   const PHASE_TOTAL = PHASES.reduce((s, p) => s + p.dur, 0);
@@ -233,7 +244,7 @@ export async function mountTitle(ctx) {
     const a = PHASES[i].rgb, b = PHASES[(i + 1) % PHASES.length].rgb;
     return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
   }
-  function isNightAt(tSec) { return PHASES[phaseAt(tSec).i].name === "notte"; }
+  function isNightAt(tSec) { return PHASES[phaseAt(tSec).i].name === "night"; }
   // [C] main.js, mulTint(): la tinta ambientale resta per-istanza (non un
   // uniform globale) cosi' i decori "luce" (`_selfLit`, sopra) possono
   // saltarla — altrimenti si "accenderebbero" ma restando scuri quanto la
@@ -482,7 +493,7 @@ export async function mountTitle(ctx) {
   // loadFromFile()) e' fuori dal layer WebGL apposta: main.js non sa ancora
   // quale room montare finche' il file scelto non rivela `data.scene`.
   const loadFileBtn = document.createElement("button");
-  loadFileBtn.textContent = "Carica partita";
+  loadFileBtn.textContent = "Load game";
   loadFileBtn.style.cssText = "position:fixed;left:24px;bottom:24px;z-index:5;" +
     "font:700 14px/1 system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;" +
     "letter-spacing:0.08em;text-transform:uppercase;color:#fff;" +
@@ -506,7 +517,7 @@ export async function mountTitle(ctx) {
       // checksum non combacia — modificato a mano, save.js/verify()): qui
       // SI vale la pena dirlo, a differenza del dialog annullato.
       if (result === "invalid") {
-        message = "file non valido o modificato"; messageT = 3;
+        message = "invalid or modified file"; messageT = 3;
       } else if (result) {
         navigateTo = {
           room: result.data.scene ?? "match_easy", autoload: false,
@@ -516,7 +527,7 @@ export async function mountTitle(ctx) {
       }
     } catch (err) {
       console.error("nimbus: caricamento da file fallito", err);
-      message = "caricamento da file fallito"; messageT = 3;
+      message = "load from file failed"; messageT = 3;
     } finally {
       loadingFile = false;
       loadFileBtn.disabled = false;

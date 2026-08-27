@@ -109,6 +109,18 @@
           "Helvetica Neue", Arial, sans-serif;
     letter-spacing: 0.14em; color: #fff; text-transform: uppercase;
   }
+  /* Barra di avanzamento reale (non un'animazione a tempo indeterminato):
+     riflette quante pagine dell'atlas della room sono gia' arrivate
+     (game/src/assets.js onProgress -> game/src/app.js reportProgress() ->
+     qui). Richiesta dall'autore: un'attesa di alcuni secondi su una
+     connessione mobile lenta, con solo il logo che pulsa sempre uguale,
+     e' indistinguibile da un blocco vero — una percentuale che sale da'
+     un segnale concreto che il caricamento sta procedendo davvero. */
+  .progressBar { width: min(45vw, 220px); height: 4px; border-radius: 2px;
+                 background: rgba(255,255,255,.18); overflow: hidden; }
+  .progressBar .fill { height: 100%; width: 0%; background: #fff;
+                        border-radius: 2px; transition: width 0.2s ease; }
+  .progressPct { font-variant-numeric: tabular-nums; opacity: .85; }
   /* HUD di debug di main.js: nascosto di default (mostrato solo mentre e'
      montata una partita, game/src/app.js/mountMatch()) cosi' non lampeggia
      vuoto sul menu prima che lo script parta. */
@@ -147,7 +159,8 @@
     <div class="ghost cyan" aria-hidden="true"></div>
     <div class="ghost blue" aria-hidden="true"></div>
   </div>
-  <span>loading</span>
+  <div class="progressBar"><div class="fill"></div></div>
+  <span>loading <span class="progressPct">0%</span></span>
 </div>
 <div id="levelLoading">
   <div class="logoWrap">
@@ -155,7 +168,8 @@
     <div class="ghost cyan" aria-hidden="true"></div>
     <div class="ghost blue" aria-hidden="true"></div>
   </div>
-  <span>loading</span>
+  <div class="progressBar"><div class="fill"></div></div>
+  <span>loading <span class="progressPct">0%</span></span>
 </div>
 <div id="hud"></div>
 <!-- `./dist/app.js`, non `./src/app.js`: bundle minificato con code-splitting

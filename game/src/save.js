@@ -181,7 +181,7 @@ function suggestedFileName(sceneName) {
 }
 
 const FILE_PICKER_TYPES = [{
-  description: "Salvataggio NIMBUS",
+  description: "NIMBUS save file",
   accept: { "application/json": [".json"] },
 }];
 

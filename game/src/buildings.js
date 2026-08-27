@@ -22,7 +22,7 @@ const COIN_FIRST_DELAY = 600 * TICK;
 
 export const BUILDING_TYPES = {
   chies: {
-    label: "Chiesa",
+    label: "Church",
     placeCost: { mon: 5000 },                    // [I] sotto la dote iniziale (5500): la ruota reale apriva a 6000
     baseSprite: "crc", baseLife: 1000,             // [C] chies/Create.gml
     baseDecor: ["crcl"],                           // [C] chies/Create.gml: action_create_object(cddvd, 0, 0)
@@ -105,7 +105,7 @@ export const BUILDING_TYPES = {
   // pulsare fuoco) mai armata da Create ne' dalla scala tic: codice morto
   // nell'originale, non riletto qui.
   industria: {
-    label: "Industria",
+    label: "Industry",
     placeCost: { mon: 2000 },    // [C] placeholder/Mouse_LeftReleased.gml, selec==2
     // Produzione elettrica reale per livello (1-indicizzata: production[0]
     // e' il livello 1). [C] industria1|2|3/Alarm_2.gml: ogni 120 tick, se
@@ -274,7 +274,7 @@ export const BUILDING_TYPES = {
   // e' (vedi `hap` su industria/parco sopra, l'unico effetto reale letto
   // nel decompilato).
   casa: {
-    label: "Casa",
+    label: "House",
     placeCost: { mon: 100 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==1
     // [C] casa1/Alarm_2.gml: `ava` (0..5) e' lo stadio di crescita. Il primo
     // intervallo dopo la nascita e' fisso (`action_set_alarm(2000,2)` in
@@ -467,7 +467,7 @@ export const BUILDING_TYPES = {
   // nuovo — stesso gap gia' dichiarato per industria/casa (STUDIO.md
   // "cosa manca"), non riletto qui.
   missile: {
-    label: "Lanciamissili",
+    label: "Missile Launcher",
     placeCost: { mon: 5000 },    // [C] placeholder/Mouse_LeftReleased.gml, selec==3
     // [I] `close` nell'originale e' vera collisione fisica fra la maschera
     // di missile/gatling/laser (`placeholder/Collision_impamissr|
@@ -528,7 +528,7 @@ export const BUILDING_TYPES = {
   // Placement cost **[C]** trovato nello stesso posto dei costi di
   // industria/casa: `placeholder/Mouse_LeftReleased.gml`, `selec==61`.
   solare: {
-    label: "Pannelli solari",
+    label: "Solar Panels",
     placeCost: { mon: 1000 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==61
     // [C] sooool/Alarm_4.gml, ogni 30 tick: sempre -5 mon; ele -1 di notte,
     // +5 all'alba, +9 altrimenti (giorno/tramonto) — vedi stepSolarProduction().
@@ -579,7 +579,7 @@ export const BUILDING_TYPES = {
   // `spawnDecor()` intercetta `b.type === "parco"` invece di leggere
   // `decor` qui sotto (lasciato vuoto apposta, mai letto per questo tipo).
   parco: {
-    label: "Parco",
+    label: "Park",
     placeCost: { mon: 500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==7
     // [I] Segnalato dall'autore: un parco e' scenografia bassa e piatta (lo
     // scatter di alberi/lampioni di spawnParcoScatter(), non un edificio
@@ -776,7 +776,7 @@ export const BUILDING_TYPES = {
   // game/src/projectiles.js per il fuoco vero (bocca doppia, un colpo da
   // ciascuna canna per scarica).
   gatling: {
-    label: "Mitragliatrice",
+    label: "Gatling Gun",
     placeCost: { mon: 10000 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==62
     turret: true,
     // [C] `gatlinggun/Mouse_LeftPressed.gml` nel decompilato non spara
@@ -927,7 +927,7 @@ export const BUILDING_TYPES = {
   // maschera, `grattacielo` sotto incluso: cambia solo la sua ancora
   // visiva, non i lotti).
   eolico: {
-    label: "Pala eolica",
+    label: "Wind Turbine",
     placeCost: { mon: 50000 },   // [C] eoliplacer/Alarm_1.gml, ramo selec==4
     // [C] placeholder/Mouse_LeftReleased.gml: `anchorOffset` e' l'offset FISSO
     // (98, 0) di eoliplacer dal placeholder toccato, vedi il commento sopra.
@@ -1097,7 +1097,7 @@ export const BUILDING_TYPES = {
   // `atAva` — stesso genere di gate gia' scelto per `chies` stessa
   // (`atPop`), solo su un edificio diverso da se stesso.
   palazzo: {
-    label: "Palazzo",
+    label: "Building",
     placeCost: { mon: 6000 },   // [C] placeholder/Mouse_LeftPressed.gml, ramo selec==6
     diagonalPlacement: true,
     construct: {                 // livello 0 -> 1, impa4r/impa4f -> casa4s (asse "r", dir1/dir3)
@@ -1245,7 +1245,7 @@ export const BUILDING_TYPES = {
   // dal menu (non in OTHER_BUILDINGS): main.js, resolvePlacement() la
   // materializza solo quando il trascinamento cade su dir2/dir4.
   palazzoRd: {
-    label: "Palazzo",
+    label: "Building",
     placeCost: { mon: 6000 },
     diagonalPlacement: true,
     construct: {
@@ -1378,7 +1378,7 @@ export const BUILDING_TYPES = {
   // tic, oltre a ele — mai visto in nessun altro edificio con
   // `consumption`: vedi `rate.mon` in stepConsumption() sopra.
   museo: {
-    label: "Museo",
+    label: "Museum",
     placeCost: { mon: 35000 },   // [C] placeholder/Mouse_LeftPressed.gml, ramo selec==70
     diagonalPlacement: true,
     construct: {                 // media1s (asse "r", dir1/dir3) — [C] impamediaR/impamediaF: stessa sequenza sr*/sf* di palazzo, solo il drain cambia
@@ -1430,7 +1430,7 @@ export const BUILDING_TYPES = {
   // palazzo/palazzoRd. Solo gli sprite (cantiere rd*/fd*, varianti
   // med1d/med2d) e il costo di trascinamento (dir2/dir4) cambiano.
   museoRd: {
-    label: "Museo",
+    label: "Museum",
     placeCost: { mon: 35000 },
     diagonalPlacement: true,
     construct: {
@@ -1487,7 +1487,7 @@ export const BUILDING_TYPES = {
   // palazzo) e il topper finale (`tops3`, sprite reale gia' "toppers": lo
   // stesso oggetto di villa/club/missile/laser, nessuno sprite in piu').
   monum: {
-    label: "Monumento",
+    label: "Monument",
     placeCost: { mon: 20000 },   // [C] placeholder/Mouse_LeftReleased.gml, ramo selec==71
     noAffordCheck: true,
     construct: {
@@ -1542,7 +1542,7 @@ export const BUILDING_TYPES = {
   // 4 prestiti a interesse) e' un intero sotto-sistema economico a parte —
   // **[I] gap dichiarato**, fuori scopo per questo giro (STUDIO.md sotto).
   banca: {
-    label: "Banca",
+    label: "Bank",
     placeCost: {},
     construct: {
       drain: { mon: 3, every: 20 },               // [C] impaBANKr/Alarm_10.gml
@@ -1672,7 +1672,7 @@ export const BUILDING_TYPES = {
   // cima) non si dissolve mai nel decompilato — scatta di colpo — quindi
   // `fadeTicks: 0`.
   grattacielo: {
-    label: "Grattacielo",
+    label: "Skyscraper",
     placeCost: { mon: 200000 },   // [C] eoliplacer/Alarm_1.gml, ramo selec==82
     // Stessa maschera fissa "phold" di eolico (STUDIO.md, `eoliplacer`
     // condiviso dai due rami selec==4/82): i 4 lotti di TERRENO consumati
@@ -1984,21 +1984,21 @@ export function upgradeUnlocked(b, r12, buildings) {
  * motivo per cui no.
  */
 export function tryStartUpgrade(b, r12, buildings) {
-  if (b.construction) return "cantiere gia' in corso";
+  if (b.construction) return "construction already in progress";
   const up = nextUpgrade(b);
-  if (!up) return "livello massimo";
+  if (!up) return "max level";
   const p = upgradeProgress(b, up, r12);
   if (p.done < p.needed) {
-    if (p.kind === "makee") return `servono ${p.needed} cicli di produzione (ora ${p.done})`;
-    if (p.kind === "ava") return `serve crescita completa (${p.done}/${p.needed})`;
-    return `serve popolazione ${p.needed} (ora ${p.done.toFixed(0)})`;
+    if (p.kind === "makee") return `need ${p.needed} production cycles (now ${p.done})`;
+    if (p.kind === "ava") return `need full growth (${p.done}/${p.needed})`;
+    return `need population ${p.needed} (now ${p.done.toFixed(0)})`;
   }
   if (up.requiresChiesLevel != null && maxChiesLevel(buildings) < up.requiresChiesLevel) {
-    return `serve la chiesa al livello ${up.requiresChiesLevel}`;
+    return `requires the church at level ${up.requiresChiesLevel}`;
   }
   if (!canAfford(r12, up.cost)) {
     const need = Object.entries(up.cost).map(([k, v]) => `${v} ${k}`).join(", ");
-    return `serve ${need}`;
+    return `need ${need}`;
   }
   pay(r12, up.cost);
   b.construction = { upgradeIndex: b.level - 1, stepIndex: 0, t: 0 };
@@ -2065,10 +2065,10 @@ export function ruspaCostFor(b) {
  * davvero — vedi il commento su `c.rebuilding` li'.
  */
 export function tryRuspaRebuild(b, r12) {
-  if (b.construction) return "cantiere gia' in corso";
+  if (b.construction) return "construction already in progress";
   const cost = ruspaCostFor(b);
-  if (cost == null) return "non ricostruibile con la ruspa";
-  if (!canAfford(r12, { mon: cost })) return `serve ${cost} mon (hai ${r12.mon.toFixed(0)})`;
+  if (cost == null) return "not rebuildable with the bulldozer";
+  if (!canAfford(r12, { mon: cost })) return `need ${cost} mon (have ${r12.mon.toFixed(0)})`;
   r12.mon -= cost;
   b.level -= 1;
   b.construction = { upgradeIndex: b.level - 1, stepIndex: 0, t: 0, rebuilding: true };

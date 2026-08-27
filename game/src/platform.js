@@ -442,60 +442,60 @@ export function stepFaroChain(state, r12, coins, cars, smoke, dt, chiesLevel, ni
 // sarebbe l'unica a restare bloccata dietro risorse vere durante un test.
 export function clickFaroButton(state, r12) {
   if (state.tier1.stage !== "buttonShown") return null;
-  if (!canAfford(r12, { mon: 2000 })) return `serve 2000 mon (hai ${r12.mon.toFixed(0)})`;
+  if (!canAfford(r12, { mon: 2000 })) return `need 2000 mon (have ${r12.mon.toFixed(0)})`;
   r12.mon -= 2000;
   state.tier1.stage = "wavesigShown";
-  return "faro potenziato — cerca il segnale di notte";
+  return "beacon upgraded — look for the signal at night";
 }
 
 export function clickWaveSignal(state, r12, isNight) {
   if (state.tier1.stage !== "wavesigShown") return null;
-  if (!isNight) return "il segnale si attiva solo di notte";
-  if (!canAfford(r12, { crys: 20 })) return `servono 20 cristalli (hai ${r12.crys})`;
+  if (!isNight) return "the signal only activates at night";
+  if (!canAfford(r12, { crys: 20 })) return `need 20 crystals (have ${r12.crys})`;
   r12.crys -= 20;
   state.tier1.stage = "lit";
-  return "fari accesi";
+  return "beacons lit";
 }
 
 export function clickDockerSignal(state, r12) {
   if (state.tier1.stage !== "lit") return null;
   if (!canAfford(r12, { mon: 5000, oil: 9000 })) {
-    return r12.mon < 5000 ? `serve 5000 mon (hai ${r12.mon.toFixed(0)})` : `serve 9000 oil (hai ${r12.oil.toFixed(0)})`;
+    return r12.mon < 5000 ? `need 5000 mon (have ${r12.mon.toFixed(0)})` : `need 9000 oil (have ${r12.oil.toFixed(0)})`;
   }
   r12.mon -= 5000;
   r12.oil -= 9000;
   state.tier1.stage = "expanding";
   state.tier1.dockerT = 0;
-  return "attracco in corso...";
+  return "docking in progress...";
 }
 
 export function clickFaro3Button(state, r12) {
   if (state.tier2.stage !== "buttonShown") return null;
-  if (!canAfford(r12, { mon: 5000 })) return `serve 5000 mon (hai ${r12.mon.toFixed(0)})`;
+  if (!canAfford(r12, { mon: 5000 })) return `need 5000 mon (have ${r12.mon.toFixed(0)})`;
   r12.mon -= 5000;
   state.tier2.stage = "wavesigShown";
-  return "terzo faro potenziato — cerca il segnale di notte";
+  return "third beacon upgraded — look for the signal at night";
 }
 
 export function clickWaveSignal3(state, r12, isNight) {
   if (state.tier2.stage !== "wavesigShown") return null;
-  if (!isNight) return "il segnale si attiva solo di notte";
-  if (!canAfford(r12, { crys: 50 })) return `servono 50 cristalli (hai ${r12.crys})`;
+  if (!isNight) return "the signal only activates at night";
+  if (!canAfford(r12, { crys: 50 })) return `need 50 crystals (have ${r12.crys})`;
   r12.crys -= 50;
   state.tier2.stage = "lit";
-  return "faro acceso";
+  return "beacon lit";
 }
 
 export function clickDockerSignal3(state, r12) {
   if (state.tier2.stage !== "lit") return null;
   if (!canAfford(r12, { mon: 15000, oil: 27000 })) {
-    return r12.mon < 15000 ? `serve 15000 mon (hai ${r12.mon.toFixed(0)})` : `serve 27000 oil (hai ${r12.oil.toFixed(0)})`;
+    return r12.mon < 15000 ? `need 15000 mon (have ${r12.mon.toFixed(0)})` : `need 27000 oil (have ${r12.oil.toFixed(0)})`;
   }
   r12.mon -= 15000;
   r12.oil -= 27000;
   state.tier2.stage = "expanding";
   state.tier2.dockerT = 0;
-  return "attracco in corso... (terza piattaforma)";
+  return "docking in progress... (third platform)";
 }
 
 // [C] r32/Create.gml + r320/Create.gml (relativo a r32, offset 1616,0):

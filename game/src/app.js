@@ -19,6 +19,7 @@
 // partite", non ancora fatto), non questo.
 import { Renderer, makeSolidTexture, PauseBlur } from "./gl.js";
 import { Input } from "./input.js";
+import { evictUnneededRoomAtlases } from "./assets.js";
 
 const canvas = document.getElementById("view");
 const hud = document.getElementById("hud");
@@ -64,6 +65,36 @@ function hideLoading() {
   loading.addEventListener("transitionend", () => loading.remove(), { once: true });
 }
 
+// Percentuale reale di avanzamento sulle due schermate di caricamento
+// (index.html #loading/#levelLoading), richiesta dall'autore ("avrebbe senso
+// una barra/percentuale invece del solo logo che pulsa"): title.js/main.js
+// passano un `onProgress(loaded, total)` a loadRoomAtlas() (assets.js, conta
+// le pagine CORE dell'atlas — quelle che il mount aspetta davvero prima di
+// disegnare il primo frame) tramite `ctx.reportProgress(key, loaded, total)`
+// qui sotto. Una `key` per sorgente (di norma il roomName dell'atlas: title.js
+// ne usa DUE — "title" per i bottoni e "match" per lo sfondo sfumato del
+// menu, sommate) cosi' piu' atlas caricati insieme in una stessa schermata
+// contribuiscono allo stesso avanzamento complessivo invece di sovrascriversi
+// a vicenda.
+const progressFills = [loading, levelLoading].map((el) => el.querySelector(".fill"));
+const progressPcts = [loading, levelLoading].map((el) => el.querySelector(".progressPct"));
+const progressSources = new Map();   // key -> { loaded, total }
+function resetProgress() {
+  progressSources.clear();
+  setLoadingProgressUI(0);
+}
+function setLoadingProgressUI(frac) {
+  const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
+  for (const fill of progressFills) fill.style.width = pct + "%";
+  for (const pctEl of progressPcts) pctEl.textContent = pct + "%";
+}
+function reportProgress(key, loaded, total) {
+  progressSources.set(key, { loaded, total });
+  let loaded_ = 0, total_ = 0;
+  for (const s of progressSources.values()) { loaded_ += s.loaded; total_ += s.total; }
+  setLoadingProgressUI(total_ > 0 ? loaded_ / total_ : 0);
+}
+
 // Azzera tutti gli handler impostati dalla schermata precedente prima di
 // montare la prossima: altrimenti un evento che arriva nella finestra fra
 // dispose() e il montaggio del prossimo modulo (import() e' asincrono)
@@ -82,7 +113,21 @@ const SCREEN_MODULES = {
   match: () => import("./main.js"),
 };
 
-const ctx = { gl, r, canvas, input, pauseBlur, white, hideLoading, navigate };
+// Quali room-atlas (assets.js, ~800 MB di texture GPU l'una) servono davvero
+// alla schermata che sta per montare — usata per liberare tutte le altre
+// PRIMA di montarla (vedi la chiamata a evictUnneededRoomAtlases() sotto).
+// "title" carica sia il proprio atlas (i bottoni) sia quello di `match` per
+// lo sfondo sfumato dietro al menu (title.js) — tenerli entrambi e' voluto,
+// e' gia' quello che succede oggi restando fermi sul menu. La risoluzione
+// di `roomParam` -> nome room ripete quella in main.js/mountMatch(): deve
+// restare identica, altrimenti si evincerebbe/terrebbe l'atlas sbagliato.
+function neededRoomsFor(screen, params) {
+  if (screen === "menu") return ["title", "match"];
+  const roomParam = params.room;
+  return [roomParam === "match" || roomParam === "tutorial" ? roomParam : "match_easy"];
+}
+
+const ctx = { gl, r, canvas, input, pauseBlur, white, hideLoading, navigate, reportProgress };
 
 let current = null;   // { dispose() } della schermata montata adesso
 let navigating = false;   // guardia contro un doppio navigate() in corsa
@@ -108,6 +153,20 @@ async function navigate(screen, params = {}) {
     resetInput();
     if (current) { current.dispose(); current = null; }
     hud.style.display = "none";
+    // [Bug corretto, segnalato dall'autore: "su iPhone tutorial/match facile
+    // continuano a far ripartire il sito"] Libera SUBITO le texture GPU di
+    // qualunque room-atlas non serva alla schermata che sta per montare
+    // (assets.js/evictUnneededRoomAtlases()) — altrimenti l'atlas di `match`
+    // tenuto da title.js per lo sfondo del menu (~800 MB) restava in memoria
+    // GPU anche dopo aver lasciato il menu, e si sommava per intero
+    // all'atlas della room appena scelta (un altro ~800 MB): la somma bastava
+    // a far terminare la scheda su mobile (budget molto piu' stretto che su
+    // desktop), il sistema operativo la ricaricava da zero — "il sito si
+    // refresha" per chi gioca. Va PRIMA del prossimo `import()`/mount(): la
+    // prossima room deve trovare la memoria gia' libera quando inizia a
+    // caricare la propria, non dopo.
+    evictUnneededRoomAtlases(gl, neededRoomsFor(screen, params));
+    resetProgress();
     // Nero pieno-schermo finche' la prossima schermata non disegna il suo
     // primo frame: senza questo resterebbe visibile l'ultimo frame di
     // quella precedente (sfondo/HUD "vecchi") per tutta la durata del
