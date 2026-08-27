@@ -4809,6 +4809,7 @@ export async function mountMatch(ctx, params = {}) {
     get pauseSubmenu() { return pauseSubmenu; }, setPauseSubmenu: (v) => { pauseSubmenu = v; },
     get autosave() { return autosave; }, get autosaveT() { return autosaveT; }, setAutosaveT: (t) => { autosaveT = t; },
     get saveIconT() { return saveIconT; }, showSaveIcon,
+    setSaveIconT: (v) => { saveIconT = v; },
     get uiScrollX() { return uiScrollX; }, setUiScrollX: (x) => { uiScrollX = x; },
     get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
     atmo, get pedestrians() { return pedestrians; },
