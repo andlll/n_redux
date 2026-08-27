@@ -27,7 +27,7 @@ import {
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
-import { save, load, serializeSave, saveToFile, loadFromFile } from "./save.js";
+import { save, load, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
 import { loadFont, drawText, measureText } from "./font.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
@@ -1564,6 +1564,15 @@ export async function mountMatch(ctx, params = {}) {
   // "S/L restano un quicksave di sessione", non un vero e proprio permesso
   // di salvare in qualunque momento.
   const CRITICAL_THREAT_RADIUS = 500;
+  // [I] `kind` ("oil"|"attack") in piu' rispetto al solo testo, aggiunto per
+  // l'autosalvataggio (stepAutosave() piu' sotto): "durante attacchi"/"con
+  // oil basso" nel pannello impostazioni devono poter bypassare SOLO la
+  // categoria che dicono, non l'altra — un testo libero da confrontare
+  // parola per parola sarebbe fragile, la categoria esplicita no. Storm/
+  // allarme/minaccia vicina condividono tutti "attack": sono la stessa
+  // famiglia di pericolo (qualcosa sta colpendo o sta per colpire la
+  // citta'), distinta solo da "oil" (un problema di risorse, non di
+  // minaccia).
   function criticalSaveReason() {
     // `oilCap()` (state.js) resta `Infinity` finche' chies non arriva a
     // livello 2 (nessun tetto dichiarato prima) — un 10% di `Infinity` e'
@@ -1574,20 +1583,20 @@ export async function mountMatch(ctx, params = {}) {
     // state.js `createR12()`).
     const cap = oilCap(buildings);
     const oilThreshold = Number.isFinite(cap) ? cap * 0.1 : 500;
-    if (r12.oil <= oilThreshold) return "oil is almost depleted";
-    if (r12.storm) return "a storm is hitting the city";
-    if (r12.alertT > 0) return "an attack is incoming";
+    if (r12.oil <= oilThreshold) return { kind: "oil", text: "oil is almost depleted" };
+    if (r12.storm) return { kind: "attack", text: "a storm is hitting the city" };
+    if (r12.alertT > 0) return { kind: "attack", text: "an attack is incoming" };
     if (chiesScene) {
       const r2 = CRITICAL_THREAT_RADIUS * CRITICAL_THREAT_RADIUS;
       const near = threats.some((th) => (th.x - chiesScene.x) ** 2 + (th.y - chiesScene.y) ** 2 < r2);
-      if (near) return "a threat is near the city";
+      if (near) return { kind: "attack", text: "a threat is near the city" };
     }
     return null;
   }
 
   function doSave() {
     const reason = criticalSaveReason();
-    if (reason) { message = "You can't save right now: " + reason; messageT = 3; return; }
+    if (reason) { message = "You can't save right now: " + reason.text; messageT = 3; return; }
     save(scene.name, r12, buildings, ruins, blockedSlots, platformState);
     message = "game saved"; messageT = 3;
   }
@@ -1660,7 +1669,7 @@ export async function mountMatch(ctx, params = {}) {
   // messaggio "a fuoco e dimentica" del motore.
   async function doSaveToFile() {
     const reason = criticalSaveReason();
-    if (reason) { message = "You can't save right now: " + reason; messageT = 3; return; }
+    if (reason) { message = "You can't save right now: " + reason.text; messageT = 3; return; }
     const data = serializeSave(scene.name, r12, buildings, ruins, blockedSlots, platformState);
     try {
       const h = await saveToFile(data, fileHandle);
@@ -1730,7 +1739,7 @@ export async function mountMatch(ctx, params = {}) {
     // `outcome` (sopra) e' a schermo: in sconfitta non c'e' niente da
     // riprendere, in vittoria "P" toglierebbe di mezzo il pannello senza
     // passare dal tap che lo chiude per davvero (onTap sotto).
-    if ((e.key === "p" || e.key === "P") && !outcome) paused = !paused;
+    if ((e.key === "p" || e.key === "P") && !outcome) { paused = !paused; pauseSubmenu = null; }
   }
   window.addEventListener("keydown", onKeydown);
 
@@ -2173,16 +2182,18 @@ export async function mountMatch(ctx, params = {}) {
     // un mondo comunque colorato/luminoso.
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
-    // "Salva partita"/"Carica partita": quicksave rapido in localStorage
-    // (S/L da tastiera, invariato). "Salva su file"/"Carica da file": il
-    // salvataggio vero e portabile (save.js/saveToFile()/loadFromFile()) —
-    // vedi il commento su `fileHandle` sopra per come i due si incontrano.
+    // "Save game"/"Load game": quicksave rapido in localStorage. "Save to
+    // file"/"Load from file": il salvataggio vero e portabile (save.js/
+    // saveToFile()/loadFromFile()) — vedi il commento su `fileHandle` sopra
+    // per come i due si incontrano. "Saving options" apre il sotto-pannello
+    // dell'autosalvataggio (drawSavingOptionsOverlay(), pauseSubmenu sopra).
     const rows = [
       { label: "Resume", action: "resume" },
       { label: "Save game", action: "save" },
       { label: "Load game", action: "load" },
       { label: "Save to file", action: "saveFile" },
       { label: "Load from file", action: "loadFile" },
+      { label: "Saving options", action: "savingOptions" },
       { label: "Back to menu", action: "title" },
     ];
     const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
@@ -2195,6 +2206,51 @@ export async function mountMatch(ctx, params = {}) {
 
     pauseMenuButtons = [];
     const btnW = panelW - 60, btnH = 46, btnGap = 14, textScale = 1.3;
+    let by = py + 96;
+    for (const row of rows) {
+      const bx = px + (panelW - btnW) / 2;
+      r.draw(solidFrame(white, btnW, btnH), bx, by, 1, 0x3a4152, 0.95);
+      drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, 0xffffff, 1);
+      pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+      by += btnH + btnGap;
+    }
+    r.flush();
+  }
+
+  /**
+   * Sotto-pannello "Saving options" del menu di pausa (pauseSubmenu === "saving",
+   * aperto dalla voce omonima di drawPauseOverlay()) — stessa identica
+   * struttura pannello/bottoni/blur, solo righe diverse: le quattro
+   * impostazioni di autosalvataggio (`autosave`, sopra) piu' "Back" per
+   * tornare al pannello principale. Ogni riga mostra il proprio stato
+   * attuale nell'etichetta stessa (ON/OFF, il valore in minuti) invece di
+   * un controllo separato — un solo tap la cambia e basta, coerente con
+   * l'unico altro controllo touch-only a piu' valori del motore (Zoom +/-,
+   * piu' sotto).
+   */
+  function drawSavingOptionsOverlay() {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
+    r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+
+    const rows = [
+      { label: `Autosave: ${autosave.enabled ? "ON" : "OFF"}`, action: "toggleEnabled" },
+      { label: `Interval: ${autosave.intervalMin} min`, action: "cycleInterval" },
+      { label: `Save during attacks: ${autosave.duringAttacks ? "ON" : "OFF"}`, action: "toggleAttacks" },
+      { label: `Save with low oil: ${autosave.duringLowOil ? "ON" : "OFF"}`, action: "toggleLowOil" },
+      { label: "Back", action: "back" },
+    ];
+    const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
+    const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+    r.draw(solidFrame(white, panelW, panelH), px, py, 1, 0x20242c, 0.95);
+
+    const titleScale = 1.7;
+    const title = "SAVING OPTIONS";
+    drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 26, titleScale, 0xffffff, 1);
+
+    pauseMenuButtons = [];
+    const btnW = panelW - 60, btnH = 46, btnGap = 14, textScale = 1.1;
     let by = py + 96;
     for (const row of rows) {
       const bx = px + (panelW - btnW) / 2;
@@ -2479,6 +2535,52 @@ export async function mountMatch(ctx, params = {}) {
   // mentre il resto della UI e' bloccato dal menu (vedi onTap).
   let pauseBtnRect = null;   // { x, y, w, h }
   let pauseMenuButtons = [];   // { x, y, w, h, action }
+  // Sotto-pannello del menu di pausa (null = quello principale, "saving" =
+  // le opzioni di autosalvataggio sotto) — riusa lo stesso `pauseMenuButtons`
+  // sopra: un solo pannello alla volta e' mai disegnato, quindi un solo
+  // array di hitbox basta, letto in modo diverso da onTap a seconda di
+  // questo flag invece di tenerne uno per pannello.
+  let pauseSubmenu = null;
+
+  // [Nuova funzionalita', richiesta dall'autore: "una funzione di autosave,
+  // attivabile dal menu di pausa (saving options), che regola l'intervallo
+  // (n minuti) e ha degli yes/no se salvare durante attacchi o con oil
+  // basso, di norma disattivati"] Preferenza dell'utente, non stato di
+  // questa partita: caricata da localStorage ad ogni mount (save.js,
+  // GLOBALE — non per-scena) e riscritta li' stessa ad ogni tocco su una
+  // delle voci del pannello (drawSavingOptionsOverlay()/onTap sotto), cosi'
+  // resta la stessa scegliendo Match/Match Facile/Tutorial in sessioni
+  // diverse. `autosaveT`: secondi reali dall'ultimo salvataggio automatico
+  // (o dall'avvio), avanzato incondizionatamente in frame() sotto — tempo
+  // di parete, non simulato: deve continuare a scorrere anche a partita in
+  // pausa/sconfitta, altrimenti "ogni N minuti" varrebbe solo mentre si
+  // gioca attivamente.
+  let autosave = loadAutosaveSettings();
+  let autosaveT = 0;
+  const AUTOSAVE_INTERVALS = [1, 2, 5, 10, 15, 30];   // minuti, ciclati dal bottone "Interval"
+  /** Prova un autosalvataggio se l'intervallo e' scaduto — chiamata una
+   * volta per frame da frame() sotto. Stesso `criticalSaveReason()` del
+   * salvataggio manuale (doSave() sopra), ma qui il blocco e' condizionale:
+   * `duringAttacks`/`duringLowOil` (di norma entrambi `false`, coerenti col
+   * comportamento gia' esistente) possono bypassare SOLO la propria
+   * categoria (`reason.kind`), non l'altra. Se resta bloccato l'intervallo
+   * NON si riazzera: ritenta ad ogni frame successivo (un confronto in piu'
+   * a frame, costo trascurabile) cosi' salva appena la situazione torna
+   * sicura invece di aspettare un altro giro intero — a differenza del
+   * quicksave manuale, qui nessuno sta guardando un messaggio d'errore da
+   * dover ripetere. */
+  function stepAutosave(dt) {
+    if (!autosave.enabled) { autosaveT = 0; return; }
+    autosaveT += dt;
+    if (autosaveT < autosave.intervalMin * 60) return;
+    const reason = criticalSaveReason();
+    if (reason) {
+      const bypass = reason.kind === "oil" ? autosave.duringLowOil : autosave.duringAttacks;
+      if (!bypass) return;
+    }
+    save(scene.name, r12, buildings, ruins, blockedSlots, platformState);
+    autosaveT = 0;
+  }
 
   /**
    * Fine partita — nessun equivalente vero nel decompilato (STUDIO.md,
@@ -2717,6 +2819,7 @@ export async function mountMatch(ctx, params = {}) {
     if (pauseBtnRect && sx >= pauseBtnRect.x && sx <= pauseBtnRect.x + pauseBtnRect.w
       && sy >= pauseBtnRect.y && sy <= pauseBtnRect.y + pauseBtnRect.h) {
       paused = !paused;
+      pauseSubmenu = null;   // riapre sempre sul pannello principale, mai su "Saving options"
       return;
     }
     // Mentre e' in pausa il resto del mondo (mondo, UI, altri modali) resta
@@ -2727,8 +2830,34 @@ export async function mountMatch(ctx, params = {}) {
     // confuso (e comunque quel pannello non e' piu' disegnato sopra il blur).
     if (paused) {
       const hit = pauseMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+      // "Saving options" (pauseSubmenu, sopra): stesso array `pauseMenuButtons`
+      // del pannello principale, ma le `action` sono tutte diverse (toggle/
+      // ciclo di un'impostazione) — nessuna ambiguita' possibile fra le due
+      // liste di stringhe. Ogni tocco riscrive subito le impostazioni in
+      // localStorage (saveAutosaveSettings()): niente "Applica"/"Annulla",
+      // coerente con ogni altro controllo touch di questo motore.
+      if (pauseSubmenu === "saving") {
+        if (hit?.action === "toggleEnabled") {
+          autosave.enabled = !autosave.enabled;
+          saveAutosaveSettings(autosave);
+        } else if (hit?.action === "cycleInterval") {
+          const i = AUTOSAVE_INTERVALS.indexOf(autosave.intervalMin);
+          autosave.intervalMin = AUTOSAVE_INTERVALS[(i + 1) % AUTOSAVE_INTERVALS.length];
+          saveAutosaveSettings(autosave);
+        } else if (hit?.action === "toggleAttacks") {
+          autosave.duringAttacks = !autosave.duringAttacks;
+          saveAutosaveSettings(autosave);
+        } else if (hit?.action === "toggleLowOil") {
+          autosave.duringLowOil = !autosave.duringLowOil;
+          saveAutosaveSettings(autosave);
+        } else if (hit?.action === "back") {
+          pauseSubmenu = null;
+        }
+        return;
+      }
       if (hit?.action === "resume") {
         paused = false;
+        pauseSubmenu = null;
       } else if (hit?.action === "save") {
         doSave();   // messaggio (incluso il blocco su situazione critica) gestito dentro
       } else if (hit?.action === "load") {
@@ -2739,6 +2868,8 @@ export async function mountMatch(ctx, params = {}) {
         doSaveToFile();   // async, messaggio gestito dentro (fuoco e dimentica)
       } else if (hit?.action === "loadFile") {
         doLoadFromFile();   // async, idem
+      } else if (hit?.action === "savingOptions") {
+        pauseSubmenu = "saving";
       } else if (hit?.action === "title") {
         navigate("menu");
       }
@@ -3287,6 +3418,7 @@ export async function mountMatch(ctx, params = {}) {
     // resta `false`), ma il suo `t` non serve a nient'altro che a esistere
     // per simmetria con la sconfitta — nessun timer di auto-chiusura.
     if (outcome) outcome.t += dt;
+    stepAutosave(dt);
 
     // --- simulazione: cantieri, economia, meteo, traffico, luci
     // `paused` (bottone di pausa in basso a destra, sotto) o una sconfitta
@@ -4585,7 +4717,7 @@ export async function mountMatch(ctx, params = {}) {
     // (che gia' intercetta `outcome` prima del bottone di pausa): i due non
     // vanno mai disegnati insieme.
     if (outcome) drawOutcomeOverlay();
-    else if (paused) drawPauseOverlay();
+    else if (paused) { if (pauseSubmenu === "saving") drawSavingOptionsOverlay(); else drawPauseOverlay(); }
 
     // Cutscene iniziale del tutorial (game/src/tutorial.js): disegnata per
     // ultima, in spazio schermo, sopra a TUTTO il resto (mondo + UI vera) —
@@ -4628,6 +4760,8 @@ export async function mountMatch(ctx, params = {}) {
     get tutorialState() { return tutorialState; }, get tutorialOkRect() { return tutorialOkRect; },
     get paused() { return paused; }, setPaused: (v) => { paused = v; }, get pauseBtnRect() { return pauseBtnRect; },
     get pauseMenuButtons() { return pauseMenuButtons; },
+    get pauseSubmenu() { return pauseSubmenu; }, setPauseSubmenu: (v) => { pauseSubmenu = v; },
+    get autosave() { return autosave; }, get autosaveT() { return autosaveT; }, setAutosaveT: (t) => { autosaveT = t; },
     get uiScrollX() { return uiScrollX; }, setUiScrollX: (x) => { uiScrollX = x; },
     get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
     atmo, get pedestrians() { return pedestrians; },

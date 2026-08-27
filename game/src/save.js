@@ -163,6 +163,48 @@ export function load(sceneName) {
   }
 }
 
+// ---------------------------------------------------- opzioni di autosalvataggio
+// [Nuova funzionalita', richiesta dall'autore: "una funzione di autosave,
+// attivabile dal menu di pausa, con intervallo regolabile e yes/no se
+// salvare durante attacchi o con oil basso, di norma disattivati"] Una sola
+// voce in localStorage, GLOBALE (non per-scena come SLOT sopra: e' una
+// preferenza dell'utente, non parte di una partita specifica) — letta ad
+// ogni mount di una room (main.js) e riscritta ad ogni tocco su una delle
+// voci del pannello, cosi' resta la stessa scegliendo Match/Match Facile/
+// Tutorial in sessioni diverse. Nessun checksum (a differenza di SLOT
+// sopra): non e' stato di gioco che vale la pena scoraggiare dal
+// modificare a mano, un JSON malformato o mancante ricade semplicemente sui
+// default.
+const AUTOSAVE_SETTINGS_KEY = "nimbus-autosave";
+// Salva SOLO in situazioni non critiche finche' il giocatore non lo chiede
+// esplicitamente — stesso spirito del blocco gia' in vigore per Salva/Salva
+// su file (main.js, criticalSaveReason()), qui di default anche per
+// l'automatico.
+const DEFAULT_AUTOSAVE_SETTINGS = { enabled: false, intervalMin: 5, duringAttacks: false, duringLowOil: false };
+
+export function loadAutosaveSettings() {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_SETTINGS_KEY);
+    if (!raw) return { ...DEFAULT_AUTOSAVE_SETTINGS };
+    const parsed = JSON.parse(raw);
+    return {
+      enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : DEFAULT_AUTOSAVE_SETTINGS.enabled,
+      intervalMin: Number.isFinite(parsed.intervalMin) ? parsed.intervalMin : DEFAULT_AUTOSAVE_SETTINGS.intervalMin,
+      duringAttacks: typeof parsed.duringAttacks === "boolean" ? parsed.duringAttacks : DEFAULT_AUTOSAVE_SETTINGS.duringAttacks,
+      duringLowOil: typeof parsed.duringLowOil === "boolean" ? parsed.duringLowOil : DEFAULT_AUTOSAVE_SETTINGS.duringLowOil,
+    };
+  } catch {
+    return { ...DEFAULT_AUTOSAVE_SETTINGS };
+  }
+}
+
+export function saveAutosaveSettings(settings) {
+  localStorage.setItem(AUTOSAVE_SETTINGS_KEY, JSON.stringify({
+    enabled: settings.enabled, intervalMin: settings.intervalMin,
+    duringAttacks: settings.duringAttacks, duringLowOil: settings.duringLowOil,
+  }));
+}
+
 // -------------------------------------------------------- salvataggio su file
 // `showSaveFilePicker`/`showOpenFilePicker` (File System Access API): solo
 // Chrome/Edge desktop+Android, NON Safari ne' Firefox (nessuna delle due lo
