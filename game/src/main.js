@@ -385,7 +385,7 @@ export async function mountMatch(ctx, params = {}) {
   // aspetta uno sgombero puro, poi una scelta libera di cosa costruirci
   // sopra). Riusa lo stesso `id`/`depth` dei placeholder veri della scena
   // (sopra) cosi' il lotto si comporta esattamente come uno qualunque
-  // (hover, tap, findPlacementCluster) — se un placeholder con quell'id
+  // (hover, tap, findWindCluster) — se un placeholder con quell'id
   // esiste gia' (mai il caso per una rovina, ma difensivo) lo riattiva
   // invece di duplicarlo.
   function clearedPlaceholder(x, y) {
@@ -1033,32 +1033,50 @@ export async function mountMatch(ctx, params = {}) {
   /**
    * `eolico`/`grattacielo` (buildings.js, `def.multiTile`) sono gli unici
    * edifici che occupano PIU' di un placeholder — vedi il commento su
-   * `BUILDING_TYPES.eolico` in buildings.js per il perche'. Cerca fra i
-   * placeholder ancora liberi quelli entro `radius` dall'ANCORA VISIVA
-   * dell'edificio (`anchorX/anchorY` — il placeholder toccato piu' l'offset
-   * fisso di `def.multiTile.anchorOffset`, calcolato da placeAt()), il piu'
-   * vicino per primo, e ne restituisce `count` in tutto (il placeholder
-   * TOCCATO sempre incluso, indipendentemente dalla sua distanza
-   * dall'ancora). **[Bug corretto, segnalato dall'autore: "il piazzamento di
-   * eolico/grattacielo... occupano spazi non destinati ad edifici"]** una
-   * versione precedente cercava i vicini piu' vicini al TOCCO (`tapped.x/y`)
-   * invece che all'ancora: per un'ancora spostata di 98-150px dal tocco
-   * (`anchorOffset`, sopra) quello sceglieva spesso lotti dalla parte
-   * sbagliata rispetto a dove l'edificio si vede davvero, lasciando liberi
-   * (mai bloccati) i lotti veri sotto lo sprite — un secondo edificio poteva
-   * nascere proprio li', sovrapponendosi visivamente al primo. `null` se non
-   * ce ne sono abbastanza vicini all'ancora — un rifiuto esplicito (vedi
-   * placeAt()) e' preferibile a un piazzamento "riuscito" ma disallineato.
-   * [I] Approssimazione dichiarata di una vera maschera di collisione
-   * (STUDIO.md, "pepazzittecollider" mai ricostruito).
+   * `BUILDING_TYPES.eolico` in buildings.js per il perche'. **[Bug corretto,
+   * segnalato dall'autore con uno screenshot: "la turbina finisce in mezzo
+   * alla strada e va in collisione con chies" — i 4 lotti devono essere
+   * ADIACENTI, a formare un rettangolo]** Le due versioni precedenti
+   * ("i 3 piu' vicini al TOCCO", poi "i 3 piu' vicini all'ANCORA visiva
+   * entro un raggio") trovavano sempre 3 lotti REALMENTE liberi, ma non
+   * necessariamente adiacenti fra loro: su una griglia isometrica un
+   * placeholder a due passi di griglia puo' stare piu' vicino in linea
+   * d'aria di uno a un passo solo in diagonale, quindi "i piu' vicini"
+   * poteva scegliere un lotto dall'altra parte di una strada, o vicino a un
+   * edificio giA' occupato come `chies` — un cluster sparso, non un
+   * rettangolo. **[C]** Ricostruito leggendo `impavent_dem/Alarm_2.gml` riga
+   * per riga (la ruspa che demolisce una pala eolica: `action_create_object
+   * (placeholder, -98, 0)`, `(98, 0)`, `(0, -58)`, `(0, 58)` — i 4 lotti che
+   * l'avevano formata, ricreati esattamente dov'erano): e' la STESSA identica
+   * geometria di `DIAGONAL_DIRS` sotto (palazzo/museo, gia' letta a sua volta
+   * dal decompilato con la stessa tolleranza sulla griglia reale di
+   * `match_easy.scene.json`) — un singolo rombo della griglia isometrica
+   * (un "rettangolo" in coordinate di griglia, che in schermo isometrico
+   * disegna un rombo a 4 vertici), non un raggio. Il lotto TOCCATO e'
+   * sempre il vertice OVEST del rombo (l'ancora visiva sta 98px ad est di
+   * lui, `anchorOffset` in buildings.js): gli altri tre sono i suoi due
+   * vicini diagonali verso est (`DIAGONAL_DIRS[0]`/`[1]`, entrambi dx
+   * positivo) e il loro angolo opposto (la somma dei due, il vertice EST) —
+   * quattro lotti realmente adiacenti a due a due, mai sparsi. Indipendente
+   * dal tipo di edificio (eolico/grattacielo condividono la stessa maschera
+   * fissa "phold" di `eoliplacer`, STUDIO.md): solo l'ancora VISIVA cambia
+   * per tipo (`anchorOffset`), non i lotti di TERRENO consumati. `null` se
+   * anche uno solo dei tre manca (occupato, non esiste, o e' gia' stato
+   * consumato da un altro edificio) — un rifiuto esplicito (vedi placeAt())
+   * e' preferibile a un piazzamento "riuscito" ma disallineato.
    */
-  function findPlacementCluster(tapped, anchorX, anchorY, count, radius) {
-    const r2 = radius * radius;
-    const near = placeholders
-      .filter((p) => p !== tapped && !p.consumed && (p.x - anchorX) ** 2 + (p.y - anchorY) ** 2 <= r2)
-      .sort((a, b) => ((a.x - anchorX) ** 2 + (a.y - anchorY) ** 2) - ((b.x - anchorX) ** 2 + (b.y - anchorY) ** 2));
-    if (near.length < count - 1) return null;
-    return [tapped, ...near.slice(0, count - 1)];
+  function findWindCluster(touched) {
+    const d0 = DIAGONAL_DIRS[0], d1 = DIAGONAL_DIRS[1];   // (99,57)/(99,-57): i due vicini a est del lotto toccato
+    const offsets = [d0, d1, { dx: d0.dx + d1.dx, dy: d0.dy + d1.dy }];   // + il loro angolo opposto (l'est vero e proprio)
+    const found = [touched];
+    for (const o of offsets) {
+      const tx = touched.x + o.dx, ty = touched.y + o.dy;
+      const ph = placeholders.find((p) => !found.includes(p) && !p.consumed
+        && Math.abs(p.x - tx) <= DIAGONAL_TOLERANCE && Math.abs(p.y - ty) <= DIAGONAL_TOLERANCE);
+      if (!ph) return null;
+      found.push(ph);
+    }
+    return found;
   }
 
   function placeAt(placeholder, type) {
@@ -1094,19 +1112,10 @@ export async function mountMatch(ctx, params = {}) {
     // `eolico`/`grattacielo` (def.multiTile.anchorOffset): il centro visivo
     // e' il placeholder TOCCATO piu' l'offset FISSO letto dal decompilato
     // (BUILDING_TYPES in buildings.js — `placeholder/Mouse_LeftReleased.gml`,
-    // dove nasce `eoliplacer`), non la media del cluster trovato sotto.
-    // Calcolato QUI, prima della ricerca del cluster: **[Bug corretto,
-    // segnalato dall'autore: "il piazzamento di eolico/grattacielo... spesso
-    // occupano spazi non destinati ad edifici"]** una versione precedente
-    // cercava i 3 lotti extra piu' vicini al placeholder TOCCATO (sotto il
-    // tocco del giocatore), non all'ancora visiva sopra — per `eolico` (dx
-    // 98) e ancora di piu' per `grattacielo` (dx 98, dy 116, il doppio dello
-    // spostamento) il punto dove l'edificio si vede DAVVERO puo' stare a
-    // 100-150px dal tocco: cercare i vicini "piu' vicini al tocco" prendeva
-    // spesso lotti dalla parte OPPOSTA rispetto a dove l'edificio si vede,
-    // lasciando liberi (mai bloccati) i lotti veri sotto lo sprite — un
-    // edificio successivo poteva quindi nascere proprio li', sovrapponendosi
-    // visivamente alla turbina/al grattacielo gia' costruito.
+    // dove nasce `eoliplacer`), non la media del cluster trovato sotto —
+    // quello (findWindCluster(), sopra) determina solo QUALI 4 lotti di
+    // terreno vengono consumati, sempre lo stesso rombo adiacente al tocco
+    // indipendentemente dal tipo di edificio che ci nasce sopra.
     const off = def.multiTile?.anchorOffset;
     const anchorX = off ? placeholder.x + off.dx : placeholder.x;
     const anchorY = off ? placeholder.y + off.dy : placeholder.y;
@@ -1115,8 +1124,8 @@ export async function mountMatch(ctx, params = {}) {
     // silenzio, vedi buildings.js) restituisce sempre un messaggio chiaro.
     let cluster = [placeholder];
     if (def.multiTile) {
-      cluster = findPlacementCluster(placeholder, anchorX, anchorY, def.multiTile.count, def.multiTile.radius);
-      if (!cluster) return `serve un'area libera di almeno ${def.multiTile.count} lotti vicini`;
+      cluster = findWindCluster(placeholder);
+      if (!cluster) return `serve un'area libera di ${def.multiTile.count} lotti adiacenti (un rettangolo)`;
     }
     for (const k in def.placeCost) r12[k] -= def.placeCost[k];
     // [C] `impavent`, una volta nato, uccide con la propria maschera ogni
@@ -3796,9 +3805,9 @@ export async function mountMatch(ctx, params = {}) {
     // dove finira' davvero il centro visivo dell'edificio (l'ancora e' a un
     // offset FISSO dal lotto toccato, non il lotto stesso — vedi il commento
     // su `anchorOffset` in placeAt() sopra) ne' se la posizione e' valida
-    // (serve un cluster di `count` lotti liberi vicini all'ancora, non solo
-    // il lotto toccato). Stessa identica logica di placeAt()/
-    // findPlacementCluster() sopra, senza spendere ne' consumare nulla:
+    // (serve il rombo di 4 lotti adiacenti al tocco, non solo il lotto
+    // toccato). Stessa identica logica di placeAt()/
+    // findWindCluster() sopra, senza spendere ne' consumare nulla:
     // un fantasma semitrasparente, con lo sprite del PRIMO passo di
     // cantiere dell'edificio (`def.construct.steps[0].spr` — la fondamenta,
     // non l'edificio finito: e' quello che il giocatore vedra' comparire per
@@ -3814,8 +3823,7 @@ export async function mountMatch(ctx, params = {}) {
       const off = selDefForPreview.multiTile.anchorOffset;
       const anchorX = off ? hoveredPh.x + off.dx : hoveredPh.x;
       const anchorY = off ? hoveredPh.y + off.dy : hoveredPh.y;
-      const cluster = findPlacementCluster(
-        hoveredPh, anchorX, anchorY, selDefForPreview.multiTile.count, selDefForPreview.multiTile.radius);
+      const cluster = findWindCluster(hoveredPh);
       if (cluster) {
         const stepSpr = selDefForPreview.construct?.steps?.[0]?.spr;
         const f = stepSpr ? frameFor(stepSpr) : null;

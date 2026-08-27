@@ -862,56 +862,58 @@ export const BUILDING_TYPES = {
   // nel menu, `pu4prov`/`selec==4`). Primo edificio NON piazzabile su un
   // solo placeholder: **[C]** `eoliplacer/Alarm_1.gml` (creato al tap da
   // `placeholder/Mouse_LeftReleased.gml`, selec==4) aspetta che
-  // `placeholder/Collision_445.gml` (contro OGNI placeholder che tocca la
-  // sua maschera fissa "phold", offset +98px dal tocco) faccia salire
-  // `places` a 4 prima di far nascere `impavent` per davvero — una pala
-  // eolica vuole un piccolo appezzamento libero, non un solo lotto. Senza
-  // una vera maschera di collisione (STUDIO.md, "pepazzittecollider" mai
-  // ricostruito — stessa scelta gia' fatta per `TURRET_MIN_DIST` sotto,
-  // proprio sulla spaziatura di questa griglia) `multiTile` sotto e'
-  // un'approssimazione dichiarata per TROVARE i 4 lotti da consumare: il
-  // placeholder toccato PIU' i suoi 3 vicini liberi piu' vicini entro un
-  // raggio fisso — vedi `findPlacementCluster()` in main.js. [I] A
-  // differenza dell'originale (che fallisce IN SILENZIO se non trova 4
-  // lotti — un singolo controllo a tempo fisso 3 tick dopo la nascita di
-  // `eoliplacer`, mai piu' ripetuto: sembra un meccanismo mai rifinito,
-  // `fantoccio` che crea non fa letteralmente nulla, sprite vuoto, nessun
-  // evento oltre un timer che lo autodistrugge) qui il giocatore riceve
-  // sempre un messaggio, costruito o no.
+  // `placeholder/Collision_eoliplacer.gml` (contro OGNI placeholder che
+  // tocca la sua maschera fissa "phold", offset +98px dal tocco) faccia
+  // salire `places` a 4 prima di far nascere `impavent` per davvero — una
+  // pala eolica vuole un piccolo appezzamento libero, non un solo lotto.
   //
-  // [Bug corretto] `anchorOffset` — il CENTRO VISIVO della pala, invece,
-  // NON e' la media del cluster trovato sopra (che main.js usava prima:
-  // un punto che si sposta a seconda di QUALI 3 vicini vengono scelti,
-  // spesso disallineato dai 4 lotti veri sotto — segnalato dall'autore,
-  // "il cantiere della turbina continua ad essere disallineato"). **[C]**
-  // letto `placeholder/Mouse_LeftReleased.gml` riga per riga: al tocco
-  // (ramo selec==4) l'originale crea `eoliplacer` a offset FISSO
-  // `(98, 0)` dal placeholder toccato (`action_create_object(eoliplacer,
-  // 98, 0)`), e la catena successiva (`eoliplacer` -> `impavent` -> `eoli`,
-  // tutte con `action_create_object(..., 0, 0)`, offset relativo zero)
-  // eredita quella stessa posizione senza piu' toccarla: il centro vero
-  // e' sempre `placeholder.x + 98, placeholder.y`, un numero fisso letto
-  // dal codice, non una media calcolata sui lotti liberi trovati.
+  // [Bug corretto, segnalato dall'autore con uno screenshot: "la turbina
+  // finisce in mezzo alla strada e va in collisione con chies" — i 4 lotti
+  // devono essere ADIACENTI, a formare un rettangolo] Le due versioni
+  // precedenti di `multiTile` (prima un raggio dal TOCCO, poi dall'ANCORA
+  // visiva) trovavano sempre 3 lotti REALMENTE liberi entro una certa
+  // distanza in linea d'aria, ma non necessariamente adiacenti fra loro: su
+  // una griglia isometrica un lotto due passi piu' lontano puo' misurare
+  // meno px di uno a un passo solo in diagonale, quindi "il piu' vicino"
+  // poteva scegliere un lotto dall'altra parte di una strada. **[C]**
+  // Ricostruito leggendo `impavent_dem/Alarm_2.gml` (la ruspa che demolisce
+  // una pala eolica ricrea i 4 placeholder che l'avevano formata, a offset
+  // ESATTI `(-98,0)`/`(98,0)`/`(0,-58)`/`(0,58)` dal proprio centro — la
+  // stessa geometria, a meno del segno, di `DIAGONAL_DIRS` in main.js,
+  // palazzo/museo): senza una vera maschera di collisione (STUDIO.md,
+  // "pepazzittecollider" mai ricostruito) `findWindCluster()` in main.js
+  // sostituisce il raggio con la ricerca ESATTA (stessa tolleranza sulla
+  // griglia reale gia' usata da `DIAGONAL_DIRS`) dei tre vicini che
+  // completano il rombo isometrico adiacente al lotto toccato — sempre
+  // adiacenti a due a due, mai sparsi. [I] A differenza dell'originale (che
+  // fallisce IN SILENZIO se non trova 4 lotti — un singolo controllo a
+  // tempo fisso 3 tick dopo la nascita di `eoliplacer`, mai piu' ripetuto:
+  // sembra un meccanismo mai rifinito, `fantoccio` che crea non fa
+  // letteralmente nulla, sprite vuoto, nessun evento oltre un timer che lo
+  // autodistrugge) qui il giocatore riceve sempre un messaggio, costruito o
+  // no.
+  //
+  // `anchorOffset` — il CENTRO VISIVO della pala — NON e' la media del
+  // cluster trovato sopra: **[C]** letto `placeholder/Mouse_LeftReleased.gml`
+  // riga per riga, al tocco (ramo selec==4) l'originale crea `eoliplacer` a
+  // offset FISSO `(98, 0)` dal placeholder toccato (`action_create_object
+  // (eoliplacer, 98, 0)`), e la catena successiva (`eoliplacer` ->
+  // `impavent` -> `eoli`, tutte con `action_create_object(..., 0, 0)`,
+  // offset relativo zero) eredita quella stessa posizione senza piu'
+  // toccarla: il centro vero e' sempre `placeholder.x + 98, placeholder.y`,
+  // un numero fisso letto dal codice — indipendente dai 4 lotti di TERRENO
+  // consumati sopra (stesso rombo per qualunque edificio nasca su questa
+  // maschera, `grattacielo` sotto incluso: cambia solo la sua ancora
+  // visiva, non i lotti).
   eolico: {
     label: "Pala eolica",
     placeCost: { mon: 50000 },   // [C] eoliplacer/Alarm_1.gml, ramo selec==4
     // [C] placeholder/Mouse_LeftReleased.gml: `anchorOffset` e' l'offset FISSO
     // (98, 0) di eoliplacer dal placeholder toccato, vedi il commento sopra.
-    // [Bug corretto, segnalato dall'autore: "gli edifici spesso occupano
-    // spazi non destinati ad edifici"] **[I]** `radius` (qui e su
-    // `grattacielo` sotto) ora misura la distanza dei 3 lotti extra
-    // dall'ANCORA VISIVA (main.js, findPlacementCluster()), non piu' dal
-    // placeholder toccato — la ricerca risultante e' molto piu' severa (deve
-    // trovare lotti VICINI A DOVE L'EDIFICIO SI VEDE, non semplicemente
-    // vicini al tocco). 130 (tarato sul vecchio schema "vicino al tocco") non
-    // bastava piu' a raggiungere l'anello di vicini immediati intorno
-    // all'ancora spostata (misurato su game/data/match.scene.json: i lotti
-    // che appartengono davvero al gruppo dell'ancora stanno a ~60-125px,
-    // contro un salto secco a >150px per il prossimo lotto "vero" della
-    // griglia) — 175 copre quell'anello con un margine, restando pero' ben
-    // sotto i >200px dei lotti chiaramente estranei che il vecchio raggio
-    // (usato dal punto sbagliato) a volte catturava.
-    multiTile: { count: 4, radius: 175, anchorOffset: { dx: 98, dy: 0 } },
+    // `count` resta solo per il messaggio d'errore (main.js, placeAt()): il
+    // rombo di 4 lotti adiacenti che `findWindCluster()` cerca e' sempre
+    // quello, non un parametro.
+    multiTile: { count: 4, anchorOffset: { dx: 98, dy: 0 } },
     // [C] eoli/Alarm_0.gml: ogni 30 tick, SEMPRE +110 ele — a differenza di
     // industria non consuma `oil` (un generatore vero, non una centrale a
     // combustibile) e non e' gated su niente: `stepWindProduction()` sotto,
@@ -1651,21 +1653,18 @@ export const BUILDING_TYPES = {
   grattacielo: {
     label: "Grattacielo",
     placeCost: { mon: 200000 },   // [C] eoliplacer/Alarm_1.gml, ramo selec==82
-    // [Bug corretto] stessa maschera "phold" di eolico (STUDIO.md), ma
-    // finora senza il suo `anchorOffset` — quindi ancorato al centroide del
-    // cluster di 4 lotti come eolico PRIMA del fix (STUDIO.md, "cantiere
-    // della turbina disallineato dai lotti"): stesso difetto, mai
-    // corretto qui perche' passava inosservato dietro un edificio enorme
-    // che coprirebbe comunque il lotto sbagliato. **[C]**
-    // `eoliplacer/Alarm_1.gml`: `m3cant` nasce a offset relativo (0, 116) da
-    // `eoliplacer` — che a sua volta nasce a (98, 0) dal placeholder toccato
-    // (STUDIO.md, stessa istanza condivisa col ramo eolico): il vero centro
-    // e' quindi `placeholder + (98, 116)`, non la media del cluster.
-    // [I] `radius` 175, non 130: stesso fix di raggio di `BUILDING_TYPES.
-    // eolico` sopra (main.js, findPlacementCluster() ora cerca dall'ancora,
-    // non dal tocco) — qui ancora piu' necessario, l'ancora di grattacielo e'
-    // spostata (98, 116) dal tocco, quasi il doppio di eolico.
-    multiTile: { count: 4, radius: 175, anchorOffset: { dx: 98, dy: 116 } },
+    // Stessa maschera fissa "phold" di eolico (STUDIO.md, `eoliplacer`
+    // condiviso dai due rami selec==4/82): i 4 lotti di TERRENO consumati
+    // sono lo stesso rombo isometrico adiacente al tocco che
+    // `findWindCluster()` cerca per eolico (main.js — indipendente dal tipo
+    // di edificio che nasce sopra, vedi il commento su `BUILDING_TYPES.
+    // eolico`), solo l'ancora VISIVA cambia. **[C]** `eoliplacer/Alarm_1.gml`:
+    // `m3cant` nasce a offset relativo (0, 116) da `eoliplacer` — che a sua
+    // volta nasce a (98, 0) dal placeholder toccato — quindi l'ancora vera e'
+    // `placeholder + (98, 116)`, non la media del cluster: la torre e' molto
+    // piu' alta della pala (STUDIO.md sopra, "588x1527 contro 810x865"),
+    // serve piu' margine verticale per non coprire il proprio stesso lotto.
+    multiTile: { count: 4, anchorOffset: { dx: 98, dy: 116 } },
     construct: {
       finalSprite: "m3x14", life: 99999,   // [C] m3cant/Alarm_0.gml fase 13; [I] indistruttibile, vedi sopra
       decor: [
