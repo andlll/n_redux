@@ -935,7 +935,10 @@ export async function mountMatch(ctx, params = {}) {
   }
 
   /** `onSpawn` di stepConstructions() (buildings.js): le gru e i "topper"
-   * (toppers/topls/topld/tops5s/tops5d) creati durante un cantiere — [C]
+   * (sprite "toppers"/"topls"/"topld" — anche per i topper di secondo
+   * livello, tops5s/tops5d sotto: stesso sprite del primo livello,
+   * "tops5s"/"tops5d" e' il nome dell'OGGETTO che li crea, non dello
+   * sprite) creati durante un cantiere — [C]
    * gru1/toppers/Create.gml, nessuno dei due nel decompilato e' `notte_
    * target`: sono impalcature vere, illuminate come il resto della scena
    * dalla tinta ambientale, non un bagliore di finestra che ha bisogno di
