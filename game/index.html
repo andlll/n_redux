@@ -158,4 +158,13 @@
   <span>loading</span>
 </div>
 <div id="hud"></div>
-<script type="module" src="./src/app.js"></script>
+<!-- `./dist/app.js`, non `./src/app.js`: bundle minificato con code-splitting
+     (STUDIO.md, "da PNG a WebP" + il seguito su JS) — generato da
+     `game/package.json` ("npm run build", esbuild), MAI versionato (come
+     `game/assets/`, STUDIO.md li' sopra). Chi lavora sul codice sorgente vero
+     resta in `src/`: questo script non e' quello, e' solo cio' che il
+     browser scarica davvero. Serve `npm install && npm run build` dentro
+     `game/` prima che `index.html` funzioni da un checkout pulito — stessa
+     richiesta gia' vera per gli atlas (`tools/23_atlas.py` + `24_blit.py`),
+     non una novita' nel flusso di lavoro di questo repo. -->
+<script type="module" src="./dist/app.js"></script>

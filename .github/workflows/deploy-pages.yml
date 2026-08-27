@@ -52,6 +52,24 @@ jobs:
           python3 tools/26_logo.py mount_logo
           python3 tools/24_blit.py mount_logo
 
+      # Bundle JS minificato (STUDIO.md, "da PNG a WebP" + il seguito su JS):
+      # index.html carica ./dist/app.js, mai versionato (come game/assets/
+      # sopra) — senza questo passo il sito pubblicato avrebbe un <script>
+      # che punta a un file inesistente.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: game/package-lock.json
+
+      - name: Installa le dipendenze di build (esbuild)
+        working-directory: game
+        run: npm ci
+
+      - name: Bundle + minifica il JS del motore
+        working-directory: game
+        run: npm run build
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3

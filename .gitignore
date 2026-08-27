@@ -9,8 +9,11 @@ _extract/
 # generati dal repo stesso, non versionarli:
 #  - atlas per room  -> tools/23_atlas.py + tools/24_blit.ps1
 #  - frame singoli   -> tools/10_sprites.ps1
+#  - bundle JS       -> game/package.json ("npm run build", esbuild)
 game/assets/
 assets/sprites/
+game/dist/
+game/node_modules/
 
 # sistema
 Thumbs.db

@@ -3768,3 +3768,36 @@ paragrafo 8.
   non sa scrivere WebP — GDI+ non ha un encoder nativo — quindi ora si
   ferma con un errore chiaro invece di scrivere byte PNG dentro un file
   chiamato `.webp` in silenzio.
+
+- **JS bundlato e minificato: -81% sul peso scaricato, primo strumento
+  Node/npm del repo.** Seguito diretto della voce sopra (stessa
+  richiesta dell'autore, "ridurre i caricamenti"), stavolta sul
+  CODICE invece che sulle immagini. **[Misurato]**: 28 file sorgente,
+  836 KB, ~273 KB gzip (quello che il browser scarica oggi, per
+  file — fino a 28 richieste HTTP separate, con un effetto "waterfall"
+  dato che ogni modulo ES scarica prima di poter scoprire cosa importa
+  a sua volta). Bundlato con esbuild (`--bundle --splitting --minify
+  --sourcemap`, entry point `src/app.js`, preservando il code-splitting
+  gia' esistente per import() dinamico fra `title.js`/`main.js`,
+  app.js): 5 file, 155 KB, **~53 KB gzip (-81%)**. Il salto e' cosi'
+  grande perche' **il 61% del sorgente e' commenti** (misurato: 481 KB
+  su 793 KB totali) — questo repo documenta ogni scelta per bene in
+  italiano, spesso paragrafi interi con provenienza `[C]`/`[I]`/`[?]`;
+  minificare li toglie dal file SERVITO, non dal repository — restano
+  intatti in `game/src/*.js` per chi ci lavora, semplicemente non
+  vengono piu' spediti a chi gioca.
+  `game/package.json` (nuovo, `esbuild` come unica devDependency) +
+  `npm run build` -> `game/dist/` (mai versionato, come `game/assets/`
+  sopra — stessa richiesta di "genera prima di servire" gia' vera per
+  gli atlas, non una novita' nel flusso di lavoro). `index.html` ora
+  carica `./dist/app.js` invece di `./src/app.js`. Sourcemap esterne
+  (non inline, per non appesantire il bundle vero) per restare
+  debuggabile da devtools nonostante la minificazione.
+  `.github/workflows/deploy-pages.yml`: `actions/setup-node@v4` + `npm
+  ci` + `npm run build` prima di pubblicare — primo passo Node/npm
+  della pipeline, finora solo Python/Pillow.
+  Verificato dal vivo (non solo la dimensione dei file): l'intero sito
+  servito dal bundle invece dei sorgenti, `npm ci` pulito (lockfile
+  committato) seguito da `npm run build`, poi menu -> avvio
+  `match_easy` in Chromium headless — stesso identico comportamento,
+  zero errori (a parte il consueto 404 di `/favicon.ico`, ininfluente).
