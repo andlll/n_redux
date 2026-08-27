@@ -351,6 +351,17 @@ GAMEPLAY_SPRITES = {
     "gui": [
         "icone_oriz",          # sfondo barra risorse (repre/DrawGUI.gml)
         "crys_ico",            # icona nera dei cristalli (main.js, riga GUI sotto la barra risorse)
+        # Icona "salvataggio in corso" (src/objects/savvvvvco, sprite
+        # "savicona" — [C] r12/Alarm_10.gml: autosalvataggio ogni 1800 tick
+        # (30s) + reversi/Mouse_LeftPressed.gml: salvataggio all'uscita,
+        # entrambi seguiti da `action_create_object(savvvvvco, 0, 0)`). 30
+        # frame che fanno gia' da soli un fade in/fade out completo (alpha
+        # per-pixel misurata: 0 -> 255 -> 0 lungo tutta la sequenza) — vive
+        # 60 tick (Create arma Alarm_0 a 60, che si autodistrugge), quindi a
+        # 60fps gioca la sequenza due volte per intero prima di sparire —
+        # main.js/showSaveIcon() la riusa cosi' com'e' per il feedback visivo
+        # del salvataggio manuale/automatico in questo motore.
+        "savicona",
         # "faccina" della felicita' (src/objects/hapware): hap3 (sorriso) se
         # r12.hap>=r12.pop, hap1 (broncio) altrimenti — hap2/hap1hc/hap3hc
         # (variante colorata per lo stato hover, mai riprodotto in questo

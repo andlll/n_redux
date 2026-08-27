@@ -19,7 +19,7 @@
 // ripartire pulita.
 import { loadTexture } from "./gl.js";
 
-const cache = new Map();   // roomName -> Promise<{ atlas, pageTex }>
+const cache = new Map();   // roomName -> entry (vedi loadRoomAtlas)
 
 // [Bug corretto, segnalato dall'autore: "appena avvio match il sito si
 // refresha tornando alla schermata logo e poi al menu", riproducibile su
@@ -47,18 +47,35 @@ const PAGE_LOAD_CONCURRENCY = 4;
  * rilancia l'errore SOLO se `rethrow` (le pagine core: un fallimento li'
  * deve far rigettare l'intero atlas, vedi sotto) — le deferred continuano
  * a caricare le altre pagine anche se una fallisce (stesso comportamento di
- * prima di questo fix). */
-async function loadPagesLimited(gl, pages, pageTex, indices, { rethrow }) {
+ * prima di questo fix).
+ *
+ * `cancelled` (oggetto `{ value }` condiviso con l'entry di cache, vedi
+ * evictRoomAtlas() sotto): controllato prima di ogni pagina non ancora
+ * partita per smettere di avviarne di nuove non appena la room viene
+ * evitta, e sulla pagina appena arrivata per liberarla subito invece di
+ * scriverla in `pageTex` — evita che un `evictRoomAtlas()` capitato mentre
+ * un worker era a meta' di un `await loadTexture()` lasci comunque quella
+ * singola texture in GPU senza che nessuno la liberi mai piu'.
+ *
+ * `onPage` (opzionale): chiamato dopo ogni pagina che *avrebbe* dovuto
+ * contare ai fini del progresso (fallita compresa: anche una pagina che non
+ * carica fa comunque avanzare "quante ne mancano"), mai per una pagina
+ * scartata da `cancelled`. */
+async function loadPagesLimited(gl, pages, pageTex, indices, { rethrow, cancelled, onPage }) {
   let next = 0;
   async function worker() {
     while (next < indices.length) {
       const i = indices[next++];
+      if (cancelled.value) return;
       try {
-        pageTex[i] = await loadTexture(gl, "./assets/" + pages[i].file);
+        const tex = await loadTexture(gl, "./assets/" + pages[i].file);
+        if (cancelled.value) { gl.deleteTexture(tex.tex); return; }
+        pageTex[i] = tex;
       } catch (err) {
         console.error(`nimbus: pagina atlas "${pages[i].file}" non caricata`, err);
         if (rethrow) throw err;
       }
+      onPage?.();
     }
   }
   const workers = Array.from({ length: Math.min(PAGE_LOAD_CONCURRENCY, indices.length) }, worker);
@@ -69,12 +86,32 @@ async function loadPagesLimited(gl, pages, pageTex, indices, { rethrow }) {
  * scaricato una sola volta per sessione: una seconda richiesta per la stessa
  * room (stesso `gl` — vedi sopra sul perche' non cambia mai in questa app)
  * ritorna la stessa promise gia' in corso o gia' risolta, senza rifare
- * fetch/upload. */
-export function loadRoomAtlas(gl, roomName) {
+ * fetch/upload.
+ *
+ * `onProgress(loaded, total)` (opzionale): quante pagine CORE (quelle che
+ * questa stessa chiamata aspetta prima di tornare, non le deferred in
+ * background) sono arrivate finora — usato dalle schermate di caricamento
+ * (index.html #loading/#levelLoading, app.js) per una barra/percentuale
+ * reale invece di un'attesa cieca. Se la room e' gia' in cache (hit,
+ * fetch/texture gia' partiti o finiti sotto una chiamata precedente) viene
+ * comunque richiamato subito con lo stato attuale, cosi' un secondo
+ * chiamante (es. si rientra nella stessa room prima che le pagine core
+ * della visita precedente abbiano finito) vede da subito un numero
+ * sensato invece di restare a 0 finche' non arriva la pagina successiva. */
+export function loadRoomAtlas(gl, roomName, { onProgress } = {}) {
   let entry = cache.get(roomName);
   if (!entry) {
-    entry = (async () => {
+    const cancelled = { value: false };
+    const progress = { loaded: 0, total: 0 };
+    const listeners = new Set();
+    const notify = () => { for (const fn of listeners) fn(progress.loaded, progress.total); };
+    entry = {
+      cancelled, progress, listeners,
+      pageTex: null,   // popolato non appena l'atlas.json e' arrivato — vedi evictRoomAtlas()
+    };
+    entry.promise = (async () => {
       const atlas = await fetch(`./data/${roomName}.atlas.json`).then((x) => x.json());
+      if (cancelled.value) return null;
       // [I] Segnalato dall'autore: "riusciamo a ridurre i tempi di
       // caricamento caricando gli asset degli edifici avanzati poco prima
       // che il giocatore sia in condizione di sbloccarli?" — `corePages`
@@ -91,8 +128,13 @@ export function loadRoomAtlas(gl, roomName) {
       // nessuna in background.
       const coreCount = atlas.corePages ?? atlas.pages.length;
       const pageTex = new Array(atlas.pages.length).fill(null);
+      entry.pageTex = pageTex;
+      progress.total = coreCount;
       const coreIndices = Array.from({ length: coreCount }, (_, i) => i);
-      await loadPagesLimited(gl, atlas.pages, pageTex, coreIndices, { rethrow: true });
+      await loadPagesLimited(gl, atlas.pages, pageTex, coreIndices, {
+        rethrow: true, cancelled, onPage: () => { progress.loaded++; notify(); },
+      });
+      if (cancelled.value) return null;
       // Pagine deferred: NON aspettate — un fallimento qui non deve far
       // ripetere il download delle pagine core gia' andate a buon fine
       // (a differenza del catch sotto, che scarta l'intera cache SOLO se
@@ -102,7 +144,7 @@ export function loadRoomAtlas(gl, roomName) {
       // pagina e' ancora per strada, poi compare da solo.
       const deferredIndices = Array.from(
         { length: Math.max(0, atlas.pages.length - coreCount) }, (_, i) => coreCount + i);
-      loadPagesLimited(gl, atlas.pages, pageTex, deferredIndices, { rethrow: false });
+      loadPagesLimited(gl, atlas.pages, pageTex, deferredIndices, { rethrow: false, cancelled });
       return { atlas, pageTex };
     })();
     // [Bug corretto, segnalato dall'autore: "problemi col caricamento del
@@ -117,8 +159,54 @@ export function loadRoomAtlas(gl, roomName) {
     // nulla di transitorio potesse mai risolversi da solo. Qui, se il
     // caricamento fallisce, la voce di cache viene rimossa cosi' un nuovo
     // tentativo riparte da un fetch vero.
-    entry.catch(() => { if (cache.get(roomName) === entry) cache.delete(roomName); });
+    entry.promise.catch(() => { if (cache.get(roomName) === entry) cache.delete(roomName); });
     cache.set(roomName, entry);
   }
-  return entry;
+  if (onProgress) {
+    onProgress(entry.progress.loaded, entry.progress.total);
+    entry.listeners.add(onProgress);
+    entry.promise.finally(() => entry.listeners.delete(onProgress));
+  }
+  return entry.promise;
+}
+
+// [Bug corretto, segnalato dall'autore: "su iPhone tutorial/match facile
+// continuano a far ripartire il sito"] `loadRoomAtlas()` non liberava mai
+// nessun atlas gia' in cache: title.js tiene gia' l'intero atlas di `match`
+// (~50 pagine, ~800 MB non compressi in GPU — vedi sopra) caricato per lo
+// sfondo sfumato del menu, e la cache lo lasciava li' anche dopo aver
+// lasciato il menu. Entrare in `tutorial`/`match_easy` (un SECONDO atlas
+// quasi altrettanto grande, main.js) sommava quindi ~1.6 GB di texture GPU
+// nello stesso istante — su desktop (budget molto piu' ampio, e verificato
+// solo li' nel fix precedente su questo stesso bug, assets.js/PAGE_LOAD_
+// CONCURRENCY) resta sotto soglia, su iPhone (budget per-tab molto piu'
+// stretto) basta a far terminare la scheda: il sistema operativo la
+// ricarica da zero, "il sito si refresha" nello stesso modo gia' descritto
+// sopra. `match` invece appariva funzionare perche' RIUSA la cache gia'
+// calda dello sfondo del menu (stesso roomName "match"), senza aggiungere
+// nulla — da qui il sintomo riportato solo su tutorial/match_easy, mai su
+// match. Qui si liberano esplicitamente le texture GPU di una room non piu'
+// necessaria (chiamata da app.js/navigate() prima di montare la prossima
+// schermata, vedi neededRoomsFor() li'): la cache resta solo per le room
+// davvero in uso ORA, mai la somma di tutte quelle mai visitate nella
+// sessione.
+export function evictRoomAtlas(gl, roomName) {
+  const entry = cache.get(roomName);
+  if (!entry) return;
+  cache.delete(roomName);
+  entry.cancelled.value = true;
+  if (entry.pageTex) {
+    for (const t of entry.pageTex) {
+      if (t) gl.deleteTexture(t.tex);
+    }
+  }
+}
+
+/** Libera tutte le room in cache TRANNE quelle in `neededRooms` (Set/Array di
+ * nomi) — vedi evictRoomAtlas() sopra per il perche'. */
+export function evictUnneededRoomAtlases(gl, neededRooms) {
+  const needed = neededRooms instanceof Set ? neededRooms : new Set(neededRooms);
+  for (const roomName of [...cache.keys()]) {
+    if (!needed.has(roomName)) evictRoomAtlas(gl, roomName);
+  }
 }

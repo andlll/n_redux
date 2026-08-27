@@ -73,7 +73,7 @@ const PIRO_AIR_SPRITE = { 0: "verde_pic", 1: "rosso_pic", 2: "giallo_pic", 3: "b
 // piu' corto — la vecchia scadenza lunga viene di fatto scavalcata).
 export const THREAT_TYPES = {
   air: {
-    label: "caccia",
+    label: "fighter",
     spawnX: -170, spawnY: [380, 1620],       // [C] r12/Alarm_4.gml
     maxAge: 3000,                             // [C] air/Create.gml: action_set_alarm(3000, 1)
     maxLife: 2,                               // [C] air/Create.gml: life = 2
@@ -87,7 +87,7 @@ export const THREAT_TYPES = {
     piro: { chance: 0.5, dir: 300, speed: 12, life: 30 * TICK, entryBurst: true },
   },
   bombar: {
-    label: "bombardiere",
+    label: "bomber",
     spawnX: -170, spawnY: [380, 1620],       // [C] r12/Alarm_5.gml
     maxAge: 6000,                             // [C] bombar/Create.gml: action_set_alarm(6000, 1)
     maxLife: 3.5,                             // [C] bombar/Create.gml: life = 3.5
