@@ -1599,6 +1599,7 @@ export async function mountMatch(ctx, params = {}) {
     if (reason) { message = "You can't save right now: " + reason.text; messageT = 3; return; }
     save(scene.name, r12, buildings, ruins, blockedSlots, platformState);
     message = "game saved"; messageT = 3;
+    showSaveIcon();
   }
   // Applica un salvataggio gia' letto/parsato (da localStorage O da file,
   // save.js) allo stato vivo della partita — corpo unico riusato da
@@ -1676,6 +1677,7 @@ export async function mountMatch(ctx, params = {}) {
       if (h === undefined) return;   // dialog annullato dall'utente, nessun messaggio
       if (h) fileHandle = h;
       message = "game saved to file"; messageT = 3;
+      showSaveIcon();
     } catch (err) {
       console.error("nimbus: salvataggio su file fallito", err);
       message = "save to file failed"; messageT = 3;
@@ -2514,6 +2516,27 @@ export async function mountMatch(ctx, params = {}) {
   let picked = null;
   let message = "";
   let messageT = 0;
+  // Icona "salvataggio in corso" (src/objects/savvvvvco, sprite "savicona",
+  // tools/23_atlas.py — [C] r12/Alarm_10.gml, l'autosalvataggio ogni 30s
+  // dell'originale, e reversi/Mouse_LeftPressed.gml, il salvataggio
+  // all'uscita: entrambi creano questo stesso oggetto subito dopo
+  // `action_save_game`). Richiesta dall'autore per il salvataggio manuale E
+  // automatico di questo motore: "l'icona del dischetto con una sequenza
+  // fade in fade out di un paio di cicli veloci" — esattamente cosa fa gia'
+  // da sola la sprite originale (30 frame, un fade in/out completo bakeato
+  // nell'alpha di ognuno, vedi il commento su "savicona" in 23_atlas.py) per
+  // i 60 tick (1s) di vita di `savvvvvco` nel decompilato: due cicli interi
+  // a 60fps. `null` = non in mostra (il caso comune); altrimenti secondi
+  // trascorsi dall'ultimo salvataggio riuscito, avanzati in frame() sotto
+  // finche' non supera SAVE_ICON_DURATION.
+  let saveIconT = null;
+  const SAVE_ICON_DURATION = 1;   // secondi — [C] savvvvvco/Create.gml: action_set_alarm(60, 0) a 60fps
+  /** Chiamata da doSave()/doSaveToFile()/stepAutosave() dopo un salvataggio
+   * riuscito (mai su un blocco per situazione critica o un tentativo
+   * annullato) — riparte da zero anche se una sequenza precedente e' ancora
+   * a meta', cosi' due salvataggi ravvicinati non lasciano l'icona a meta'
+   * dissolvenza invece di un nuovo ciclo pieno. */
+  function showSaveIcon() { saveIconT = 0; }
   // Pausa (bottone in basso a destra + tasto P, vedi drawPauseOverlay() e il
   // resto dei riferimenti a `paused` piu' sotto): congela l'intero blocco di
   // simulazione (frame(), sopra) e mostra il mondo — gia' disegnato,
@@ -2580,6 +2603,7 @@ export async function mountMatch(ctx, params = {}) {
     }
     save(scene.name, r12, buildings, ruins, blockedSlots, platformState);
     autosaveT = 0;
+    showSaveIcon();
   }
 
   /**
@@ -3419,6 +3443,10 @@ export async function mountMatch(ctx, params = {}) {
     // per simmetria con la sconfitta — nessun timer di auto-chiusura.
     if (outcome) outcome.t += dt;
     stepAutosave(dt);
+    if (saveIconT !== null) {
+      saveIconT += dt;
+      if (saveIconT >= SAVE_ICON_DURATION) saveIconT = null;
+    }
 
     // --- simulazione: cantieri, economia, meteo, traffico, luci
     // `paused` (bottone di pausa in basso a destra, sotto) o una sconfitta
@@ -4744,6 +4772,24 @@ export async function mountMatch(ctx, params = {}) {
       r.flush();
     }
 
+    // Icona "salvataggio in corso" (saveIconT/showSaveIcon(), sopra) —
+    // ultimo layer disegnato, sopra ANCHE al menu di pausa/fine partita (non
+    // solo al mondo): un salvataggio manuale premuto da dentro il menu di
+    // pausa stesso (bottone "Save game") deve restare visibile, non
+    // sparire sotto lo sfumato/pannello appena disegnato sopra di lui.
+    // Angolo in alto a destra, lontano dalla barra risorse (in alto a
+    // sinistra, gia' stretta su schermi piccoli — STUDIO.md, il denaro si
+    // taglia gia' al bordo su alcuni telefoni) cosi' non la sovrappone mai.
+    if (saveIconT !== null) {
+      const cw = canvas.clientWidth, ch = canvas.clientHeight;
+      r.setAmbient(1, 1, 1);
+      r.setProjection(screenProjection(cw, ch));
+      const frameIdx = Math.floor((saveIconT / SAVE_ICON_DURATION) * 60) % 30;
+      const f = frameFor("savicona", frameIdx);
+      if (f) r.draw(f, cw - UI_MARGIN - f.w, UI_MARGIN, 1, 0xffffff, 1);
+      r.flush();
+    }
+
     requestAnimationFrame(frame);
     } catch (err) {
       console.error("nimbus: errore nel ciclo di frame di match, torno al menu", err);
@@ -4762,6 +4808,7 @@ export async function mountMatch(ctx, params = {}) {
     get pauseMenuButtons() { return pauseMenuButtons; },
     get pauseSubmenu() { return pauseSubmenu; }, setPauseSubmenu: (v) => { pauseSubmenu = v; },
     get autosave() { return autosave; }, get autosaveT() { return autosaveT; }, setAutosaveT: (t) => { autosaveT = t; },
+    get saveIconT() { return saveIconT; }, showSaveIcon,
     get uiScrollX() { return uiScrollX; }, setUiScrollX: (x) => { uiScrollX = x; },
     get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
     atmo, get pedestrians() { return pedestrians; },
