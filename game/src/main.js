@@ -4131,9 +4131,20 @@ export async function mountMatch(ctx, params = {}) {
     // variante "hover" mai usata in questo motore touch-first, STUDIO.md
     // §7): coerente con le altre, invece di stonare come unica icona
     // colorata della barra.
-    const crysFrame = frameFor("crys_ico");
-    if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
-    drawText(r, fontMini, String(Math.round(r12.crys)), barX + 34, barY + 68, 1, 0x000000, 1);
+    // [Bug corretto, segnalato dall'autore: "nascondi icona e contatore
+    // finche' il giocatore non raccoglie la prima gemma"] Prima disegnata
+    // sempre, mostrando "0" fin dal primissimo frame anche se il giocatore
+    // non ha ancora mai visto/raccolto un cristallo — un indicatore per una
+    // risorsa che potrebbe non esistere ancora nella sua partita. Stessa
+    // soglia (`> 0`) sia per comparire la prima volta sia per sparire di
+    // nuovo se torna a zero (es. spesa tutta sui fari, platform.js): nessuno
+    // stato "mai raccolta" da tracciare a parte, l'icona segue semplicemente
+    // se il giocatore ne possiede almeno una in questo istante.
+    if (r12.crys > 0) {
+      const crysFrame = frameFor("crys_ico");
+      if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
+      drawText(r, fontMini, String(Math.round(r12.crys)), barX + 34, barY + 68, 1, 0x000000, 1);
+    }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
     // ancora ricostruita (STUDIO.md §6/§9), e replica la struttura a tre
