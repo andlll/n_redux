@@ -118,6 +118,11 @@ export async function mountMatch(ctx, params = {}) {
   // volanti, sempre "notturno" a prescindere dalla fase del giorno.
   // GameMaker impacchetta i colori R+G*256+B*65536 (ordine BGR), come
   // altrove nel motore (cars.js, NIGHT_TINT).
+  // Da quando esiste `bauraColorAt()` (piu' sotto, ciclo giorno/tramonto/
+  // notte vero) questa tinta statica resta il cielo di sfondo solo su
+  // `match_easy` (dove `baura` non e' mai esistito nel decompilato) — su
+  // `match`/`tutorial` il colore dinamico la sostituisce, vedi il commento
+  // sopra `r.beginFrame()` piu' sotto.
   const SCENE_BG_RGB = [scene.bgColor & 0xff, (scene.bgColor >> 8) & 0xff, (scene.bgColor >> 16) & 0xff].map((v) => v / 255);
   cam.bounds = { left: 0, top: 0, right: scene.width, bottom: scene.height };
   // [Bug corretto, gap dichiarato STUDIO.md: "match mostra ancora perlopiu'
@@ -4118,7 +4123,19 @@ export async function mountMatch(ctx, params = {}) {
       }
     }
 
-    r.beginFrame(canvas.width, canvas.height, SCENE_BG_RGB);
+    // [Bug corretto, segnalato dall'autore: "lo sfondo pesca/scuro deve
+    // sostituire il cielo di sfondo, altrimenti non ha senso"] `bauraColorAt()`
+    // (sotto, ciclo giorno -> tramonto pesca -> notte -> tramonto -> giorno)
+    // prima tingeva SOLO la vignetta fuori dai confini della room (poco
+    // sotto) — il "cielo" vero, cioe' il colore di sfondo del canvas dove la
+    // room non ha nessuno sprite sopra (`SCENE_BG_RGB`, es. il vuoto sotto/
+    // intorno alla piattaforma volante su `match`), restava sempre fisso alla
+    // tinta statica di `scene.bgColor`: due sfondi scollegati che non
+    // cambiavano insieme. Qui SCENE_BG_RGB resta solo su `match_easy`, dove
+    // `baura` non e' mai esistito nel decompilato (vedi il commento su
+    // bauraColorAt() sotto).
+    const skyRgb = roomParam === "match_easy" ? SCENE_BG_RGB : bauraColorAt(phaseT);
+    r.beginFrame(canvas.width, canvas.height, skyRgb);
     const amb = ambientAt(phaseT);
     const darken = stormDarkenFactor(r12);
     if (darken > 0.002) amb.rgb = amb.rgb.map((v) => v * (1 - darken));
@@ -4229,6 +4246,26 @@ export async function mountMatch(ctx, params = {}) {
     r.setAmbient(1, 1, 1);
     r.setProjection(screenProjection(canvas.clientWidth, canvas.clientHeight));
 
+    // Luminanza di sfondo, calcolata una sola volta per frame qui (non piu'
+    // duplicata piu' sotto): decide quando le sagome/il testo NERI della UI
+    // vanno ridisegnati bianchi per restare leggibili — sia la barra risorse
+    // superiore (icone_oriz/crys_ico/hap1-3, poco sotto: stessa famiglia di
+    // pittogrammi neri di crys_ico, vedi il commento li') sia la fila di
+    // bottoni in basso (`iconsDark`/`setColorize()`, molto piu' sotto).
+    // [Bug corretto, segnalato dall'autore: "quando i pulsanti della GUI
+    // diventano bianchi devono diventare bianchi anche quelli della GUI
+    // superiore"] Prima solo i bottoni in basso avevano questa protezione:
+    // di notte (o dentro la vignetta scura fuori mappa) restavano leggibili
+    // ma la barra risorse in alto — stessi pittogrammi neri, stesso sfondo —
+    // no. Vedi il commento su ICON_DARK_THRESHOLD (bottoni in basso, sotto)
+    // per la soglia/il perche' del minimo fra le due luminanze.
+    function luma(rgb) { return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722; }
+    const worldLuma = luma(amb.rgb);
+    const bauraRgb = roomParam === "match_easy" ? null : bauraColorAt(phaseT);
+    const vignetteLuma = bauraRgb ? luma(bauraRgb) : 1;
+    const ICON_DARK_THRESHOLD = 0.4;
+    const iconsDark = Math.min(worldLuma, vignetteLuma) < ICON_DARK_THRESHOLD;
+
     // Fuori dai confini della room: vignetta piena invece dei bordi
     // "strappati" del terreno quando lo zoom indietro supera la mappa (il
     // terreno non e' disegnato per essere visto da fuori dai suoi bordi).
@@ -4252,7 +4289,6 @@ export async function mountMatch(ctx, params = {}) {
     // pura, niente tint — `match`/`tutorial` restano col tint vero di
     // `baura` sopra.
     {
-      const bauraRgb = bauraColorAt(phaseT);
       const vignetteTint = roomParam === "match_easy" ? 0xffffff
         : (Math.round(bauraRgb[0] * 255) << 16) | (Math.round(bauraRgb[1] * 255) << 8) | Math.round(bauraRgb[2] * 255);
       const b = cam.bounds;
@@ -4288,10 +4324,24 @@ export async function mountMatch(ctx, params = {}) {
     const UI_MARGIN = 8;
     const barFrame = frameFor("icone_oriz");
     const barX = UI_MARGIN, barY = UI_MARGIN;
+    // [Bug corretto, segnalato dall'autore: "quando i pulsanti della GUI
+    // diventano bianchi devono diventare bianchi anche quelli della GUI
+    // superiore"] `icone_oriz` e' la stessa famiglia di pittogrammi neri
+    // di `crys_ico`/`hap1`-`hap3` sotto (vedi i commenti li'), quindi va
+    // protetta con lo stesso `setColorize(iconsDark)` gia' usato per i
+    // bottoni in basso (`iconsDark`, calcolato una sola volta per frame
+    // poco sopra) — altrimenti solo la fila di sotto restava leggibile di
+    // notte/nella vignetta scura, non la barra risorse. `barTextTint`
+    // stessa idea per i numeri (font bianco moltiplicato per il tint, non
+    // sagome — vedi drawText()/font.js): nero su sfondo chiaro come
+    // l'originale, bianco quando l'icona diventa bianca.
+    const barTextTint = iconsDark ? 0xffffff : 0x000000;
+    r.setColorize(iconsDark);
     if (barFrame) r.draw(barFrame, barX, barY, 1, 0xffffff, 1);
+    r.setColorize(false);
     const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                    [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
-    for (const [value, x] of stats) drawText(r, fontMini, String(value), barX + x, barY + 10, 1, 0x000000, 1);
+    for (const [value, x] of stats) drawText(r, fontMini, String(value), barX + x, barY + 10, 1, barTextTint, 1);
     // Data (mese + anno, game/src/state.js stepCalendar()) — [C] repre/
     // DrawGUI.gml: il mese e' testo ("Jan".."Dec", da `repre.mon` — non
     // r12, vedi state.js) a x=456/y=20+upp (stessa riga dell'icona, quindi
@@ -4299,8 +4349,8 @@ export async function mountMatch(ctx, params = {}) {
     // y=40+upp (`barY+20`) — stessi offset del decompilato, ribasati su
     // `barY` come gia' fatto sopra per pop/olio/energia/denaro (offset - 20,
     // la y a cui l'originale disegnava l'icona stessa).
-    drawText(r, fontMini, MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 0, 1, 0x000000, 1);
-    drawText(r, fontMini, String(Math.round(r12.time)), barX + 448, barY + 20, 1, 0x000000, 1);
+    drawText(r, fontMini, MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 0, 1, barTextTint, 1);
+    drawText(r, fontMini, String(Math.round(r12.time)), barX + 448, barY + 20, 1, barTextTint, 1);
     // La "faccina" della felicita' (src/objects/hapware — segnalata
     // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
     // che diventa triste quando la felicita' scende sotto una soglia" — la
@@ -4319,7 +4369,9 @@ export async function mountMatch(ctx, params = {}) {
     // `barY` come pop/olio/energia/denaro/data sopra (barY corrisponde a
     // GML y=20, quindi 42-20=22).
     const hapFrame = frameFor(r12.hap >= r12.pop ? "hap3" : "hap1");
+    r.setColorize(iconsDark);
     if (hapFrame) r.draw(hapFrame, barX + 520, barY + 22, 0.62, 0xffffff, 1);
+    r.setColorize(false);
     // Cristalli (r12.crys: balloons.js, il loot di `monviolo`; platform.js,
     // il gettone lasciato dal monviolo in volo verso il faro) — **[I]**
     // nuovo indicatore, richiesto dall'autore ("nella barra superiore manca
@@ -4350,8 +4402,10 @@ export async function mountMatch(ctx, params = {}) {
     // se il giocatore ne possiede almeno una in questo istante.
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
+      r.setColorize(iconsDark);
       if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
-      drawText(r, fontMini, String(Math.round(r12.crys)), barX + 34, barY + 68, 1, 0x000000, 1);
+      r.setColorize(false);
+      drawText(r, fontMini, String(Math.round(r12.crys)), barX + 34, barY + 68, 1, barTextTint, 1);
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
@@ -4445,9 +4499,8 @@ export async function mountMatch(ctx, params = {}) {
     // su nero puro (0*x=0, vedi Renderer.setColorize() in gl.js) — sotto una
     // soglia di luminanza le disegniamo con `setColorize(true)`: sagoma
     // (alpha) della texture, colore preso da `tint` direttamente invece che
-    // moltiplicato.
-    //
-    // La luminanza da controllare e' la PIU' SCURA fra due candidati, non
+    // moltiplicato. `iconsDark` (sopra, calcolato una sola volta per frame,
+    // condiviso con la barra risorse) e' la PIU' SCURA fra due candidati, non
     // solo l'ambient del mondo: la fila di bottoni vive in basso a schermo
     // (`baseY`, vicino al bordo) — con zoom indietro sufficiente su
     // `match`/`tutorial` puo' finire sopra la vignetta invece che sul mondo.
@@ -4464,11 +4517,6 @@ export async function mountMatch(ctx, params = {}) {
     // esclusi: quello NON e' un'icona nera ma un disegno a colori scelto a
     // mano nell'arte originale (STUDIO.md, "GUI vera" — "non un tint, sono
     // disegni diversi"), colorize lo appiattirebbe perdendo quella scelta.
-    function luma(rgb) { return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722; }
-    const worldLuma = luma(amb.rgb);
-    const vignetteLuma = roomParam === "match_easy" ? 1 : luma(bauraColorAt(phaseT));
-    const ICON_DARK_THRESHOLD = 0.4;
-    const iconsDark = Math.min(worldLuma, vignetteLuma) < ICON_DARK_THRESHOLD;
     for (let i = 0; i < row.length; i++) {
       const b = row[i], f = frames[i];
       if (!f) continue;
