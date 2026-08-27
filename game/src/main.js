@@ -385,7 +385,7 @@ export async function mountMatch(ctx, params = {}) {
   // aspetta uno sgombero puro, poi una scelta libera di cosa costruirci
   // sopra). Riusa lo stesso `id`/`depth` dei placeholder veri della scena
   // (sopra) cosi' il lotto si comporta esattamente come uno qualunque
-  // (hover, tap, findPlacementCluster) — se un placeholder con quell'id
+  // (hover, tap, findWindCluster) — se un placeholder con quell'id
   // esiste gia' (mai il caso per una rovina, ma difensivo) lo riattiva
   // invece di duplicarlo.
   function clearedPlaceholder(x, y) {
@@ -1033,32 +1033,50 @@ export async function mountMatch(ctx, params = {}) {
   /**
    * `eolico`/`grattacielo` (buildings.js, `def.multiTile`) sono gli unici
    * edifici che occupano PIU' di un placeholder — vedi il commento su
-   * `BUILDING_TYPES.eolico` in buildings.js per il perche'. Cerca fra i
-   * placeholder ancora liberi quelli entro `radius` dall'ANCORA VISIVA
-   * dell'edificio (`anchorX/anchorY` — il placeholder toccato piu' l'offset
-   * fisso di `def.multiTile.anchorOffset`, calcolato da placeAt()), il piu'
-   * vicino per primo, e ne restituisce `count` in tutto (il placeholder
-   * TOCCATO sempre incluso, indipendentemente dalla sua distanza
-   * dall'ancora). **[Bug corretto, segnalato dall'autore: "il piazzamento di
-   * eolico/grattacielo... occupano spazi non destinati ad edifici"]** una
-   * versione precedente cercava i vicini piu' vicini al TOCCO (`tapped.x/y`)
-   * invece che all'ancora: per un'ancora spostata di 98-150px dal tocco
-   * (`anchorOffset`, sopra) quello sceglieva spesso lotti dalla parte
-   * sbagliata rispetto a dove l'edificio si vede davvero, lasciando liberi
-   * (mai bloccati) i lotti veri sotto lo sprite — un secondo edificio poteva
-   * nascere proprio li', sovrapponendosi visivamente al primo. `null` se non
-   * ce ne sono abbastanza vicini all'ancora — un rifiuto esplicito (vedi
-   * placeAt()) e' preferibile a un piazzamento "riuscito" ma disallineato.
-   * [I] Approssimazione dichiarata di una vera maschera di collisione
-   * (STUDIO.md, "pepazzittecollider" mai ricostruito).
+   * `BUILDING_TYPES.eolico` in buildings.js per il perche'. **[Bug corretto,
+   * segnalato dall'autore con uno screenshot: "la turbina finisce in mezzo
+   * alla strada e va in collisione con chies" — i 4 lotti devono essere
+   * ADIACENTI, a formare un rettangolo]** Le due versioni precedenti
+   * ("i 3 piu' vicini al TOCCO", poi "i 3 piu' vicini all'ANCORA visiva
+   * entro un raggio") trovavano sempre 3 lotti REALMENTE liberi, ma non
+   * necessariamente adiacenti fra loro: su una griglia isometrica un
+   * placeholder a due passi di griglia puo' stare piu' vicino in linea
+   * d'aria di uno a un passo solo in diagonale, quindi "i piu' vicini"
+   * poteva scegliere un lotto dall'altra parte di una strada, o vicino a un
+   * edificio giA' occupato come `chies` — un cluster sparso, non un
+   * rettangolo. **[C]** Ricostruito leggendo `impavent_dem/Alarm_2.gml` riga
+   * per riga (la ruspa che demolisce una pala eolica: `action_create_object
+   * (placeholder, -98, 0)`, `(98, 0)`, `(0, -58)`, `(0, 58)` — i 4 lotti che
+   * l'avevano formata, ricreati esattamente dov'erano): e' la STESSA identica
+   * geometria di `DIAGONAL_DIRS` sotto (palazzo/museo, gia' letta a sua volta
+   * dal decompilato con la stessa tolleranza sulla griglia reale di
+   * `match_easy.scene.json`) — un singolo rombo della griglia isometrica
+   * (un "rettangolo" in coordinate di griglia, che in schermo isometrico
+   * disegna un rombo a 4 vertici), non un raggio. Il lotto TOCCATO e'
+   * sempre il vertice OVEST del rombo (l'ancora visiva sta 98px ad est di
+   * lui, `anchorOffset` in buildings.js): gli altri tre sono i suoi due
+   * vicini diagonali verso est (`DIAGONAL_DIRS[0]`/`[1]`, entrambi dx
+   * positivo) e il loro angolo opposto (la somma dei due, il vertice EST) —
+   * quattro lotti realmente adiacenti a due a due, mai sparsi. Indipendente
+   * dal tipo di edificio (eolico/grattacielo condividono la stessa maschera
+   * fissa "phold" di `eoliplacer`, STUDIO.md): solo l'ancora VISIVA cambia
+   * per tipo (`anchorOffset`), non i lotti di TERRENO consumati. `null` se
+   * anche uno solo dei tre manca (occupato, non esiste, o e' gia' stato
+   * consumato da un altro edificio) — un rifiuto esplicito (vedi placeAt())
+   * e' preferibile a un piazzamento "riuscito" ma disallineato.
    */
-  function findPlacementCluster(tapped, anchorX, anchorY, count, radius) {
-    const r2 = radius * radius;
-    const near = placeholders
-      .filter((p) => p !== tapped && !p.consumed && (p.x - anchorX) ** 2 + (p.y - anchorY) ** 2 <= r2)
-      .sort((a, b) => ((a.x - anchorX) ** 2 + (a.y - anchorY) ** 2) - ((b.x - anchorX) ** 2 + (b.y - anchorY) ** 2));
-    if (near.length < count - 1) return null;
-    return [tapped, ...near.slice(0, count - 1)];
+  function findWindCluster(touched) {
+    const d0 = DIAGONAL_DIRS[0], d1 = DIAGONAL_DIRS[1];   // (99,57)/(99,-57): i due vicini a est del lotto toccato
+    const offsets = [d0, d1, { dx: d0.dx + d1.dx, dy: d0.dy + d1.dy }];   // + il loro angolo opposto (l'est vero e proprio)
+    const found = [touched];
+    for (const o of offsets) {
+      const tx = touched.x + o.dx, ty = touched.y + o.dy;
+      const ph = placeholders.find((p) => !found.includes(p) && !p.consumed
+        && Math.abs(p.x - tx) <= DIAGONAL_TOLERANCE && Math.abs(p.y - ty) <= DIAGONAL_TOLERANCE);
+      if (!ph) return null;
+      found.push(ph);
+    }
+    return found;
   }
 
   function placeAt(placeholder, type) {
@@ -1094,19 +1112,10 @@ export async function mountMatch(ctx, params = {}) {
     // `eolico`/`grattacielo` (def.multiTile.anchorOffset): il centro visivo
     // e' il placeholder TOCCATO piu' l'offset FISSO letto dal decompilato
     // (BUILDING_TYPES in buildings.js — `placeholder/Mouse_LeftReleased.gml`,
-    // dove nasce `eoliplacer`), non la media del cluster trovato sotto.
-    // Calcolato QUI, prima della ricerca del cluster: **[Bug corretto,
-    // segnalato dall'autore: "il piazzamento di eolico/grattacielo... spesso
-    // occupano spazi non destinati ad edifici"]** una versione precedente
-    // cercava i 3 lotti extra piu' vicini al placeholder TOCCATO (sotto il
-    // tocco del giocatore), non all'ancora visiva sopra — per `eolico` (dx
-    // 98) e ancora di piu' per `grattacielo` (dx 98, dy 116, il doppio dello
-    // spostamento) il punto dove l'edificio si vede DAVVERO puo' stare a
-    // 100-150px dal tocco: cercare i vicini "piu' vicini al tocco" prendeva
-    // spesso lotti dalla parte OPPOSTA rispetto a dove l'edificio si vede,
-    // lasciando liberi (mai bloccati) i lotti veri sotto lo sprite — un
-    // edificio successivo poteva quindi nascere proprio li', sovrapponendosi
-    // visivamente alla turbina/al grattacielo gia' costruito.
+    // dove nasce `eoliplacer`), non la media del cluster trovato sotto —
+    // quello (findWindCluster(), sopra) determina solo QUALI 4 lotti di
+    // terreno vengono consumati, sempre lo stesso rombo adiacente al tocco
+    // indipendentemente dal tipo di edificio che ci nasce sopra.
     const off = def.multiTile?.anchorOffset;
     const anchorX = off ? placeholder.x + off.dx : placeholder.x;
     const anchorY = off ? placeholder.y + off.dy : placeholder.y;
@@ -1115,8 +1124,8 @@ export async function mountMatch(ctx, params = {}) {
     // silenzio, vedi buildings.js) restituisce sempre un messaggio chiaro.
     let cluster = [placeholder];
     if (def.multiTile) {
-      cluster = findPlacementCluster(placeholder, anchorX, anchorY, def.multiTile.count, def.multiTile.radius);
-      if (!cluster) return `serve un'area libera di almeno ${def.multiTile.count} lotti vicini`;
+      cluster = findWindCluster(placeholder);
+      if (!cluster) return `serve un'area libera di ${def.multiTile.count} lotti adiacenti (un rettangolo)`;
     }
     for (const k in def.placeCost) r12[k] -= def.placeCost[k];
     // [C] `impavent`, una volta nato, uccide con la propria maschera ogni
@@ -1804,6 +1813,57 @@ export async function mountMatch(ctx, params = {}) {
     const { from, to } = AURA_OVERLAY[i];
     const k = Math.min(1, u / PHASES[i].dur);
     return { rgb: from.rgb.map((v, j) => v + (to.rgb[j] - v) * k), a: from.a + (to.a - from.a) * k };
+  }
+  // [Nuova funzionalita', segnalato dall'autore: "aura e baura... uno andava
+  // sul fondo per colorare il cielo e l'altro sopra gli edifici"] `aura`
+  // sopra e' solo META' del sistema originale — c'e' un SECONDO oggetto,
+  // `baura` (src/objects/baura), mai letto finora. **[C]** letto Create.gml +
+  // Alarm_0..7.gml riga per riga: stessa identica scaletta di durate di
+  // `aura`/PHASES sopra (290/200/290/900/290/100/290/900 tick — non una
+  // coincidenza, i due oggetti sono sincronizzati), ma `depth` non cambia mai
+  // (resta fisso a 50, il valore di default in baura/_object.json — il PIU'
+  // arretrato di ogni oggetto nella room, "il fondo"), e i suoi sprite (day/
+  // dayset/sett/setnite/nite) sono campionati pixel per pixel dalle texture
+  // originali: colori PIENI e OPACHI (alpha 255 ovunque, non 64/255 come
+  // `aura`), non un multiplicatore di tinta ma uno sfondo vero e proprio —
+  // `day`=(216,239,255) azzurro cielo, `sett`=(255,162,130) pesca tramonto,
+  // `nite`=(45,49,104) blu notte; `dayset`/`setnite` sono le stesse 290
+  // animazioni-transizione di `amb00`/`ambtr1`, ma qui un lerp RGB lineare
+  // fra i due colori pieni (verificato campionando piu' frame: il frame a
+  // meta' e' esattamente la media dei due estremi), non un fade di alpha.
+  // Stessa scala enorme (`action_sprite_transform(90, 90, 0, 0)`, contro
+  // 150x90 di `aura`) e stessa posizione fissa (`move_to(0, -200)`): copre
+  // l'intera room e OLTRE, sempre — l'autore lo notava proprio "anche fuori
+  // dalla mappa", dove infatti e' l'UNICO posto in cui si vede davvero: `air2`
+  // (il terreno, STUDIO.md/main.js) e' completamente opaco e copre l'intera
+  // room, quindi dentro i confini `baura` resta sempre coperto — la sua unica
+  // superficie visibile e' lo sfondo FUORI dalla room, oggi la vignetta bianca
+  // fissa qui sotto (aggiunta per i "bordi strappati" del terreno in
+  // zoom-out, mai un vero sfondo). `bauraColorAt()` sostituisce quel bianco
+  // fisso con la tinta vera, mescolata con bianco (`VIGNETTE_TINT_MIX`) per
+  // restare leggibile sotto le icone nere della UI in ogni condizione — la
+  // stessa ragione (STUDIO.md, sotto) per cui la vignetta e' bianca e non
+  // nera: qui pero' un compromesso, non un colore fisso, dato che il
+  // giocatore ha chiesto esplicitamente il tint del cielo invece del bianco
+  // piatto.
+  const BAURA_DAY = [216 / 255, 239 / 255, 255 / 255];
+  const BAURA_SUNSET = [255 / 255, 162 / 255, 130 / 255];
+  const BAURA_NIGHT = [45 / 255, 49 / 255, 104 / 255];
+  const BAURA_OVERLAY = [
+    { from: BAURA_DAY, to: BAURA_SUNSET },      // giorno(290): dayset, cielo -> tramonto
+    { from: BAURA_SUNSET, to: BAURA_SUNSET },   // alba(200): sett, fisso
+    { from: BAURA_SUNSET, to: BAURA_NIGHT },    // giorno(290): setnite, tramonto -> notte
+    { from: BAURA_NIGHT, to: BAURA_NIGHT },     // notte(900): nite, fisso
+    { from: BAURA_NIGHT, to: BAURA_SUNSET },    // giorno(290): setnite al contrario, notte -> tramonto
+    { from: BAURA_SUNSET, to: BAURA_SUNSET },   // alba(100): sett, fisso
+    { from: BAURA_SUNSET, to: BAURA_DAY },      // giorno(290): dayset al contrario, tramonto -> cielo
+    { from: BAURA_DAY, to: BAURA_DAY },         // giorno(900): day, fisso
+  ];
+  function bauraColorAt(t) {
+    const { i, u } = phaseIndexAt(t);
+    const { from, to } = BAURA_OVERLAY[i];
+    const k = Math.min(1, u / PHASES[i].dur);
+    return from.map((v, j) => v + (to[j] - v) * k);
   }
 
   let phaseT = 0;
@@ -3796,9 +3856,9 @@ export async function mountMatch(ctx, params = {}) {
     // dove finira' davvero il centro visivo dell'edificio (l'ancora e' a un
     // offset FISSO dal lotto toccato, non il lotto stesso — vedi il commento
     // su `anchorOffset` in placeAt() sopra) ne' se la posizione e' valida
-    // (serve un cluster di `count` lotti liberi vicini all'ancora, non solo
-    // il lotto toccato). Stessa identica logica di placeAt()/
-    // findPlacementCluster() sopra, senza spendere ne' consumare nulla:
+    // (serve il rombo di 4 lotti adiacenti al tocco, non solo il lotto
+    // toccato). Stessa identica logica di placeAt()/
+    // findWindCluster() sopra, senza spendere ne' consumare nulla:
     // un fantasma semitrasparente, con lo sprite del PRIMO passo di
     // cantiere dell'edificio (`def.construct.steps[0].spr` — la fondamenta,
     // non l'edificio finito: e' quello che il giocatore vedra' comparire per
@@ -3814,8 +3874,7 @@ export async function mountMatch(ctx, params = {}) {
       const off = selDefForPreview.multiTile.anchorOffset;
       const anchorX = off ? hoveredPh.x + off.dx : hoveredPh.x;
       const anchorY = off ? hoveredPh.y + off.dy : hoveredPh.y;
-      const cluster = findPlacementCluster(
-        hoveredPh, anchorX, anchorY, selDefForPreview.multiTile.count, selDefForPreview.multiTile.radius);
+      const cluster = findWindCluster(hoveredPh);
       if (cluster) {
         const stepSpr = selDefForPreview.construct?.steps?.[0]?.spr;
         const f = stepSpr ? frameFor(stepSpr) : null;
@@ -3941,28 +4000,38 @@ export async function mountMatch(ctx, params = {}) {
 
     // Fuori dai confini della room: vignetta piena invece dei bordi
     // "strappati" del terreno quando lo zoom indietro supera la mappa (il
-    // terreno non e' disegnato per essere visto da fuori dai suoi bordi). Non
-    // ho trovato un oggetto originale dedicato: l'originale aveva un limite
-    // minimo di zoom esplicito apposta per non mostrare mai la mappa intera
-    // su `match` (STUDIO.md §2), quindi il problema a monte non si poneva
-    // mai. Qui ricreiamo l'effetto (vignetta) invece del vincolo che lo
-    // evitava.
+    // terreno non e' disegnato per essere visto da fuori dai suoi bordi).
+    // [Corretto: un oggetto originale dedicato esiste davvero] `baura`
+    // (vedi bauraColorAt() sopra) e' esattamente questo: uno sfondo enorme e
+    // OPACO, sempre coperto dal terreno DENTRO la room (STUDIO.md, `air2` e'
+    // opaco), quindi visibile solo qui — fuori dai suoi confini. L'originale
+    // non aveva comunque bisogno di questa vignetta (limite minimo di zoom
+    // esplicito su `match`, STUDIO.md §2: la mappa intera non si vedeva mai),
+    // quindi non c'e' un secondo oggetto dedicato alla vignetta stessa — solo
+    // a cosa mostrare quando la si disegna.
     //
-    // Bianca, non nera: le icone della UI (bottoni edificio, testo risorse)
-    // sono nere, e con zoom-out sufficiente la vignetta arriva a toccarle —
-    // nero su nero, illeggibile. Decisione presa insieme (segnalato
-    // dall'autore): il bianco resta leggibile sotto qualunque icona/testo
-    // scuro in ogni condizione di zoom o fase giorno/notte, senza bisogno di
-    // asset o logica in piu'.
+    // Tinta VERA di `baura` (nessuna diluizione verso il bianco), non piu'
+    // stemperata: **[Richiesto dall'autore]** la protezione per le icone
+    // nere della UI ora e' la loro stessa, sotto (`setColorize()`,
+    // `ICON_DARK_THRESHOLD` — vedi il commento li'), quindi lo sfondo qui
+    // puo' restare fedele a `baura` invece di doversi tenere chiaro per
+    // conto proprio.
+    // [Deciso dall'autore, senza motivo specificato: "lo sfondo di match
+    // easy lasciamolo bianco"] Su `match_easy` la vignetta resta bianca
+    // pura, niente tint — `match`/`tutorial` restano col tint vero di
+    // `baura` sopra.
     {
+      const bauraRgb = bauraColorAt(phaseT);
+      const vignetteTint = roomParam === "match_easy" ? 0xffffff
+        : (Math.round(bauraRgb[0] * 255) << 16) | (Math.round(bauraRgb[1] * 255) << 8) | Math.round(bauraRgb[2] * 255);
       const b = cam.bounds;
       const p0 = cam.worldToScreen(b.left, b.top);
       const p1 = cam.worldToScreen(b.right, b.bottom);
       const cw = canvas.clientWidth, ch = canvas.clientHeight;
-      if (p0.y > 0) r.draw(solidFrame(white, cw, p0.y), 0, 0, 1, 0xffffff, 1);
-      if (p1.y < ch) r.draw(solidFrame(white, cw, ch - p1.y), 0, p1.y, 1, 0xffffff, 1);
-      if (p0.x > 0) r.draw(solidFrame(white, p0.x, ch), 0, 0, 1, 0xffffff, 1);
-      if (p1.x < cw) r.draw(solidFrame(white, cw - p1.x, ch), p1.x, 0, 1, 0xffffff, 1);
+      if (p0.y > 0) r.draw(solidFrame(white, cw, p0.y), 0, 0, 1, vignetteTint, 1);
+      if (p1.y < ch) r.draw(solidFrame(white, cw, ch - p1.y), 0, p1.y, 1, vignetteTint, 1);
+      if (p0.x > 0) r.draw(solidFrame(white, p0.x, ch), 0, 0, 1, vignetteTint, 1);
+      if (p1.x < cw) r.draw(solidFrame(white, cw - p1.x, ch), p1.x, 0, 1, vignetteTint, 1);
     }
 
     // Barra risorse vera (STUDIO.md §9 "GUI vera"). [C] src/objects/repre/
@@ -4123,6 +4192,41 @@ export async function mountMatch(ctx, params = {}) {
     uiButtons = [];
     let rx = UI_MARGIN - uiScrollX;
     let rowTop = baseY;
+    // [Nuova funzionalita', richiesta dall'autore: "le icone nere della UI,
+    // quando lo sfondo diventa troppo scuro, rendiamole bianche con un
+    // tint"] Queste icone (mano/gru/occhio/edifici non selezionati) sono
+    // sagome NERE pure senza sfondo proprio (STUDIO.md, vedi il commento
+    // su bauraColorAt() sopra): sul mondo di notte o dentro la vignetta
+    // scura fuori mappa (`match`/`tutorial`, baura, ora a tinta piena — vedi
+    // sopra) restano leggibili solo per contrasto col resto della scena, mai
+    // garantito. Moltiplicare per una tinta piu' chiara non serve a niente
+    // su nero puro (0*x=0, vedi Renderer.setColorize() in gl.js) — sotto una
+    // soglia di luminanza le disegniamo con `setColorize(true)`: sagoma
+    // (alpha) della texture, colore preso da `tint` direttamente invece che
+    // moltiplicato.
+    //
+    // La luminanza da controllare e' la PIU' SCURA fra due candidati, non
+    // solo l'ambient del mondo: la fila di bottoni vive in basso a schermo
+    // (`baseY`, vicino al bordo) — con zoom indietro sufficiente su
+    // `match`/`tutorial` puo' finire sopra la vignetta invece che sul mondo.
+    // Non vale la pena calcolare l'esatta sovrapposizione pixel per pixel:
+    // prendere sempre il minimo fra i due (quando la vignetta e' un
+    // candidato possibile) e' una scelta prudente, mai sbagliata in difetto
+    // — nel peggiore dei casi le icone diventano bianche un frame prima del
+    // necessario, mai il contrario. Soglia (0.4) scelta sotto la luminanza
+    // della notte "normale" del mondo (~0.74, PHASES sopra: la notte piatta
+    // da sola non basta a scurirle) ma sopra quella della tinta piena di
+    // `baura` di notte (~0.2, la stessa usata dalla vignetta sopra) — dove
+    // il nero puro sparirebbe davvero.
+    // I bottoni edificio SELEZIONATI (sprite `sprSel`, sotto) restano
+    // esclusi: quello NON e' un'icona nera ma un disegno a colori scelto a
+    // mano nell'arte originale (STUDIO.md, "GUI vera" — "non un tint, sono
+    // disegni diversi"), colorize lo appiattirebbe perdendo quella scelta.
+    function luma(rgb) { return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722; }
+    const worldLuma = luma(amb.rgb);
+    const vignetteLuma = roomParam === "match_easy" ? 1 : luma(bauraColorAt(phaseT));
+    const ICON_DARK_THRESHOLD = 0.4;
+    const iconsDark = Math.min(worldLuma, vignetteLuma) < ICON_DARK_THRESHOLD;
     for (let i = 0; i < row.length; i++) {
       const b = row[i], f = frames[i];
       if (!f) continue;
@@ -4140,12 +4244,15 @@ export async function mountMatch(ctx, params = {}) {
         // attivo", coerente con `r12.selec === 0` = mano/deselezionato
         // gia' usato sopra per spegnere l'hover viola dei placeholder.
         const tint = b.kind === "deselect" && r12.selec === 0 ? 0x66aaff : 0xffffff;
+        const usingSelSprite = b.kind === "building" && selectedType === b.type;
+        r.setColorize(iconsDark && !usingSelSprite);
         r.draw(f, rx, baseY, UI_SCALE, tint, 1);
         uiButtons.push({ x: rx, y: baseY - h, w, h, ...b });
         rowTop = Math.min(rowTop, baseY - h);
       }
       rx += w + GAP;
     }
+    r.setColorize(false);
     // Banda di trascinamento per lo scroll: tutta la larghezza schermo, dal
     // bordo superiore della riga fino in fondo — non solo i pixel dei
     // bottoni, cosi' anche un dito che parte fra due bottoni o dopo l'ultimo

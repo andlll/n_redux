@@ -1,1 +1,1 @@
-{"srcDir":"/home/user/n_redux/assets/textures","dstDir":"/home/user/n_redux/game/assets","pages":[{"file":"font_gotham_mid.png","w":512,"h":512}],"blits":[{"src":"page_024.png","sx":2,"sy":1062,"w":512,"h":512,"dst":0,"dx":0,"dy":0}]}
+{"srcDir":"/home/user/n_redux/assets/textures","dstDir":"/home/user/n_redux/game/assets","pages":[{"file":"font_gotham_mid.webp","w":512,"h":512}],"blits":[{"src":"page_024.png","sx":2,"sy":1062,"w":512,"h":512,"dst":0,"dx":0,"dy":0}]}

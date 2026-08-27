@@ -1,1 +1,1 @@
-{"srcDir":"/home/user/n_redux/assets/textures","dstDir":"/home/user/n_redux/game/assets","pages":[{"file":"mount_logo.png","w":385,"h":465}],"blits":[{"src":"page_033.png","sx":2,"sy":422,"w":385,"h":465,"dst":0,"dx":0,"dy":0}]}
+{"srcDir":"/home/user/n_redux/assets/textures","dstDir":"/home/user/n_redux/game/assets","pages":[{"file":"mount_logo.webp","w":385,"h":465}],"blits":[{"src":"page_033.png","sx":2,"sy":422,"w":385,"h":465,"dst":0,"dx":0,"dy":0}]}

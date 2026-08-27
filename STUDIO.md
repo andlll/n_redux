@@ -3696,20 +3696,108 @@ paragrafo 8.
   `carmakerIdx` parte da 1 invece di 0 su `tutorial`, per non far
   comparire una seconda `honda3` identica a 60s da `carmaker`.
 
-  **`baura` (il sole/luna decorativo di `match`/`tutorial`) resta un
-  gap, per un motivo capito solo scrivendone l'implementazione e poi
-  togliendola.** Cicla `day/dayset/sett/setnite/nite` sugli stessi 8
-  alarm di `aura` (identiche durate) — banale da agganciare a
-  `PHASES`/`phaseIndexAt()` gia' esistenti. Ma `baura/Create.gml` la
-  sposta relativa di (0,-200) dalla propria istanza — 200px SOPRA il
-  bordo superiore della room (`cam.bounds.top = 0`) — e
-  `Camera.clamp()` (camera.js) non lascia mai il centro scendere sotto
-  `top + worldH/2`: un punto a y=-200 non e' MAI, a nessuno zoom,
-  dentro l'area visibile. Animarla per bene sarebbe stato codice morto,
-  invisibile a qualunque giocatore senza prima allargare i limiti della
-  camera — una modifica diversa e piu' rischiosa di quanto valga per un
-  dettaglio decorativo. `mud` non ha invece nessun codice proprio (gia'
-  corretto com'e', un decoro statico qualunque). `nifast` resta un gap
-  a parte: uno spawner periodico di nuvole veloci specifico di `match`
-  (`r12/Alarm_0.gml`) non ancora collegato ad atmosphere.js, che oggi
-  copre solo i punti di spawn di `match_easy`.
+  **`baura` — nota precedente sbagliata, corretta due sessioni dopo.**
+  Questa stessa voce diceva "resta un gap" e la descriveva come "il
+  sole/luna decorativo di `match`/`tutorial`", scartata perche' la sua
+  posizione (0,-200 relativo, 200px sopra il bordo della room) non
+  sarebbe mai stata dentro l'area visibile della camera. **Sbagliato su
+  entrambi i punti**, letto per bene in una sessione successiva
+  (segnalato dall'autore ricordando "aura e baura... uno per il cielo,
+  l'altro sopra gli edifici"): non e' un piccolo sole/luna, e' uno
+  sfondo ENORME (`action_sprite_transform(90, 90, 0, 0)`, come i 150x90
+  di `aura`) di colore PIENO e opaco (non un multiplicatore di tinta —
+  campionato pixel per pixel: `day`=(216,239,255) azzurro,
+  `sett`=(255,162,130) pesca, `nite`=(45,49,104) blu). E la sua
+  posizione non conta ai fini della visibilita' quanto sembrava: dentro
+  ai confini della room resta comunque sempre coperto dal terreno
+  opaco (`air2`), quindi la vera domanda non era "la camera puo' MAI
+  vederlo alla sua posizione" ma "che colore ha lo sfondo quando la
+  camera guarda FUORI dalla room" (zoom indietro oltre i bordi) — che
+  e' esattamente il caso gia' gestito da una vignetta bianca fissa
+  (main.js, per i bordi "strappati" del terreno in zoom-out). Portato
+  davvero: `bauraColorAt()` (main.js, stessa infrastruttura di
+  `PHASES`/`phaseIndexAt()` gia' in uso per `aura`) sostituisce quel
+  bianco fisso con la tinta vera — bianca pura solo su `match_easy` per
+  scelta esplicita dell'autore. Le icone nere della UI (bottoni
+  mano/gru/occhio/edificio) su questo sfondo scuro sarebbero illeggibili
+  (nero su blu notte) — non risolto stemperando la tinta come un primo
+  tentativo, ma dando alle icone stesse un secondo modo di disegnarsi:
+  `Renderer.setColorize()` (gl.js, un uniform `u_colorize` nel fragment
+  shader condiviso) ignora l'RGB della texture e usa solo la sua alpha
+  come sagoma, l'unico modo di schiarire uno sprite nero puro (0*x=0,
+  moltiplicare non basta) — attivato sotto una soglia di luminanza
+  scelta apposta fra la notte "normale" del mondo (~0.74, mai abbastanza
+  scura da sola) e quella piena di `baura` (~0.2). `mud` non ha invece
+  nessun codice proprio (gia' corretto com'e', un decoro statico
+  qualunque). `nifast` resta un gap a parte: uno spawner periodico di
+  nuvole veloci specifico di `match` (`r12/Alarm_0.gml`) non ancora
+  collegato ad atmosphere.js, che oggi copre solo i punti di spawn di
+  `match_easy`.
+
+- **Atlas per room da PNG a WebP: dimezzato il peso di ogni
+  caricamento.** Richiesto dall'autore ("ridurre i caricamenti e il
+  peso generale"). `tools/24_blit.py` (l'unico punto che scrive i file
+  finali in `game/assets/`, condiviso da room/font/logo) salvava sempre
+  PNG senza nessuna opzione di compressione (Pillow default,
+  `compress_level` non specificato, niente `optimize=True`) — provato
+  anche quello prima di cambiare formato: guadagna 0-6%, rumore.
+  **[Misurato]** WebP con perdita (`quality=90`) sull'intero set di
+  atlas (match/match_easy/tutorial/title, ~230 pagine 2048x2048):
+  120 MB -> 66 MB (55%) sulle prime 4 room misurate, stesso rapporto
+  confermato aggiungendo `tutorial` (98.9 MB totali oggi, contro una
+  stima PNG equivalente di ~180 MB). Verificato che non sia solo un
+  numero: le pagine piu' pesanti (righe/ringhiere nere sottili su
+  sfondo bianco, il caso peggiore per artefatti da compressione con
+  perdita) confrontate a occhio zoomate 3x contro l'originale, nessuna
+  differenza visibile — e l'intero sito (`test_match.html` interno,
+  headless Chromium) verificato a rendere in modo identico dopo la
+  conversione, sia `match_easy` che lo sfondo sfumato di `title`.
+  `method=4`, non il default 6: misurato su una pagina reale, `method=6`
+  guadagna solo un ulteriore ~2% mettendoci quasi 7 volte piu' a lungo
+  (9.5s contro 1.4s per pagina) — su ~230 pagine la differenza e' minuti
+  di CI per un risparmio nel rumore. Font e logo (poche pagine piccole,
+  `method=6` li' non costa nulla) restano invece LOSSLESS: gia' piccoli
+  di per se', e `font.js` li campiona con filtro NEAREST apposta per
+  bordi netti (STUDIO.md sopra) — un glifo leggermente sfocato dalla
+  perdita sarebbe visibile in un modo che un atlas di sprite non e'.
+  Nessun cambiamento nel motore: `assets.js`/`font.js` leggono gia' il
+  nome del file dai metadati (`atlas.pages[i].file`/`meta.file`), mai un
+  `.png` hardcoded — l'unico posto con un percorso scritto a mano era
+  `index.html` (il logo della schermata di caricamento), aggiornato.
+  `tools/24_blit.ps1` (la versione Windows/GDI+, mai usata dalla CI)
+  non sa scrivere WebP — GDI+ non ha un encoder nativo — quindi ora si
+  ferma con un errore chiaro invece di scrivere byte PNG dentro un file
+  chiamato `.webp` in silenzio.
+
+- **JS bundlato e minificato: -81% sul peso scaricato, primo strumento
+  Node/npm del repo.** Seguito diretto della voce sopra (stessa
+  richiesta dell'autore, "ridurre i caricamenti"), stavolta sul
+  CODICE invece che sulle immagini. **[Misurato]**: 28 file sorgente,
+  836 KB, ~273 KB gzip (quello che il browser scarica oggi, per
+  file — fino a 28 richieste HTTP separate, con un effetto "waterfall"
+  dato che ogni modulo ES scarica prima di poter scoprire cosa importa
+  a sua volta). Bundlato con esbuild (`--bundle --splitting --minify
+  --sourcemap`, entry point `src/app.js`, preservando il code-splitting
+  gia' esistente per import() dinamico fra `title.js`/`main.js`,
+  app.js): 5 file, 155 KB, **~53 KB gzip (-81%)**. Il salto e' cosi'
+  grande perche' **il 61% del sorgente e' commenti** (misurato: 481 KB
+  su 793 KB totali) — questo repo documenta ogni scelta per bene in
+  italiano, spesso paragrafi interi con provenienza `[C]`/`[I]`/`[?]`;
+  minificare li toglie dal file SERVITO, non dal repository — restano
+  intatti in `game/src/*.js` per chi ci lavora, semplicemente non
+  vengono piu' spediti a chi gioca.
+  `game/package.json` (nuovo, `esbuild` come unica devDependency) +
+  `npm run build` -> `game/dist/` (mai versionato, come `game/assets/`
+  sopra — stessa richiesta di "genera prima di servire" gia' vera per
+  gli atlas, non una novita' nel flusso di lavoro). `index.html` ora
+  carica `./dist/app.js` invece di `./src/app.js`. Sourcemap esterne
+  (non inline, per non appesantire il bundle vero) per restare
+  debuggabile da devtools nonostante la minificazione.
+  `.github/workflows/deploy-pages.yml`: `actions/setup-node@v4` + `npm
+  ci` + `npm run build` prima di pubblicare — primo passo Node/npm
+  della pipeline, finora solo Python/Pillow.
+  Verificato dal vivo (non solo la dimensione dei file): l'intero sito
+  servito dal bundle invece dei sorgenti, `npm ci` pulito (lockfile
+  committato) seguito da `npm run build`, poi menu -> avvio
+  `match_easy` in Chromium headless — stesso identico comportamento,
+  zero errori (a parte il consueto 404 di `/favicon.ico`, ininfluente).

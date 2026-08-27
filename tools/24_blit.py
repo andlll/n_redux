@@ -39,10 +39,29 @@ for b in plan["blits"]:
     region = src[b["src"]].crop((b["sx"], b["sy"], b["sx"] + b["w"], b["sy"] + b["h"]))
     dst[b["dst"]].paste(region, (b["dx"], b["dy"]))
 
+# WebP invece di PNG: la stessa identica pipeline, un solo formato di
+# output diverso. Verificato pagina per pagina (assets/match_easy_35.png e
+# altre, confrontate a occhio zoomate 3x sulle sagome ad alto contrasto,
+# righe/ringhiere nere su bianco — il caso peggiore per artefatti di
+# compressione con perdita): a qualita' 90 nessuna differenza visibile,
+# ~120 MB -> ~66 MB sull'intero set di atlas (55%, misurato).
+# `method=4`, non 6: misurato su una pagina reale (match_easy, ~1 MB), method
+# 6 guadagna solo un ulteriore ~2% (0.969 contro 0.990 MB) mettendoci quasi
+# 7 volte piu' a lungo (9.5s contro 1.4s) — su ~230 pagine in tutta la
+# pipeline la differenza e' minuti di CI per un risparmio che si perde nel
+# rumore. Font e logo restano LOSSLESS (method=6 li' non costa nulla, sono
+# poche pagine piccole): gia' piccoli di per se' (poco da guadagnare con la
+# perdita) e font.js li campiona con filtro NEAREST apposta per bordi netti
+# (STUDIO.md/font.js) — un glifo leggermente sfocato dalla compressione con
+# perdita sarebbe visibile in un modo che un atlas di sprite non e'.
+LOSSLESS_PREFIXES = ("font_", "mount_logo")
 total = 0
 for page, im in zip(plan["pages"], dst):
     out = os.path.join(plan["dstDir"], page["file"])
-    im.save(out, "PNG")
+    if page["file"].startswith(LOSSLESS_PREFIXES):
+        im.save(out, "WEBP", lossless=True, method=6)
+    else:
+        im.save(out, "WEBP", quality=90, method=4)
     total += os.path.getsize(out)
 
 print("%s: %d pagine scritte, %.1f MB su disco" % (room_name, len(dst), total / 1e6))
