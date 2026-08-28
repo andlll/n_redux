@@ -3868,7 +3868,13 @@ export async function mountMatch(ctx, params = {}) {
       }
       stepLights(decorEntities, dt, night, r12);
       stepSemaphores(semaphores, dt);
-      stepAtmosphere(atmo, dt, !!r12.storm);
+      // [Bug corretto, segnalato dall'autore: "durante il temporale
+      // comparivano una marea di nuvole in piu'"] `!!r12.storm` da solo
+      // lasciava fuori `stormeasy` (match_easy) — ma `nidark_slow`
+      // (game/src/atmosphere.js) e' l'oggetto ORIGINALE dedicato proprio a
+      // quel ramo cosmetico: stessa condizione combinata gia' usata per
+      // stepRain() sopra.
+      stepAtmosphere(atmo, dt, !!(r12.storm || r12.stormeasy));
       stepPedestrians(pedestrians, dt);
       // Mongolfiere (game/src/balloons.js): risorse/spia a intervalli regolari
       // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
@@ -4049,11 +4055,24 @@ export async function mountMatch(ctx, params = {}) {
         ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true } : {}),
       });
       // Impalcatura in sovraimpressione + coperchio di fine cantiere (vedi
-      // buildings.js): stessa x/y/depth dell'edificio, spinti sopra di lui
+      // buildings.js): stessa x/y dell'edificio, spinti sopra di lui
       // dall'ordine di inserimento (a parita' di depth+y l'array mantiene
       // l'ordine con cui e' stato costruito, STUDIO.md sopra su sortWorld).
-      if (b.frontSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.frontSpr) });
-      if (b.capSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.capSpr) });
+      // [Bug corretto, segnalato dall'autore: "le impalcature del parco non
+      // devono avere la sua depth, altrimenti se c'e' un edificio sopra
+      // finiscono sotto"] `depth: b.depth` sarebbe stato corretto per ogni
+      // altro tipo (b.depth resta 0 durante il cantiere, ed effDepth() sopra
+      // traduce 0 in -y da solo) ma `parco` e' l'unico con un `fixedDepth`
+      // diverso da zero GIA' dal piazzamento (buildings.js, BUILDING_TYPES.
+      // parco — pensato per tenere INDIETRO la scenografia piatta finita, non
+      // la sua impalcatura durante il cantiere): l'impalcatura ereditava
+      // quello stesso -5 fisso, finendo sempre dietro anche a un edificio
+      // vicino piu' in alto sullo schermo che dovrebbe invece passarle
+      // dietro. L'impalcatura e' un decoro di cantiere come quella di
+      // qualunque altro edificio — sempre -y diretto, mai il `fixedDepth` del
+      // tipo sotto di lei.
+      if (b.frontSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.frontSpr) });
+      if (b.capSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.capSpr) });
       // Impalcatura/gru rotanti del grattacielo (game/src/scaffold.js): decoro
       // puro, si scurisce di notte come ogni altro (nessun `_selfLit`, vedi
       // scaffoldParts()).

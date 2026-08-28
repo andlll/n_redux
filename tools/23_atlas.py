@@ -498,7 +498,11 @@ GAMEPLAY_SPRITES = {
     # r12/Alarm_0.gml — STUDIO.md, game/src/atmosphere.js): nessuna istanza
     # nella room, nascono e muoiono dinamicamente, quindi vanno elencati
     # qui come per le altre famiglie mai piazzate staticamente.
-    "atmosphere": ["n1", "n2", "n3", "brb1", "brb2"],
+    # "n1d"/"n2d"/"n3d" (src/objects/nidark|nidark_slow, sprite "n1d" —
+    # STUDIO.md §1: "nidark", le nuvole scure di tempesta, sostituiscono
+    # le "n1..n3" chiare mentre r12.storm/stormeasy e' attivo, mai
+    # impacchettate finora — game/src/atmosphere.js le disegna adesso).
+    "atmosphere": ["n1", "n2", "n3", "n1d", "n2d", "n3d", "brb1", "brb2"],
     # Pedoni ("omini neri", src/objects/pplo — STUDIO.md, game/src/
     # pedestrians.js): un abitante per ogni salto di livello di una casa,
     # mai piazzato nella room. "q8"/"q9" non esistono nella tavola a dado
