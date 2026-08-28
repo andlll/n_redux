@@ -212,7 +212,27 @@ export async function mountMatch(ctx, params = {}) {
   // ogni frame da stepAtmosphere() piu' sotto), queste istanze della room
   // sono solo il punto di partenza "prima" che l'originale stesso avrebbe
   // gia' fatto sparire/mettere in moto.
-  const staticWorld = scene.instances.filter((it) => it.obj !== "ni" && it.obj !== "nifast").sort(sortWorld);
+  // [Bug corretto, segnalato dall'autore: "è rimasto un quadratino celeste
+  // in alto a sinistra"] `aura`/`baura` (src/objects, entrambi piazzati una
+  // sola volta nella room a x=0,y=0 — STUDIO.md, bauraColorAt()/
+  // auraOverlayAt() piu' sotto) sono gia' completamente sostituiti da quelle
+  // due funzioni: un quad a tinta dinamica per `aura` (l'overlay giorno/
+  // notte sopra il mondo) e la vignetta fuori mappa per `baura` (il suo
+  // sprite "vero", opaco, resta sempre coperto DENTRO la room dal terreno —
+  // vedi i commenti li'). Prima di questo fix nessuno dei due era escluso
+  // qui: restavano nella lista come qualunque altro decoro fisso, disegnati
+  // al proprio frame NATIVO (mai scalato "90x90" come nell'originale
+  // `action_sprite_transform`, STUDIO.md — quella trasformazione non e' mai
+  // stata ricostruita, dato che serviva solo a coprire l'intera room per un
+  // oggetto ora sostituito) — un piccolo riquadro azzurro cielo (lo sprite
+  // "day" di `baura`, la stessa tinta di BAURA_DAY) a x=0,y=0. La piattaforma
+  // isometrica e' ruotata: quel punto e' un angolo "vuoto" del bounding box
+  // rettangolare della room, il terreno (che normalmente lo coprirebbe) non
+  // ci arriva — cosi' il quadratino restava visibile, in particolare zoomando
+  // (l'angolo del bounding box entra in vista solo allo zoom giusto, mai a
+  // quello iniziale "cover" che mostra solo il centro della piattaforma).
+  const staticWorld = scene.instances.filter((it) => it.obj !== "ni" && it.obj !== "nifast"
+    && it.obj !== "aura" && it.obj !== "baura").sort(sortWorld);
 
   // ---------------------------------------------------------------- atlas
   // Le pagine sono reimpacchettate per room da tools/23_atlas.py + 24_blit.py:
@@ -223,7 +243,7 @@ export async function mountMatch(ctx, params = {}) {
   // assets.js) cache atlas+texture per room: rientrare in questa stessa room
   // piu' volte nella sessione (SPA, game/src/app.js) non le riscarica.
   const { atlas, pageTex } = await loadRoomAtlas(gl, roomName, {
-    onProgress: (loaded, total) => reportProgress(roomName, loaded, total),
+    onProgress: (loaded, total) => reportProgress(roomName, loaded, total, "loading city"),
   });
   // `frameIdx` (default 0): quasi tutti gli sprite del motore sono statici,
   // una sola posa (STUDIO.md, "nessun sistema di image_speed") — ma alcuni
@@ -353,6 +373,25 @@ export async function mountMatch(ctx, params = {}) {
   // font del balloon di testo del tutorial, diverso da quello della barra
   // risorse sopra. Caricato solo per questa room (nessun'altra lo usa).
   const fontMobile = roomName === "tutorial" ? await loadFont(gl, "gotham_mobile") : null;
+  // Font del menu di pausa/"saving options" (drawPauseOverlay()/
+  // drawSavingOptionsOverlay() piu' sotto): quel pannello e' interamente
+  // nostro, nessun `action_font` del decompilato da rispettare (a
+  // differenza di `fontMini` sopra) — libero di scegliere il font piu'
+  // adatto. Segnalato dall'autore: il testo del menu di pausa era
+  // "sgranato" — `fontMini` ha un atlas di soli 13px di em (tagliato per
+  // le cifre minuscole della barra risorse, mai pensato per un titolo),
+  // ingrandito li' di 2-3x con lo stesso NEAREST pixel-perfect di
+  // font.js: risultato tecnicamente "corretto" (nessuno sfarfallio/
+  // sub-pixel) ma comunque a blocchi grossi, ogni texel sorgente diventa
+  // un quadrato di 2x2/3x3 pixel schermo ben visibile. `gotham` (18px di
+  // em, la taglia "normale" del gioco invece della variante mini) ha
+  // texel di partenza piu' fitti: alla stessa taglia finale serve un
+  // fattore di scala minore (spesso 1x, nessun ingrandimento affatto),
+  // quindi molto meno "a blocchi" — la stessa famiglia (Gotham) gia'
+  // suggerita dalla scritta HTML della schermata di caricamento
+  // (index.html), solo bitmap invece di vettoriale (il renderer qui e'
+  // WebGL puro, non puo' disegnare testo DOM sopra al canvas).
+  const fontUI = await loadFont(gl, "gotham");
 
   // -------------------------------------------------------- piazzabili e edifici
   // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
@@ -2225,21 +2264,30 @@ export async function mountMatch(ctx, params = {}) {
     // mondo sfocato invece di un bianco piatto.
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
+    // `fontUI` (definito sopra), non `fontMini`: quest'ultimo e' tagliato a
+    // 13px di em per le cifre della barra risorse, troppo grezzo per un
+    // titolo/etichetta ingrandita 2-3x (il "sgranato" segnalato dall'autore).
+    // Scala massima 2, non 3: `fontUI` parte gia' da un em piu' grande di
+    // `fontMini`, un fattore 3 lo renderebbe piu' grande di prima invece che
+    // "un po' piu' piccolo" (richiesto insieme al fix).
     const title = "PAUSE";
-    const titleScale = fitTextScale(fontMini, title, panelW - 24, 3);
-    drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 22, titleScale, TEXT_TINT, 1);
+    const titleScale = fitTextScale(fontUI, title, panelW - 24, 2);
+    drawText(r, fontUI, title, px + (panelW - measureText(fontUI, title, titleScale)) / 2, py + 22, titleScale, TEXT_TINT, 1);
 
     pauseMenuButtons = [];
     const btnW = panelW - 60, btnH = 46, btnGap = 14;
     // Una sola scala per tutti i bottoni (il minimo che ci sta per
     // l'etichetta piu' lunga), non una per riga: bottoni di taglia diversa
     // nello stesso menu sembrerebbero un errore, non una scelta.
-    const textScale = Math.min(...rows.map((row) => fitTextScale(fontMini, row.label, btnW - 20, 2)));
+    const textScale = Math.min(...rows.map((row) => fitTextScale(fontUI, row.label, btnW - 20, 2)));
     let by = py + 96;
     for (const row of rows) {
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
-      drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, TEXT_TINT, 1);
+      // 24, non 17 (usato per fontMini altrove): l'altezza maiuscola nativa
+      // di `fontUI` a scala 1 (font_gotham.json, glifo "A") — mantiene le
+      // etichette centrate verticalmente nel bottone con l'atlas piu' grande.
+      drawText(r, fontUI, row.label, bx + (btnW - measureText(fontUI, row.label, textScale)) / 2, by + (btnH - 24 * textScale) / 2, textScale, TEXT_TINT, 1);
       pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
@@ -2270,22 +2318,29 @@ export async function mountMatch(ctx, params = {}) {
       { label: `Save with low oil: ${autosave.duringLowOil ? "ON" : "OFF"}`, action: "toggleLowOil" },
       { label: "Back", action: "back" },
     ];
-    const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
+    // Pannello largo abbastanza per la riga piu' lunga a scala 1 (`fontUI`,
+    // sotto, e' piu' grande di `fontMini`: "Save during attacks: OFF" non
+    // ci starebbe piu' nei 360 fissi di prima, uscirebbe dai bottoni)
+    // — 360 resta il minimo/il caso comune, cresce solo se serve.
+    const maxLabelW = Math.max(...rows.map((row) => measureText(fontUI, row.label, 1)));
+    const panelW = Math.min(Math.max(360, maxLabelW + 80), cw - 40), panelH = 96 + rows.length * 60 + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
+    // `fontUI`, non `fontMini` — stesso fix "sgranato" di drawPauseOverlay()
+    // sopra, stesso pannello.
     const title = "SAVING OPTIONS";
-    const titleScale = fitTextScale(fontMini, title, panelW - 24, 3);
-    drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 26, titleScale, TEXT_TINT, 1);
+    const titleScale = fitTextScale(fontUI, title, panelW - 24, 2);
+    drawText(r, fontUI, title, px + (panelW - measureText(fontUI, title, titleScale)) / 2, py + 26, titleScale, TEXT_TINT, 1);
 
     pauseMenuButtons = [];
     const btnW = panelW - 60, btnH = 46, btnGap = 14;
-    const textScale = Math.min(...rows.map((row) => fitTextScale(fontMini, row.label, btnW - 20, 2)));
+    const textScale = Math.min(...rows.map((row) => fitTextScale(fontUI, row.label, btnW - 20, 2)));
     let by = py + 96;
     for (const row of rows) {
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
-      drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, TEXT_TINT, 1);
+      drawText(r, fontUI, row.label, bx + (btnW - measureText(fontUI, row.label, textScale)) / 2, by + (btnH - 24 * textScale) / 2, textScale, TEXT_TINT, 1);
       pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
