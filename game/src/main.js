@@ -3449,6 +3449,19 @@ export async function mountMatch(ctx, params = {}) {
     // stesso 2x massimo di ingrandimento su qualunque dispositivo, mobile
     // incluso.
     cam.minZoom = pixelPerfectZoom() * 0.5;
+    // [Bug corretto, richiesto dall'autore: "in generale non permettere di
+    // visualizzare al giocatore area fuori dallo spazio della room (tutti e
+    // tre i livelli)"] Al di sopra di questo zoom, in ALMENO una delle due
+    // dimensioni il mondo inquadrato (`cam.worldW`/`worldH`) supera la room
+    // vera (`scene.width`/`height`) — `cam.clamp()` (camera.js) a quel punto
+    // smette di poter incastrare i bordi e RICENTRA soltanto, lasciando
+    // margine vuoto intorno alla piattaforma (coperto qui dalla vignetta
+    // fuori mappa, main.js piu' sotto — ma l'autore vuole che quel margine
+    // non sia proprio raggiungibile). `Math.min`, non `Math.max`: lo stesso
+    // identico calcolo gia' usato dal ramo mobile sotto per il fit "cover"
+    // (un margine vuoto compare appena una delle due dimensioni lo supera,
+    // quindi serve il rapporto PIU' vincolante, non il meno vincolante).
+    const roomCoverZoom = Math.min(scene.width / cam.viewW, scene.height / cam.viewH);
     if (!isMobile) {
       // Desktop: lo zoom di default resta pixel-perfect (mai un "fit to
       // screen" frazionario, che sfumerebbe gli sprite) — ma ora e' solo il
@@ -3460,16 +3473,16 @@ export async function mountMatch(ctx, params = {}) {
       // dal ramo mobile sotto, cosi' un resize (finestra ridimensionata,
       // spostata su un monitor a dpr diverso) non scavalca piu' uno zoom
       // scelto dal giocatore.
-      // [Bug corretto, richiesto dall'autore: "consenti anche uno zoom out
-      // fino a 0.5"] Prima `maxZoom` COINCIDEVA col default pixel-perfect:
-      // la rotella poteva solo avvicinare, mai allontanare oltre il primo
-      // frame — su `match`/`tutorial` non si poteva mai vedere piu' mappa di
-      // quella iniziale. `* 2` raddoppia il limite di zoom-OUT (`cam.zoom`
-      // piu' grande = piu' mondo inquadrato, camera.js): al doppio del
-      // pixel-perfect uno sprite finisce a meta' della propria taglia
-      // nativa a schermo (scala 0.5, la stessa unita' di `cam.minZoom`
-      // sopra, dove e' invece il limite di zoom-IN).
-      cam.maxZoom = pixelPerfectZoom() * 2;
+      // [Bug corretto di nuovo, stesso sintomo] Una richiesta precedente
+      // ("consenti anche uno zoom out fino a 0.5") aveva portato `maxZoom` a
+      // `pixelPerfectZoom() * 2` — ma su una room grande (`match`, 3900x2090)
+      // quel raddoppio supera `roomCoverZoom` (sopra), mostrando l'esterno
+      // della piattaforma. `Math.min` con `roomCoverZoom` riporta il limite
+      // di zoom-OUT al piu' permissivo dei due SENZA mai superare il bordo
+      // della room — su un desktop/room dove il doppio pixel-perfect resta
+      // comunque dentro la room (schermi piccoli, room piccole) il
+      // comportamento richiesto in precedenza resta invariato.
+      cam.maxZoom = Math.min(pixelPerfectZoom() * 2, roomCoverZoom);
       if (!userMoved) cam.setZoomImmediate(pixelPerfectZoom());
     } else if (canvas.clientWidth > 0) {
       // `Math.min`, non `Math.max`: la room e' quasi sempre piu' larga che
@@ -3485,13 +3498,20 @@ export async function mountMatch(ctx, params = {}) {
       // tutta la larghezza della mappa in un colpo solo (si scorre lateralmente,
       // clamp() sotto gestisce gia' il pan quando il mondo e' piu' stretto
       // della room).
-      const fitZoom = Math.min(scene.width / cam.viewW, scene.height / cam.viewH);
-      // [Bug corretto, richiesto dall'autore: "consenti anche uno zoom out
-      // fino a 0.5"] `* 1.3` (poco oltre il fit "cover") non arrivava alla
-      // meta' scala richiesta — `* 2`, stessa scelta del ramo desktop sopra,
-      // porta anche qui il limite di zoom-OUT fino a scala 0.5 rispetto al
-      // fit di partenza.
-      cam.maxZoom = fitZoom * 2;
+      // `roomCoverZoom` sopra e' lo stesso identico calcolo — riusato invece
+      // di ridichiararlo qui, resta comunque "fitZoom" nel resto di questo
+      // ramo (il nome gia' usato per `setZoomImmediate()`/`cam.x`/`cam.y`
+      // sotto, meno da toccare).
+      const fitZoom = roomCoverZoom;
+      // [Bug corretto di nuovo, stesso sintomo del ramo desktop sopra:
+      // richiesto dall'autore, "non permettere di visualizzare area fuori
+      // dallo spazio della room"] Prima: `fitZoom * 2` (`* 1.3` ancora
+      // prima) — una richiesta precedente per uno zoom-out fino a scala 0.5,
+      // ma OLTRE `fitZoom` (il fit "cover" vero, sopra) il mondo inquadrato
+      // supera la room in almeno una dimensione: `cam.maxZoom` non deve mai
+      // superarlo, `fitZoom` stesso e' gia' il limite piu' permissivo che
+      // non mostra mai l'esterno della piattaforma.
+      cam.maxZoom = fitZoom;
       if (!userMoved) {
         cam.setZoomImmediate(fitZoom);
         // `initialFocusX`/`initialFocusY` (calcolati sopra, dove viene
@@ -4064,8 +4084,11 @@ export async function mountMatch(ctx, params = {}) {
       const frameIdx = Math.min(EXPLOSION_FRAME_COUNT - 1, Math.floor(ex.t / TICK));
       dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr, frameIdx), _scale: ex.scale });
     }
-    // Il fuoco vero (game/src/projectiles.js): i razzi del lanciarazzi.
-    for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr) });
+    // Il fuoco vero (game/src/projectiles.js): i razzi del lanciarazzi e i
+    // traccianti del gatling. `p.angle` (solo il gatling, projectiles.js/
+    // spawnProjectile()) ruota lo sprite come "image_angle = direction" —
+    // vedi `_angle` nel loop del layer mondo sopra.
+    for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr), _angle: p.angle });
     // Fumo di scia (game/src/projectiles.js, spawnSmoko): depth -9000 fisso
     // come le monete blu ([C] smoko/_object.json), ma senza `_selfLit` — un
     // residuo di sparo, non un simbolo dell'interfaccia, si scurisce di
@@ -4231,7 +4254,12 @@ export async function mountMatch(ctx, params = {}) {
       if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < t) continue;
       const base = (it.obj === "placeholder" && it._armed) ? ARMED_TINT : (it._tint ?? 0xffffff);
       const tint = it._selfLit ? base : mulTint(base, amb.rgb);
-      r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
+      // `_angle` (solo i traccianti del gatling, projectiles.js/main.js
+      // sopra — "image_angle pari alla direzione"): drawRotated() invece
+      // del draw() allineato agli assi, stesso principio della freccia del
+      // tutorial/le gocce di pioggia (drawRotated(), sopra).
+      if (it._angle != null) drawRotated(f, it.x, it.y, it._angle, it._scale ?? 1, tint, it._alpha ?? 1);
+      else r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
     }
     // Fantasma di anteprima per eolico/grattacielo (multiTilePreview, sopra):
     // alpha 0.5, nessuna tinta ambientale (come le luci/`_selfLit` sopra —
@@ -4717,8 +4745,27 @@ export async function mountMatch(ctx, params = {}) {
         // Fase 9: gia' scelto il tipo "casa" (fase 8), qui manca solo un
         // lotto libero — nessun bottone da puntare, solo il suggerimento
         // sopra.
+        // [Bug corretto, segnalato dall'autore: "la freccia che punta i
+        // lotti vuoti dovrebbe smettere di comparire quando sto costruendo
+        // cio' che viene richiesto per avanzare, anche se c'e' solo il
+        // cantiere — posati 5 cantieri non deve continuare a vedersi la
+        // freccia sui lotti vuoti"] L'avanzamento vero (stepTutorialAuto(),
+        // tutorial.js) aspetta 5 case COMPLETE (`builtAtLevel("casa",1)`,
+        // livello 1 — giusto, "population grows" solo a fine cantiere), ma
+        // `selectedType` resta "casa" per tutta la fase (si costruisce piu'
+        // di un lotto senza riselezionare lo strumento ogni volta, main.js/
+        // placeAt() non lo azzera mai da solo): senza questo controllo la
+        // freccia continuava a suggerire un lotto libero IN PIU' anche dopo
+        // che il giocatore aveva gia' piazzato i 5 cantieri richiesti,
+        // finche' l'ultimo non finiva di costruirsi — spingendo a costruirne
+        // di piu' del necessario. Qui basta che i 5 esistano GIA', a
+        // livello 0 (cantiere) o 1 (appena finita): non oltre, altrimenti
+        // le case GIA' in piedi all'avvio del tutorial (livello 2/3,
+        // casa2/casa3 — STUDIO.md, stepTutorialAuto() in tutorial.js) le
+        // farebbero sparire la freccia subito, PRIMA che il giocatore abbia
+        // anche solo iniziato a costruire.
         case 9: {
-          target = suggestedPlotTarget();
+          target = buildings.filter((b) => b.type === "casa" && b.level <= 1).length >= 5 ? null : suggestedPlotTarget();
           break;
         }
         case 8: case 12: case 16: case 19: {
@@ -4729,8 +4776,19 @@ export async function mountMatch(ctx, params = {}) {
           // fase 9 sopra): una volta selezionato il tipo giusto la freccia
           // passa dal bottone al lotto suggerito, invece di restare ferma
           // su un bottone gia' premuto.
+          // Stesso fix di fase 9 sopra: 12/16/19 aspettano solo UN nuovo
+          // edificio oltre quelli gia' in piedi all'avvio del tutorial
+          // (`tutind`/`tutpar`/`tutrl`, createTutorialState() — contati
+          // dalla room, STESSO "livello 1" implicito di quei nomi scena,
+          // STUDIO.md), quindi appena quello e' piazzato (anche solo il
+          // cantiere, livello 0/1 — non gli edifici gia' maturi della room,
+          // stesso motivo del filtro `b.level <= 1` in fase 9 sopra) la
+          // freccia deve smettere di suggerire un altro lotto.
+          const neededCount = { industria: tutorialState.tutind + 1, parco: tutorialState.tutpar + 1, missile: tutorialState.tutrl + 1 }[type];
+          const alreadyPlaced = neededCount !== undefined
+            && buildings.filter((b) => b.type === type && b.level <= 1).length >= neededCount;
           target = selectedType === type && tutorialState.phase !== 8
-            ? suggestedPlotTarget()
+            ? (alreadyPlaced ? null : suggestedPlotTarget())
             : pointAtButton(byKind((btn) => btn.kind === "building" && btn.type === type)
                 ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1)
                 ?? findIndietro());
@@ -4743,7 +4801,19 @@ export async function mountMatch(ctx, params = {}) {
       }
       if (target) {
         const arrowFrame = frameFor("fr_ros", Math.floor(tutorialState.arrowFrame));
-        if (arrowFrame) drawRotated(arrowFrame, target.x, target.y, target.angle, UI_SCALE, 0xffffff, 1);
+        // [Bug corretto, segnalato dall'autore: "la freccia del tutorial
+        // dovrebbe diventare bianca quando il resto della GUI diventa
+        // bianca di notte"] Stessa protezione gia' usata per la barra
+        // risorse/i bottoni in basso (`iconsDark`/`setColorize()`, sopra):
+        // senza, il tint 0xffffff qui sotto non basta da solo a schiarire
+        // uno sprite scuro (moltiplicare nero per bianco resta nero) —
+        // serve la "colorize mode" per sostituirlo davvero con una sagoma
+        // piena bianca di notte/nella vignetta scura.
+        if (arrowFrame) {
+          r.setColorize(iconsDark);
+          drawRotated(arrowFrame, target.x, target.y, target.angle, UI_SCALE, 0xffffff, 1);
+          r.setColorize(false);
+        }
       }
     }
     // Balloon di testo del tutorial — [C] tutorial_square/DrawGUI.gml:
