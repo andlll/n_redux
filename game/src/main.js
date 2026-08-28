@@ -2226,12 +2226,15 @@ export async function mountMatch(ctx, params = {}) {
   // di essere ricreati. `resetTextPool()` va chiamata una volta a inizio
   // frame, `hideUnusedText()` una volta alla fine — cosi' un frame in cui
   // NESSuno dei due pannelli disegna (non in pausa) nasconde tutto da solo,
-  // senza un ramo dedicato "pulisci se non in pausa". +2, non 8 esatti: il
-  // mondo "congelato" sotto il menu di pausa resta disegnato ogni frame
-  // (solo la SIMULAZIONE si ferma, `frozen`/`if (!paused)` altrove) — in
-  // pausa durante il tutorial il balloon (1 slot) e il pannello principale
-  // (8) chiedono un elemento ciascuno nello STESSO frame, 9 in tutto.
-  const TEXT_POOL_SIZE = 10;
+  // senza un ramo dedicato "pulisci se non in pausa".
+  // Il menu di pausa e' l'unico chiamante da 8 slot, ma NON e' il worst
+  // case: barra risorse/balloon del tutorial/banner "ATTACK INCOMING"/
+  // "THUNDERSTORM INCOMING" (piu' sotto) restano tutti disegnati fuori
+  // pausa (`&& !paused` li salta apposta durante il menu — stesso motivo di
+  // drawHtmlText() sopra, testo HTML non sfumato dal blur) e possono capitare
+  // TUTTI nello stesso frame: 4 risorse + mese + anno + cristalli (7) +
+  // balloon tutorial (1) + i 2 banner = 10, +1 di margine.
+  const TEXT_POOL_SIZE = 11;
   const textPool = Array.from({ length: TEXT_POOL_SIZE }, () => {
     const el = document.createElement("div");
     el.className = "gameText";
@@ -5096,39 +5099,45 @@ export async function mountMatch(ctx, params = {}) {
       }
     }
 
-    // Avviso "ATTACK INCOMING" (src/objects/aincom, game/src/balloons.js): una
-    // mongolfiera spia ha completato il suo giro. [C] aincom/Create.gml +
-    // Alarm_1/2.gml: lampeggia (mostra/nasconde ogni 30 tick = 0.5s) per 240
-    // tick (4s) al centro della view — qui al centro dello schermo, coerente
-    // col resto della GUI in spazio schermo (STUDIO.md §7.3 "L'interfaccia va
-    // in uno spazio schermo separato").
-    if (r12.alertT > 0) {
-      const ainco = frameFor("ainco");
-      // r.draw ancora sull'origine dello sprite (data/sprites.json: "ainco" ha
-      // origin ~(w/2, h/2), gia' centrato — a differenza di "icone_oriz" sopra,
-      // che ha origine in alto a sinistra), quindi il centro schermo e' gia'
-      // il punto giusto da passare, non il suo angolo in alto a sinistra.
-      if (ainco && Math.floor((ALERT_DURATION - r12.alertT) / 0.5) % 2 === 0) {
-        r.draw(ainco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
-      }
+    // Avviso "ATTACK INCOMING"/"THUNDERSTORM INCOMING" (src/objects/aincom/
+    // tincom) — **[Bug corretto, segnalato dall'autore: "a volte non ci
+    // stanno nello schermo"]** Erano i due ultimi banner ancora disegnati
+    // come raster a scala 1 (`ainco` 949x59, `tinco` 1370x59 — data/
+    // sprites.json): larghi abbastanza da uscire dai bordi su schermi
+    // stretti, un limite che nessuna quantita' di margine risolve per un
+    // bitmap a dimensione fissa. Sostituiti da testo HTML vero
+    // (drawHtmlText(), stesso trattamento gia' scelto per il resto della UI
+    // — barra risorse/menu di pausa/balloon del tutorial), sempre al centro
+    // schermo come un elemento GUI qualunque (spazio schermo fisso, non
+    // mondo): `bannerFontSize()` sotto lo fa anche RESTARE dentro lo
+    // schermo, riducendo la dimensione in proporzione alla larghezza
+    // disponibile invece di scalare un raster (che sfumerebbe scalando).
+    // Stesso lampeggio (mostra/nasconde ogni 0.5s per 4s) di prima — [C]
+    // aincom/Create.gml + Alarm_1/2.gml, tincom/Create.gml. `&& !paused`:
+    // stesso motivo della barra risorse/del balloon del tutorial piu' sopra
+    // — testo HTML vero, fuori dal canvas che pauseBlur.blurScreen() sfuma
+    // per il menu di pausa, quindi va saltato del tutto mentre paused e'
+    // true invece di restare nitido sopra al resto sfumato.
+    function bannerFontSize(text, maxSize) {
+      const avail = canvas.clientWidth - 40;
+      return Math.max(14, Math.min(maxSize, avail / (text.length * 0.62)));
     }
-    // Avviso "il temporale sta arrivando" (src/objects/tincom, solo su
-    // `match` — game/src/state.js, stepWeather()): stesso identico
-    // trattamento di "ainco" appena sopra (lampeggia ogni 0.5s per 4s al
-    // centro dello schermo), stessa origine gia' centrata dello sprite
-    // (data/sprites.json: "tinco" 1370x59, origin 685,29).
-    if (r12.tincomT > 0) {
-      const tinco = frameFor("tinco");
-      if (tinco && Math.floor((TINCOM_DURATION - r12.tincomT) / 0.5) % 2 === 0) {
-        r.draw(tinco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
-      }
+    if (r12.alertT > 0 && !paused && Math.floor((ALERT_DURATION - r12.alertT) / 0.5) % 2 === 0) {
+      const text = "ATTACK INCOMING";
+      drawHtmlText(text, canvas.clientWidth / 2, canvas.clientHeight / 2,
+        { size: bannerFontSize(text, 48), maxWidth: canvas.clientWidth - 40 });
+    }
+    if (r12.tincomT > 0 && !paused && Math.floor((TINCOM_DURATION - r12.tincomT) / 0.5) % 2 === 0) {
+      const text = "THUNDERSTORM INCOMING";
+      drawHtmlText(text, canvas.clientWidth / 2, canvas.clientHeight / 2,
+        { size: bannerFontSize(text, 48), maxWidth: canvas.clientWidth - 40 });
     }
     // Il pannello prestiti (bankPanelOpen, state.js LOANS) — vero modale in
     // spazio schermo (vedi il commento su bankPanelOpen piu' sopra per il
     // perche'), disegnato per ultimo cosi' resta sempre sopra a tutto il
     // resto della GUI. `loanscr`/`getlo1..4` hanno gia' l'origine al centro
-    // (data/sprites.json), quindi il centro schermo e' gia' il punto giusto,
-    // come "ainco" sopra. Scala calcolata invece di UI_SCALE fisso: "loanscr"
+    // (data/sprites.json), quindi il centro schermo e' gia' il punto giusto.
+    // Scala calcolata invece di UI_SCALE fisso: "loanscr"
     // (540x1086) e' grande quanto un'intera view, UI_SCALE (pensata per le
     // iconcine da ~100px del resto della barra) lo lascerebbe enorme o
     // minuscolo a seconda dello schermo — qui si adatta sempre a circa l'85%
