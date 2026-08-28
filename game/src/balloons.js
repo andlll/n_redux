@@ -117,6 +117,24 @@ export const ALERT_DURATION = 4;               // [C] aincom/Create.gml: action_
 
 const SPAWN_PERIOD = 300 * TICK;               // [C] r12/Alarm_1.gml: action_set_alarm(300, 1)
 const SPY_UNLOCK_T = 29000 * TICK;             // [C] r12/Create.gml: action_set_alarm(29000, 8) -> spy = 1
+// [Nuova funzionalita', richiesta dall'autore: "dopo aver subito un
+// attacco e' giusto che non volino piu' aerei spia per un po', altrimenti
+// il giocatore non si riprende mai"] Il decompilato (`if (!(ondan > 0))`
+// sopra SPAWN_PERIOD) sospende le mongolfiere SOLO mentre l'ondata sta
+// ancora scaricando i suoi `air`/`bombar`/`dirig` — appena l'ultimo
+// contatore attivo tocca 0 una nuova spia puo' gia' ripartire al
+// controllo successivo (al piu' SPAWN_PERIOD dopo), nessuna pausa vera.
+// Su `match` (mappa grande, hap quasi sempre sotto pop una volta che le
+// case superano gli edifici "felicita'" — STUDIO.md, la stessa
+// asimmetria che rende le spie rarissime su `match_easy` e frequenti qui,
+// dado 1/2 invece di 1/17) questo significa ondate che si susseguono senza
+// respiro: appena una finisce la successiva e' gia' in corso. 30s dopo
+// che TUTTI e tre i contatori attivi (ondan/bombn/diron — non solo ondan,
+// altrimenti un'ondata bombardieri/zeppelin ancora in corso lascerebbe
+// comunque ripartire le spie) tornano a 0 sono un compromesso fra "si
+// sente davvero come una tregua" e "non toglie la tensione per sempre" —
+// 6 cicli di SPAWN_PERIOD (5s l'uno), facile da ritoccare qui se non basta.
+const SPY_COOLDOWN_AFTER_ATTACK = 30;
 
 function maxChiesLevel(buildings) {
   let lvl = 0;
@@ -160,6 +178,14 @@ export function spawnLoot(lootDef, x, y) {
  * (`stepThreatSpawner`) — qui `ondan` viene solo letto, per sospendere le
  * nuove mongolfiere mentre un'ondata di minacce vere e' attiva ([C]
  * r12/Alarm_1.gml: `if (!(ondan > 0))`).
+ *
+ * [I] `SPY_COOLDOWN_AFTER_ATTACK` (sopra), richiesto dall'autore: dopo che
+ * un'ondata finisce per davvero (ondan/bombn/diron tutti a 0) le SOLE
+ * mongolfiere spia (monspi/recogn) restano sospese ancora per un po' — le
+ * risorse continuano ad arrivare normalmente, cosi' il giocatore ha
+ * davvero tempo di rimettersi in piedi prima del prossimo avviso ATTACK
+ * INCOMING, invece di incassare ondate che si susseguono senza pausa non
+ * appena l'ultima finisce.
  *
  * [I] Il gate `action_if_number(160, 0, 0)` che nel decompilato precede
  * `monviolo` non e' riprodotto (un flag globale non identificato, STUDIO.md
@@ -206,6 +232,20 @@ export function stepBalloonSpawner(r12, balloons, dt, buildings) {
   // sempre da quel momento in poi.
   if (!r12.spyUnlockFired && r12.spyT >= SPY_UNLOCK_T) { r12.spy = 1; r12.spyUnlockFired = true; }   // [C]
 
+  // Tregua dopo un'ondata (SPY_COOLDOWN_AFTER_ATTACK, sopra) — [I], non nel
+  // decompilato. `underAttack` guarda tutti e tre i contatori attivi, non
+  // solo `ondan` (a differenza del guard di SPAWN_PERIOD sotto, che resta
+  // fedele all'originale): un bombardiere o uno zeppelin ancora in volo
+  // conta comunque come "sotto attacco". Il cooldown parte solo al FRONTE
+  // di discesa (attivo l'ultimo frame, non piu' questo) — un singolo
+  // `dice()` fortunato durante la tregua non lo riarma da solo, altrimenti
+  // "30s dopo l'ultima ondata" scivolerebbe ogni volta che una spia
+  // qualunque (bloccata comunque dal cooldown sotto) tenta il tiro.
+  const underAttack = (r12.ondan ?? 0) > 0 || (r12.bombn ?? 0) > 0 || (r12.diron ?? 0) > 0;
+  if (r12.spyWaveActive && !underAttack) r12.spyCooldownT = SPY_COOLDOWN_AFTER_ATTACK;
+  r12.spyWaveActive = underAttack;
+  if (r12.spyCooldownT > 0) r12.spyCooldownT = Math.max(0, r12.spyCooldownT - dt);
+
   // ondan decade e fa nascere le minacce vere in game/src/threats.js
   // (stepThreatSpawner) — non qui: decadere e "far nascere un air" sono
   // la stessa cosa nel decompilato (r12/Alarm_4.gml), leggerlo/scriverlo
@@ -227,7 +267,7 @@ export function stepBalloonSpawner(r12, balloons, dt, buildings) {
       if (dice(18)) balloons.push(spawnBalloon("monviolo"));       // [C] (gate 160 semplificato, vedi sopra)
       if (dice(15)) balloons.push(spawnBalloon("monvo_giga"));     // [C]
     }
-    if (r12.spy) {
+    if (r12.spy && !(r12.spyCooldownT > 0)) {
       const rare = r12.hap >= r12.pop;   // [C] operatore 4, non ==: vedi il commento sopra
       const spyDice = rare ? 17 : 2;
       // [C] r12/Alarm_1.gml: monspi (mongolfiera spia) mentre chies non e'
