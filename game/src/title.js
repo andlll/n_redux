@@ -2,14 +2,31 @@
 // "Match", `easma`/"Match Facile", `me3`/"Tutorial") + un banner laterale
 // (`gogirrra`). Lo sfondo NON e' piu' `eddaie` (il logo animato del
 // decompilato, 193 sottoimmagini — pesante da impacchettare e, detto
-// dall'autore, "fa un po' cagare"): al suo posto un vero ritaglio di
-// `match` (la mappa difficile, non `match_easy`) che gira per davvero
-// dietro il menu — auto, aerei/dirigibili, semafori, ciclo giorno/notte —
-// sfumato con lo stesso `PauseBlur` (game/src/gl.js) gia' usato per il
-// menu di pausa in game/src/main.js. Nessuna combattimento: nessuna
-// torretta esiste qui, quindi aerei/dirigibili volano/sganciano bombe
-// (che detonano a vuoto, `buildings: []`) senza che nulla li abbatta —
-// esattamente "vivi ma non in guerra", come richiesto.
+// dall'autore, "fa un po' cagare"): al suo posto un ritaglio di `match` (la
+// mappa difficile, non `match_easy`) dietro il menu — auto, aerei/
+// dirigibili, semafori, ciclo giorno/notte — sfumato con lo stesso
+// `PauseBlur` (game/src/gl.js) gia' usato per il menu di pausa in
+// game/src/main.js. Nessun combattimento: nessuna torretta esiste qui,
+// quindi aerei/dirigibili volano/sganciano bombe (che detonano a vuoto,
+// `buildings: []`) senza che nulla li abbatta — esattamente "vivi ma non in
+// guerra", come richiesto.
+//
+// [Decisione dell'autore: "citta' statica ma oggetti volanti e
+// bombardamento funzionanti"] La citta'/piattaforma (edifici, strade,
+// alberi — mai animata di suo, STUDIO.md: solo il ciclo giorno/notte la
+// tinge) NON e' piu' ricomposta ogni frame da centinaia di sprite
+// dell'intero atlas di `match` (56 pagine, ~800 MB decompressi in GPU solo
+// per uno sfondo che non cambia mai forma): `tools/29_title_bg.py` la
+// pre-renderizza offline in UN'unica immagine (`assets/title_city.webp`,
+// CITY_RECT sotto — poche centinaia di KB), caricata qui come una texture
+// qualunque (`loadTexture()`, non un intero atlas-room) e disegnata come un
+// solo quad in spazio mondo, PRIMA del layer `dynamic` di sempre — che
+// resta vivo e identico: auto, aerei/bombardieri/zeppelin, bombe/esplosioni/
+// detriti/fumo, nuvole/uccelli, semafori, le turbine che lampeggiano, le
+// finestre che si accendono di notte. L'atlas "title" (sotto) ora
+// impacchetta anche questi sprite dinamici (tools/23_atlas.py,
+// TITLE_DYNAMIC_SPRITES) — piccolo e mirato, non l'intero catalogo
+// GAMEPLAY_SPRITES che serve solo alla partita vera.
 //
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
 // export mountTitle(ctx) invece di uno script a livello di modulo — canvas,
@@ -20,11 +37,11 @@
 // cio' che questo modulo ha registrato da solo (listener di resize, timer,
 // nodo DOM del messaggio), cosi' rientrare nel menu piu' volte nella stessa
 // sessione non accumula loop/listener fantasma.
-import { solidFrame } from "./gl.js";
+import { solidFrame, loadTexture } from "./gl.js";
 import { loadFromFile } from "./save.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
-import { applyMatchPlatform, r120MotorDecor } from "./platform.js";
+import { r120MotorDecor } from "./platform.js";
 import { spawnCar, stepCars } from "./cars.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
@@ -42,14 +59,14 @@ export async function mountTitle(ctx) {
 
   // ---------------------------------------------------------------- title UI
   const scene = await fetch("./data/title.scene.json").then((x) => x.json());
-  // `reportProgress("title", ..., "loading interface")`/`reportProgress
-  // ("match", ..., "loading city")` sotto: due fasi in sequenza (l'atlas dei
-  // bottoni, poi quello — molto piu' grande — dello sfondo sfumato), non una
-  // sola sommata (app.js/reportProgress() la mostrava cosi' prima del fix
-  // sul crollo a meta' segnalato dall'autore, vedi il commento li'). Ogni
-  // fase riparte onestamente da 0 con la propria etichetta, cosi' il
-  // secondo "0%" si legge come "e' iniziata la fase dopo" invece che come
-  // un blocco.
+  // Un solo atlas ("title", sotto) copre ormai sia i bottoni/banner sia
+  // l'intero layer dinamico dello sfondo (auto/aerei/bombe/nuvole/semafori/
+  // turbine/finestre — vedi il commento in cima al file): la citta' ferma
+  // non passa piu' da qui, e' un'unica texture caricata poco sotto
+  // (`cityBg`). Non c'e' quindi piu' bisogno di una seconda fase "loading
+  // city" separata (`reportProgress()` restava scomoda a due cifre diverse
+  // per un errore di somma gia' corretto altrove, app.js) — un solo
+  // progresso onesto per l'unico atlas rimasto.
   const { atlas, pageTex } = await loadRoomAtlas(gl, "title", {
     onProgress: (loaded, total) => reportProgress("title", loaded, total, "loading interface"),
   });
@@ -89,91 +106,38 @@ export async function mountTitle(ctx) {
   camUI.x = 1235; camUI.y = 543;
 
   // ------------------------------------------------------------- sfondo: match
+  // Solo i metadati (JSON, pochi KB): le posizioni dei pali dei semafori
+  // (`object8`, sotto — il "tappo" colorato che lampeggia resta un vero
+  // sprite dinamico) e le dimensioni della room per `camWorld.bounds`. Nessun
+  // atlas immagine caricato da qui: la citta'/piattaforma vera e propria e'
+  // gia' pronta cotta in `cityBg` (sotto).
   const mScene = await fetch("./data/match.scene.json").then((x) => x.json());
-  const { atlas: mAtlas, pageTex: mPageTex } = await loadRoomAtlas(gl, "match", {
-    onProgress: (loaded, total) => reportProgress("match", loaded, total, "loading city"),
-  });
-  // [Bug corretto, segnalato dall'autore: "appena avvio match il sito si
-  // refresha tornando alla schermata logo e poi al menu", su mobile] Qui
-  // c'era un `prefetchRoomAtlas(gl, "match_easy")` — [I] richiesto
-  // dall'autore ("caricare gli asset in modo furbo"): mentre il giocatore
-  // guarda ancora il menu, scaricare gia' in background l'atlas di
-  // `match_easy` (il bottone in evidenza), cosi' fosse gia' calda la cache
-  // se lo sceglieva davvero. Il problema: la riga SOPRA ha gia' caricato
-  // l'intero atlas di `match` (~50 pagine da 2048x2048, ~800 MB non
-  // compressi in GPU, STUDIO.md/assets.js) solo per lo sfondo sfumato dietro
-  // il menu — prefetchare ANCHE `match_easy` (un secondo atlas quasi
-  // altrettanto grande) voleva dire tenere in memoria GPU, gia' stando fermi
-  // sul menu, la somma di entrambi: su mobile (budget per-tab molto piu'
-  // stretto che su desktop) questo da solo poteva bastare a far terminare la
-  // pagina, con l'effetto — riavvio silenzioso del sistema operativo,
-  // ripartenza da index.html — di un "refresh" del sito proprio nel momento
-  // in cui si tocca "Match" (assets.js ha il fix parallelo sul PICCO di
-  // memoria durante il caricamento di un singolo atlas; qui il problema era
-  // lo STATO STAZIONARIO: due atlas interi tenuti insieme senza motivo).
-  // Tolto: `match_easy` si carica ora solo quando il giocatore lo sceglie
-  // davvero (mountMatch(), main.js) — un filo di attesa in piu' alla
-  // scelta, invece di un rischio di crash mentre si e' ancora nel menu.
-  function mFrameFor(sprName, frameIdx = 0) {
-    const frames = mAtlas.sprites[sprName];
-    if (!frames || !frames.length) return null;
-    const f = frames[Math.max(0, Math.min(frameIdx, frames.length - 1))];
-    if (!mPageTex[f.p]) return null;
-    return { tex: mPageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1, w: f.w, h: f.h, ox: f.ox, oy: f.oy };
-  }
-
-  // [C] stessa variante a dado di main.js (albe/albe2/albe3/Create.gml): un
-  // solo giro, una volta al caricamento della scena — vedi il commento li'.
-  function dice(n) { return Math.random() < 1 / n; }
-  function treeVariant(obj) {
-    if (obj === "albe") { if (dice(5)) return dice(2) ? "a2" : "a5"; if (dice(2)) return dice(2) ? "a3" : "a4"; return null; }
-    return null;
-  }
-  // [I] `placeholder` (il rombo viola "phold", STUDIO.md main.js) resta
-  // nascosto finche' non e' sotto hover nel gioco vero: qui non c'e' nessun
-  // input di piazzamento, quindi va tolto invece di restare sempre acceso a
-  // coprire mezza mappa (172 istanze su `match`).
-  // [Bug corretto] Le nuvole ("ni"/"nifast") piazzate nella room — stesso
-  // motivo del filtro in main.js: nel decompilato nessuna delle due resta
-  // mai ferma (si mettono in moto da sole al proprio Create, la stessa
-  // diagonale gia' simulata qui sotto da atmo/stepAtmosphere), quindi non
-  // vanno disegnate come decoro fisso — il cielo sfumato dietro il menu ha
-  // gia' il proprio generatore dinamico (atmo.clouds, sotto).
-  // `aura`/`baura` (main.js ha lo stesso filtro, stesso motivo — "è rimasto
-  // un quadratino celeste in alto a sinistra"): senza sostituto dinamico
-  // qui (questo sfondo non ha un ciclo giorno/notte, resta sempre "giorno"),
-  // ma vanno comunque tolti allo stesso modo — sono il punto di partenza
-  // GML per un effetto ormai non riprodotto, non decoro vero, e lo sprite
-  // nativo non scalato di `baura` (il quadratino) sbucherebbe qui allo
-  // stesso identico angolo del bounding box.
-  const worldStatic = mScene.instances.filter((it) => it.obj !== "placeholder" && it.obj !== "ni" && it.obj !== "nifast"
-    && it.obj !== "aura" && it.obj !== "baura");
-  applyMatchPlatform(worldStatic);   // la base volante — STUDIO.md, game/src/platform.js
-  // honda1/honda2 (le due auto "gia' in marcia" di `match`, game/src/cars.js)
-  // sostituite dalle istanze simulate sotto — stesso motivo della rimozione
-  // in main.js.
-  for (let i = worldStatic.length - 1; i >= 0; i--) {
-    if (worldStatic[i].obj === "honda1" || worldStatic[i].obj === "honda2") worldStatic.splice(i, 1);
-  }
-  for (const it of worldStatic) {
-    const v = treeVariant(it.obj);
-    if (v) it.spr = v;
-    it._f = mFrameFor(it.spr);
-  }
-  const semaphorePoles = worldStatic.filter((it) => it.obj === "object8");
+  const semaphorePoles = mScene.instances.filter((it) => it.obj === "object8");
   const semaphores = semaphorePoles.map((it) => createSemaphore(it.x, it.y));
 
+  // Atlas "title": bottoni/banner (gia' caricati sopra) PIU' tutto il layer
+  // dinamico (auto, aerei/bombe/esplosioni/detriti/fumo, nuvole/uccelli, i
+  // "tappi" dei semafori, le turbine, le finestre accese — tools/23_atlas.py/
+  // TITLE_DYNAMIC_SPRITES): `frameFor()` (sopra) serve gia' a tutto questo,
+  // nessuna seconda funzione `mFrameFor()` da tenere in sync.
+  //
+  // La citta'/piattaforma FERMA: un'unica immagine pre-renderizzata offline
+  // (tools/29_title_bg.py — vedi il commento in cima al file), non un atlas-
+  // room. `CITY_RECT` e' l'angolo in alto a sinistra in spazio MONDO in cui
+  // va disegnata (BAKE_X0/BAKE_Y0 di quello script — se cambiano li',
+  // aggiornarli anche qui): la sua larghezza/altezza vera si legge da
+  // `cityBg.width/height` invece di duplicarle a mano.
+  const cityBg = await loadTexture(gl, "./assets/title_city.webp");
+  const CITY_RECT = { x: 200, y: 180 };
+  const cityFrame = { tex: cityBg.tex, u0: 0, v0: 0, u1: 1, v1: 1, w: cityBg.width, h: cityBg.height, ox: 0, oy: 0 };
+
   // ------------------------------------------------------- edifici illuminati
-  // `worldStatic` non contiene NESSUN edificio giocatore (`casa`/`villa`/...):
-  // in `match` quei lotti nascono come semplici `placeholder` (tolti sopra) e
-  // vengono costruiti solo a runtime da chi gioca — qui non c'e' nessuna
-  // partita simulata che li piazzi, quindi lo sfondo sfumato restava una
-  // citta' di sole strade/alberi, gia' vuota prima ancora del blur (segnalato
-  // dall'autore). Occupiamo un sottoinsieme dei lotti liberi con qualche
-  // `villa`/`casa` gia' finita, ognuna con la propria coppia sprite+finestre
-  // (`vilNl`/`cNNNl`, le stesse che il gioco vero disegna a fine cantiere —
-  // STUDIO.md, buildings.js "Finestre notturne") cosi' la citta' sfumata ha
-  // davvero delle luci accese di notte invece di restare buia e vuota.
+  // La citta' cotta in `cityBg` include gia' le case/ville occupate di
+  // LIT_LOTS (tools/29_title_bg.py replica la stessa lista) ma SOLO
+  // l'edificio spento: le finestre accese cambiano nel tempo (fade in/out
+  // giorno/notte, stepBuildingLights() sotto), quindi restano un layer
+  // dinamico separato, disegnato sopra l'immagine ferma ad ogni frame —
+  // stesso principio delle turbine che lampeggiano (r120MotorDecor()).
   const LIT_LOTS = [
     { x: 1375, y: 451, spr: "vil6" }, { x: 2253, y: 452, spr: "c211" },
     { x: 2053, y: 453, spr: "vil7" }, { x: 1275, y: 508, spr: "c111" },
@@ -188,16 +152,10 @@ export async function mountTitle(ctx) {
   // `r12.ele > 3`: qui non c'e' nessuna economia simulata da cui leggerla, e
   // una citta' decorativa ha sempre corrente a sufficienza.
   const LIGHT_FADE_SEC = 3;
-  const buildingLights = [];
-  for (const lot of LIT_LOTS) {
-    worldStatic.push({ obj: "decor", x: lot.x, y: lot.y, depth: -lot.y, _f: mFrameFor(lot.spr) });
-    const light = {
-      obj: "decor", x: lot.x, y: lot.y, depth: -lot.y - 1, _f: mFrameFor(lot.spr + "l"),
-      _selfLit: true, _lightT: 0, _alpha: 0,
-    };
-    worldStatic.push(light);
-    buildingLights.push(light);
-  }
+  const buildingLights = LIT_LOTS.map((lot) => ({
+    obj: "decor", x: lot.x, y: lot.y, depth: -lot.y - 1, _f: frameFor(lot.spr + "l"),
+    _selfLit: true, _lightT: 0, _alpha: 0,
+  }));
   function stepBuildingLights(dt, night) {
     for (const light of buildingLights) {
       light._lightT = Math.max(0, Math.min(LIGHT_FADE_SEC, light._lightT + (night ? dt : -dt)));
@@ -392,36 +350,34 @@ export async function mountTitle(ctx) {
       const amb = ambientAt(elapsed);
       r.setAmbient(1, 1, 1);
       r.setProjection(camWorld.projection());
+      // La citta'/piattaforma ferma (cityBg/cityFrame, sopra) — un solo
+      // quad, PRIMA di ogni sprite dinamico cosi' auto/aerei/bombe restano
+      // sempre sopra di lei. Stessa tinta giorno/notte che ogni sprite non
+      // self-lit riceveva individualmente prima (mulTint(0xffffff, amb) qui
+      // equivale a tingere l'intera immagine in un colpo solo — risultato
+      // identico, un solo draw invece di un centinaio).
+      r.draw(cityFrame, CITY_RECT.x, CITY_RECT.y, 1, mulTint(0xffffff, amb), 1);
       const dynamic = [];
-      for (const s of semaphores) if (s.spr) dynamic.push({ obj: "decor", x: s.x, y: s.y, depth: s.depth, _f: mFrameFor(s.spr) });
+      for (const s of semaphores) if (s.spr) dynamic.push({ obj: "decor", x: s.x, y: s.y, depth: s.depth, _f: frameFor(s.spr) });
       // Le "turbine" di r120 (game/src/platform.js): un lampeggio, non
       // erano mai state statiche — vedi il commento su blinkMotorVisible() li'.
-      for (const it of r120MotorDecor(elapsed)) dynamic.push({ obj: "decor", x: it.x, y: it.y, depth: it.depth, _f: mFrameFor(it.spr) });
-      for (const c of atmo.clouds) dynamic.push({ obj: "decor", x: c.x, y: c.y, depth: c.depth, _f: mFrameFor(c.spr) });
-      for (const b of atmo.birds) dynamic.push({ obj: "decor", x: b.x, y: b.y, depth: b.depth, _f: mFrameFor(b.spr) });
-      for (const c of cars) dynamic.push({ obj: "decor", x: c.x, y: c.y, depth: c.depth, _f: mFrameFor(c.spr, Math.floor(c.frame)), _tint: c.tint });
-      for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: mFrameFor(th.spr), _scale: th.scale });
-      for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y, _f: mFrameFor(bm.spr) });
-      for (const d of debris) dynamic.push({ obj: "decor", x: d.x, y: d.y, depth: -d.y, _f: mFrameFor(d.spr) });
+      for (const it of r120MotorDecor(elapsed)) dynamic.push({ obj: "decor", x: it.x, y: it.y, depth: it.depth, _f: frameFor(it.spr) });
+      for (const c of atmo.clouds) dynamic.push({ obj: "decor", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr) });
+      for (const b of atmo.birds) dynamic.push({ obj: "decor", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
+      for (const c of cars) dynamic.push({ obj: "decor", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr, Math.floor(c.frame)), _tint: c.tint });
+      for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale });
+      for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y, _f: frameFor(bm.spr) });
+      for (const d of debris) dynamic.push({ obj: "decor", x: d.x, y: d.y, depth: -d.y, _f: frameFor(d.spr) });
       for (const ex of explosions) {
         const fi = Math.min(EXPLOSION_FRAME_COUNT - 1, Math.floor(ex.t / TICK));
-        dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: mFrameFor(ex.spr, fi), _scale: ex.scale });
+        dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr, fi), _scale: ex.scale });
       }
       for (const p of aerSmoke) {
         const fi = Math.min(AER_SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
-        dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: mFrameFor(p.spr, fi), _scale: p.scale });
+        dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, fi), _scale: p.scale });
       }
-      // [I] Guarisce gli sprite di `worldStatic` ancora `null` perche' la
-      // loro pagina "deferred" (game/src/assets.js, tools/23_atlas.py
-      // `corePages`) non era ancora arrivata quando `_f` e' stato
-      // calcolato una volta sola (il ciclo subito dopo `applyMatchPlatform`
-      // sopra, e i due `push()` di LIT_LOTS) — a differenza degli sprite
-      // "dynamic" qui sopra (mFrameFor() richiamato di nuovo ad ogni
-      // aggiornamento, si aggiornano gia' da soli), questi non verrebbero
-      // mai piu' ritentati altrimenti. Costo trascurabile: gia' dentro il
-      // ramo "aggiorna ogni BG_INTERVAL", non ogni frame.
-      for (const it of worldStatic) if (!it._f) it._f = mFrameFor(it.spr);
-      const frameList = worldStatic.concat(dynamic).sort(sortWorld);
+      dynamic.push(...buildingLights);
+      const frameList = dynamic.sort(sortWorld);
       const vw = camWorld.worldW, vh = camWorld.worldH;
       const l = camWorld.x - vw / 2, t = camWorld.y - vh / 2, rt = l + vw, bt = t + vh;
       for (const it of frameList) {

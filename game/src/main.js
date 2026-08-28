@@ -3879,7 +3879,7 @@ export async function mountMatch(ctx, params = {}) {
       stepCoins(coins, dt, r12);
       if (platformState) {
         const chiesLevel = buildings.find((b) => b.type === "chies")?.level ?? 0;
-        stepFaroChain(platformState, r12, coins, cars, smoke, dt, chiesLevel, night);
+        stepFaroChain(platformState, r12, balloons, cars, smoke, dt, chiesLevel, night);
       }
       // Raccolta al passaggio del mouse — [C] sold*/soldbio/Mouse_MouseEnter.gml
       // usa davvero un hover, non un click (coins.js, collectCoin() sopra il tap

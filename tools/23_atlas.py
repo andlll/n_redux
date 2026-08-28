@@ -631,6 +631,33 @@ EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group}
 # bottoni.
 GAMEPLAY_ROOMS = {"match", "match_easy", "tutorial"}
 
+# [Decisione dell'autore: "citta' statica ma oggetti volanti e bombardamento
+# funzionanti"] game/src/title.js non carica piu' l'intero atlas di `match`
+# (56 pagine, ~800 MB decompressi — tools/29_title_bg.py ricompone invece la
+# citta'/piattaforma FERMA in un'unica immagine da 264 KB) ma continua a
+# animare sopra di lei auto/aerei-bombardieri-zeppelin/nuvole-uccelli/bombe-
+# esplosioni-detriti-fumo/semafori/turbine — lo stesso layer "dynamic" di
+# prima, mai statico. Serve quindi un atlas dedicato (piccolo, non l'intero
+# GAMEPLAY_SPRITES) solo per QUESTI sprite: gli stessi gruppi gia' curati per
+# match/match_easy (cars/cars2/threats/atmosphere/semaphores/platform — il
+# tier core/deferred di sotto li tratta esattamente come per quelle room,
+# cars2/threats restano "deferred" li' per lo stesso motivo, un bonus per la
+# title screen: il primissimo frame non li aspetta) piu' le 16 "finestre
+# accese" delle case/ville gia' finite (TITLE_LIT_LOTS_GLOW, stessa lista di
+# `LIT_LOTS` in title.js — SOLO la variante "l" col bagliore, l'edificio
+# base e' ormai dentro l'immagine cotta): se `LIT_LOTS` cambia la', va
+# aggiornata anche qui, stesso principio doppio-mantenimento gia' dichiarato
+# per tools/29_title_bg.py.
+TITLE_LIT_LOTS_GLOW = [
+    "vil6l", "c211l", "vil7l", "c111l", "vil8l", "c112l", "vil1l", "c121l",
+    "vil9l", "c131l", "vil4l", "c141l", "vil10l", "c151l", "vil5l", "c122l",
+]
+TITLE_DYNAMIC_SPRITES = sorted(set(
+    GAMEPLAY_SPRITES["cars"] + GAMEPLAY_SPRITES["cars2"] + GAMEPLAY_SPRITES["threats"]
+    + GAMEPLAY_SPRITES["atmosphere"] + GAMEPLAY_SPRITES["semaphores"] + GAMEPLAY_SPRITES["platform"]
+    + TITLE_LIT_LOTS_GLOW
+))
+
 # ------------------------------------------------------- core vs deferred
 # Segnalato dall'autore: "riusciamo a ridurre i tempi di caricamento
 # caricando gli asset degli edifici avanzati poco prima che il giocatore
@@ -730,7 +757,9 @@ DEDUP_CONSECUTIVE_SPRITES = {
 # gia' "core" di default, corretto anche senza caso speciale qui.
 rects = []                               # frame da sistemare
 scene_sprites = {i["spr"] for i in scene["instances"] if "spr" in i}
-used = sorted(scene_sprites | (set(EXTRA_SPRITES) if room_name in GAMEPLAY_ROOMS else set()))
+extra = set(EXTRA_SPRITES) if room_name in GAMEPLAY_ROOMS \
+    else set(TITLE_DYNAMIC_SPRITES) if room_name == "title" else set()
+used = sorted(scene_sprites | extra)
 for name in used:
     s = spr_by_name.get(name)
     if not s:
