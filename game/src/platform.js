@@ -15,7 +15,6 @@
 // in un modulo a parte (invece di restare inline in main.js) perche'
 // title.js (lo sfondo sfocato della title screen, STUDIO.md) ne ha bisogno
 // anch'esso, sulla stessa `match.scene.json`.
-import { COIN_DEPTH } from "./coins.js";
 import { canAfford } from "./buildings.js";
 import { spawnCar, R32_MAGHENE_SCHEDULE, R22_MAGHENE_SCHEDULE, NIGHT_TINT } from "./cars.js";
 import {
@@ -227,30 +226,47 @@ export function r120MotorDecor(t) {
 //     `r220` (tier2), con la loro scenografia fissa e il traffico
 //     periodico proprio ("maghene", sotto).
 //
-// [C] Anche il volo vero di `monviolo` (nasce fuori scena, vola a 30°,
-// dopo 3600 tick o all'uscita dalla mappa lascia cadere `barviola`,
-// STUDIO.md) e il traffico periodico di entrambe le piattaforme nuove
-// (`maghene`: honda21..25(+a/b) su r32, honda31..34(+a/b) su r22, game/src/
-// cars.js) — gap dichiarati nella prima versione di questo file, chiusi
-// qui. [I] uscita anticipata dalla mappa per monviolo: il decompilato lo
-// lascia volare oltre il bordo fino allo scadere naturale, lasciando
-// spesso cadere `barviola` ben fuori dall'area giocabile — qui si ferma al
-// bordo invece, cosi' il gettone resta sempre raggiungibile.
+// [C] Anche il volo vero di `monviolo` (nasce fuori scena, vola a 30°, dopo
+// 3600 tick o all'uscita dalla mappa lascia cadere `barviola`, STUDIO.md) e
+// il traffico periodico di entrambe le piattaforme nuove (`maghene`:
+// honda21..25(+a/b) su r32, honda31..34(+a/b) su r22, game/src/cars.js) —
+// gap dichiarati nella prima versione di questo file, chiusi qui.
+//
+// [Decisione dell'autore: "anche questo monviolo va abbattuto, non e'
+// decorativo — altrimenti come prendi le gemme?"] Una versione precedente
+// lo teneva puramente decorativo (fedele al decompilato: "nessun evento
+// Mouse", vedi la nota rimossa da faroDecor() piu' sotto), con le gemme
+// raccolte solo a scadenza naturale/uscita mappa — l'autore lo vuole invece
+// un vero bersaglio delle torrette, come l'ALTRO `monviolo` (quello del
+// dado ogni 300 tick sotto `chies.level>=2`, balloons.js/
+// stepBalloonSpawner()): stessi identici numeri letti dal decompilato per
+// entrambi (vita 3600 tick, velocita' 6..10, direzione 30°, loot 1..3
+// cristalli) — quasi certamente lo STESSO oggetto dell'originale, apparso
+// due volte in questo porting perche' ricostruito in due sessioni diverse
+// senza accorgersene. `spawnMonviolo()` sotto ora produce la stessa forma
+// di `spawnBalloon("monviolo")` (balloons.js) cosi' puo' entrare nello
+// STESSO array condiviso (`balloons`, main.js) ed ereditare gratis tutto
+// cio' che quell'array gia' sa fare per ogni mongolfiera — mira/fuoco delle
+// torrette (stepTurretAim/fireTurretManual/stepProjectiles), danno da
+// fulmine, scadenza naturale con lo stesso drop di cristalli
+// (stepBalloons(), balloons.js) — invece di reimplementare la stessa
+// logica una seconda volta qui. Il vecchio fix "si ferma al bordo mappa
+// cosi' il gettone resta raggiungibile" non serve piu' per lo stesso
+// motivo per cui non serve all'ALTRO monviolo: la maggior parte muore
+// prima, abbattuta da una torretta ben prima di arrivare li'.
 const SIGN_DEPTH = -9001;                 // [C] wavesig1|dockersig1|dockersig3/_object.json: depth = -9001, come upsign
 const TIER1_BUILD_SECONDS = 840 / 60;     // [C] dockersig1/Alarm_4: 840 tick dopo il tap (60 tick/s, STUDIO.md)
 const TIER2_BUILD_SECONDS = 600 / 60;     // [C] dockersig3/Alarm_4: 600 tick dopo il tap
 const BARVIOLA_PERIOD = 300 / 60;         // [C] r12/Alarm_1: si ripete ogni 300 tick
 const BARVIOLA_CHANCE = 1 / 18;           // [C] stesso Alarm_1: action_if_dice(18)
-const MONVIOLO_LIFE_SECONDS = 3600 / 60;  // [C] monviolo/Alarm_6: scadenza naturale
 const MONVIOLO_DIR = 30;                  // [C] monviolo/Create.gml: action_set_motion(30, ...)
-const SCENE_WIDTH = 3900;                 // [C] match.json width — bordo destro della mappa
 
 // [Bug corretto] "Manca completamente l'animazione con le nuvole quando
 // viene aggiunta un'espansione della piattaforma" (segnalato dall'autore).
 // **[C]** `dockersig1|dockersig3/Mouse_LeftPressed.gml` + `Alarm_0|1|2|3|5`:
 // al tap che avvia l'attracco (e di nuovo ad ogni alarm elencato sotto) 5
 // istanze di `n_cluster1` nascono in colonna verticale a x=5000 — fuori
-// mappa a destra, `SCENE_WIDTH` e' 3900 — a y assoluta -1000/0/1000/2000/
+// mappa a destra, match.json e' largo 3900 — a y assoluta -1000/0/1000/2000/
 // 3000 (i `action_set_relative(0)` immediatamente prima di ciascuna
 // `action_create_object` lo confermano: coordinate ASSOLUTE, non relative a
 // dockersig1 nonostante le coppie `action_set_relative(1)/(0)` ridondanti
@@ -264,7 +280,7 @@ const SCENE_WIDTH = 3900;                 // [C] match.json width — bordo dest
 // (`Alarm_0`). Le 5 y assolute meno lo shift di 3000 dànno una colonna che
 // va da y=-4000 a y=0.
 const CLOUD_WAVE_Y = [-1000, 0, 1000, 2000, 3000].map((y) => y - 3000);   // [C]: -4000..0
-const CLOUD_SPAWN_X = 5000;                // [C] fuori mappa a destra (SCENE_WIDTH=3900)
+const CLOUD_SPAWN_X = 5000;                // [C] fuori mappa a destra (match.json e' largo 3900)
 const CLOUD_DIR = 210;                     // [C] n_cluster1/Create.gml: action_set_motion(210, 7)
 const CLOUD_SPEED = 7;                     // [C] stesso Create.gml, px/tic
 const CLOUD_LIFE_SECONDS = 1200 / 60;      // [C] n_cluster1/Create.gml: action_set_alarm(1200, 0) -> Alarm_0 uccide
@@ -289,7 +305,6 @@ export function createFaroState() {
     tier1: { stage: "locked", dockerT: 0, cloudWaveIdx: 0 },
     tier2: { stage: "locked", dockerT: 0, cloudWaveIdx: 0 },
     barviolaT: 0,
-    monviolos: [],
     r32TrafficT: 0, r32MagheneIdx: 0,
     r22TrafficT: 0, r22MagheneIdx: 0,
     bridgeDes: createBridgeState(3600),
@@ -301,9 +316,23 @@ export function createFaroState() {
 }
 
 // [C] monviolo/Create.gml: nasce fuori scena a sinistra (x=-170), y
-// casuale nella fascia 380..3120 della room, velocita' 6..10 px/tick.
+// casuale nella fascia 380..3120 della room (piu' ampia di quella generica
+// SPAWN_Y di balloons.js, tarata invece per l'altezza di `match_easy` —
+// questo spawner vive solo su `match`, la mappa grande, vedi stepFaroChain()
+// sotto), velocita' 6..10 px/tick, direzione 30° fissa (MONVIOLO_DIR).
+// Stessa FORMA di balloons.js/spawnBalloon("monviolo") — `type`/`cos`/`sin`/
+// `spr`/`depth`/`stormT`, non solo x/y/spd/t — cosi' l'istanza puo' entrare
+// diretta nell'array condiviso `balloons` (main.js) invece che nel proprio
+// `state.monviolos` ormai rimosso: vedi il commento sopra SIGN_DEPTH, in
+// cima al file, per il perche'.
 function spawnMonviolo() {
-  return { x: -170, y: 380 + Math.random() * (3120 - 380), spd: 6 + Math.random() * 4, t: 0 };
+  const rad = (MONVIOLO_DIR * Math.PI) / 180;
+  return {
+    type: "monviolo", x: -170, y: 380 + Math.random() * (3120 - 380),
+    spd: 6 + Math.random() * 4, t: 0, stormT: 0,
+    spr: "monviola", depth: -3990,   // [C] monviolo/Create.gml: depth fisso, stesso valore di spawnBalloon()
+    cos: Math.cos(rad), sin: Math.sin(rad),
+  };
 }
 
 // n_cluster1 — vedi il blocco di commento su CLOUD_WAVE_Y sopra.
@@ -345,8 +374,12 @@ function advanceClouds(clusterClouds, dt) {
  * da main.js, insieme al resto della simulazione (stepCoinSpawner() e
  * affini). `cars`/`smoke` sono gli array condivisi di main.js (game/src/
  * cars.js, game/src/smoke.js), `night` la stessa `isNight(phaseT)` gia'
- * usata per tingere le auto vere. */
-export function stepFaroChain(state, r12, coins, cars, smoke, dt, chiesLevel, night) {
+ * usata per tingere le auto vere. `balloons` (main.js, game/src/balloons.js)
+ * e' l'array condiviso di mongolfiere in volo — qui solo per farci entrare
+ * `monviolo` appena nato (vedi il blocco sotto): il resto del suo ciclo di
+ * vita (movimento, fulmine, scadenza+drop) lo avanza gia' stepBalloons()
+ * altrove in main.js, un frame dopo, non serve rifarlo qui. */
+export function stepFaroChain(state, r12, balloons, cars, smoke, dt, chiesLevel, night) {
   // --- tier 1: chies.level>=2 -> ... -> r32 ---
   if (state.tier1.stage === "locked" && chiesLevel >= 2) state.tier1.stage = "buttonShown";
   if (state.tier1.stage === "expanding") {
@@ -404,36 +437,17 @@ export function stepFaroChain(state, r12, coins, cars, smoke, dt, chiesLevel, ni
   advanceClouds(state.clusterClouds, dt);
 
   // --- monviolo -> barviola (cristalli) ---
+  // [Decisione dell'autore, vedi il commento sopra SIGN_DEPTH] Nasce qui
+  // (stesso dado/timer di prima, indipendente dal livello di chies) ma vive
+  // subito dopo nell'array CONDIVISO `balloons` — stessa mongolfiera vera
+  // di balloons.js/BALLOON_TYPES.monviolo, quindi mira/fuoco delle torrette,
+  // fulmine e scadenza naturale (con lo stesso drop di 1..3 cristalli) sono
+  // gia' tutti gestiti altrove (stepTurretAim/stepProjectiles/stepBalloons,
+  // main.js): nessun ciclo di movimento/scadenza da tenere qui.
   state.barviolaT += dt;
   while (state.barviolaT >= BARVIOLA_PERIOD) {
     state.barviolaT -= BARVIOLA_PERIOD;
-    if (Math.random() < BARVIOLA_CHANCE) state.monviolos.push(spawnMonviolo());
-  }
-  const rad = (MONVIOLO_DIR * Math.PI) / 180;
-  for (let i = state.monviolos.length - 1; i >= 0; i--) {
-    const m = state.monviolos[i];
-    m.t += dt;
-    const pxPerSec = m.spd * 60;   // "speed" e' px/tick a room_speed 60, STUDIO.md/cars.js
-    m.x += Math.cos(rad) * pxPerSec * dt;
-    m.y -= Math.sin(rad) * pxPerSec * dt;
-    if (m.t >= MONVIOLO_LIFE_SECONDS || m.x > SCENE_WIDTH + 100) {
-      state.monviolos.splice(i, 1);
-      // [Bug corretto] `m.x` a questo punto e' gia' OLTRE `SCENE_WIDTH` (la
-      // soglia di uscita e' apposta `SCENE_WIDTH + 100`, per farlo sparire
-      // visibilmente fuori dal bordo) — ma `cam.bounds.right` (main.js) e'
-      // proprio `SCENE_WIDTH`: la camera non puo' MAI centrarsi oltre quel
-      // limite, quindi un gettone lasciato a `m.x` restava sempre fuori
-      // portata, esattamente l'opposto di quanto il commento sopra
-      // (`spawnMonviolo()`) prometteva ("il gettone resta sempre
-      // raggiungibile"). Il monviolo continua a volare visibilmente oltre
-      // il bordo prima di sparire (com'era), ma il gettone che lascia cade
-      // ancora DENTRO l'area che la camera puo' davvero inquadrare.
-      coins.push({
-        buildingId: null, depth: COIN_DEPTH, t: 0, auto: false,
-        kind: "crys", spr: "monviola_bar", amount: 1 + Math.floor(Math.random() * 3),
-        x: Math.min(m.x, SCENE_WIDTH - 200), y: m.y,
-      });
-    }
+    if (Math.random() < BARVIOLA_CHANCE) balloons.push(spawnMonviolo());
   }
 }
 
@@ -654,22 +668,10 @@ function faro3Decor(state, t) {
 export function faroDecor(state, t) {
   const out = state.tier1.stage === "expanded" ? r32Decor(state, t) : faro1Decor(state);
   if (state.tier1.stage === "expanded") out.push(...faro3Decor(state, t));
-  // monviolo — [C] nessun evento Mouse nel decompilato: solo decorazione,
-  // stesso trattamento delle nuvole/uccelli in atmosphere.js.
-  // [Bug corretto, segnalato dall'autore: "la mongolfiera che porta i
-  // cristalli ha problemi di depth e spesso va dietro gli edifici"] **[C]**
-  // `monviolo/Create.gml`: `depth = -3990`, un valore FISSO — esattamente
-  // lo stesso gia' usato per ogni altra mongolfiera in volo (balloons.js,
-  // spawnBalloon(): "depth = -3990 (fisso, sempre davanti al mondo)"),
-  // perche' e' lo STESSO oggetto del decompilato, solo pilotato da un
-  // percorso di volo diverso (fuori mappa -> faro, invece che sopra la
-  // piattaforma). Qui usava `-m.y`, un depth DINAMICO come un edificio o un
-  // decoro a terra: il monviolo vola a bassa quota vicino al bordo mappa
-  // (spawnMonviolo() sotto, x=-170), la sua y resta spesso sotto quella
-  // degli edifici che sorvola, quindi finiva regolarmente disegnato DIETRO
-  // di loro invece che sopra, come ogni mongolfiera in volo dovrebbe
-  // sempre essere.
-  for (const m of state.monviolos) out.push({ obj: "decor", x: m.x, y: m.y, depth: -3990, spr: "monviola" });
+  // monviolo: non piu' qui — vive nell'array condiviso `balloons` (main.js),
+  // gia' disegnato da li' come ogni altra mongolfiera in volo (stesso
+  // depth fisso -3990, coerente col resto della famiglia). Vedi il
+  // commento sopra SIGN_DEPTH per il perche' del cambio.
   // n_cluster1 — depth FISSO -7000 (STUDIO.md sopra su CLOUD_WAVE_Y: [C]
   // n_cluster1/_object.json, mai riassegnato), non -y: restano sempre in
   // primissimo piano sopra tutta la scenografia della piattaforma,

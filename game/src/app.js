@@ -140,7 +140,12 @@ const SCREEN_MODULES = {
 // di `roomParam` -> nome room ripete quella in main.js/mountMatch(): deve
 // restare identica, altrimenti si evincerebbe/terrebbe l'atlas sbagliato.
 function neededRoomsFor(screen, params) {
-  if (screen === "menu") return ["title", "match"];
+  // [Bug corretto] `title.js` non carica piu' l'intero atlas di `match` per
+  // lo sfondo del menu (tools/29_title_bg.py, una sola immagine statica
+  // cotta invece — vedi il commento li' e su title.js): tenerlo "needed"
+  // qui impediva a evictUnneededRoomAtlases() di liberarlo mai tornando al
+  // menu dopo una partita, ~800 MB di VRAM tenuti in vita senza motivo.
+  if (screen === "menu") return ["title"];
   const roomParam = params.room;
   return [roomParam === "match" || roomParam === "tutorial" ? roomParam : "match_easy"];
 }

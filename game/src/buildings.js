@@ -1878,6 +1878,51 @@ export function currentDeathHap(b) {
 }
 
 /**
+ * Vita massima dell'edificio al suo livello attuale — [Nuova funzionalita',
+ * richiesta dall'autore: pannello informativo di un edificio, main.js] serve
+ * a mostrare "vita attuale / totale", non solo `b.life` (che scende coi
+ * danni). Stesso schema `construct`/`upgrades[level-2]` di currentDeathPop()
+ * sopra per ogni tipo che dichiara un valore assoluto per livello (`up.life`
+ * — industria/casa/missile/gatling/laser/solare/club/villa/parco) — **tranne
+ * chies**, l'unico senza `construct` (STUDIO.md, edificio pre-esistente):
+ * dichiara solo `baseLife` + un `lifeBonus` RELATIVO per ogni salto
+ * (`applyLevelFinish()` sotto: `b.life = up.life ?? (b.life + up.lifeBonus)`),
+ * quindi qui va sommato cumulativamente invece di leggerlo come valore
+ * assoluto di un singolo livello.
+ */
+export function currentMaxLife(b) {
+  const def = BUILDING_TYPES[b.type];
+  if (b.level < 1) return 0;
+  if (!def.construct) {
+    let life = def.baseLife ?? 0;
+    for (let i = 0; i < b.level - 1; i++) life += def.upgrades?.[i]?.lifeBonus ?? 0;
+    return life;
+  }
+  const cur = b.level === 1 ? def.construct : def.upgrades?.[b.level - 2];
+  return cur?.life ?? 0;
+}
+
+/**
+ * Abitanti che l'edificio ha portato a `r12.pop` finora al suo livello
+ * attuale — [Nuova funzionalita', stesso pannello informativo sopra] `null`
+ * per i tipi che non dichiarano `grantPop` (solo casa/villa lo fanno,
+ * STUDIO.md §9): non e' un dato tracciato per-edificio da nessun'altra
+ * parte del motore (`r12.pop` e' un totale globale, incrementato qui non
+ * salvato sull'istanza) — ricostruito dagli stessi due ingredienti che lo
+ * fanno crescere nel tempo: il dono fisso alla nascita del livello
+ * (`grantPop`, applyLevelFinish()) piu' `popPerStage` per ogni stadio di
+ * crescita gia' raggiunto (`b.ava`, stepGrowth() sotto).
+ */
+export function currentResidents(b) {
+  const def = BUILDING_TYPES[b.type];
+  if (b.level < 1) return null;
+  const cur = b.level === 1 ? def.construct : def.upgrades?.[b.level - 2];
+  if (cur?.grantPop == null) return null;
+  const g = def.growth?.[b.level - 1];
+  return cur.grantPop + (b.ava ?? 0) * (g?.popPerStage ?? 0);
+}
+
+/**
  * Lo sprite del rudere che l'edificio lascerebbe se morisse ORA, al suo
  * livello attuale — stesso schema di currentDecor()/currentDeathPop() sopra
  * (`construct` per il livello 1, `upgrades[level-2]` oltre), con la stessa

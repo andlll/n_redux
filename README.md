@@ -99,7 +99,7 @@ touch nella versione mobile.
 | `game/` | sì | Il nuovo motore (WebGL2, nessuna dipendenza) |
 | `game/fonts/` | sì | Montserrat (SIL OFL, `game/fonts/OFL.txt`): l'unico asset del motore non estratto da `NIMBUS.exe` — testo HTML vero (menu di pausa/tutorial) sopra al canvas, self-hosted invece che da Google Fonts a runtime |
 | `tools/` | sì | Toolchain di estrazione e pipeline asset |
-| `game/assets/` | no | Atlas per room, generati |
+| `game/assets/` | no | Atlas per room, font bitmap e sfondo statico della title screen, generati |
 | `assets/sprites/` | no | I 17.224 frame singoli, generati |
 
 Il repo è **autosufficiente**: non serve né `NIMBUS.exe` né nessuna cartella
@@ -109,7 +109,12 @@ locale. Tutto ciò che non è versionato si rigenera da ciò che lo è.
 
 `game/` è pensato per finire su un hosting statico (GitHub Pages, Netlify,
 qualunque server di file): niente backend, solo fetch di JSON/PNG e moduli ES.
-L'unico passo che serve prima è generare gli atlas per room.
+L'unico passo che serve prima è generare gli atlas per room, i font bitmap
+della barra risorse/dei pannelli decompilati (STUDIO.md — `game/data/
+font_*.json` referenzia un `.webp` mai generato dalla pipeline atlas sopra)
+e lo sfondo statico della title screen (tools/29_title_bg.py — la citta'
+ferma dietro al menu principale, vedi il commento in cima a game/src/
+title.js: senza `game/assets/title_city.webp` il menu non monta affatto).
 
 ```bash
 python3 -m pip install pillow    # unica dipendenza esterna della toolchain
@@ -117,6 +122,11 @@ for room in match_easy match title tutorial; do
   python3 tools/23_atlas.py "$room"
   python3 tools/24_blit.py "$room"
 done
+for font in gotham_mini gotham_mid; do
+  python3 tools/25_font.py "$font"
+  python3 tools/24_blit.py "font_$font"
+done
+python3 tools/29_title_bg.py
 ```
 
 `24_blit.py` è la versione Python/Pillow — cross-platform — di
