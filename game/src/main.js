@@ -4617,9 +4617,17 @@ export async function mountMatch(ctx, params = {}) {
     r.setColorize(iconsDark);
     if (barFrame) r.draw(barFrame, barX, barY, 1, 0xffffff, 1);
     r.setColorize(false);
+    // [Bug corretto, segnalato dall'autore: "in pausa le scritte della UI
+    // non si blurrano"] Questi numeri sono elementi HTML veri (drawHtmlText(),
+    // sopra), non pixel del canvas: pauseBlur.blurScreen() (drawPauseOverlay(),
+    // sopra) cattura e sfuma solo il canvas gia' disegnato, quindi qualunque
+    // testo HTML resterebbe nitido SOPRA il pannello di pausa invece di
+    // sfumarsi con tutto il resto. Le icone WebGL della barra (barFrame/
+    // hapFrame/crysFrame, sopra/sotto) restano invece disegnate anche in
+    // pausa: fanno gia' parte del canvas catturato, si sfumano da sole.
     const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                    [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
-    for (const [value, x] of stats) {
+    if (!paused) for (const [value, x] of stats) {
       drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
     }
     // Data (mese + anno, game/src/state.js stepCalendar()) — [C] repre/
@@ -4632,8 +4640,10 @@ export async function mountMatch(ctx, params = {}) {
     // stesso motivo di `barY+19` sopra: drawHtmlText() centra verticalmente
     // sull'ancora invece di partire dal bordo superiore del glifo come
     // drawText()).
-    drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 9, { size: 15, align: "left", color: barTextColor });
-    drawHtmlText(String(Math.round(r12.time)), barX + 448, barY + 29, { size: 15, align: "left", color: barTextColor });
+    if (!paused) {
+      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 9, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(String(Math.round(r12.time)), barX + 448, barY + 29, { size: 15, align: "left", color: barTextColor });
+    }
     // La "faccina" della felicita' (src/objects/hapware — segnalata
     // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
     // che diventa triste quando la felicita' scende sotto una soglia" — la
@@ -4688,7 +4698,7 @@ export async function mountMatch(ctx, params = {}) {
       r.setColorize(iconsDark);
       if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
       r.setColorize(false);
-      drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
+      if (!paused) drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
@@ -5038,7 +5048,13 @@ export async function mountMatch(ctx, params = {}) {
     // wrapText()/measureText()): lo misura DOPO averlo scritto
     // (`getBoundingClientRect()`), poi riposiziona sia lui che lo sfondo
     // WebGL in base all'altezza vera appena letta.
-    if (tutorialState?.showText) {
+    // [Bug corretto, segnalato dall'autore: "in pausa le scritte della UI
+    // non si blurrano"] Stesso motivo della barra risorse sopra: il testo
+    // del balloon e' HTML (drawHtmlText(), sotto), fuori dal canvas che
+    // pauseBlur.blurScreen() sfuma — `&& !paused` salta anche lo sfondo
+    // WebGL del balloon (tutorialBoxFrame(), sotto), cosi' non resta un
+    // riquadro vuoto senza testo mentre il gioco e' in pausa.
+    if (tutorialState?.showText && !paused) {
       const pad = 20;
       // boxRight lascia spazio al pollice (tut_ok, disegnato subito sotto:
       // stessa larghezza 45*1.3 li' usata, + margine) SOLO quando il
