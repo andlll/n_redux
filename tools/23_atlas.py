@@ -399,12 +399,14 @@ GAMEPLAY_SPRITES = {
         # testo pre-renderizzato).
         "bancobutt", "loanscr", "getlo1", "getlo2", "getlo3", "getlo4",
         # Gli altri bottoni del pannello (src/objects/handbutton|buildbutton|
-        # eyebutton|eyebutton1|2|3|backobutton): nell'originale aprivano/
-        # chiudevano le righe del menu (STUDIO.md §9 "menoo", tre pannelli
-        # alternati mai ricostruiti) — qui sono una seconda riga sempre
-        # visibile, segnaposto tranne lo zoom (gia' funzionante altrimenti).
-        "handee", "groo", "eyeee", "eyee1", "eyee2", "eyee3", "baccc",
-        "zoomplus", "zoomminus",
+        # backobutton): nell'originale aprivano/chiudevano le righe del menu
+        # (STUDIO.md §9 "menoo", tre pannelli alternati) — qui restano solo
+        # "casa"/"edifici", sempre visibili. Il terzo pannello ("vista":
+        # eyebutton/eyebutton1|2|3, zoom_plus/zoom_minus) e' stato rimosso su
+        # richiesta dell'autore: i tre bottoni occhio erano segnaposto senza
+        # funzione (mai ricostruiti) e zoom+/- erano ridondanti con pinch/
+        # rotella (game/src/input.js, gia' l'unico controllo zoom vero).
+        "handee", "groo", "baccc",
     ],
     # Alberi (src/objects/albe|albe2|albe3/Create.gml, STUDIO.md): a Create
     # l'originale sceglie a dado uno sprite finale diverso per istanza fra

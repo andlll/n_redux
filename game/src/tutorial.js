@@ -1,6 +1,12 @@
 // Tutorial ("me3" in title screen, room "tutorial" — mai portato finora,
 // STUDIO.md). [C] tutorial_square/DrawGUI.gml: 34 messaggi in inglese (mai
-// tradotti nel decompilato stesso), un balloon di testo fisso in basso.
+// tradotti nel decompilato stesso), un balloon di testo fisso in basso — 33
+// qui sotto: **[Rimosso su richiesta dell'autore]** il messaggio sui
+// "bottoni vista" (il terzo pannello della barra inferiore, menoo 2 in
+// main.js — tolto perche' erano segnaposto senza funzione, e zoom+/-
+// duplicavano pinch/rotella) non ha piu' senso senza quel pannello; il
+// messaggio successivo (pan/zoom col mouse/dito) resta, copre da solo la
+// stessa informazione utile.
 // L'avanzamento e' un misto di due meccanismi, entrambi letti dal
 // decompilato: **[C]** 8 fasi hanno una condizione di gioco vera
 // (tutorial_square/Step.gml, stepTutorialAuto() sotto); tutte le altre
@@ -48,7 +54,6 @@ export const TUTORIAL_TEXTS = [
   "If you don't do it they will call reinforcements and you will experience an attack like the one you saw before!",
   "I think they will not stop until we build something very big to demonstrate them we belong here!",
   "In some time your city will become bigger and it will be difficult to control it all in a glance!",
-  "You can use the view buttons to quickly see the new zones you'll build and to zoom in and out!",
   "You can also use the right mouse button to move the view and the mouse wheel for the zoom controls! On mobile, swipe with your finger to move the view of the map.",
   "Well, it looks like you know how to know how to move around now! Good luck with your own NIMBUS platform!",
 ];
@@ -143,7 +148,7 @@ export function stepTutorialAuto(state, ctx) {
 // tutorial_thumb/Step.gml, le stesse 8 fasi elencate li' come "nascosto").
 export const HIDE_ADVANCE_BUTTON = new Set([2, 5, 7, 8, 9, 12, 16, 19]);
 
-export const LAST_PHASE = TUTORIAL_TEXTS.length - 1;   // 33
+export const LAST_PHASE = TUTORIAL_TEXTS.length - 1;   // 32
 
 // ---------------------------------------------------------- intro cutscene
 // [C] air_tut2 (istanza in tutorial.json, x=363,y=219) al Create: crea 2

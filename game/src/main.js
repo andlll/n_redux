@@ -2917,20 +2917,26 @@ export async function mountMatch(ctx, params = {}) {
   // di modalita' piazzamento nell'originale (1 = casa, 2 = industria, ...).
   const SELEC_BY_TYPE = { casa: 1, industria: 2 };
 
-  // Il pannello originale non e' un'unica barra: e' tre righe ALTERNATE,
-  // mai tutte visibili insieme. [C] `pu1.menoo` (0/1/2) decide quale, letto
-  // riga per riga da ogni bottone figlio nel proprio Step.gml (`with (pu1) {
-  // if (menoo==N) break }` poi `action_move_to(...)` sulla posizione vera, o
+  // Il pannello originale non e' un'unica barra: sono righe ALTERNATE, mai
+  // tutte visibili insieme. [C] `pu1.menoo` decide quale, letto riga per
+  // riga da ogni bottone figlio nel proprio Step.gml (`with (pu1) { if
+  // (menoo==N) break }` poi `action_move_to(...)` sulla posizione vera, o
   // fuori schermo altrimenti):
-  //   - menoo 0 "casa": handbutton, buildbutton (la gru: apre menoo 1),
-  //     eyebutton (l'occhio: apre menoo 2) — quello che si vede all'avvio.
+  //   - menoo 0 "casa": handbutton, buildbutton (la gru: apre menoo 1) —
+  //     quello che si vede all'avvio.
   //   - menoo 1 "edifici": pu1..pu7 e affini (i piazzabili) + backobutton in
   //     fondo per tornare a menoo 0. E' la riga che si apre toccando la gru.
-  //   - menoo 2 "vista": eyebutton1/2/3, zoom_plus/zoom_minus + backobutton.
-  //     Si apre toccando l'occhio.
-  // Una versione precedente mostrava tutti i bottoni sempre, su due righe
+  // Una versione precedente mostrava tutti i bottoni sempre, su righe
   // fisse — comodo ma non e' cosi' che il menu era organizzato davvero
-  // (segnalato dall'autore). Qui replichiamo la stessa struttura a tre righe.
+  // (segnalato dall'autore). Qui replichiamo la stessa struttura a righe.
+  // [Rimosso su richiesta dell'autore] Il terzo pannello del decompilato,
+  // menoo 2 "vista" (eyebutton apriva eyebutton1/2/3 + zoom_plus/
+  // zoom_minus + backobutton): i tre bottoni occhio erano segnaposto senza
+  // funzione (mai ricostruiti, nessun testo li spiegava se non il tutorial,
+  // vedi tutorial.js/TUTORIAL_TEXTS) e zoom+/- duplicavano pinch/rotella
+  // (input.onZoom, game/src/input.js — l'unico controllo zoom rimasto,
+  // gia' funzionante da solo su mobile/desktop). Tolti bottone e riga
+  // insieme: nessuna funzione persa, un solo modo di zoomare invece di due.
   let menoo = 0;
 
   // I piazzabili del menu (menoo 1) che casa/industria non coprono da sole:
@@ -3238,15 +3244,9 @@ export async function mountMatch(ctx, params = {}) {
           r12.selec = 0;
           ruspaPending = null;
         }  // handbutton
-        else if (btn.kind === "zoom") {                                  // zoom+/zoom-
-          userMoved = true;
-          cam.setZoom(cam.targetZoom * btn.zoom, canvas.clientWidth / 2, canvas.clientHeight / 2);
-        } else if (btn.kind === "building") {                            // casa/industria/...
+        else if (btn.kind === "building") {                              // casa/industria/...
           selectedType = btn.type;
           r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
-        } else {
-          message = `${btn.label}: not rebuilt yet`;
-          messageT = 3;
         }
         return;
       }
@@ -4779,9 +4779,9 @@ export async function mountMatch(ctx, params = {}) {
     // nera fino al bordo del proprio frame (bbox ritagliato sui pixel
     // opachi, tools/23_atlas.py): un GAP positivo apriva una fessura
     // trasparente fra una base e l'altra, spezzando quella che nell'originale
-    // e' una sola barra nera continua sotto tutti i bottoni. Le altre due
-    // righe (menoo 0/2: mano/gru/occhio, vista/zoom) non sono bottoni di
-    // costruzione e restano staccate come prima.
+    // e' una sola barra nera continua sotto tutti i bottoni. L'altra riga
+    // (menoo 0: mano/gru) non sono bottoni di costruzione e resta staccata
+    // come prima.
     const GAP = menoo === 1 ? 0 : (isMobile ? 3 : 4);
     const row = menoo === 1
       // menoo 1 "edifici" ([C] pu1/Create.gml li crea tutti insieme): i due
@@ -4793,28 +4793,11 @@ export async function mountMatch(ctx, params = {}) {
           ...STAR_BUILDINGS.filter((b) => b.unlocked()).map((b) => ({ kind: "building", type: b.type, spr: b.spr, tint: b.tint })),
           { kind: "menu", menoo: 0, spr: "baccc", label: "Back" },
         ]
-      : menoo === 2
-      // menoo 2 "vista" ([C] eyebutton1/2/3 + zoom_plus/zoom_minus): le tre
-      // non ricostruite restano segnaposto, zoom+/- richiamano cam.setZoom —
-      // ma solo su mobile: su desktop lo zoom e' fisso (vedi isMobile sopra),
-      // due bottoni per un'azione che non fa niente sarebbero solo confusione.
-      ? [
-          { kind: "info", spr: "eyee1", label: "View 1" },
-          { kind: "info", spr: "eyee2", label: "View 2" },
-          { kind: "info", spr: "eyee3", label: "View 3" },
-          ...(isMobile ? [
-            { kind: "zoom", spr: "zoomplus", label: "Zoom +", zoom: 0.8 },
-            { kind: "zoom", spr: "zoomminus", label: "Zoom -", zoom: 1.25 },
-          ] : []),
-          { kind: "menu", menoo: 0, spr: "baccc", label: "Back" },
-        ]
-      // menoo 0 "casa" ([C] handbutton/buildbutton/eyebutton): la riga di
-      // partenza. handbutton deseleziona (r12.selec=0); gru e occhio aprono
-      // le altre due righe.
+      // menoo 0 "casa" ([C] handbutton/buildbutton): la riga di partenza.
+      // handbutton deseleziona (r12.selec=0); gru apre l'altra riga.
       : [
           { kind: "deselect", spr: "handee", label: "Deselect" },
           { kind: "menu", menoo: 1, spr: "groo", label: "Buildings menu" },
-          { kind: "menu", menoo: 2, spr: "eyeee", label: "View menu" },
         ];
     // Prima passata, solo misure: serve la larghezza totale della riga PRIMA
     // di disegnare, per sapere quanto scroll orizzontale ha senso concedere
@@ -4938,12 +4921,11 @@ export async function mountMatch(ctx, params = {}) {
       // recarsi"] Il bottone bersaglio di una fase vive quasi sempre nel
       // menu' edifici (menoo 1): se il giocatore e' li' la freccia lo punta
       // gia' direttamente; se e' a casa (menoo 0) punta al bottone che apre
-      // quel menu' — ma se e' nel menu' VISTA (menoo 2, tutto un altro
-      // sottomenu) nessuno dei due bottoni esiste in questa riga, e prima
-      // la freccia spariva senza indicare nulla. Ultimo anello della
-      // catena: "Indietro" (`menoo:0`, presente in OGNI sottomenu diverso
-      // da casa) — un passo alla volta verso il bersaglio vero, mai piu'
-      // muta su cosa premere.
+      // quel menu' — ma se il giocatore e' in un sottomenu che non contiene
+      // NESSUno dei due bottoni, prima la freccia spariva senza indicare
+      // nulla. Ultimo anello della catena: "Indietro" (`menoo:0`, presente
+      // in OGNI sottomenu diverso da casa) — un passo alla volta verso il
+      // bersaglio vero, mai piu' muta su cosa premere.
       const findIndietro = () => byKind((btn) => btn.kind === "menu" && btn.menoo === 0);
       // [Bug corretto, richiesto dall'autore: "se per avanzare serve
       // costruire degli edifici consiglia anche placeholder random una
@@ -5064,10 +5046,6 @@ export async function mountMatch(ctx, params = {}) {
             : pointAtButton(byKind((btn) => btn.kind === "building" && btn.type === type)
                 ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1)
                 ?? findIndietro());
-          break;
-        }
-        case 31: {
-          target = pointAtButton(byKind((btn) => btn.kind === "menu" && btn.menoo === 2) ?? findIndietro());
           break;
         }
       }
