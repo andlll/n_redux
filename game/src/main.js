@@ -771,6 +771,20 @@ export async function mountMatch(ctx, params = {}) {
   // SOLO al suo bottone di chiusura, mai al mondo sotto.
   let buildingInfoPanel = null;   // istanza edificio, o null
 
+  // Overlay costruzioni per mobile (drawBuildMenuOverlay() piu' sotto) —
+  // [Nuova funzionalita', richiesta dall'autore: "sul mobile, invece della
+  // riga scorrevole apri una schermata modale tipo quella di pausa, con
+  // quattro pulsanti edifici per riga su tre righe"]. Solo `isMobile`
+  // (sopra): su desktop il bottone "costruzioni" continua ad aprire la
+  // riga scorrevole di sempre (menoo=1), c'e' gia' spazio orizzontale a
+  // sufficienza li'. Stesso modale in spazio schermo di bankPanelOpen/
+  // buildingInfoPanel: mentre e' aperto un tap va SOLO ai suoi bottoni.
+  // `buildMenuButtons` (i rettangoli-griglia, ricalcolati ad inizio frame —
+  // vedi il commento sulla freccia del tutorial piu' sotto per il perche')
+  // sono lo stesso genere di array di `uiButtons`/`bankButtons`.
+  let buildMenuOpen = false;
+  let buildMenuButtons = [];   // { x, y, w, h, type?, spr? } — niente `type` = "Back"
+
   // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
   // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
   // { action_kill_object(); }` dentro upcrc12/upcrc23, stesso schema per
@@ -2517,6 +2531,108 @@ export async function mountMatch(ctx, params = {}) {
     r.flush();
   }
 
+  // Overlay costruzioni mobile (buildMenuOpen, sopra) — griglia 4 colonne
+  // richiesta dall'autore: riga 1 casa/industria/parco/lanciarazzi, riga 2
+  // palazzo/fotovoltaico/club/gatling, riga 3 villa/eolico/mediateca/laser.
+  // `casa`/`industria` non vivono in OTHER_BUILDINGS (sono gli unici due
+  // edifici SEMPRE reali, mai segnaposto, STUDIO.md) — duplicati qui con lo
+  // stesso sprite/tint del bottone hardcoded nella riga scorrevole
+  // (menoo===1, sotto): tenerli in sync se quei due cambiano.
+  const BUILD_GRID_COLS = 4;
+  const BUILD_GRID_TYPES = [
+    ["casa", "industria", "parco", "missile"],
+    ["palazzo", "solare", "club", "gatling"],
+    ["villa", "eolico", "museo", "laser"],
+  ];
+  function buildMenuEntries() {
+    const byType = Object.fromEntries([
+      { type: "casa", spr: "p1", tint: 0x114f1f },
+      { type: "industria", spr: "p2", tint: 0x603415 },
+      ...OTHER_BUILDINGS,
+    ].map((b) => [b.type, b]));
+    const rows = BUILD_GRID_TYPES.map((row) => row.map((type) => byType[type]));
+    // Edifici stella (STAR_BUILDINGS, sotto) sbloccati: appesi come riga
+    // extra invece che nella griglia fissa richiesta — restano rari premi
+    // di fine partita, non hanno un posto fisso nel layout a 3 righe.
+    const starRow = STAR_BUILDINGS.filter((b) => b.unlocked());
+    if (starRow.length) rows.push(starRow);
+    return rows;
+  }
+  // Geometria pura (nessun disegno): riusata sia per ricalcolare
+  // `buildMenuButtons` ad inizio frame (cosi' la freccia del tutorial vede
+  // gia' le posizioni AGGIORNATE di questo frame, non quelle del frame
+  // prima — vedi il commento sulla freccia piu' sotto) sia da
+  // drawBuildMenuOverlay() per disegnare, senza calcolare due volte cose
+  // diverse che dovrebbero combaciare a pixel.
+  function buildMenuLayout(cw, ch) {
+    const rows = buildMenuEntries();
+    const cell = 76, gridPad = 16;
+    const panelW = Math.min(BUILD_GRID_COLS * cell + gridPad * 2, cw - 40);
+    const trueCell = (panelW - gridPad * 2) / BUILD_GRID_COLS;
+    const headerH = 56, btnH = 46;
+    const panelH = headerH + rows.length * trueCell + 16 + btnH + 20;
+    const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+    return { rows, px, py, panelW, panelH, cell: trueCell, gridPad, headerH, btnH };
+  }
+  function computeBuildMenuButtons() {
+    const { rows, px, py, panelW, panelH, cell, gridPad, headerH, btnH } =
+      buildMenuLayout(canvas.clientWidth, canvas.clientHeight);
+    const buttons = [];
+    let gy = py + headerH;
+    for (const row of rows) {
+      let gx = px + gridPad;
+      for (const b of row) {
+        buttons.push({ x: gx, y: gy, w: cell, h: cell, type: b.type, spr: b.spr });
+        gx += cell;
+      }
+      gy += cell;
+    }
+    const btnW = panelW - 60;
+    buttons.push({ x: px + (panelW - btnW) / 2, y: py + panelH - 20 - btnH, w: btnW, h: btnH });   // "Back"
+    return buttons;
+  }
+  /**
+   * Disegna l'overlay (buildMenuButtons, sopra: gia' ricalcolato ad inizio
+   * frame, riusato qui com'e' invece di rifare la griglia). Stesso "vetro
+   * smerigliato" (pausePanelFrame()/PANEL_TINT/BUTTON_TINT) del menu di
+   * pausa/pannello edificio — blur del mondo congelato sotto, pannello
+   * arrotondato sopra. Solo icone, nessuna etichetta sotto ogni bottone:
+   * stessa convenzione gia' scelta per la riga scorrevole di sempre (mai
+   * stata affiancata da testo). Selezionare un edificio chiude subito
+   * l'overlay (input.onTap sotto) — un picker, non un pannello da tenere
+   * aperto.
+   */
+  function drawBuildMenuOverlay() {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
+    r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+
+    const { px, py, panelW, panelH } = buildMenuLayout(cw, ch);
+    r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
+    drawHtmlText("BUILDINGS", px + panelW / 2, py + 30, { size: 22, maxWidth: panelW - 24 });
+
+    for (const b of buildMenuButtons) {
+      if (!b.type) continue;   // "Back", disegnato a parte sotto
+      const f = frameFor(b.spr);
+      if (!f) continue;
+      const scale = Math.min((b.w - 14) / f.w, (b.h - 14) / f.h);
+      // p1/p2/... hanno origine in basso a sinistra (origin_x=0, origin_y=
+      // height — data/sprites.json, stessa convenzione gia' letta per la
+      // riga scorrevole): l'angolo in alto a sinistra dello sprite scalato
+      // va quindi calcolato a mano per centrarlo nella cella, non basta
+      // passare il centro della cella come punto di ancoraggio.
+      const iconX = b.x + (b.w - f.w * scale) / 2;
+      const iconY = b.y + (b.h + f.h * scale) / 2;
+      r.draw(f, iconX, iconY, scale, 0xffffff, 1);
+    }
+    const backBtn = buildMenuButtons[buildMenuButtons.length - 1];
+    r.draw(pauseButtonFrame(backBtn.w, backBtn.h), backBtn.x, backBtn.y, 1, BUTTON_TINT, BUTTON_ALPHA);
+    drawHtmlText("Back", backBtn.x + backBtn.w / 2, backBtn.y + backBtn.h / 2, { size: 17, maxWidth: backBtn.w - 20 });
+
+    r.flush();
+  }
+
   /**
    * `outcome` (sopra) — stesso post-processo di drawPauseOverlay(): cattura
    * il canvas gia' disegnato (`pauseBlur.blurScreen()`) e ci disegna sopra.
@@ -3219,6 +3335,21 @@ export async function mountMatch(ctx, params = {}) {
       buildingInfoPanel = null;
       return;
     }
+    // Overlay costruzioni mobile (buildMenuOpen, sopra) — stesso
+    // trattamento modale di bankPanelOpen/buildingInfoPanel, ma un tocco su
+    // un edificio SELEZIONA quel tipo (come il tap diretto sul bottone
+    // nella riga scorrevole di sempre) invece di limitarsi a chiudere: un
+    // picker, non un pannello di sola lettura. Un tocco su "Indietro" o
+    // fuori da ogni bottone chiude senza selezionare nulla.
+    if (buildMenuOpen) {
+      const hit = buildMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+      if (hit?.type) {
+        selectedType = hit.type;
+        r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
+      }
+      buildMenuOpen = false;
+      return;
+    }
     // Un gesto di piazzamento a trascinamento e' gia' stato armato da
     // `input.onPointerDown` per lo stesso tocco (vedi sopra): il rilascio lo
     // risolve gia' `input.onPointerUp` (resolvePlacement()), che scatta
@@ -3229,7 +3360,18 @@ export async function mountMatch(ctx, params = {}) {
     // che lo colpisce non deve raggiungere il mondo sotto.
     for (const btn of uiButtons) {
       if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) {
-        if (btn.kind === "menu") menoo = btn.menoo;                      // gru/occhio/indietro
+        if (btn.kind === "menu") {
+          // [Nuova funzionalita', richiesta dall'autore] Solo su mobile, il
+          // bottone "costruzioni" (menoo:1) apre l'overlay a griglia
+          // (drawBuildMenuOverlay(), sopra) invece della riga scorrevole —
+          // su desktop resta il comportamento di sempre. "Indietro"
+          // (menoo:0, nella riga costruzioni stessa) non e' toccato: quel
+          // bottone esiste solo su desktop ormai (la riga costruzioni non
+          // si apre piu' affatto su mobile), quindi passa comunque di qui
+          // senza bisogno di un ramo dedicato.
+          if (isMobile && btn.menoo === 1) buildMenuOpen = true;
+          else menoo = btn.menoo;
+        }
         else if (btn.kind === "deselect") {
           // [Bug corretto, segnalato dall'autore: la mano non deseleziona
           // sempre lo strumento attivo] Azzerare `selectedType`/`r12.selec`
@@ -4917,6 +5059,12 @@ export async function mountMatch(ctx, params = {}) {
       }
     }
 
+    // Ricalcolata ad ogni frame in cui e' aperto (stessa idea di
+    // `uiButtons` sopra): serve gia' fresca a input.onTap per il tap-test,
+    // non solo al disegno vero e proprio di drawBuildMenuOverlay() piu'
+    // avanti nel frame.
+    if (buildMenuOpen) buildMenuButtons = computeBuildMenuButtons();
+
     // Freccia del tutorial (game/src/tutorial.js — [C]
     // freccia_tutorial/EndStep.gml): la tabella originale punta a coordinate
     // fisse del layout GameMaker, gia' diverso dal selettore ricostruito qui
@@ -4924,7 +5072,17 @@ export async function mountMatch(ctx, params = {}) {
     // punta quindi al bottone VERO corrispondente in `uiButtons` (per kind/
     // type), non a un pixel fisso copiato dal decompilato, cosi' resta
     // corretta qualunque sia la riga/lo scroll del menu al momento.
-    if (tutorialState && !tutorialState.cutscene) {
+    // `!buildMenuOpen`: l'overlay costruzioni mobile (sopra) e' un blur
+    // pieno schermo disegnato PIU' TARDI nel frame (drawBuildMenuOverlay()),
+    // sopra a qualunque cosa disegnata qui — freccia/balloon (sotto)
+    // resterebbero comunque coperti, quindi tanto vale non disegnarli
+    // affatto mentre l'overlay e' aperto invece di sprecare lavoro su
+    // qualcosa di invisibile. La freccia ha comunque gia' fatto il suo
+    // lavoro guidando fino al bottone "costruzioni" prima che l'overlay si
+    // aprisse; la griglia stessa (con tutte le icone visibili in chiaro,
+    // piu' il testo della fase che nomina gia' il bottone giusto) resta
+    // guida sufficiente da qui in poi.
+    if (tutorialState && !tutorialState.cutscene && !buildMenuOpen) {
       tutorialState.arrowFrame = (tutorialState.arrowFrame + dt * 20) % 20;
       const byKind = (pred) => uiButtons.find(pred);
       // [Bug corretto, segnalato dall'autore: "quando l'oggetto da premere
@@ -5102,8 +5260,13 @@ export async function mountMatch(ctx, params = {}) {
     // del balloon e' HTML (drawHtmlText(), sotto), fuori dal canvas che
     // pauseBlur.blurScreen() sfuma — `&& !paused` salta anche lo sfondo
     // WebGL del balloon (tutorialBoxFrame(), sotto), cosi' non resta un
-    // riquadro vuoto senza testo mentre il gioco e' in pausa.
-    if (tutorialState?.showText && !paused) {
+    // riquadro vuoto senza testo mentre il gioco e' in pausa. `&&
+    // !buildMenuOpen`: stesso motivo della freccia sopra — l'overlay
+    // costruzioni mobile e' un blur pieno schermo disegnato piu' tardi nel
+    // frame, il balloon resterebbe comunque coperto (e visibile solo il suo
+    // testo HTML, che non passa dal canvas — lo stesso problema del fix "in
+    // pausa" qui sopra, stavolta per l'overlay invece del menu di pausa).
+    if (tutorialState?.showText && !paused && !buildMenuOpen) {
       const pad = 20;
       // boxRight lascia spazio al pollice (tut_ok, disegnato subito sotto:
       // stessa larghezza 45*1.3 li' usata, + margine) SOLO quando il
@@ -5126,7 +5289,11 @@ export async function mountMatch(ctx, params = {}) {
     // "OK") invece dell'HTML segnaposto di prima. `tutorialOkRect` (letto da
     // input.onTap) e' il suo rettangolo schermo di QUESTO frame.
     tutorialOkRect = null;
-    if (tutorialState?.showOkButton) {
+    // `&& !buildMenuOpen`: stesso motivo di freccia/balloon sopra — resterebbe
+    // comunque coperto dall'overlay costruzioni mobile, disegnato piu' tardi
+    // nel frame; `tutorialOkRect` resta `null` (sopra), quindi non serve
+    // nemmeno bloccare input.onTap a parte per questo caso.
+    if (tutorialState?.showOkButton && !buildMenuOpen) {
       const okScale = 1.3;
       const okFrame = frameFor("tut_ok");
       if (okFrame) {
@@ -5256,6 +5423,7 @@ export async function mountMatch(ctx, params = {}) {
     if (outcome) drawOutcomeOverlay();
     else if (paused) { if (pauseSubmenu === "saving") drawSavingOptionsOverlay(); else drawPauseOverlay(); }
     else if (buildingInfoPanel) drawBuildingInfoPanel();
+    else if (buildMenuOpen) drawBuildMenuOverlay();
 
     // Cutscene iniziale del tutorial (game/src/tutorial.js): disegnata per
     // ultima, in spazio schermo, sopra a TUTTO il resto (mondo + UI vera) —
