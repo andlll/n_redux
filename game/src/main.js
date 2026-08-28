@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -767,6 +767,18 @@ export async function mountMatch(ctx, params = {}) {
   let bankPanelOpen = false;
   let bankButtons = [];   // { x, y, w, h, index }
 
+  // Pannello informativo di un edificio (drawBuildingInfoPanel() piu' sotto)
+  // — [Nuova funzionalita', richiesta dall'autore: "quando la mano e'
+  // selezionata e clicchi su un edificio (non difensivo), mostra un
+  // roundrect bianco con una tabella riepilogativa delle stats"]. Tiene
+  // l'istanza edificio stessa (non un id: input.onTap la legge gia' cosi'
+  // per ogni altro popup ancorato a un edificio, es. `ruspaPending` sopra),
+  // azzerato anche quando quell'edificio viene demolito/distrutto sotto
+  // panel aperto (destroyBuilding()/demolishMultiTile() sopra). Vero modale
+  // in spazio schermo come `bankPanelOpen`: mentre e' aperto un tap va
+  // SOLO al suo bottone di chiusura, mai al mondo sotto.
+  let buildingInfoPanel = null;   // istanza edificio, o null
+
   // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
   // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
   // { action_kill_object(); }` dentro upcrc12/upcrc23, stesso schema per
@@ -1476,6 +1488,7 @@ export async function mountMatch(ctx, params = {}) {
     buildings = buildings.filter((x) => x !== b);
     coins = coins.filter((c) => c.buildingId !== b.id);
     if (picked?.obj === "building" && picked.ref === b) picked = null;
+    if (buildingInfoPanel === b) buildingInfoPanel = null;
     ruins.push({
       x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr),
       level: b.level, cost: ruinRebuildCost(b.level),
@@ -1543,6 +1556,7 @@ export async function mountMatch(ctx, params = {}) {
     decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
     buildings = buildings.filter((x) => x !== b);
     if (picked?.obj === "building" && picked.ref === b) picked = null;
+    if (buildingInfoPanel === b) buildingInfoPanel = null;
   }
 
   // -------------------------------------------------------------- salvataggio
@@ -2238,13 +2252,28 @@ export async function mountMatch(ctx, params = {}) {
    * chi chiama puo' leggerne `getBoundingClientRect()` quando serve
    * conoscere le dimensioni VERE renderizzate (il balloon, per dimensionare
    * lo sfondo WebGL intorno al testo). */
-  function drawHtmlText(text, x, y, { size = 16, maxWidth, wrap = false } = {}) {
+  // `align`/`color` [Nuova funzionalita', richiesta dall'autore: "usa
+  // Montserrat anche per la barra risorse in alto, il font li' e' ancora
+  // sgranato"] — la barra risorse (main.js, poco sotto) disegna i suoi
+  // valori con l'angolo SINISTRO ancorato a una x fissa sotto ogni icona
+  // (stesso schema di drawText()/font.js, mai stato centrato), non con un
+  // centro come ogni chiamante precedente di drawHtmlText() (menu di
+  // pausa/balloon del tutorial/pannello vittoria-sconfitta) — `align:
+  // "left"` replica quell'ancoraggio (sola traslazione verticale, mai
+  // orizzontale). `color` (default `TEXT_TINT`, sotto — invariato per ogni
+  // chiamante che non lo passa) serve perche' la barra risorse cambia
+  // colore da nera a bianca di notte/nella vignetta scura (`barTextColor`,
+  // la stessa soglia gia' usata da `setColorize()` per le icone — vedi il
+  // commento li'), a differenza del testo sempre scuro-su-chiaro degli
+  // altri pannelli.
+  function drawHtmlText(text, x, y, { size = 16, maxWidth, wrap = false, align = "center", color } = {}) {
     const el = textPool[textPoolUsed++];
     el.textContent = text;
     el.style.display = "block";
     el.style.fontSize = `${size}px`;
     el.style.left = `${x}px`;
     el.style.top = `${y}px`;
+    el.style.color = color ?? TEXT_TINT;
     if (wrap) {
       el.style.textAlign = "left";
       el.style.whiteSpace = "normal";
@@ -2252,6 +2281,13 @@ export async function mountMatch(ctx, params = {}) {
       el.style.textOverflow = "clip";
       el.style.width = `${maxWidth}px`;
       el.style.transform = "none";
+    } else if (align === "left") {
+      el.style.textAlign = "left";
+      el.style.whiteSpace = "nowrap";
+      el.style.overflow = "visible";
+      el.style.textOverflow = "clip";
+      el.style.maxWidth = maxWidth != null ? `${maxWidth}px` : "";
+      el.style.transform = "translateY(-50%)";
     } else {
       el.style.textAlign = "center";
       el.style.whiteSpace = "nowrap";
@@ -2384,6 +2420,87 @@ export async function mountMatch(ctx, params = {}) {
       pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
+    r.flush();
+  }
+
+  /**
+   * Pannello informativo di un edificio (`buildingInfoPanel`, sopra) —
+   * [Nuova funzionalita', richiesta dall'autore: "quando la mano e'
+   * selezionata e clicchi su un edificio (non difensivo) mostra un roundrect
+   * bianco simile a quello del menu di pausa con una tabella riepilogativa
+   * delle stats"]. Stesso identico post-processo/vetro smerigliato di
+   * drawPauseOverlay() sopra (blur del mondo gia' disegnato + pannello
+   * traslucido con angoli arrotondati), ma di sola lettura: un solo bottone
+   * "Close" invece di una lista di azioni — onTap (sopra) chiude comunque il
+   * pannello con QUALUNQUE tocco, il bottone e' li' solo per scoperta/
+   * chiarezza (stesso principio di "tocca ovunque per chiudere" gia' usato
+   * per bankPanelOpen).
+   *
+   * Vita massima (`currentMaxLife()`) e abitanti (`currentResidents()`,
+   * `null` per i tipi che non ne hanno — industria/missile/chies/parco/club/
+   * solare) vengono da buildings.js — vedi i commenti li' per come sono
+   * ricostruiti, dato che nessuno dei due e' un dato salvato di per se'
+   * sull'istanza. Un edificio ancora in cantiere (`b.construction`) non ha
+   * ancora vita/abitanti veri (`b.life`/`r12.pop` restano a 0/quello di
+   * prima finche' il cantiere non finisce): mostra solo lo stato, non
+   * statistiche a zero che sembrerebbero un edificio morente.
+   */
+  function drawBuildingInfoPanel() {
+    const b = buildingInfoPanel;
+    const def = BUILDING_TYPES[b.type];
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
+    r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+
+    const maxLevel = 1 + (def.upgrades?.length ?? 0);
+    const maxLife = currentMaxLife(b);
+    const residents = !b.construction ? currentResidents(b) : null;
+    // `def.production` (industria, indicizzata per livello come `growth`):
+    // energia generata/olio consumato ad ogni ciclo al livello attuale —
+    // l'unico altro numero "di stato" oltre vita/abitanti gia' pronto in
+    // BUILDING_TYPES senza dover ricostruire nulla, buildings.js.
+    const production = !b.construction ? def.production?.[b.level - 1] : null;
+    const statLines = [];
+    if (residents != null) statLines.push(`Residents: ${Math.round(residents)}`);
+    if (production) statLines.push(`Energy: +${production.ele}/cycle (uses ${production.oil} oil)`);
+
+    const panelW = Math.min(320, cw - 40);
+    const barH = 20;
+    const headerH = 70;
+    const bodyH = b.construction ? 30 : (22 + barH + 20);
+    const statsH = statLines.length * 26;
+    const btnH = 46;
+    const panelH = headerH + bodyH + statsH + 16 + btnH + 20;
+    const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+    r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
+
+    const title = def.label + (maxLevel > 1 && !b.construction ? ` — Level ${b.level}/${maxLevel}` : "");
+    drawHtmlText(title, px + panelW / 2, py + 32, { size: 20, maxWidth: panelW - 30 });
+
+    let cy = py + headerH;
+    if (b.construction) {
+      drawHtmlText("Under construction…", px + panelW / 2, cy + 10, { size: 15, maxWidth: panelW - 30 });
+      cy += bodyH;
+    } else {
+      const ratio = maxLife > 0 ? Math.max(0, Math.min(1, b.life / maxLife)) : 0;
+      drawHtmlText(`Health: ${Math.max(0, Math.round(b.life))} / ${Math.round(maxLife)}`, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
+      cy += 22;
+      const barX = px + 20, barW = panelW - 40;
+      r.draw(solidFrame(white, barW, barH), barX, cy, 1, 0x000000, 0.12);
+      const barColor = ratio > 0.5 ? 0x4caf50 : ratio > 0.2 ? 0xffa726 : 0xef5350;
+      if (ratio > 0) r.draw(solidFrame(white, barW * ratio, barH), barX, cy, 1, barColor, 0.9);
+      cy += barH + 20;
+    }
+    for (const line of statLines) {
+      drawHtmlText(line, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
+      cy += 26;
+    }
+
+    const btnW = panelW - 60, bx = px + (panelW - btnW) / 2, by = py + panelH - 20 - btnH;
+    r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
+    drawHtmlText("Close", bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
+
     r.flush();
   }
 
@@ -3075,6 +3192,14 @@ export async function mountMatch(ctx, params = {}) {
       messageT = 3;
       return;
     }
+    // Pannello informativo di un edificio (buildingInfoPanel, sopra) — stesso
+    // trattamento modale di bankPanelOpen appena sopra: un tocco QUALUNQUE
+    // lo chiude (non solo il bottone dedicato, disegnato per scoperta/
+    // chiarezza), mai raggiunge il mondo sotto mentre e' aperto.
+    if (buildingInfoPanel) {
+      buildingInfoPanel = null;
+      return;
+    }
     // Un gesto di piazzamento a trascinamento e' gia' stato armato da
     // `input.onPointerDown` per lo stesso tocco (vedi sopra): il rilascio lo
     // risolve gia' `input.onPointerUp` (resolvePlacement()), che scatta
@@ -3357,11 +3482,26 @@ export async function mountMatch(ctx, params = {}) {
           : !b.aimTarget ? "no target in range"
           : b.type === "laser" && r12.ele < 200 ? "insufficient energy"
           : "cannon reloading";
+        messageT = 3;
+      } else if (r12.selec === 0 && !BUILDING_TYPES[b.type]?.turret) {
+        // [Nuova funzionalita', richiesta dall'autore: "quando la mano e'
+        // selezionata e clicchi su un edificio (non difensivo) mostra una
+        // finestrella con le stats"] Con la mano attiva (nessun tipo/
+        // strumento armato) un tap su un edificio finito NON deve piu'
+        // provare ad avviare un potenziamento (tryStartUpgrade sotto, il
+        // comportamento di default per ogni altro `r12.selec`): apre invece
+        // un pannello informativo di sola lettura (drawBuildingInfoPanel()
+        // sotto), coerente con "la mano" come strumento di ispezione, non
+        // di costruzione. Le torrette restano escluse (`turret`, sempre
+        // vero insieme a `manualFire` per missile/gatling/laser — vedi il
+        // ramo sopra): ci passano gia' SOLO per il fuoco manuale, un
+        // pannello qui li intercetterebbe prima e romperebbe quel tocco.
+        buildingInfoPanel = b;
       } else {
         const err = startUpgrade(b);
         message = err ?? "construction started";
+        messageT = 3;
       }
-      messageT = 3;
     } else if (picked.obj === "ruspaYes") {
       // [C] demoiessa/Mouse_LeftReleased.gml: `iessa=1`, letto dalla
       // collisione di demobasia col vero edificio (qui, tryRuspaRebuild()/
@@ -4459,26 +4599,41 @@ export async function mountMatch(ctx, params = {}) {
     // protetta con lo stesso `setColorize(iconsDark)` gia' usato per i
     // bottoni in basso (`iconsDark`, calcolato una sola volta per frame
     // poco sopra) — altrimenti solo la fila di sotto restava leggibile di
-    // notte/nella vignetta scura, non la barra risorse. `barTextTint`
-    // stessa idea per i numeri (font bianco moltiplicato per il tint, non
-    // sagome — vedi drawText()/font.js): nero su sfondo chiaro come
-    // l'originale, bianco quando l'icona diventa bianca.
-    const barTextTint = iconsDark ? 0xffffff : 0x000000;
+    // notte/nella vignetta scura, non la barra risorse. `barTextColor`
+    // stessa idea per i numeri: nero su sfondo chiaro come l'originale,
+    // bianco quando l'icona diventa bianca — [Bug corretto, segnalato
+    // dall'autore: "usa Montserrat anche per la barra risorse in alto, il
+    // font li' e' ancora sgranato"] non piu' drawText()/fontMini (l'atlas
+    // bitmap "gotham_mini" — vedi il commento su di lui, sopra, per il
+    // perche' era rimasto l'unico bitmap: l'autore ora lo vuole comunque
+    // sostituito). `drawHtmlText()` (sopra, `align: "left"`) invece: testo
+    // HTML vero, nitido a qualunque risoluzione/dpr come ogni altro
+    // pannello gia' migrato (menu di pausa/balloon del tutorial) — niente
+    // piu' compromesso "pixel perfect ma comunque piccolo" di un atlas
+    // bitmap. `barTextColor` come stringa CSS (invece dell'intero
+    // `barTextTint` di drawText()): drawHtmlText() imposta `color` diretto
+    // sull'elemento, non un tint moltiplicato su una texture.
+    const barTextColor = iconsDark ? "#ffffff" : "#000000";
     r.setColorize(iconsDark);
     if (barFrame) r.draw(barFrame, barX, barY, 1, 0xffffff, 1);
     r.setColorize(false);
     const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                    [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
-    for (const [value, x] of stats) drawText(r, fontMini, String(value), barX + x, barY + 10, 1, barTextTint, 1);
+    for (const [value, x] of stats) {
+      drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
+    }
     // Data (mese + anno, game/src/state.js stepCalendar()) — [C] repre/
     // DrawGUI.gml: il mese e' testo ("Jan".."Dec", da `repre.mon` — non
     // r12, vedi state.js) a x=456/y=20+upp (stessa riga dell'icona, quindi
     // qui `barY+0`), l'anno e' `r12.time` disegnato appena sotto a x=448/
     // y=40+upp (`barY+20`) — stessi offset del decompilato, ribasati su
     // `barY` come gia' fatto sopra per pop/olio/energia/denaro (offset - 20,
-    // la y a cui l'originale disegnava l'icona stessa).
-    drawText(r, fontMini, MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 0, 1, barTextTint, 1);
-    drawText(r, fontMini, String(Math.round(r12.time)), barX + 448, barY + 20, 1, barTextTint, 1);
+    // la y a cui l'originale disegnava l'icona stessa; +9 in piu' qui sotto,
+    // stesso motivo di `barY+19` sopra: drawHtmlText() centra verticalmente
+    // sull'ancora invece di partire dal bordo superiore del glifo come
+    // drawText()).
+    drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 9, { size: 15, align: "left", color: barTextColor });
+    drawHtmlText(String(Math.round(r12.time)), barX + 448, barY + 29, { size: 15, align: "left", color: barTextColor });
     // La "faccina" della felicita' (src/objects/hapware — segnalata
     // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
     // che diventa triste quando la felicita' scende sotto una soglia" — la
@@ -4533,7 +4688,7 @@ export async function mountMatch(ctx, params = {}) {
       r.setColorize(iconsDark);
       if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
       r.setColorize(false);
-      drawText(r, fontMini, String(Math.round(r12.crys)), barX + 34, barY + 68, 1, barTextTint, 1);
+      drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
@@ -4661,9 +4816,18 @@ export async function mountMatch(ctx, params = {}) {
         // blu al posto del bianco neutro basta a segnalare "strumento
         // attivo", coerente con `r12.selec === 0` = mano/deselezionato
         // gia' usato sopra per spegnere l'hover viola dei placeholder.
-        const tint = b.kind === "deselect" && r12.selec === 0 ? 0x66aaff : 0xffffff;
+        const usingHandTint = b.kind === "deselect" && r12.selec === 0;
+        const tint = usingHandTint ? 0x66aaff : 0xffffff;
         const usingSelSprite = b.kind === "building" && selectedType === b.type;
-        r.setColorize(iconsDark && !usingSelSprite);
+        // [Bug corretto, segnalato dall'autore: "la mano non si colora
+        // quando selezionata"] `handee` e' una sagoma nera pura come le
+        // altre icone della riga (vedi il commento sopra su
+        // `setColorize()`): moltiplicare per `tint` blu non fa niente su
+        // nero puro (0*x=0), serve la colorize mode per sostituirlo
+        // davvero — non solo quando `iconsDark`, sempre quando la mano e'
+        // lo strumento attivo, altrimenti la tint resta invisibile di
+        // giorno.
+        r.setColorize((iconsDark || usingHandTint) && !usingSelSprite);
         r.draw(f, rx, baseY, UI_SCALE, tint, 1);
         uiButtons.push({ x: rx, y: baseY - h, w, h, ...b });
         rowTop = Math.min(rowTop, baseY - h);
@@ -4903,7 +5067,15 @@ export async function mountMatch(ctx, params = {}) {
       if (okFrame) {
         const w = okFrame.w * okScale, h = okFrame.h * okScale;
         const x = canvas.clientWidth - 30 - w, y = canvas.clientHeight - tutorialState.uiGap - h;
+        // [Bug corretto, segnalato dall'autore: "il pollice in su del
+        // tutorial dovrebbe diventare bianco di notte come il resto della
+        // GUI"] Stessa protezione di arrowFrame poco sopra e della barra
+        // risorse/i bottoni in basso (`iconsDark`/`setColorize()`): `tut_ok`
+        // e' una sagoma nera pura come loro, un tint 0xffffff da solo non
+        // basta a schiarirla (nero*bianco resta nero).
+        r.setColorize(iconsDark);
         r.draw(okFrame, x, y, okScale, 0xffffff, 1);
+        r.setColorize(false);
         tutorialOkRect = { x, y, w, h };
       }
     }
@@ -5012,6 +5184,7 @@ export async function mountMatch(ctx, params = {}) {
     // vanno mai disegnati insieme.
     if (outcome) drawOutcomeOverlay();
     else if (paused) { if (pauseSubmenu === "saving") drawSavingOptionsOverlay(); else drawPauseOverlay(); }
+    else if (buildingInfoPanel) drawBuildingInfoPanel();
 
     // Cutscene iniziale del tutorial (game/src/tutorial.js): disegnata per
     // ultima, in spazio schermo, sopra a TUTTO il resto (mondo + UI vera) —
