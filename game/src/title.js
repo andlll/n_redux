@@ -1,6 +1,10 @@
 // La title screen — [C] src/rooms/title.json: tre bottoni (`standma`/
 // "Match", `easma`/"Match Facile", `me3`/"Tutorial") + un banner laterale
-// (`gogirrra`). Lo sfondo NON e' piu' `eddaie` (il logo animato del
+// (`gogirrra`) — **[Richiesto dall'autore]** ridotto al solo marchio
+// mtFUJI SOFTWARE come watermark statico in basso a destra (subFrameRight()/
+// logoMark, sotto): "NIMBUS"/"Mount Fuji, 2019" del vecchio raster sono
+// stati sostituiti da un vero titolo HTML in alto ("NIMBUS"/"REDUX", verso
+// la fine del file). Lo sfondo NON e' piu' `eddaie` (il logo animato del
 // decompilato, 193 sottoimmagini — pesante da impacchettare e, detto
 // dall'autore, "fa un po' cagare"): al suo posto un ritaglio di `match` (la
 // mappa difficile, non `match_easy`) dietro il menu — auto, aerei/
@@ -80,25 +84,46 @@ export async function mountTitle(ctx) {
 
   const BUTTONS = scene.instances.filter((it) => ["standma", "easma", "me3"].includes(it.obj));
   for (const b of BUTTONS) b._f = frameFor(b.spr);
-  // [FIX] `gogirrra` (logo NIMBUS, spr `logigogi`) veniva disegnato alla
-  // posizione della scena originale (x=1235, y=543) — lo stesso punto su cui
-  // e' centrata camUI: finiva quindi sovrapposto al bottone centrale
-  // ("Match Facile"/`easma`, anch'esso a y=543). Segnalato dall'autore: il
-  // logo deve stare in basso a destra della schermata, senza toccare i
-  // bottoni. BANNER.x/y vengono ricalcolati in positionBanner() (sotto),
-  // ancorati all'angolo in basso a destra della viewport reale di camUI
-  // invece che a un punto fisso della scena — l'unico modo che regge anche
-  // quando resize() cambia camUI.worldW/worldH col variare dell'aspect ratio.
-  const BANNER = scene.instances.find((it) => it.obj === "gogirrra");
-  BANNER._f = frameFor(BANNER.spr);
-  const BANNER_MARGIN = 24;
-  function positionBanner() {
-    const f = BANNER._f;
-    if (!f) return;
-    const rightEdge = camUI.x + camUI.worldW / 2 - BANNER_MARGIN;
-    const bottomEdge = camUI.y + camUI.worldH / 2 - BANNER_MARGIN;
-    BANNER.x = rightEdge - f.w + f.ox;
-    BANNER.y = bottomEdge - f.h + f.oy;
+  // [Richiesto dall'autore: "rimuovi lo sprite con NIMBUS/Mount Fuji
+  // Software, 2019 e il logo, tieni solo il logo come watermark statico in
+  // basso a destra"] `gogirrra` (spr `logigogi`, 530x96) e' un unico raster
+  // con TUTTO il vecchio banner insieme — "NIMBUS" grande, "Mount Fuji,
+  // 2019" piu' piccolo, poi il marchio vero (il cubo isometrico + "mtFUJI
+  // SOFTWARE") a destra. Campionato pixel per pixel (colonna per colonna,
+  // dove l'alpha torna a zero): il marchio da solo occupa esattamente gli
+  // ultimi 80px del frame (x locale 450..530), stessa altezza intera — un
+  // solo sotto-ritaglio (subFrameRight() sotto) invece di un secondo sprite
+  // da impacchettare, riusando la STESSA pagina/texture gia' in atlas. Il
+  // testo "NIMBUS"/"Mount Fuji, 2019" del vecchio banner non viene piu'
+  // disegnato: "NIMBUS"/"REDUX" tornano sotto come testo HTML vero, in alto
+  // al centro (vedi piu' sotto).
+  const LOGO_MARK_X0 = 450;   // [C] campionato pixel per pixel sul raster di logigogi
+  /** Ritaglia `f` da `pxFromLeft` (in pixel, spazio del frame originale) fino
+   * al bordo destro, stessa altezza intera — nuova origine in alto a
+   * sinistra (ox=0/oy=0): un ritaglio non ha piu' l'ancoraggio del frame
+   * originale, il chiamante posiziona il quad dal proprio angolo. */
+  function subFrameRight(f, pxFromLeft) {
+    const frac = pxFromLeft / f.w;
+    return {
+      tex: f.tex, v0: f.v0, v1: f.v1,
+      u0: f.u0 + (f.u1 - f.u0) * frac, u1: f.u1,
+      w: f.w - pxFromLeft, h: f.h, ox: 0, oy: 0,
+    };
+  }
+  const bannerFrame = frameFor("logigogi");
+  const logoMark = bannerFrame ? subFrameRight(bannerFrame, LOGO_MARK_X0) : null;
+  const logoPos = { x: 0, y: 0 };
+  const LOGO_MARGIN = 24;
+  // Stesso principio di prima (FIX originale sul banner): ancorato
+  // all'angolo in basso a destra della viewport REALE di camUI, non a un
+  // punto fisso della scena — regge anche quando resize() cambia
+  // camUI.worldW/worldH col variare dell'aspect ratio.
+  function positionLogo() {
+    if (!logoMark) return;
+    const rightEdge = camUI.x + camUI.worldW / 2 - LOGO_MARGIN;
+    const bottomEdge = camUI.y + camUI.worldH / 2 - LOGO_MARGIN;
+    logoPos.x = rightEdge - logoMark.w;
+    logoPos.y = bottomEdge - logoMark.h;
   }
 
   const camUI = new Camera();
@@ -247,7 +272,7 @@ export async function mountTitle(ctx) {
     const fitZoom = 1086 / camUI.viewH;
     camUI.minZoom = camUI.maxZoom = fitZoom * 1.08;
     camUI.setZoomImmediate(camUI.minZoom);
-    positionBanner();
+    positionLogo();
     camWorld.resize(canvas.clientWidth, canvas.clientHeight);
   }
   window.addEventListener("resize", resize);
@@ -415,7 +440,16 @@ export async function mountTitle(ctx) {
     r.flush();
 
     r.setProjection(camUI.projection());
-    if (BANNER._f) r.draw(BANNER._f, BANNER.x, BANNER.y, 1, 0xffffff, 1);
+    // Watermark statico del logo (logoMark/positionLogo(), sopra): semi-
+    // trasparente + colorize (Renderer.setColorize(), gl.js — ignora l'RGB
+    // del marchio, disegna la sagoma/alpha vera in tinta piena) invece del
+    // marchio a colori originale, cosi' resta leggibile ma discreto sopra
+    // qualunque sfondo (giorno/notte/vignetta) senza competere coi bottoni.
+    if (logoMark) {
+      r.setColorize(true);
+      r.draw(logoMark, logoPos.x, logoPos.y, 1, 0xffffff, 0.4);
+      r.setColorize(false);
+    }
     for (const b of BUTTONS) if (b._f) r.draw(b._f, b.x, b.y, 1, 0xffffff, 1);
     if (fadeT > 0) {
       const k = Math.min(1, fadeT / FADE_DUR);
@@ -435,6 +469,53 @@ export async function mountTitle(ctx) {
     }
   }
   requestAnimationFrame(frame);
+
+  // [Nuova funzionalita', richiesta dall'autore: "aggiungi le scritte NIMBUS
+  // (centrata in alto) e REDUX (piccola sotto), con un effetto di glitch
+  // sui caratteri"] Testo HTML vero, Montserrat (self-hosted, index.html —
+  // stesso font gia' usato per menu di pausa/tutorial/barra risorse in
+  // main.js), non uno sprite: nessun equivalente nel decompilato (`title`
+  // non aveva un titolo testuale separato dal banner, STUDIO.md — era tutto
+  // dentro `logigogi`, sopra), un tocco puramente nuovo per questa title
+  // screen. "REDUX" segnala che questo E' la riscrittura, non l'originale.
+  const titleWrap = document.createElement("div");
+  titleWrap.style.cssText = "position:fixed;left:0;right:0;top:max(28px,6vh);text-align:center;" +
+    "pointer-events:none;z-index:4;font-family:Montserrat,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;";
+  const nimbusEl = document.createElement("div");
+  nimbusEl.style.cssText = "font-size:clamp(34px,7vw,64px);font-weight:800;color:#fff;" +
+    "letter-spacing:0.1em;text-shadow:0 2px 14px rgba(0,0,0,0.55);";
+  const reduxEl = document.createElement("div");
+  reduxEl.style.cssText = "font-size:clamp(12px,1.6vw,16px);font-weight:700;color:rgba(255,255,255,0.8);" +
+    "letter-spacing:0.5em;margin-top:2px;text-shadow:0 1px 6px rgba(0,0,0,0.55);";
+  titleWrap.append(nimbusEl, reduxEl);
+  document.body.appendChild(titleWrap);
+
+  // Effetto "glitch": nessun equivalente da decompilato da seguire qui
+  // (**[I]**, puramente estetico) — ogni GLITCH_INTERVAL, con probabilita'
+  // GLITCH_CHANCE, 1-2 caratteri VERI del testo vengono sostituiti per un
+  // solo tick con un simbolo a caso di GLITCH_CHARS, poi il tick successivo
+  // torna al testo reale (nessuno stato "glitchato" che si accumula): uno
+  // sfarfallio sporadico e leggero, non un disturbo costante che renderebbe
+  // il titolo illeggibile.
+  const GLITCH_CHARS = "!<>-_\\/[]{}=+*^#%&";
+  const GLITCH_INTERVAL = 150;
+  const GLITCH_CHANCE = 0.12;
+  function startGlitch(el, text) {
+    el.textContent = text;
+    return setInterval(() => {
+      if (Math.random() > GLITCH_CHANCE) { el.textContent = text; return; }
+      const chars = text.split("");
+      const hits = 1 + (Math.random() < 0.3 ? 1 : 0);
+      for (let n = 0; n < hits; n++) {
+        const i = Math.floor(Math.random() * chars.length);
+        if (chars[i] === " ") continue;
+        chars[i] = GLITCH_CHARS[(Math.random() * GLITCH_CHARS.length) | 0];
+      }
+      el.textContent = chars.join("");
+    }, GLITCH_INTERVAL);
+  }
+  const nimbusGlitch = startGlitch(nimbusEl, "NIMBUS");
+  const reduxGlitch = startGlitch(reduxEl, "REDUX");
 
   const msgEl = document.createElement("div");
   msgEl.style.cssText = "position:fixed;left:0;right:0;bottom:10%;text-align:center;" +
@@ -507,6 +588,9 @@ export async function mountTitle(ctx) {
       clearInterval(msgInterval);
       msgEl.remove();
       loadFileBtn.remove();
+      clearInterval(nimbusGlitch);
+      clearInterval(reduxGlitch);
+      titleWrap.remove();
     },
   };
 }
