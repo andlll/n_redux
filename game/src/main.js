@@ -4780,24 +4780,36 @@ export async function mountMatch(ctx, params = {}) {
     // opachi, tools/23_atlas.py): un GAP positivo apriva una fessura
     // trasparente fra una base e l'altra, spezzando quella che nell'originale
     // e' una sola barra nera continua sotto tutti i bottoni. L'altra riga
-    // (menoo 0: mano/gru) non sono bottoni di costruzione e resta staccata
-    // come prima.
+    // (menoo 0: mano/gru/ruspa) non sono bottoni di costruzione e resta
+    // staccata come prima.
     const GAP = menoo === 1 ? 0 : (isMobile ? 3 : 4);
     const row = menoo === 1
       // menoo 1 "edifici" ([C] pu1/Create.gml li crea tutti insieme): i due
       // veri (casa/industria) + il resto del menu, segnaposto (vedi sopra).
+      // `ruspa` esclusa (vedi sotto): non e' un edificio da costruire, non
+      // vive piu' qui.
       ? [
           { kind: "building", type: "casa", spr: "p1", tint: 0x114f1f },
           { kind: "building", type: "industria", spr: "p2", tint: 0x603415 },
-          ...OTHER_BUILDINGS.map((b) => ({ kind: "building", type: b.type, spr: b.spr, tint: b.tint })),
+          ...OTHER_BUILDINGS.filter((b) => b.type !== "ruspa").map((b) => ({ kind: "building", type: b.type, spr: b.spr, tint: b.tint })),
           ...STAR_BUILDINGS.filter((b) => b.unlocked()).map((b) => ({ kind: "building", type: b.type, spr: b.spr, tint: b.tint })),
           { kind: "menu", menoo: 0, spr: "baccc", label: "Back" },
         ]
       // menoo 0 "casa" ([C] handbutton/buildbutton): la riga di partenza.
       // handbutton deseleziona (r12.selec=0); gru apre l'altra riga.
+      // [Spostata su richiesta dell'autore, liberato posto qui dalla rimozione
+      // del bottone occhio/sottomenu vista] La ruspa non e' un edificio da
+      // piazzare come gli altri (STUDIO.md/OTHER_BUILDINGS sopra: e' lo
+      // strumento di demolizione, `selec===11`) — vive ora accanto a
+      // mano/costruzioni invece che in mezzo agli edifici veri del
+      // sottomenu costruzioni, sempre a portata di mano invece che
+      // nascosta in fondo a una riga scorrevole. `kind: "building"` resta
+      // lo stesso (il tap la seleziona come strumento esattamente come
+      // prima, STUDIO.md sopra sul gestore dei tap), solo la riga cambia.
       : [
           { kind: "deselect", spr: "handee", label: "Deselect" },
           { kind: "menu", menoo: 1, spr: "groo", label: "Buildings menu" },
+          ...OTHER_BUILDINGS.filter((b) => b.type === "ruspa").map((b) => ({ kind: "building", type: b.type, spr: b.spr, tint: b.tint })),
         ];
     // Prima passata, solo misure: serve la larghezza totale della riga PRIMA
     // di disegnare, per sapere quanto scroll orizzontale ha senso concedere
@@ -4960,9 +4972,15 @@ export async function mountMatch(ctx, params = {}) {
       const pointAtButton = (b) => b && { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
       let target = null;   // { x, y, angle }
       switch (tutorialState.phase) {
+        // [Aggiornato: la ruspa vive ora in menoo 0 (mano/costruzioni/ruspa),
+        // non piu' nel sottomenu costruzioni — vedi il commento su OTHER_
+        // BUILDINGS/riga bottoni sopra] Fallback diretto a "Indietro": se il
+        // giocatore e' nel sottomenu costruzioni (dove la ruspa non c'e'
+        // piu'), la freccia lo riporta subito alla riga di casa, dove la
+        // ruspa e' sempre visibile — non serve piu' passare da un secondo
+        // sottomenu inesistente.
         case 2: {
           target = pointAtButton(byKind((btn) => btn.kind === "building" && btn.type === "ruspa")
-            ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1)
             ?? findIndietro());
           break;
         }
