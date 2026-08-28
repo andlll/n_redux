@@ -9,17 +9,30 @@
 // particelle/tick, vita 360-380 tick, gravita' 0.1@240°, direzione
 // 210-290°, dimensione/colore/alpha interpolati sulla vita) — nessun
 // equivalente diretto in un batch renderer fatto a mano come questo (niente
-// GPU particle system, niente migliaia di quad extra per frame senza
-// impattare il framerate). **[I]** Qui una goccia e' un quad sottile
+// GPU particle system nativo). **[I]** Qui una goccia e' un quad sottile
 // (solidFrame, come i flash/overlay gia' altrove nel motore — nessuno
-// sprite dedicato necessario), stessa idea di fondo (cade obliqua,
-// accelera, sfuma), ma a una densita' molto piu' bassa (le 900
-// particelle/secondo native sarebbero insostenibili qui) — resta comunque
-// riconoscibile come pioggia senza pesare sul framerate.
-
-const RAIN_SPAWN_PERIOD = 1 / 90;         // ~90 gocce/s — [I] densita' ridotta, vedi sopra
+// sprite dedicato necessario), stessa idea di fondo (direzione variabile,
+// cade obliqua, la gravita' la raddrizza).
+// [Bug corretto, segnalato dall'autore: "servono piu' particelle, orientate
+// nella direzione in cui cadono"] Due correzioni sullo stesso
+// fraintendimento: (1) la densita' era stata tagliata a ~90/s per un
+// timore di costo mai verificato — un quad sottile con la texture bianca
+// condivisa (solidFrame, come qui sotto) e' fra le primitive piu' economiche
+// per questo renderer (un solo draw call per centinaia di istanze, nessun
+// cambio di texture), lo stesso ordine di grandezza di esplosioni/detriti/
+// fumo gia' disegnati insieme senza note di framerate — RAIN_SPAWN_PERIOD
+// torna quindi al ritmo nativo (15/tick a 60fps = 900/s); (2) l'inclinazione
+// era un angolo FISSO uguale per ogni goccia per tutta la sua vita
+// (`RAIN_TILT_DEG` in main.js, mai legato alla velocita' vera) — ogni goccia
+// ora porta la propria direzione iniziale randomizzata nel range nativo
+// 210-290° (`spawnDrop()` sotto, invece dell'unica `RAIN_DIR` fissa a meta'
+// range di prima) e la gravita' la raddrizza nel tempo come un proiettile
+// vero (vx costante, vy che cresce) — `rainDropAngle()` in fondo al file
+// legge l'angolo VERO dalla velocita' istantanea di ciascuna goccia in
+// ciascun frame, invece di un'unica costante estetica.
+const RAIN_SPAWN_PERIOD = 1 / 900;         // 900 gocce/s — [C] 15 particelle/tick a 60fps, densita' nativa
 const RAIN_LIFE = 1.3;                     // [I] non i 360-380 tick (6s) nativi: qui la caduta e' molto piu' veloce (vedi RAIN_SPEED)
-const RAIN_DIR = (245 * Math.PI) / 180;    // [I] a meta' del range 210-290° dell'originale
+const RAIN_DIR_MIN = 210, RAIN_DIR_MAX = 290;  // [C] range di direzione nativo (part_emitter_stream)
 const RAIN_SPEED = 900;                     // px/s iniziale — [I] tarata per attraversare lo schermo in ~1s, non i 0.5px/tick quasi fermi nativi (li' e' la gravita' a fare il lavoro sui 6s di vita)
 const RAIN_GRAVITY = 500;                   // px/s^2 aggiuntivi verso il basso — [I]
 const RAIN_LEN = 30;                        // lunghezza della goccia (quad sottile)
@@ -33,17 +46,23 @@ const RAIN_MARGIN = 250;                    // oltre i bordi scena, cosi' non "n
 // o scade, non prima).
 const RAIN_TINT = 0x4a6a82;
 const RAIN_ALPHA = 0.55;
-const RAIN_COS = Math.cos(RAIN_DIR), RAIN_SIN = Math.sin(RAIN_DIR);
 
 export function createWeatherState() {
   return { spawnT: 0, drops: [] };
 }
 
 function spawnDrop(sceneWidth) {
+  // Direzione randomizzata per goccia (non piu' un'unica RAIN_DIR fissa per
+  // tutte): `vx`/`vy` sono la velocita' VERA (px/s, spazio schermo — y
+  // positiva verso il basso), aggiornata dalla gravita' in stepRain() sotto
+  // e letta direttamente da rainDropAngle() per orientare il quad — nessuna
+  // ricostruzione trigonometrica separata per il disegno.
+  const dirRad = ((RAIN_DIR_MIN + Math.random() * (RAIN_DIR_MAX - RAIN_DIR_MIN)) * Math.PI) / 180;
   return {
     x: Math.random() * (sceneWidth + RAIN_MARGIN * 2) - RAIN_MARGIN,
     y: -RAIN_MARGIN,
-    vy0: 0,
+    vx: Math.cos(dirRad) * RAIN_SPEED,
+    vy: -Math.sin(dirRad) * RAIN_SPEED,
     t: 0,
   };
 }
@@ -68,11 +87,21 @@ export function stepRain(state, dt, raining, sceneWidth, sceneHeight) {
   for (let i = state.drops.length - 1; i >= 0; i--) {
     const d = state.drops[i];
     d.t += dt;
-    d.vy0 += RAIN_GRAVITY * dt;
-    d.x += RAIN_COS * RAIN_SPEED * dt;
-    d.y += (-RAIN_SIN * RAIN_SPEED + d.vy0) * dt;
+    d.vy += RAIN_GRAVITY * dt;
+    d.x += d.vx * dt;
+    d.y += d.vy * dt;
     if (d.t >= RAIN_LIFE || d.y > sceneHeight + RAIN_MARGIN) state.drops.splice(i, 1);
   }
+}
+
+/** Angolo (gradi, stessa convenzione di drawRotated() in main.js: 0° =
+ * verticale verso il basso, positivo in senso orario) della velocita' VERA
+ * di questa goccia in questo istante — cambia frame per frame man mano che
+ * la gravita' (stepRain() sopra) somma velocita' verticale a una `vx`
+ * orizzontale che resta invece costante, esattamente come una goccia vera
+ * che parte obliqua (vento) e si raddrizza cadendo. */
+export function rainDropAngle(d) {
+  return (Math.atan2(d.vx, d.vy) * 180) / Math.PI;
 }
 
 // [I] Depth: **[C]** l'originale userebbe `part_system_depth(partRain_sys,

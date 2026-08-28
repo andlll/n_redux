@@ -14,7 +14,7 @@ import {
 import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { spawnLightning, stepLightning, boltSprite, glowPosition, glowFrame, LIGHTNING_GLOW_LIFE } from "./lightning.js";
-import { createWeatherState, stepRain, RAIN_STREAK_LENGTH, RAIN_STREAK_WIDTH, RAIN_TINT, RAIN_ALPHA } from "./weather.js";
+import { createWeatherState, stepRain, rainDropAngle, RAIN_STREAK_LENGTH, RAIN_STREAK_WIDTH, RAIN_TINT, RAIN_ALPHA } from "./weather.js";
 import { createFireworksState, stepFireworks, FIREWORK_DEPTH, FIREWORK_SPARK_SIZE } from "./fireworks.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
 import { addCrane, stepCranes, craneParts } from "./cranes.js";
@@ -33,14 +33,6 @@ import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE,
 } from "./tutorial.js";
-
-// [I] Inclinazione VISIVA delle gocce di pioggia (drawRotated() sotto,
-// game/src/weather.js) — un dettaglio puramente estetico, indipendente
-// dalla fisica di caduta vera (weather.js, RAIN_DIR): un'unica inclinazione
-// fissa per tutte le gocce invece di ricalcolarla per ognuna dalla sua
-// velocita' istante per istante (costo per un dettaglio che a schermo non
-// si nota).
-const RAIN_TILT_DEG = 20;
 
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
 // export mountMatch(ctx, params) invece di uno script a livello di modulo —
@@ -1944,26 +1936,44 @@ export async function mountMatch(ctx, params = {}) {
   // particellare di pioggia, e SOLO durante quella c'era la possibilita' di
   // fulmini"] Il cielo che si scurisce durante il temporale — **[C]**
   // `thunderclap` (r12/Alarm_2.gml, ramo `match`) copre l'intera view con
-  // uno sprite animato ("nitedis"/"nite", mai estratto in questo porting)
-  // che entra in 120 tick (2s) e resta finche' il temporale non finisce
-  // (r12/Alarm_7.gml gli dice di uscire, altri 2s). **[I]** Un tassello
-  // scalato per coprire l'intero schermo non e' replicabile con questo
-  // renderer (gli atlas sono impacchettati senza tiling/wrap, vedi
-  // STUDIO.md) — qui lo stesso effetto pratico (tutto si scurisce durante
-  // il temporale) si ottiene scurendo la tinta ambientale gia' calcolata da
-  // ambientAt() sopra, con lo stesso fade-in/fade-out di 2s: stesso
-  // risultato visivo (il mondo si scurisce e schiarisce con lo stesso
-  // ritmo), tecnica diversa, riusando la pipeline di tinta gia' esistente
-  // (mulTint()) invece di un quad in piu' da gestire a parte. Solo `match`
-  // (r12.storm): `stormeasy` (match_easy) e' pioggia pura, l'originale non
-  // crea mai `thunderclap` in quel ramo.
+  // uno sprite animato (`nitedis`) che entra in 120 tick (2s) e resta finche'
+  // il temporale non finisce (r12/Alarm_7.gml gli dice di uscire, altri 2s).
+  // [Bug corretto, segnalato dall'autore: "nel gioco originale c'era anche un
+  // effetto black-to-fade sullo sfondo durante i fulmini, verifica che ci sia
+  // e implementalo"] `nitedis` NON e' affatto inestraibile come annotato qui
+  // prima ("mai estratto in questo porting") — esiste per davvero in
+  // `data/sprites.json` (60 frame, 160x160, texture pages 67-68) e,
+  // campionata pixel per pixel, e' una tinta PIENA color "nite" (45,49,104 —
+  // la STESSA `BAURA_NIGHT` gia' usata sotto per baura/l'overlay giorno-
+  // notte) la cui unica animazione e' l'ALPHA: da 255 (frame 0) a ~6 (frame
+  // 59), una rampa lineare quasi perfetta — esattamente un fade-to-black(-
+  // blu) classico, non un pattern da tassellare. La versione precedente
+  // approssimava scurendo la tinta ambientale VERSO IL NERO (`amb.rgb *=
+  // 1-darken`) — una tecnica diversa da un vero overlay alpha-blended color
+  // "nite" sopra la scena (`dest = scena*(1-a) + nite*a`, quello che
+  // GameMaker fa disegnando lo sprite semitrasparente sopra tutto): stesso
+  // fade in/out lineare di 2s, ma il MONDO restava semplicemente piu' buio
+  // (verso il nero) invece di virare visibilmente verso il blu notte vero,
+  // come un vero cielo di tempesta. Sostituito sotto da un quad pieno in
+  // spazio schermo (STORM_FLASH_TINT, disegnato nel layer GUI insieme alla
+  // vignetta fuori mappa) invece di toccare l'ambient — stesso principio gia'
+  // usato li' per la vignetta/l'overlay aura.
+  // Il picco di opacita' resta STORM_FLASH_MAX invece del vero 255/255 del
+  // frame 0 di `nitedis`: un overlay quasi opaco per i ~26s centrali di un
+  // temporale da 30-35s (STORM_DURATIONS, state.js) renderebbe la citta'
+  // invisibile per la maggior parte della sua durata — plausibile solo se
+  // l'Alarm originale applica un `image_alpha` aggiuntivo mai visto (fuori
+  // dagli sprite che possiamo campionare) per tenerlo giocabile: **[I]**
+  // stessa cautela gia' scelta per lo stesso motivo prima, non un valore
+  // verificabile dai soli asset.
   const STORM_DARKEN_FADE = 2;      // [C] 120 tick, nitedis
-  const STORM_DARKEN_MAX = 0.35;    // [I] quanto scurisce al buio massimo
-  function stormDarkenFactor(r12) {
+  const STORM_FLASH_MAX = 0.35;     // [I] picco di opacita' dell'overlay, vedi sopra
+  const STORM_FLASH_TINT = (Math.round(BAURA_NIGHT[0] * 255) << 16) | (Math.round(BAURA_NIGHT[1] * 255) << 8) | Math.round(BAURA_NIGHT[2] * 255);
+  function stormFlashAlpha(r12) {
     if (!r12.storm) return 0;
     const elapsed = r12.stormDuration - r12.stormT;
     const k = Math.min(elapsed / STORM_DARKEN_FADE, r12.stormT / STORM_DARKEN_FADE, 1);
-    return Math.max(0, k) * STORM_DARKEN_MAX;
+    return Math.max(0, k) * STORM_FLASH_MAX;
   }
   // [C] casa1/Alarm_3.gml: `aura.night` — booleano secco, a differenza della
   // tinta ambientale che sfuma. Usa la stessa fase di ambientAt() (nessuno
@@ -4403,8 +4413,6 @@ export async function mountMatch(ctx, params = {}) {
     const skyRgb = roomParam === "match_easy" ? SCENE_BG_RGB : bauraColorAt(phaseT);
     r.beginFrame(canvas.width, canvas.height, skyRgb);
     const amb = ambientAt(phaseT);
-    const darken = stormDarkenFactor(r12);
-    if (darken > 0.002) amb.rgb = amb.rgb.map((v) => v * (1 - darken));
 
     // --- layer mondo: segue la camera. La tinta giorno/notte e' moltiplicata
     // qui in JS invece che nello shader (u_ambient resta a [1,1,1,1], mai
@@ -4466,7 +4474,7 @@ export async function mountMatch(ctx, params = {}) {
     // quindi seguono comunque la camera come ogni altro decoro.
     if (weatherState.drops.length) {
       const rainFrame = { ...solidFrame(white, RAIN_STREAK_WIDTH, RAIN_STREAK_LENGTH), ox: RAIN_STREAK_WIDTH / 2, oy: RAIN_STREAK_LENGTH / 2 };
-      for (const d of weatherState.drops) drawRotated(rainFrame, d.x, d.y, RAIN_TILT_DEG, 1, RAIN_TINT, RAIN_ALPHA);
+      for (const d of weatherState.drops) drawRotated(rainFrame, d.x, d.y, rainDropAngle(d), 1, RAIN_TINT, RAIN_ALPHA);
     }
     // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che
     // cresce e sfuma sul punto della moneta appena presa, in primo piano come
@@ -4570,6 +4578,17 @@ export async function mountMatch(ctx, params = {}) {
       if (p1.y < ch) r.draw(solidFrame(white, cw, ch - p1.y), 0, p1.y, 1, vignetteTint, 1);
       if (p0.x > 0) r.draw(solidFrame(white, p0.x, ch), 0, 0, 1, vignetteTint, 1);
       if (p1.x < cw) r.draw(solidFrame(white, cw - p1.x, ch), p1.x, 0, 1, vignetteTint, 1);
+    }
+
+    // "Black-to-fade" del temporale (`thunderclap`/`nitedis`, vedi il
+    // commento su stormFlashAlpha() sopra): un solo quad pieno color "nite"
+    // sopra l'intera view, in spazio schermo cosi' copre davvero "the view"
+    // com'era nel decompilato invece di una sola room (che puo' essere molto
+    // piu' grande del viewport). Disegnato qui, insieme alla vignetta fuori
+    // mappa: stesso layer GUI, stesso principio (un quad a tinta piena).
+    const stormFlash = stormFlashAlpha(r12);
+    if (stormFlash > 0.002) {
+      r.draw(solidFrame(white, canvas.clientWidth, canvas.clientHeight), 0, 0, 1, STORM_FLASH_TINT, stormFlash);
     }
 
     // Barra risorse vera (STUDIO.md §9 "GUI vera"). [C] src/objects/repre/
