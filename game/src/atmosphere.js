@@ -55,6 +55,37 @@ function spawnClouds(atmo) {
   }
 }
 
+// [Bug corretto, segnalato dall'autore: "durante il temporale comparivano
+// una marea di nuvole in più"] **[C]** `nidark`/`nidark_slow` (src/objects,
+// letti da `r12` nei rami storm/stormeasy — STUDIO.md §1 "ni significa
+// nuvola... nidark (nuvole di tempesta)", §9 "le nuvole scure/pioggia
+// cosmetiche (nidark_slow, rainlauncher)"): esistono per davvero, sprite
+// "n1d"/"n2d"/"n3d" — campionati pixel per pixel, stessa identica sagoma
+// delle "n1"/"n2"/"n3" chiare ma tinta grigio scuro invece che bianca
+// (invisibile sul cielo chiaro di giorno) — mai impacchettate ne' disegnate
+// finora (tools/23_atlas.py). Il testo GML di Create/Alarm di `nidark` non
+// e' pero' recuperabile da qui (nessun sorgente decompilato nella pipeline
+// di estrazione, solo l'esistenza dell'oggetto/lo sprite): **[I]** stesso
+// schema di spawnClouds() sopra (stesse 4 posizioni/lo stesso raggio di
+// velocita'), ma SENZA il dice(2) che dimezza le nuvole chiare (ogni check
+// ne nascono 4, non ~2) e a META' del CHECK_PERIOD (ogni ~1.15s invece di
+// ~2.3s) — un cielo di tempesta visibilmente piu' affollato di nuvole
+// scure, coerente con "una marea in piu'" invece di un semplice uno-a-uno
+// con le chiare.
+const DARK_CLOUD_CHECK_PERIOD = CHECK_PERIOD / 2;
+const DARK_CLOUD_SPRITES = ["n1d", "n2d", "n3d"];
+
+function spawnDarkClouds(atmo) {
+  for (const p of CLOUD_SPAWNS) {
+    atmo.clouds.push({
+      x: p.x, y: p.y, t: 0,
+      spd: dice(2) ? 7 : 4,
+      depth: dice(2) ? -6000 : 20,
+      spr: DARK_CLOUD_SPRITES[(Math.random() * DARK_CLOUD_SPRITES.length) | 0],
+    });
+  }
+}
+
 // [C] r12/Alarm_0.gml: dice(12) un uccello isolato, dice(36) uno stormo di
 // 9 (birbcluster/Create.gml, offset fissi — una formazione stretta, non
 // nove posizioni indipendenti), stessa cadenza delle nuvole.
@@ -77,19 +108,29 @@ function spawnBirds(atmo) {
 }
 
 export function createAtmosphere() {
-  return { clouds: [], birds: [], t: 0 };
+  return { clouds: [], birds: [], t: 0, darkT: 0 };
 }
 
-/** `raining` = r12.storm (STUDIO.md, state.js): [C] r12/Alarm_0.gml non fa
- * nascere nuvole quando sta piovendo (le nidark della tempesta le
- * sostituiscono — non ricostruite, STUDIO.md "le tempeste diventano
- * reali"); gli uccelli invece non dipendono dal meteo, volano comunque. */
+/** `raining` = r12.storm||r12.stormeasy (STUDIO.md, state.js): [C] r12/
+ * Alarm_0.gml non fa nascere le nuvole chiare quando sta piovendo — le
+ * "nidark" scure della tempesta le sostituiscono (spawnDarkClouds() sopra),
+ * a un ritmo piu' fitto (DARK_CLOUD_CHECK_PERIOD, sopra); gli uccelli invece
+ * non dipendono dal meteo, volano comunque. */
 export function stepAtmosphere(atmo, dt, raining) {
   atmo.t += dt;
   while (atmo.t >= CHECK_PERIOD) {
     atmo.t -= CHECK_PERIOD;
     if (!raining) spawnClouds(atmo);
     spawnBirds(atmo);
+  }
+  if (raining) {
+    atmo.darkT += dt;
+    while (atmo.darkT >= DARK_CLOUD_CHECK_PERIOD) {
+      atmo.darkT -= DARK_CLOUD_CHECK_PERIOD;
+      spawnDarkClouds(atmo);
+    }
+  } else {
+    atmo.darkT = 0;
   }
   for (const list of [atmo.clouds, atmo.birds]) {
     for (let i = list.length - 1; i >= 0; i--) {

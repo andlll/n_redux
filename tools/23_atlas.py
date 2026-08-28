@@ -344,10 +344,17 @@ GAMEPLAY_SPRITES = {
     # immagine con le icone gia' disegnate dentro (src/objects/repre/
     # DrawGUI.gml: action_draw_sprite(icone_oriz, ...) + i numeri col font
     # bitmap "gotham_mini" a offset fissi), non quattro icone separate come
-    # avevamo indovinato. I bottoni edificio (src/objects/pu1|pu2|...) hanno
-    # ciascuno due sprite, normale e "selezionato" (px / pxss), cambiate a
-    # mano nello Step in base a r12.selec — non e' un tint, sono disegni
-    # diversi.
+    # avevamo indovinato. I bottoni edificio (src/objects/pu1|pu2|...)
+    # avevano nell'arte originale due sprite, normale e "selezionato" (px /
+    # pxss) — **[Bug corretto/ottimizzazione, segnalato dall'autore]**
+    # misurate pixel per pixel, le 16 coppie px/pxss hanno TUTTE la stessa
+    # sagoma esatta (IoU 1.0): non sono due disegni, sono lo stesso disegno
+    # ricolorato in tinta unita'. Le varianti "selezionate" non vengono piu'
+    # impacchettate: game/src/main.js le ricrea a runtime con
+    # Renderer.setColorize() (gl.js) + il colore misurato dalla vecchia
+    # `pxss` (`tint` in OTHER_BUILDINGS/STAR_BUILDINGS), dimezzando gli
+    # sprite di questo gruppo senza perdere alcun dettaglio (non essendocene
+    # da perdere in una sagoma piatta).
     "gui": [
         "icone_oriz",          # sfondo barra risorse (repre/DrawGUI.gml)
         "crys_ico",            # icona nera dei cristalli (main.js, riga GUI sotto la barra risorse)
@@ -367,23 +374,22 @@ GAMEPLAY_SPRITES = {
         # (variante colorata per lo stato hover, mai riprodotto in questo
         # motore) restano fuori.
         "hap1", "hap3",
-        "p1", "p1ss",          # bottone casa (pu1, selec==1) — piazzabile
-        "p2", "p2ss",          # bottone industria (pu2, selec==2) — piazzabile
+        "p1",                   # bottone casa (pu1, selec==1) — piazzabile
+        "p2",                   # bottone industria (pu2, selec==2) — piazzabile
         # Gli altri bottoni edificio del menu originale (src/objects/pu3|
         # pu4prov|pu5prov|pu6|pu7|pudj|pusolare|pugatling|puvillone|
         # pumediat): STUDIO.md "cosa manca" li elenca come famiglie impa*
         # non ancora lette. Mostrati come segnaposto statici nel menu
         # (STUDIO.md §9) — tap mostra "non ancora ricostruito", non
         # piazzano niente.
-        "p3", "p3ss", "p4", "p4ss", "p5", "p5ss", "p6", "p6ss", "p7", "p7ss",
-        "pdj", "pdjss", "psolare", "psolaress", "pgatling", "pgatlingss",
-        "pvilla", "pvillass", "pmuseo", "pmuseoss",
+        "p3", "p4", "p5", "p6", "p7",
+        "pdj", "psolare", "pgatling",
+        "pvilla", "pmuseo",
         # stella1/stella2 (selec==71/72): bottoni "a stella" — mai statici
         # nel menu, compaiono/scompaiono da soli a soglia raggiunta (vedi
-        # STAR_BUILDINGS in main.js) — stesso schema normale/selezionato
-        # px/pxss dei bottoni piazzabili sopra, non un segnaposto.
-        "sta1", "sta1s", "sta2", "sta2s", "sta3", "sta3s",
-        "ru", "russ",           # puruspa (bulldozer/ripara, selec==11, mai ricostruito)
+        # STAR_BUILDINGS in main.js).
+        "sta1", "sta2", "sta3",
+        "ru",                   # puruspa (bulldozer/ripara, selec==11, mai ricostruito)
         "reset",                # pureset
         # Prestiti bancari (src/objects/bankbuttoner|loanoscrino|get_loan1..4):
         # "bancobutt" e' l'iconcina persistente ancorata alla banca (creata
@@ -393,12 +399,14 @@ GAMEPLAY_SPRITES = {
         # testo pre-renderizzato).
         "bancobutt", "loanscr", "getlo1", "getlo2", "getlo3", "getlo4",
         # Gli altri bottoni del pannello (src/objects/handbutton|buildbutton|
-        # eyebutton|eyebutton1|2|3|backobutton): nell'originale aprivano/
-        # chiudevano le righe del menu (STUDIO.md §9 "menoo", tre pannelli
-        # alternati mai ricostruiti) — qui sono una seconda riga sempre
-        # visibile, segnaposto tranne lo zoom (gia' funzionante altrimenti).
-        "handee", "groo", "eyeee", "eyee1", "eyee2", "eyee3", "baccc",
-        "zoomplus", "zoomminus",
+        # backobutton): nell'originale aprivano/chiudevano le righe del menu
+        # (STUDIO.md §9 "menoo", tre pannelli alternati) — qui restano solo
+        # "casa"/"edifici", sempre visibili. Il terzo pannello ("vista":
+        # eyebutton/eyebutton1|2|3, zoom_plus/zoom_minus) e' stato rimosso su
+        # richiesta dell'autore: i tre bottoni occhio erano segnaposto senza
+        # funzione (mai ricostruiti) e zoom+/- erano ridondanti con pinch/
+        # rotella (game/src/input.js, gia' l'unico controllo zoom vero).
+        "handee", "groo", "baccc",
     ],
     # Alberi (src/objects/albe|albe2|albe3/Create.gml, STUDIO.md): a Create
     # l'originale sceglie a dado uno sprite finale diverso per istanza fra
@@ -492,7 +500,11 @@ GAMEPLAY_SPRITES = {
     # r12/Alarm_0.gml — STUDIO.md, game/src/atmosphere.js): nessuna istanza
     # nella room, nascono e muoiono dinamicamente, quindi vanno elencati
     # qui come per le altre famiglie mai piazzate staticamente.
-    "atmosphere": ["n1", "n2", "n3", "brb1", "brb2"],
+    # "n1d"/"n2d"/"n3d" (src/objects/nidark|nidark_slow, sprite "n1d" —
+    # STUDIO.md §1: "nidark", le nuvole scure di tempesta, sostituiscono
+    # le "n1..n3" chiare mentre r12.storm/stormeasy e' attivo, mai
+    # impacchettate finora — game/src/atmosphere.js le disegna adesso).
+    "atmosphere": ["n1", "n2", "n3", "n1d", "n2d", "n3d", "brb1", "brb2"],
     # Pedoni ("omini neri", src/objects/pplo — STUDIO.md, game/src/
     # pedestrians.js): un abitante per ogni salto di livello di una casa,
     # mai piazzato nella room. "q8"/"q9" non esistono nella tavola a dado

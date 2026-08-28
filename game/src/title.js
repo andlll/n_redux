@@ -1,6 +1,10 @@
 // La title screen — [C] src/rooms/title.json: tre bottoni (`standma`/
 // "Match", `easma`/"Match Facile", `me3`/"Tutorial") + un banner laterale
-// (`gogirrra`). Lo sfondo NON e' piu' `eddaie` (il logo animato del
+// (`gogirrra`) — **[Richiesto dall'autore]** ridotto al solo marchio
+// mtFUJI SOFTWARE come watermark statico in basso a destra (subFrameRight()/
+// logoMark, sotto): "NIMBUS"/"Mount Fuji, 2019" del vecchio raster sono
+// stati sostituiti da un vero titolo HTML in alto ("NIMBUS"/"REDUX", verso
+// la fine del file). Lo sfondo NON e' piu' `eddaie` (il logo animato del
 // decompilato, 193 sottoimmagini — pesante da impacchettare e, detto
 // dall'autore, "fa un po' cagare"): al suo posto un ritaglio di `match` (la
 // mappa difficile, non `match_easy`) dietro il menu — auto, aerei/
@@ -80,25 +84,46 @@ export async function mountTitle(ctx) {
 
   const BUTTONS = scene.instances.filter((it) => ["standma", "easma", "me3"].includes(it.obj));
   for (const b of BUTTONS) b._f = frameFor(b.spr);
-  // [FIX] `gogirrra` (logo NIMBUS, spr `logigogi`) veniva disegnato alla
-  // posizione della scena originale (x=1235, y=543) — lo stesso punto su cui
-  // e' centrata camUI: finiva quindi sovrapposto al bottone centrale
-  // ("Match Facile"/`easma`, anch'esso a y=543). Segnalato dall'autore: il
-  // logo deve stare in basso a destra della schermata, senza toccare i
-  // bottoni. BANNER.x/y vengono ricalcolati in positionBanner() (sotto),
-  // ancorati all'angolo in basso a destra della viewport reale di camUI
-  // invece che a un punto fisso della scena — l'unico modo che regge anche
-  // quando resize() cambia camUI.worldW/worldH col variare dell'aspect ratio.
-  const BANNER = scene.instances.find((it) => it.obj === "gogirrra");
-  BANNER._f = frameFor(BANNER.spr);
-  const BANNER_MARGIN = 24;
-  function positionBanner() {
-    const f = BANNER._f;
-    if (!f) return;
-    const rightEdge = camUI.x + camUI.worldW / 2 - BANNER_MARGIN;
-    const bottomEdge = camUI.y + camUI.worldH / 2 - BANNER_MARGIN;
-    BANNER.x = rightEdge - f.w + f.ox;
-    BANNER.y = bottomEdge - f.h + f.oy;
+  // [Richiesto dall'autore: "rimuovi lo sprite con NIMBUS/Mount Fuji
+  // Software, 2019 e il logo, tieni solo il logo come watermark statico in
+  // basso a destra"] `gogirrra` (spr `logigogi`, 530x96) e' un unico raster
+  // con TUTTO il vecchio banner insieme — "NIMBUS" grande, "Mount Fuji,
+  // 2019" piu' piccolo, poi il marchio vero (il cubo isometrico + "mtFUJI
+  // SOFTWARE") a destra. Campionato pixel per pixel (colonna per colonna,
+  // dove l'alpha torna a zero): il marchio da solo occupa esattamente gli
+  // ultimi 80px del frame (x locale 450..530), stessa altezza intera — un
+  // solo sotto-ritaglio (subFrameRight() sotto) invece di un secondo sprite
+  // da impacchettare, riusando la STESSA pagina/texture gia' in atlas. Il
+  // testo "NIMBUS"/"Mount Fuji, 2019" del vecchio banner non viene piu'
+  // disegnato: "NIMBUS"/"REDUX" tornano sotto come testo HTML vero, in alto
+  // al centro (vedi piu' sotto).
+  const LOGO_MARK_X0 = 450;   // [C] campionato pixel per pixel sul raster di logigogi
+  /** Ritaglia `f` da `pxFromLeft` (in pixel, spazio del frame originale) fino
+   * al bordo destro, stessa altezza intera — nuova origine in alto a
+   * sinistra (ox=0/oy=0): un ritaglio non ha piu' l'ancoraggio del frame
+   * originale, il chiamante posiziona il quad dal proprio angolo. */
+  function subFrameRight(f, pxFromLeft) {
+    const frac = pxFromLeft / f.w;
+    return {
+      tex: f.tex, v0: f.v0, v1: f.v1,
+      u0: f.u0 + (f.u1 - f.u0) * frac, u1: f.u1,
+      w: f.w - pxFromLeft, h: f.h, ox: 0, oy: 0,
+    };
+  }
+  const bannerFrame = frameFor("logigogi");
+  const logoMark = bannerFrame ? subFrameRight(bannerFrame, LOGO_MARK_X0) : null;
+  const logoPos = { x: 0, y: 0 };
+  const LOGO_MARGIN = 24;
+  // Stesso principio di prima (FIX originale sul banner): ancorato
+  // all'angolo in basso a destra della viewport REALE di camUI, non a un
+  // punto fisso della scena — regge anche quando resize() cambia
+  // camUI.worldW/worldH col variare dell'aspect ratio.
+  function positionLogo() {
+    if (!logoMark) return;
+    const rightEdge = camUI.x + camUI.worldW / 2 - LOGO_MARGIN;
+    const bottomEdge = camUI.y + camUI.worldH / 2 - LOGO_MARGIN;
+    logoPos.x = rightEdge - logoMark.w;
+    logoPos.y = bottomEdge - logoMark.h;
   }
 
   const camUI = new Camera();
@@ -167,7 +192,25 @@ export async function mountTitle(ctx) {
   const sortWorld = (a, b) => effDepth(b) - effDepth(a);
 
   const camWorld = new Camera();
-  camWorld.bounds = { left: 0, top: 0, right: mScene.width, bottom: mScene.height };
+  // [Bug corretto, segnalato dall'autore: "la piattaforma va troppo a
+  // destra/sinistra, si vede lo sprite tagliato"] `bounds` erano le
+  // dimensioni dell'INTERA room `match` (mScene.width/height — 3900x2090,
+  // molto piu' grandi della sola citta' cotta in cityBg) — di fatto mai
+  // applicate: CAM_CENTER/CAM_DRIFT sotto scrivono camWorld.x/y DIRETTAMENTE
+  // ogni frame, non tramite panByScreen()/update() (gli unici due punti
+  // della classe che chiamano clamp() da soli, game/src/camera.js), quindi
+  // la deriva poteva portare il bordo schermo oltre il bordo VERO di
+  // cityBg (CITY_RECT/cityBg.width/height, sopra), esponendo il vuoto oltre
+  // l'immagine invece di fermarsi quando il suo bordo tocca il bordo dello
+  // schermo. `bounds` ora e' il rettangolo vero di cityBg, con un
+  // `camWorld.clamp()` esplicito nel loop dopo aver scritto x/y (sotto) —
+  // riusa la stessa logica gia' pronta della classe, compreso il fallback
+  // "centra invece di incastrarti" se il mondo e' piu' stretto della vista
+  // (schermi molto larghi dove cityBg da solo non basta a coprire tutto).
+  camWorld.bounds = {
+    left: CITY_RECT.x, top: CITY_RECT.y,
+    right: CITY_RECT.x + cityBg.width, bottom: CITY_RECT.y + cityBg.height,
+  };
   camWorld.minZoom = camWorld.maxZoom = 1.6;
   camWorld.setZoomImmediate(1.6);
   // Un ritaglio intorno a r120 (la base volante, STUDIO.md): si vede sia la
@@ -223,13 +266,33 @@ export async function mountTitle(ctx) {
     return (r << 16) | (g << 8) | b;
   }
 
+  // [Bug corretto, segnalato dall'autore: "aerei/dirigibili devono partire
+  // da fuori schermo in movimento, altrimenti sembrano comparire gia' a
+  // meta' schermo"] spawnThreat() (threats.js) nasce a coordinate FISSE
+  // (spawnX -170 per air/bombar, -1000 per dirig) calibrate sull'intera
+  // mappa `match_easy` — la camera qui (camWorld, molto piu' stretta,
+  // ancorata a CAM_CENTER/CITY_RECT sopra, per niente la stessa finestra di
+  // `match_easy`) non ha alcuna relazione con quelle coordinate: a seconda
+  // della finestra del browser potevano gia' cadere dentro l'area visibile
+  // invece che fuori. THREAT_SPAWN_MARGIN in piu' oltre al bordo, stesso
+  // principio del margine di RAIN_MARGIN/CLOUD_SPAWNS altrove — non spunta
+  // "a filo" del bordo dello schermo.
+  const THREAT_SPAWN_MARGIN = 150;
   function updateThreats(dt) {
     // Mantiene un rifornimento costante cosi' aerei/bombardieri/dirigibili
     // continuano ad arrivare per tutto il tempo che il menu resta a schermo,
     // invece di esaurirsi dopo le prime ondate come farebbe r12 vero senza
     // spie a rialimentarli.
     fakeR12.ondan = 3; fakeR12.bombn = 1; fakeR12.diron = 1;
+    const spawnedBefore = threats.length;
     stepThreatSpawner(fakeR12, threats, dt);
+    // Sposta SOLO i nuovi arrivi di questo frame appena fuori dal bordo
+    // sinistro VERO della camera (ricalcolato ogni volta: cambia con
+    // resize/la deriva di camWorld) — direzione/velocita' di volo restano
+    // quelle vere di spawnThreat(), sempre verso destra (COS30 positivo,
+    // threats.js/stepThreats()), solo il punto di partenza cambia.
+    const leftEdge = camWorld.x - camWorld.worldW / 2;
+    for (let i = spawnedBefore; i < threats.length; i++) threats[i].x = leftEdge - THREAT_SPAWN_MARGIN;
     stepThreats(threats, bombs, explosions, dt, fakeR12, aerSmoke, debris);
     stepBombs(bombs, explosions, [], dt, fakeR12);
     stepExplosions(explosions, dt);
@@ -247,7 +310,7 @@ export async function mountTitle(ctx) {
     const fitZoom = 1086 / camUI.viewH;
     camUI.minZoom = camUI.maxZoom = fitZoom * 1.08;
     camUI.setZoomImmediate(camUI.minZoom);
-    positionBanner();
+    positionLogo();
     camWorld.resize(canvas.clientWidth, canvas.clientHeight);
   }
   window.addEventListener("resize", resize);
@@ -332,10 +395,15 @@ export async function mountTitle(ctx) {
     stepAtmosphere(atmo, dt, false);
     stepSemaphores(semaphores, dt);
     stepBuildingLights(dt, isNightAt(elapsed));
-    updateThreats(dt);
 
+    // camWorld.x/y VANNO risolti prima di updateThreats() sotto: gli riposiziona
+    // i nuovi arrivi appena fuori dal bordo sinistro vero di QUESTO frame
+    // (vedi il commento su THREAT_SPAWN_MARGIN sopra), non quello del frame
+    // precedente.
     camWorld.x = CAM_CENTER.x + Math.sin((elapsed / CAM_PERIOD) * Math.PI * 2) * CAM_DRIFT.x;
     camWorld.y = CAM_CENTER.y + Math.cos((elapsed / CAM_PERIOD) * Math.PI * 2) * CAM_DRIFT.y;
+    camWorld.clamp();
+    updateThreats(dt);
 
     r.beginFrame(canvas.width, canvas.height);
     bgT += dt;
@@ -415,7 +483,16 @@ export async function mountTitle(ctx) {
     r.flush();
 
     r.setProjection(camUI.projection());
-    if (BANNER._f) r.draw(BANNER._f, BANNER.x, BANNER.y, 1, 0xffffff, 1);
+    // Watermark statico del logo (logoMark/positionLogo(), sopra): semi-
+    // trasparente + colorize (Renderer.setColorize(), gl.js — ignora l'RGB
+    // del marchio, disegna la sagoma/alpha vera in tinta piena) invece del
+    // marchio a colori originale, cosi' resta leggibile ma discreto sopra
+    // qualunque sfondo (giorno/notte/vignetta) senza competere coi bottoni.
+    if (logoMark) {
+      r.setColorize(true);
+      r.draw(logoMark, logoPos.x, logoPos.y, 1, 0xffffff, 0.4);
+      r.setColorize(false);
+    }
     for (const b of BUTTONS) if (b._f) r.draw(b._f, b.x, b.y, 1, 0xffffff, 1);
     if (fadeT > 0) {
       const k = Math.min(1, fadeT / FADE_DUR);
@@ -435,6 +512,52 @@ export async function mountTitle(ctx) {
     }
   }
   requestAnimationFrame(frame);
+
+  // [Nuova funzionalita', richiesta dall'autore: "aggiungi le scritte NIMBUS
+  // (centrata in alto) e REDUX (piccola sotto)"] Testo HTML vero,
+  // Montserrat (self-hosted, index.html — stesso font gia' usato per menu
+  // di pausa/tutorial/barra risorse in main.js), non uno sprite: nessun
+  // equivalente nel decompilato (`title` non aveva un titolo testuale
+  // separato dal banner, STUDIO.md — era tutto dentro `logigogi`, sopra),
+  // un tocco puramente nuovo per questa title screen. "REDUX" segnala che
+  // questo E' la riscrittura, non l'originale.
+  //
+  // [Corretto: l'autore intendeva un effetto diverso da quello scelto la
+  // prima volta] Non una sostituzione casuale dei caratteri — lo stesso
+  // sdoppiamento cromatico (ciano/blu) gia' usato per il logo della
+  // schermata di caricamento (index.html, .logoWrap .ghost/@keyframes
+  // rgbGlitch): due copie dello stesso testo, colorate e sovrapposte esatte
+  // (position:absolute;inset:0) in `mix-blend-mode:screen`, invisibili
+  // (opacity 0) per quasi tutto il ciclo di `rgbGlitch` e visibili solo per
+  // una manciata di frame — lo stesso "sfarfallio" di trasmissione, non
+  // testo che cambia. Le keyframe sono gia' globali in index.html (non
+  // scope-ate a `.logoWrap`), riusate qui senza duplicarle.
+  const titleWrap = document.createElement("div");
+  titleWrap.style.cssText = "position:fixed;left:0;right:0;top:max(28px,6vh);text-align:center;" +
+    "pointer-events:none;z-index:4;font-family:Montserrat,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;";
+  const NIMBUS_SIZE = "font-size:clamp(34px,7vw,64px);font-weight:800;letter-spacing:0.1em;";
+  const REDUX_SIZE = "font-size:clamp(12px,1.6vw,16px);font-weight:700;letter-spacing:0.5em;margin-top:2px;";
+  // Stessi colori/ritardo del secondo strato (`.ghost.blue`, index.html) —
+  // il ritardo di 0,06s fra ciano e blu e' quello che da' l'aspetto di uno
+  // sdoppiamento vero invece di un semplice lampo bicolore in sincrono.
+  const GHOST_LAYERS = [["#00e5ff", "0s"], ["#4d5bff", ".06s"]];
+  function glitchLine(text, sizeCss, baseColorCss) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:relative;" + sizeCss + baseColorCss;
+    wrap.textContent = text;
+    for (const [color, delay] of GHOST_LAYERS) {
+      const ghost = document.createElement("div");
+      ghost.textContent = text;
+      ghost.style.cssText = "position:absolute;inset:0;opacity:0;pointer-events:none;" + sizeCss +
+        `color:${color};mix-blend-mode:screen;animation:rgbGlitch 5.4s infinite;animation-delay:${delay};`;
+      wrap.appendChild(ghost);
+    }
+    return wrap;
+  }
+  const nimbusLine = glitchLine("NIMBUS", NIMBUS_SIZE, "color:#fff;text-shadow:0 2px 14px rgba(0,0,0,0.55);");
+  const reduxLine = glitchLine("REDUX", REDUX_SIZE, "color:rgba(255,255,255,0.8);text-shadow:0 1px 6px rgba(0,0,0,0.55);");
+  titleWrap.append(nimbusLine, reduxLine);
+  document.body.appendChild(titleWrap);
 
   const msgEl = document.createElement("div");
   msgEl.style.cssText = "position:fixed;left:0;right:0;bottom:10%;text-align:center;" +
@@ -507,6 +630,7 @@ export async function mountTitle(ctx) {
       clearInterval(msgInterval);
       msgEl.remove();
       loadFileBtn.remove();
+      titleWrap.remove();
     },
   };
 }

@@ -14,7 +14,7 @@ import {
 import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { spawnLightning, stepLightning, boltSprite, glowPosition, glowFrame, LIGHTNING_GLOW_LIFE } from "./lightning.js";
-import { createWeatherState, stepRain, RAIN_STREAK_LENGTH, RAIN_STREAK_WIDTH, RAIN_TINT, RAIN_ALPHA } from "./weather.js";
+import { createWeatherState, stepRain, rainDropAngle, RAIN_STREAK_LENGTH, RAIN_STREAK_WIDTH, RAIN_TINT, RAIN_ALPHA } from "./weather.js";
 import { createFireworksState, stepFireworks, FIREWORK_DEPTH, FIREWORK_SPARK_SIZE } from "./fireworks.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
 import { addCrane, stepCranes, craneParts } from "./cranes.js";
@@ -33,14 +33,6 @@ import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE,
 } from "./tutorial.js";
-
-// [I] Inclinazione VISIVA delle gocce di pioggia (drawRotated() sotto,
-// game/src/weather.js) — un dettaglio puramente estetico, indipendente
-// dalla fisica di caduta vera (weather.js, RAIN_DIR): un'unica inclinazione
-// fissa per tutte le gocce invece di ricalcolarla per ognuna dalla sua
-// velocita' istante per istante (costo per un dettaglio che a schermo non
-// si nota).
-const RAIN_TILT_DEG = 20;
 
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
 // export mountMatch(ctx, params) invece di uno script a livello di modulo —
@@ -778,6 +770,20 @@ export async function mountMatch(ctx, params = {}) {
   // in spazio schermo come `bankPanelOpen`: mentre e' aperto un tap va
   // SOLO al suo bottone di chiusura, mai al mondo sotto.
   let buildingInfoPanel = null;   // istanza edificio, o null
+
+  // Overlay costruzioni per mobile (drawBuildMenuOverlay() piu' sotto) —
+  // [Nuova funzionalita', richiesta dall'autore: "sul mobile, invece della
+  // riga scorrevole apri una schermata modale tipo quella di pausa, con
+  // quattro pulsanti edifici per riga su tre righe"]. Solo `isMobile`
+  // (sopra): su desktop il bottone "costruzioni" continua ad aprire la
+  // riga scorrevole di sempre (menoo=1), c'e' gia' spazio orizzontale a
+  // sufficienza li'. Stesso modale in spazio schermo di bankPanelOpen/
+  // buildingInfoPanel: mentre e' aperto un tap va SOLO ai suoi bottoni.
+  // `buildMenuButtons` (i rettangoli-griglia, ricalcolati ad inizio frame —
+  // vedi il commento sulla freccia del tutorial piu' sotto per il perche')
+  // sono lo stesso genere di array di `uiButtons`/`bankButtons`.
+  let buildMenuOpen = false;
+  let buildMenuButtons = [];   // { x, y, w, h, type?, spr? } — niente `type` = "Back"
 
   // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
   // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
@@ -1944,26 +1950,44 @@ export async function mountMatch(ctx, params = {}) {
   // particellare di pioggia, e SOLO durante quella c'era la possibilita' di
   // fulmini"] Il cielo che si scurisce durante il temporale — **[C]**
   // `thunderclap` (r12/Alarm_2.gml, ramo `match`) copre l'intera view con
-  // uno sprite animato ("nitedis"/"nite", mai estratto in questo porting)
-  // che entra in 120 tick (2s) e resta finche' il temporale non finisce
-  // (r12/Alarm_7.gml gli dice di uscire, altri 2s). **[I]** Un tassello
-  // scalato per coprire l'intero schermo non e' replicabile con questo
-  // renderer (gli atlas sono impacchettati senza tiling/wrap, vedi
-  // STUDIO.md) — qui lo stesso effetto pratico (tutto si scurisce durante
-  // il temporale) si ottiene scurendo la tinta ambientale gia' calcolata da
-  // ambientAt() sopra, con lo stesso fade-in/fade-out di 2s: stesso
-  // risultato visivo (il mondo si scurisce e schiarisce con lo stesso
-  // ritmo), tecnica diversa, riusando la pipeline di tinta gia' esistente
-  // (mulTint()) invece di un quad in piu' da gestire a parte. Solo `match`
-  // (r12.storm): `stormeasy` (match_easy) e' pioggia pura, l'originale non
-  // crea mai `thunderclap` in quel ramo.
+  // uno sprite animato (`nitedis`) che entra in 120 tick (2s) e resta finche'
+  // il temporale non finisce (r12/Alarm_7.gml gli dice di uscire, altri 2s).
+  // [Bug corretto, segnalato dall'autore: "nel gioco originale c'era anche un
+  // effetto black-to-fade sullo sfondo durante i fulmini, verifica che ci sia
+  // e implementalo"] `nitedis` NON e' affatto inestraibile come annotato qui
+  // prima ("mai estratto in questo porting") — esiste per davvero in
+  // `data/sprites.json` (60 frame, 160x160, texture pages 67-68) e,
+  // campionata pixel per pixel, e' una tinta PIENA color "nite" (45,49,104 —
+  // la STESSA `BAURA_NIGHT` gia' usata sotto per baura/l'overlay giorno-
+  // notte) la cui unica animazione e' l'ALPHA: da 255 (frame 0) a ~6 (frame
+  // 59), una rampa lineare quasi perfetta — esattamente un fade-to-black(-
+  // blu) classico, non un pattern da tassellare. La versione precedente
+  // approssimava scurendo la tinta ambientale VERSO IL NERO (`amb.rgb *=
+  // 1-darken`) — una tecnica diversa da un vero overlay alpha-blended color
+  // "nite" sopra la scena (`dest = scena*(1-a) + nite*a`, quello che
+  // GameMaker fa disegnando lo sprite semitrasparente sopra tutto): stesso
+  // fade in/out lineare di 2s, ma il MONDO restava semplicemente piu' buio
+  // (verso il nero) invece di virare visibilmente verso il blu notte vero,
+  // come un vero cielo di tempesta. Sostituito sotto da un quad pieno in
+  // spazio schermo (STORM_FLASH_TINT, disegnato nel layer GUI insieme alla
+  // vignetta fuori mappa) invece di toccare l'ambient — stesso principio gia'
+  // usato li' per la vignetta/l'overlay aura.
+  // Il picco di opacita' resta STORM_FLASH_MAX invece del vero 255/255 del
+  // frame 0 di `nitedis`: un overlay quasi opaco per i ~26s centrali di un
+  // temporale da 30-35s (STORM_DURATIONS, state.js) renderebbe la citta'
+  // invisibile per la maggior parte della sua durata — plausibile solo se
+  // l'Alarm originale applica un `image_alpha` aggiuntivo mai visto (fuori
+  // dagli sprite che possiamo campionare) per tenerlo giocabile: **[I]**
+  // stessa cautela gia' scelta per lo stesso motivo prima, non un valore
+  // verificabile dai soli asset.
   const STORM_DARKEN_FADE = 2;      // [C] 120 tick, nitedis
-  const STORM_DARKEN_MAX = 0.35;    // [I] quanto scurisce al buio massimo
-  function stormDarkenFactor(r12) {
+  const STORM_FLASH_MAX = 0.35;     // [I] picco di opacita' dell'overlay, vedi sopra
+  const STORM_FLASH_TINT = (Math.round(BAURA_NIGHT[0] * 255) << 16) | (Math.round(BAURA_NIGHT[1] * 255) << 8) | Math.round(BAURA_NIGHT[2] * 255);
+  function stormFlashAlpha(r12) {
     if (!r12.storm) return 0;
     const elapsed = r12.stormDuration - r12.stormT;
     const k = Math.min(elapsed / STORM_DARKEN_FADE, r12.stormT / STORM_DARKEN_FADE, 1);
-    return Math.max(0, k) * STORM_DARKEN_MAX;
+    return Math.max(0, k) * STORM_FLASH_MAX;
   }
   // [C] casa1/Alarm_3.gml: `aura.night` — booleano secco, a differenza della
   // tinta ambientale che sfuma. Usa la stessa fase di ambientAt() (nessuno
@@ -2226,12 +2250,15 @@ export async function mountMatch(ctx, params = {}) {
   // di essere ricreati. `resetTextPool()` va chiamata una volta a inizio
   // frame, `hideUnusedText()` una volta alla fine — cosi' un frame in cui
   // NESSuno dei due pannelli disegna (non in pausa) nasconde tutto da solo,
-  // senza un ramo dedicato "pulisci se non in pausa". +2, non 8 esatti: il
-  // mondo "congelato" sotto il menu di pausa resta disegnato ogni frame
-  // (solo la SIMULAZIONE si ferma, `frozen`/`if (!paused)` altrove) — in
-  // pausa durante il tutorial il balloon (1 slot) e il pannello principale
-  // (8) chiedono un elemento ciascuno nello STESSO frame, 9 in tutto.
-  const TEXT_POOL_SIZE = 10;
+  // senza un ramo dedicato "pulisci se non in pausa".
+  // Il menu di pausa e' l'unico chiamante da 8 slot, ma NON e' il worst
+  // case: barra risorse/balloon del tutorial/banner "ATTACK INCOMING"/
+  // "THUNDERSTORM INCOMING" (piu' sotto) restano tutti disegnati fuori
+  // pausa (`&& !paused` li salta apposta durante il menu — stesso motivo di
+  // drawHtmlText() sopra, testo HTML non sfumato dal blur) e possono capitare
+  // TUTTI nello stesso frame: 4 risorse + mese + anno + cristalli (7) +
+  // balloon tutorial (1) + i 2 banner = 10, +1 di margine.
+  const TEXT_POOL_SIZE = 11;
   const textPool = Array.from({ length: TEXT_POOL_SIZE }, () => {
     const el = document.createElement("div");
     el.className = "gameText";
@@ -2500,6 +2527,108 @@ export async function mountMatch(ctx, params = {}) {
     const btnW = panelW - 60, bx = px + (panelW - btnW) / 2, by = py + panelH - 20 - btnH;
     r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
     drawHtmlText("Close", bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
+
+    r.flush();
+  }
+
+  // Overlay costruzioni mobile (buildMenuOpen, sopra) — griglia 4 colonne
+  // richiesta dall'autore: riga 1 casa/industria/parco/lanciarazzi, riga 2
+  // palazzo/fotovoltaico/club/gatling, riga 3 villa/eolico/mediateca/laser.
+  // `casa`/`industria` non vivono in OTHER_BUILDINGS (sono gli unici due
+  // edifici SEMPRE reali, mai segnaposto, STUDIO.md) — duplicati qui con lo
+  // stesso sprite/tint del bottone hardcoded nella riga scorrevole
+  // (menoo===1, sotto): tenerli in sync se quei due cambiano.
+  const BUILD_GRID_COLS = 4;
+  const BUILD_GRID_TYPES = [
+    ["casa", "industria", "parco", "missile"],
+    ["palazzo", "solare", "club", "gatling"],
+    ["villa", "eolico", "museo", "laser"],
+  ];
+  function buildMenuEntries() {
+    const byType = Object.fromEntries([
+      { type: "casa", spr: "p1", tint: 0x114f1f },
+      { type: "industria", spr: "p2", tint: 0x603415 },
+      ...OTHER_BUILDINGS,
+    ].map((b) => [b.type, b]));
+    const rows = BUILD_GRID_TYPES.map((row) => row.map((type) => byType[type]));
+    // Edifici stella (STAR_BUILDINGS, sotto) sbloccati: appesi come riga
+    // extra invece che nella griglia fissa richiesta — restano rari premi
+    // di fine partita, non hanno un posto fisso nel layout a 3 righe.
+    const starRow = STAR_BUILDINGS.filter((b) => b.unlocked());
+    if (starRow.length) rows.push(starRow);
+    return rows;
+  }
+  // Geometria pura (nessun disegno): riusata sia per ricalcolare
+  // `buildMenuButtons` ad inizio frame (cosi' la freccia del tutorial vede
+  // gia' le posizioni AGGIORNATE di questo frame, non quelle del frame
+  // prima — vedi il commento sulla freccia piu' sotto) sia da
+  // drawBuildMenuOverlay() per disegnare, senza calcolare due volte cose
+  // diverse che dovrebbero combaciare a pixel.
+  function buildMenuLayout(cw, ch) {
+    const rows = buildMenuEntries();
+    const cell = 76, gridPad = 16;
+    const panelW = Math.min(BUILD_GRID_COLS * cell + gridPad * 2, cw - 40);
+    const trueCell = (panelW - gridPad * 2) / BUILD_GRID_COLS;
+    const headerH = 56, btnH = 46;
+    const panelH = headerH + rows.length * trueCell + 16 + btnH + 20;
+    const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+    return { rows, px, py, panelW, panelH, cell: trueCell, gridPad, headerH, btnH };
+  }
+  function computeBuildMenuButtons() {
+    const { rows, px, py, panelW, panelH, cell, gridPad, headerH, btnH } =
+      buildMenuLayout(canvas.clientWidth, canvas.clientHeight);
+    const buttons = [];
+    let gy = py + headerH;
+    for (const row of rows) {
+      let gx = px + gridPad;
+      for (const b of row) {
+        buttons.push({ x: gx, y: gy, w: cell, h: cell, type: b.type, spr: b.spr });
+        gx += cell;
+      }
+      gy += cell;
+    }
+    const btnW = panelW - 60;
+    buttons.push({ x: px + (panelW - btnW) / 2, y: py + panelH - 20 - btnH, w: btnW, h: btnH });   // "Back"
+    return buttons;
+  }
+  /**
+   * Disegna l'overlay (buildMenuButtons, sopra: gia' ricalcolato ad inizio
+   * frame, riusato qui com'e' invece di rifare la griglia). Stesso "vetro
+   * smerigliato" (pausePanelFrame()/PANEL_TINT/BUTTON_TINT) del menu di
+   * pausa/pannello edificio — blur del mondo congelato sotto, pannello
+   * arrotondato sopra. Solo icone, nessuna etichetta sotto ogni bottone:
+   * stessa convenzione gia' scelta per la riga scorrevole di sempre (mai
+   * stata affiancata da testo). Selezionare un edificio chiude subito
+   * l'overlay (input.onTap sotto) — un picker, non un pannello da tenere
+   * aperto.
+   */
+  function drawBuildMenuOverlay() {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
+    r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+
+    const { px, py, panelW, panelH } = buildMenuLayout(cw, ch);
+    r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
+    drawHtmlText("BUILDINGS", px + panelW / 2, py + 30, { size: 22, maxWidth: panelW - 24 });
+
+    for (const b of buildMenuButtons) {
+      if (!b.type) continue;   // "Back", disegnato a parte sotto
+      const f = frameFor(b.spr);
+      if (!f) continue;
+      const scale = Math.min((b.w - 14) / f.w, (b.h - 14) / f.h);
+      // p1/p2/... hanno origine in basso a sinistra (origin_x=0, origin_y=
+      // height — data/sprites.json, stessa convenzione gia' letta per la
+      // riga scorrevole): l'angolo in alto a sinistra dello sprite scalato
+      // va quindi calcolato a mano per centrarlo nella cella, non basta
+      // passare il centro della cella come punto di ancoraggio.
+      const iconX = b.x + (b.w - f.w * scale) / 2;
+      const iconY = b.y + (b.h + f.h * scale) / 2;
+      r.draw(f, iconX, iconY, scale, 0xffffff, 1);
+    }
+    const backBtn = buildMenuButtons[buildMenuButtons.length - 1];
+    r.draw(pauseButtonFrame(backBtn.w, backBtn.h), backBtn.x, backBtn.y, 1, BUTTON_TINT, BUTTON_ALPHA);
+    drawHtmlText("Back", backBtn.x + backBtn.w / 2, backBtn.y + backBtn.h / 2, { size: 17, maxWidth: backBtn.w - 20 });
 
     r.flush();
   }
@@ -2904,20 +3033,26 @@ export async function mountMatch(ctx, params = {}) {
   // di modalita' piazzamento nell'originale (1 = casa, 2 = industria, ...).
   const SELEC_BY_TYPE = { casa: 1, industria: 2 };
 
-  // Il pannello originale non e' un'unica barra: e' tre righe ALTERNATE,
-  // mai tutte visibili insieme. [C] `pu1.menoo` (0/1/2) decide quale, letto
-  // riga per riga da ogni bottone figlio nel proprio Step.gml (`with (pu1) {
-  // if (menoo==N) break }` poi `action_move_to(...)` sulla posizione vera, o
+  // Il pannello originale non e' un'unica barra: sono righe ALTERNATE, mai
+  // tutte visibili insieme. [C] `pu1.menoo` decide quale, letto riga per
+  // riga da ogni bottone figlio nel proprio Step.gml (`with (pu1) { if
+  // (menoo==N) break }` poi `action_move_to(...)` sulla posizione vera, o
   // fuori schermo altrimenti):
-  //   - menoo 0 "casa": handbutton, buildbutton (la gru: apre menoo 1),
-  //     eyebutton (l'occhio: apre menoo 2) — quello che si vede all'avvio.
+  //   - menoo 0 "casa": handbutton, buildbutton (la gru: apre menoo 1) —
+  //     quello che si vede all'avvio.
   //   - menoo 1 "edifici": pu1..pu7 e affini (i piazzabili) + backobutton in
   //     fondo per tornare a menoo 0. E' la riga che si apre toccando la gru.
-  //   - menoo 2 "vista": eyebutton1/2/3, zoom_plus/zoom_minus + backobutton.
-  //     Si apre toccando l'occhio.
-  // Una versione precedente mostrava tutti i bottoni sempre, su due righe
+  // Una versione precedente mostrava tutti i bottoni sempre, su righe
   // fisse — comodo ma non e' cosi' che il menu era organizzato davvero
-  // (segnalato dall'autore). Qui replichiamo la stessa struttura a tre righe.
+  // (segnalato dall'autore). Qui replichiamo la stessa struttura a righe.
+  // [Rimosso su richiesta dell'autore] Il terzo pannello del decompilato,
+  // menoo 2 "vista" (eyebutton apriva eyebutton1/2/3 + zoom_plus/
+  // zoom_minus + backobutton): i tre bottoni occhio erano segnaposto senza
+  // funzione (mai ricostruiti, nessun testo li spiegava se non il tutorial,
+  // vedi tutorial.js/TUTORIAL_TEXTS) e zoom+/- duplicavano pinch/rotella
+  // (input.onZoom, game/src/input.js — l'unico controllo zoom rimasto,
+  // gia' funzionante da solo su mobile/desktop). Tolti bottone e riga
+  // insieme: nessuna funzione persa, un solo modo di zoomare invece di due.
   let menoo = 0;
 
   // I piazzabili del menu (menoo 1) che casa/industria non coprono da sole:
@@ -2940,10 +3075,10 @@ export async function mountMatch(ctx, params = {}) {
   // quattro bottoni mutuamente esclusivi non tracciati qui): l'ordine qui e'
   // solo "tutti visibili, uno per slot", non quello esatto.
   const OTHER_BUILDINGS = [
-    { type: "parco", selec: 7, spr: "p7", sprSel: "p7ss", label: "Park", cost: 500 },
-    { type: "missile", selec: 3, spr: "p3", sprSel: "p3ss", label: "Missile Launcher", cost: 5000 },
-    { type: "eolico", selec: 4, spr: "p4", sprSel: "p4ss", label: "Wind Turbine", cost: 50000 },   // ora vero, BUILDING_TYPES.eolico
-    { type: "laser", selec: 5, spr: "p5", sprSel: "p5ss", label: "Laser", cost: 20000 },
+    { type: "parco", selec: 7, spr: "p7", tint: 0x139f13, label: "Park", cost: 500 },
+    { type: "missile", selec: 3, spr: "p3", tint: 0x892020, label: "Missile Launcher", cost: 5000 },
+    { type: "eolico", selec: 4, spr: "p4", tint: 0x8b6c17, label: "Wind Turbine", cost: 50000 },   // ora vero, BUILDING_TYPES.eolico
+    { type: "laser", selec: 5, spr: "p5", tint: 0x5c0d64, label: "Laser", cost: 20000 },
     // "Grattacielo" era il nome (mai verificato) di una versione precedente
     // di questa riga: **[C]** src/objects/level2palazz (il popup "livello 2
     // sbloccato" agganciato a `pu6/Mouse_MouseEnter.gml`, stesso schema di
@@ -2953,16 +3088,16 @@ export async function mountMatch(ctx, params = {}) {
     // `BUILDING_TYPES.grattacielo` (STAR_BUILDINGS sotto, la terza stella),
     // un edificio completamente diverso da questo — nessuna relazione se non
     // l'omonimia mai risolta a suo tempo.
-    { type: "palazzo", selec: 6, spr: "p6", sprSel: "p6ss", label: "Building", cost: 6000 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
-    { type: "club", selec: 60, spr: "pdj", sprSel: "pdjss", label: "Club", cost: 3500 },   // ora vero, BUILDING_TYPES.club
-    { type: "solare", selec: 61, spr: "psolare", sprSel: "psolaress", label: "Solar Panels", cost: 1000 },
-    { type: "gatling", selec: 62, spr: "pgatling", sprSel: "pgatlingss", label: "Gatling Gun", cost: 10000 },
-    { type: "villa", selec: 63, spr: "pvilla", sprSel: "pvillass", label: "Villa", cost: 7500 },
-    { type: "museo", selec: 70, spr: "pmuseo", sprSel: "pmuseoss", label: "Museum", cost: 35000 },   // ora vero, BUILDING_TYPES.museo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "palazzo", selec: 6, spr: "p6", tint: 0x114f18, label: "Building", cost: 6000 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "club", selec: 60, spr: "pdj", tint: 0xc24398, label: "Club", cost: 3500 },   // ora vero, BUILDING_TYPES.club
+    { type: "solare", selec: 61, spr: "psolare", tint: 0xb57008, label: "Solar Panels", cost: 1000 },
+    { type: "gatling", selec: 62, spr: "pgatling", tint: 0x8b0808, label: "Gatling Gun", cost: 10000 },
+    { type: "villa", selec: 63, spr: "pvilla", tint: 0x1e666b, label: "Villa", cost: 7500 },
+    { type: "museo", selec: 70, spr: "pmuseo", tint: 0xa47f7f, label: "Museum", cost: 35000 },   // ora vero, BUILDING_TYPES.museo — piazzamento a trascinamento, vedi armPlacement()
     // [C] STUDIO.md "cosa manca": lo strumento vero di demolizione/
     // riparazione (selec==11), mai ricostruito — la distruzione oggi e'
     // immediata (destroyBuilding()) invece di passare da questo strumento.
-    { type: "ruspa", selec: 11, spr: "ru", sprSel: "russ", label: "Bulldozer", cost: null },
+    { type: "ruspa", selec: 11, spr: "ru", tint: 0xe00000, label: "Bulldozer", cost: null },
   ];
   for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
   const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
@@ -2986,11 +3121,11 @@ export async function mountMatch(ctx, params = {}) {
   // gia' un edificio di quel tipo.
   const STAR_BUILDINGS = [
     {
-      type: "monum", selec: 71, spr: "sta1", sprSel: "sta1s", label: "Monument", cost: 20000,
+      type: "monum", selec: 71, spr: "sta1", tint: 0x82824f, label: "Monument", cost: 20000,
       unlocked: () => (r12.distrutti ?? 0) > 49 && !buildings.some((b) => b.type === "monum"),
     },
     {
-      type: "banca", selec: 72, spr: "sta2", sprSel: "sta2s", label: "Bank", cost: 0,
+      type: "banca", selec: 72, spr: "sta2", tint: 0x82824f, label: "Bank", cost: 0,
       // [Bug corretto, segnalato dall'autore: "lo sblocco della banca
       // dovrebbe essere subordinato... alla creazione del monumento"]
       // **[C]** `pu1/Step.gml`: la create di `stella2` e' annidata dentro
@@ -3027,7 +3162,7 @@ export async function mountMatch(ctx, params = {}) {
     // mai una piattaforma da espandere, resta percio' irraggiungibile
     // (fedele, non un buco: `platformState` e' `null` li').
     {
-      type: "grattacielo", selec: 82, spr: "sta3", sprSel: "sta3s", label: "Skyscraper", cost: 200000,
+      type: "grattacielo", selec: 82, spr: "sta3", tint: 0x82824f, label: "Skyscraper", cost: 200000,
       unlocked: () => buildings.some((b) => b.type === "banca")
         && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded"
         && !buildings.some((b) => b.type === "grattacielo"),
@@ -3200,6 +3335,21 @@ export async function mountMatch(ctx, params = {}) {
       buildingInfoPanel = null;
       return;
     }
+    // Overlay costruzioni mobile (buildMenuOpen, sopra) — stesso
+    // trattamento modale di bankPanelOpen/buildingInfoPanel, ma un tocco su
+    // un edificio SELEZIONA quel tipo (come il tap diretto sul bottone
+    // nella riga scorrevole di sempre) invece di limitarsi a chiudere: un
+    // picker, non un pannello di sola lettura. Un tocco su "Indietro" o
+    // fuori da ogni bottone chiude senza selezionare nulla.
+    if (buildMenuOpen) {
+      const hit = buildMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+      if (hit?.type) {
+        selectedType = hit.type;
+        r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
+      }
+      buildMenuOpen = false;
+      return;
+    }
     // Un gesto di piazzamento a trascinamento e' gia' stato armato da
     // `input.onPointerDown` per lo stesso tocco (vedi sopra): il rilascio lo
     // risolve gia' `input.onPointerUp` (resolvePlacement()), che scatta
@@ -3210,7 +3360,18 @@ export async function mountMatch(ctx, params = {}) {
     // che lo colpisce non deve raggiungere il mondo sotto.
     for (const btn of uiButtons) {
       if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) {
-        if (btn.kind === "menu") menoo = btn.menoo;                      // gru/occhio/indietro
+        if (btn.kind === "menu") {
+          // [Nuova funzionalita', richiesta dall'autore] Solo su mobile, il
+          // bottone "costruzioni" (menoo:1) apre l'overlay a griglia
+          // (drawBuildMenuOverlay(), sopra) invece della riga scorrevole —
+          // su desktop resta il comportamento di sempre. "Indietro"
+          // (menoo:0, nella riga costruzioni stessa) non e' toccato: quel
+          // bottone esiste solo su desktop ormai (la riga costruzioni non
+          // si apre piu' affatto su mobile), quindi passa comunque di qui
+          // senza bisogno di un ramo dedicato.
+          if (isMobile && btn.menoo === 1) buildMenuOpen = true;
+          else menoo = btn.menoo;
+        }
         else if (btn.kind === "deselect") {
           // [Bug corretto, segnalato dall'autore: la mano non deseleziona
           // sempre lo strumento attivo] Azzerare `selectedType`/`r12.selec`
@@ -3225,15 +3386,9 @@ export async function mountMatch(ctx, params = {}) {
           r12.selec = 0;
           ruspaPending = null;
         }  // handbutton
-        else if (btn.kind === "zoom") {                                  // zoom+/zoom-
-          userMoved = true;
-          cam.setZoom(cam.targetZoom * btn.zoom, canvas.clientWidth / 2, canvas.clientHeight / 2);
-        } else if (btn.kind === "building") {                            // casa/industria/...
+        else if (btn.kind === "building") {                              // casa/industria/...
           selectedType = btn.type;
           r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
-        } else {
-          message = `${btn.label}: not rebuilt yet`;
-          messageT = 3;
         }
         return;
       }
@@ -3855,7 +4010,13 @@ export async function mountMatch(ctx, params = {}) {
       }
       stepLights(decorEntities, dt, night, r12);
       stepSemaphores(semaphores, dt);
-      stepAtmosphere(atmo, dt, !!r12.storm);
+      // [Bug corretto, segnalato dall'autore: "durante il temporale
+      // comparivano una marea di nuvole in piu'"] `!!r12.storm` da solo
+      // lasciava fuori `stormeasy` (match_easy) — ma `nidark_slow`
+      // (game/src/atmosphere.js) e' l'oggetto ORIGINALE dedicato proprio a
+      // quel ramo cosmetico: stessa condizione combinata gia' usata per
+      // stepRain() sopra.
+      stepAtmosphere(atmo, dt, !!(r12.storm || r12.stormeasy));
       stepPedestrians(pedestrians, dt);
       // Mongolfiere (game/src/balloons.js): risorse/spia a intervalli regolari
       // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
@@ -4036,11 +4197,24 @@ export async function mountMatch(ctx, params = {}) {
         ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true } : {}),
       });
       // Impalcatura in sovraimpressione + coperchio di fine cantiere (vedi
-      // buildings.js): stessa x/y/depth dell'edificio, spinti sopra di lui
+      // buildings.js): stessa x/y dell'edificio, spinti sopra di lui
       // dall'ordine di inserimento (a parita' di depth+y l'array mantiene
       // l'ordine con cui e' stato costruito, STUDIO.md sopra su sortWorld).
-      if (b.frontSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.frontSpr) });
-      if (b.capSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.capSpr) });
+      // [Bug corretto, segnalato dall'autore: "le impalcature del parco non
+      // devono avere la sua depth, altrimenti se c'e' un edificio sopra
+      // finiscono sotto"] `depth: b.depth` sarebbe stato corretto per ogni
+      // altro tipo (b.depth resta 0 durante il cantiere, ed effDepth() sopra
+      // traduce 0 in -y da solo) ma `parco` e' l'unico con un `fixedDepth`
+      // diverso da zero GIA' dal piazzamento (buildings.js, BUILDING_TYPES.
+      // parco — pensato per tenere INDIETRO la scenografia piatta finita, non
+      // la sua impalcatura durante il cantiere): l'impalcatura ereditava
+      // quello stesso -5 fisso, finendo sempre dietro anche a un edificio
+      // vicino piu' in alto sullo schermo che dovrebbe invece passarle
+      // dietro. L'impalcatura e' un decoro di cantiere come quella di
+      // qualunque altro edificio — sempre -y diretto, mai il `fixedDepth` del
+      // tipo sotto di lei.
+      if (b.frontSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.frontSpr) });
+      if (b.capSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.capSpr) });
       // Impalcatura/gru rotanti del grattacielo (game/src/scaffold.js): decoro
       // puro, si scurisce di notte come ogni altro (nessun `_selfLit`, vedi
       // scaffoldParts()).
@@ -4400,8 +4574,6 @@ export async function mountMatch(ctx, params = {}) {
     const skyRgb = roomParam === "match_easy" ? SCENE_BG_RGB : bauraColorAt(phaseT);
     r.beginFrame(canvas.width, canvas.height, skyRgb);
     const amb = ambientAt(phaseT);
-    const darken = stormDarkenFactor(r12);
-    if (darken > 0.002) amb.rgb = amb.rgb.map((v) => v * (1 - darken));
 
     // --- layer mondo: segue la camera. La tinta giorno/notte e' moltiplicata
     // qui in JS invece che nello shader (u_ambient resta a [1,1,1,1], mai
@@ -4463,7 +4635,7 @@ export async function mountMatch(ctx, params = {}) {
     // quindi seguono comunque la camera come ogni altro decoro.
     if (weatherState.drops.length) {
       const rainFrame = { ...solidFrame(white, RAIN_STREAK_WIDTH, RAIN_STREAK_LENGTH), ox: RAIN_STREAK_WIDTH / 2, oy: RAIN_STREAK_LENGTH / 2 };
-      for (const d of weatherState.drops) drawRotated(rainFrame, d.x, d.y, RAIN_TILT_DEG, 1, RAIN_TINT, RAIN_ALPHA);
+      for (const d of weatherState.drops) drawRotated(rainFrame, d.x, d.y, rainDropAngle(d), 1, RAIN_TINT, RAIN_ALPHA);
     }
     // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che
     // cresce e sfuma sul punto della moneta appena presa, in primo piano come
@@ -4569,6 +4741,17 @@ export async function mountMatch(ctx, params = {}) {
       if (p1.x < cw) r.draw(solidFrame(white, cw - p1.x, ch), p1.x, 0, 1, vignetteTint, 1);
     }
 
+    // "Black-to-fade" del temporale (`thunderclap`/`nitedis`, vedi il
+    // commento su stormFlashAlpha() sopra): un solo quad pieno color "nite"
+    // sopra l'intera view, in spazio schermo cosi' copre davvero "the view"
+    // com'era nel decompilato invece di una sola room (che puo' essere molto
+    // piu' grande del viewport). Disegnato qui, insieme alla vignetta fuori
+    // mappa: stesso layer GUI, stesso principio (un quad a tinta piena).
+    const stormFlash = stormFlashAlpha(r12);
+    if (stormFlash > 0.002) {
+      r.draw(solidFrame(white, canvas.clientWidth, canvas.clientHeight), 0, 0, 1, STORM_FLASH_TINT, stormFlash);
+    }
+
     // Barra risorse vera (STUDIO.md §9 "GUI vera"). [C] src/objects/repre/
     // DrawGUI.gml: e' un `DrawGUI`, quindi le coordinate sono gia' spazio
     // schermo assoluto — nessuna proiezione da rifare. Un'unica immagine con
@@ -4617,9 +4800,17 @@ export async function mountMatch(ctx, params = {}) {
     r.setColorize(iconsDark);
     if (barFrame) r.draw(barFrame, barX, barY, 1, 0xffffff, 1);
     r.setColorize(false);
+    // [Bug corretto, segnalato dall'autore: "in pausa le scritte della UI
+    // non si blurrano"] Questi numeri sono elementi HTML veri (drawHtmlText(),
+    // sopra), non pixel del canvas: pauseBlur.blurScreen() (drawPauseOverlay(),
+    // sopra) cattura e sfuma solo il canvas gia' disegnato, quindi qualunque
+    // testo HTML resterebbe nitido SOPRA il pannello di pausa invece di
+    // sfumarsi con tutto il resto. Le icone WebGL della barra (barFrame/
+    // hapFrame/crysFrame, sopra/sotto) restano invece disegnate anche in
+    // pausa: fanno gia' parte del canvas catturato, si sfumano da sole.
     const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                    [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
-    for (const [value, x] of stats) {
+    if (!paused) for (const [value, x] of stats) {
       drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
     }
     // Data (mese + anno, game/src/state.js stepCalendar()) — [C] repre/
@@ -4632,8 +4823,10 @@ export async function mountMatch(ctx, params = {}) {
     // stesso motivo di `barY+19` sopra: drawHtmlText() centra verticalmente
     // sull'ancora invece di partire dal bordo superiore del glifo come
     // drawText()).
-    drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 9, { size: 15, align: "left", color: barTextColor });
-    drawHtmlText(String(Math.round(r12.time)), barX + 448, barY + 29, { size: 15, align: "left", color: barTextColor });
+    if (!paused) {
+      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 9, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(String(Math.round(r12.time)), barX + 448, barY + 29, { size: 15, align: "left", color: barTextColor });
+    }
     // La "faccina" della felicita' (src/objects/hapware — segnalata
     // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
     // che diventa triste quando la felicita' scende sotto una soglia" — la
@@ -4688,15 +4881,25 @@ export async function mountMatch(ctx, params = {}) {
       r.setColorize(iconsDark);
       if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
       r.setColorize(false);
-      drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
+      if (!paused) drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
     // ancora ricostruita (STUDIO.md §6/§9), e replica la struttura a tre
     // righe alternate del pannello originale (`menoo`, vedi sopra) invece di
-    // mostrarle tutte insieme. `pu1`/`pu2`/... hanno due sprite, normale e
-    // "selezionato" (`pX`/`pXss`, scambiati in base a `r12.selec` — non e'
-    // un tint, sono disegni diversi). Nell'originale erano ancorati a x fissi
+    // mostrarle tutte insieme. `pu1`/`pu2`/... avevano nell'arte originale
+    // due sprite, normale e "selezionato" (`pX`/`pXss`, scambiati in base a
+    // `r12.selec`) — **[Bug corretto/ottimizzazione, segnalato dall'autore]**
+    // misurando le due varianti pixel per pixel (`pXss` non e' un secondo
+    // disegno: stessa sagoma esatta di `pX`, IoU 1.0 su tutte le 16 coppie,
+    // solo il colore di riempimento cambia) risulta che ERA gia' un tint,
+    // solo "cotto" in un secondo raster invece di applicato a runtime — la
+    // stessa `setColorize()` gia' usata per le icone nere della UI (sotto)
+    // lo riproduce identico da un SOLO sprite per bottone (`b.tint`, sopra in
+    // OTHER_BUILDINGS/STAR_BUILDINGS), dimezzando gli sprite da impacchettare
+    // per l'intera riga (tools/23_atlas.py, gruppo "gui") senza perdere
+    // dettaglio: non c'e' nessun dettaglio in piu' da perdere, sono sagome
+    // piatte in tinta unita'. Nell'originale erano ancorati a x fissi
     // (`action_move_to`/`N*global.sca`); qui si accodano da sinistra usando
     // la larghezza vera di ciascuno sprite (`GAP` px fra l'uno e l'altro).
     // `chies` non ha un bottone: non e' un tipo piazzabile (vedi sopra).
@@ -4718,49 +4921,44 @@ export async function mountMatch(ctx, params = {}) {
     // nera fino al bordo del proprio frame (bbox ritagliato sui pixel
     // opachi, tools/23_atlas.py): un GAP positivo apriva una fessura
     // trasparente fra una base e l'altra, spezzando quella che nell'originale
-    // e' una sola barra nera continua sotto tutti i bottoni. Le altre due
-    // righe (menoo 0/2: mano/gru/occhio, vista/zoom) non sono bottoni di
-    // costruzione e restano staccate come prima.
+    // e' una sola barra nera continua sotto tutti i bottoni. L'altra riga
+    // (menoo 0: mano/gru/ruspa) non sono bottoni di costruzione e resta
+    // staccata come prima.
     const GAP = menoo === 1 ? 0 : (isMobile ? 3 : 4);
     const row = menoo === 1
       // menoo 1 "edifici" ([C] pu1/Create.gml li crea tutti insieme): i due
       // veri (casa/industria) + il resto del menu, segnaposto (vedi sopra).
+      // `ruspa` esclusa (vedi sotto): non e' un edificio da costruire, non
+      // vive piu' qui.
       ? [
-          { kind: "building", type: "casa", spr: "p1", sprSel: "p1ss" },
-          { kind: "building", type: "industria", spr: "p2", sprSel: "p2ss" },
-          ...OTHER_BUILDINGS.map((b) => ({ kind: "building", type: b.type, spr: b.spr, sprSel: b.sprSel })),
-          ...STAR_BUILDINGS.filter((b) => b.unlocked()).map((b) => ({ kind: "building", type: b.type, spr: b.spr, sprSel: b.sprSel })),
+          { kind: "building", type: "casa", spr: "p1", tint: 0x114f1f },
+          { kind: "building", type: "industria", spr: "p2", tint: 0x603415 },
+          ...OTHER_BUILDINGS.filter((b) => b.type !== "ruspa").map((b) => ({ kind: "building", type: b.type, spr: b.spr, tint: b.tint })),
+          ...STAR_BUILDINGS.filter((b) => b.unlocked()).map((b) => ({ kind: "building", type: b.type, spr: b.spr, tint: b.tint })),
           { kind: "menu", menoo: 0, spr: "baccc", label: "Back" },
         ]
-      : menoo === 2
-      // menoo 2 "vista" ([C] eyebutton1/2/3 + zoom_plus/zoom_minus): le tre
-      // non ricostruite restano segnaposto, zoom+/- richiamano cam.setZoom —
-      // ma solo su mobile: su desktop lo zoom e' fisso (vedi isMobile sopra),
-      // due bottoni per un'azione che non fa niente sarebbero solo confusione.
-      ? [
-          { kind: "info", spr: "eyee1", label: "View 1" },
-          { kind: "info", spr: "eyee2", label: "View 2" },
-          { kind: "info", spr: "eyee3", label: "View 3" },
-          ...(isMobile ? [
-            { kind: "zoom", spr: "zoomplus", label: "Zoom +", zoom: 0.8 },
-            { kind: "zoom", spr: "zoomminus", label: "Zoom -", zoom: 1.25 },
-          ] : []),
-          { kind: "menu", menoo: 0, spr: "baccc", label: "Back" },
-        ]
-      // menoo 0 "casa" ([C] handbutton/buildbutton/eyebutton): la riga di
-      // partenza. handbutton deseleziona (r12.selec=0); gru e occhio aprono
-      // le altre due righe.
+      // menoo 0 "casa" ([C] handbutton/buildbutton): la riga di partenza.
+      // handbutton deseleziona (r12.selec=0); gru apre l'altra riga.
+      // [Spostata su richiesta dell'autore, liberato posto qui dalla rimozione
+      // del bottone occhio/sottomenu vista] La ruspa non e' un edificio da
+      // piazzare come gli altri (STUDIO.md/OTHER_BUILDINGS sopra: e' lo
+      // strumento di demolizione, `selec===11`) — vive ora accanto a
+      // mano/costruzioni invece che in mezzo agli edifici veri del
+      // sottomenu costruzioni, sempre a portata di mano invece che
+      // nascosta in fondo a una riga scorrevole. `kind: "building"` resta
+      // lo stesso (il tap la seleziona come strumento esattamente come
+      // prima, STUDIO.md sopra sul gestore dei tap), solo la riga cambia.
       : [
           { kind: "deselect", spr: "handee", label: "Deselect" },
           { kind: "menu", menoo: 1, spr: "groo", label: "Buildings menu" },
-          { kind: "menu", menoo: 2, spr: "eyeee", label: "View menu" },
+          ...OTHER_BUILDINGS.filter((b) => b.type === "ruspa").map((b) => ({ kind: "building", type: b.type, spr: b.spr, tint: b.tint })),
         ];
     // Prima passata, solo misure: serve la larghezza totale della riga PRIMA
     // di disegnare, per sapere quanto scroll orizzontale ha senso concedere
     // (uiScrollX va sempre bloccato all'intervallo [0, maxScroll] di QUESTA
     // riga, che cambia ad ogni `menoo` — una riga corta non deve poter
     // scorrere via lo scroll accumulato su una riga lunga vista prima).
-    const frames = row.map((b) => frameFor(b.kind === "building" && selectedType === b.type ? b.sprSel : b.spr));
+    const frames = row.map((b) => frameFor(b.spr));
     let rowWidth = 0;
     for (const f of frames) if (f) rowWidth += f.w * UI_SCALE + GAP;
     if (rowWidth > 0) rowWidth -= GAP;
@@ -4796,10 +4994,14 @@ export async function mountMatch(ctx, params = {}) {
     // da sola non basta a scurirle) ma sopra quella della tinta piena di
     // `baura` di notte (~0.2, la stessa usata dalla vignetta sopra) — dove
     // il nero puro sparirebbe davvero.
-    // I bottoni edificio SELEZIONATI (sprite `sprSel`, sotto) restano
-    // esclusi: quello NON e' un'icona nera ma un disegno a colori scelto a
-    // mano nell'arte originale (STUDIO.md, "GUI vera" — "non un tint, sono
-    // disegni diversi"), colorize lo appiattirebbe perdendo quella scelta.
+    // I bottoni edificio SELEZIONATI usano lo stesso meccanismo: `b.tint`
+    // (OTHER_BUILDINGS/STAR_BUILDINGS/casa/industria, sopra) e' il colore
+    // pieno gia' misurato dal vecchio sprite `pXss` — sempre disegnati in
+    // colorize mode, INDIPENDENTEMENTE da `iconsDark` (a differenza delle
+    // icone nere sotto: qui non e' un aggiustamento di leggibilita' di
+    // notte, e' semplicemente COME si disegna un bottone selezionato, di
+    // giorno come di notte — `r.setAmbient(1,1,1)` poco sopra rende questo
+    // layer GUI comunque immune al ciclo giorno/notte).
     for (let i = 0; i < row.length; i++) {
       const b = row[i], f = frames[i];
       if (!f) continue;
@@ -4810,15 +5012,13 @@ export async function mountMatch(ctx, params = {}) {
       // schermo che intercetterebbero un tap sulla mappa sottostante.
       if (rx + w >= 0 && rx <= canvas.clientWidth) {
         // [Bug corretto, richiesto dall'autore: "la mano stessa deve avere
-        // una tint blu" quando lo strumento mano e' attivo] Nessun altro
-        // bottone di questa riga ha uno sprite "selezionato" a parte
-        // (`sprSel`, solo i bottoni edificio in menoo 1) — qui una tinta
-        // blu al posto del bianco neutro basta a segnalare "strumento
-        // attivo", coerente con `r12.selec === 0` = mano/deselezionato
-        // gia' usato sopra per spegnere l'hover viola dei placeholder.
+        // una tint blu" quando lo strumento mano e' attivo] Una tinta blu
+        // al posto del bianco neutro basta a segnalare "strumento attivo",
+        // coerente con `r12.selec === 0` = mano/deselezionato gia' usato
+        // sopra per spegnere l'hover viola dei placeholder.
         const usingHandTint = b.kind === "deselect" && r12.selec === 0;
-        const tint = usingHandTint ? 0x66aaff : 0xffffff;
-        const usingSelSprite = b.kind === "building" && selectedType === b.type;
+        const usingSelBuilding = b.kind === "building" && selectedType === b.type;
+        const tint = usingSelBuilding ? b.tint : (usingHandTint ? 0x66aaff : 0xffffff);
         // [Bug corretto, segnalato dall'autore: "la mano non si colora
         // quando selezionata"] `handee` e' una sagoma nera pura come le
         // altre icone della riga (vedi il commento sopra su
@@ -4827,7 +5027,7 @@ export async function mountMatch(ctx, params = {}) {
         // davvero — non solo quando `iconsDark`, sempre quando la mano e'
         // lo strumento attivo, altrimenti la tint resta invisibile di
         // giorno.
-        r.setColorize((iconsDark || usingHandTint) && !usingSelSprite);
+        r.setColorize(usingSelBuilding || iconsDark || usingHandTint);
         r.draw(f, rx, baseY, UI_SCALE, tint, 1);
         uiButtons.push({ x: rx, y: baseY - h, w, h, ...b });
         rowTop = Math.min(rowTop, baseY - h);
@@ -4859,6 +5059,12 @@ export async function mountMatch(ctx, params = {}) {
       }
     }
 
+    // Ricalcolata ad ogni frame in cui e' aperto (stessa idea di
+    // `uiButtons` sopra): serve gia' fresca a input.onTap per il tap-test,
+    // non solo al disegno vero e proprio di drawBuildMenuOverlay() piu'
+    // avanti nel frame.
+    if (buildMenuOpen) buildMenuButtons = computeBuildMenuButtons();
+
     // Freccia del tutorial (game/src/tutorial.js — [C]
     // freccia_tutorial/EndStep.gml): la tabella originale punta a coordinate
     // fisse del layout GameMaker, gia' diverso dal selettore ricostruito qui
@@ -4866,7 +5072,17 @@ export async function mountMatch(ctx, params = {}) {
     // punta quindi al bottone VERO corrispondente in `uiButtons` (per kind/
     // type), non a un pixel fisso copiato dal decompilato, cosi' resta
     // corretta qualunque sia la riga/lo scroll del menu al momento.
-    if (tutorialState && !tutorialState.cutscene) {
+    // `!buildMenuOpen`: l'overlay costruzioni mobile (sopra) e' un blur
+    // pieno schermo disegnato PIU' TARDI nel frame (drawBuildMenuOverlay()),
+    // sopra a qualunque cosa disegnata qui — freccia/balloon (sotto)
+    // resterebbero comunque coperti, quindi tanto vale non disegnarli
+    // affatto mentre l'overlay e' aperto invece di sprecare lavoro su
+    // qualcosa di invisibile. La freccia ha comunque gia' fatto il suo
+    // lavoro guidando fino al bottone "costruzioni" prima che l'overlay si
+    // aprisse; la griglia stessa (con tutte le icone visibili in chiaro,
+    // piu' il testo della fase che nomina gia' il bottone giusto) resta
+    // guida sufficiente da qui in poi.
+    if (tutorialState && !tutorialState.cutscene && !buildMenuOpen) {
       tutorialState.arrowFrame = (tutorialState.arrowFrame + dt * 20) % 20;
       const byKind = (pred) => uiButtons.find(pred);
       // [Bug corretto, segnalato dall'autore: "quando l'oggetto da premere
@@ -4875,12 +5091,11 @@ export async function mountMatch(ctx, params = {}) {
       // recarsi"] Il bottone bersaglio di una fase vive quasi sempre nel
       // menu' edifici (menoo 1): se il giocatore e' li' la freccia lo punta
       // gia' direttamente; se e' a casa (menoo 0) punta al bottone che apre
-      // quel menu' — ma se e' nel menu' VISTA (menoo 2, tutto un altro
-      // sottomenu) nessuno dei due bottoni esiste in questa riga, e prima
-      // la freccia spariva senza indicare nulla. Ultimo anello della
-      // catena: "Indietro" (`menoo:0`, presente in OGNI sottomenu diverso
-      // da casa) — un passo alla volta verso il bersaglio vero, mai piu'
-      // muta su cosa premere.
+      // quel menu' — ma se il giocatore e' in un sottomenu che non contiene
+      // NESSUno dei due bottoni, prima la freccia spariva senza indicare
+      // nulla. Ultimo anello della catena: "Indietro" (`menoo:0`, presente
+      // in OGNI sottomenu diverso da casa) — un passo alla volta verso il
+      // bersaglio vero, mai piu' muta su cosa premere.
       const findIndietro = () => byKind((btn) => btn.kind === "menu" && btn.menoo === 0);
       // [Bug corretto, richiesto dall'autore: "se per avanzare serve
       // costruire degli edifici consiglia anche placeholder random una
@@ -4915,9 +5130,15 @@ export async function mountMatch(ctx, params = {}) {
       const pointAtButton = (b) => b && { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
       let target = null;   // { x, y, angle }
       switch (tutorialState.phase) {
+        // [Aggiornato: la ruspa vive ora in menoo 0 (mano/costruzioni/ruspa),
+        // non piu' nel sottomenu costruzioni — vedi il commento su OTHER_
+        // BUILDINGS/riga bottoni sopra] Fallback diretto a "Indietro": se il
+        // giocatore e' nel sottomenu costruzioni (dove la ruspa non c'e'
+        // piu'), la freccia lo riporta subito alla riga di casa, dove la
+        // ruspa e' sempre visibile — non serve piu' passare da un secondo
+        // sottomenu inesistente.
         case 2: {
           target = pointAtButton(byKind((btn) => btn.kind === "building" && btn.type === "ruspa")
-            ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1)
             ?? findIndietro());
           break;
         }
@@ -5003,10 +5224,6 @@ export async function mountMatch(ctx, params = {}) {
                 ?? findIndietro());
           break;
         }
-        case 31: {
-          target = pointAtButton(byKind((btn) => btn.kind === "menu" && btn.menoo === 2) ?? findIndietro());
-          break;
-        }
       }
       if (target) {
         const arrowFrame = frameFor("fr_ros", Math.floor(tutorialState.arrowFrame));
@@ -5038,7 +5255,18 @@ export async function mountMatch(ctx, params = {}) {
     // wrapText()/measureText()): lo misura DOPO averlo scritto
     // (`getBoundingClientRect()`), poi riposiziona sia lui che lo sfondo
     // WebGL in base all'altezza vera appena letta.
-    if (tutorialState?.showText) {
+    // [Bug corretto, segnalato dall'autore: "in pausa le scritte della UI
+    // non si blurrano"] Stesso motivo della barra risorse sopra: il testo
+    // del balloon e' HTML (drawHtmlText(), sotto), fuori dal canvas che
+    // pauseBlur.blurScreen() sfuma — `&& !paused` salta anche lo sfondo
+    // WebGL del balloon (tutorialBoxFrame(), sotto), cosi' non resta un
+    // riquadro vuoto senza testo mentre il gioco e' in pausa. `&&
+    // !buildMenuOpen`: stesso motivo della freccia sopra — l'overlay
+    // costruzioni mobile e' un blur pieno schermo disegnato piu' tardi nel
+    // frame, il balloon resterebbe comunque coperto (e visibile solo il suo
+    // testo HTML, che non passa dal canvas — lo stesso problema del fix "in
+    // pausa" qui sopra, stavolta per l'overlay invece del menu di pausa).
+    if (tutorialState?.showText && !paused && !buildMenuOpen) {
       const pad = 20;
       // boxRight lascia spazio al pollice (tut_ok, disegnato subito sotto:
       // stessa larghezza 45*1.3 li' usata, + margine) SOLO quando il
@@ -5061,7 +5289,11 @@ export async function mountMatch(ctx, params = {}) {
     // "OK") invece dell'HTML segnaposto di prima. `tutorialOkRect` (letto da
     // input.onTap) e' il suo rettangolo schermo di QUESTO frame.
     tutorialOkRect = null;
-    if (tutorialState?.showOkButton) {
+    // `&& !buildMenuOpen`: stesso motivo di freccia/balloon sopra — resterebbe
+    // comunque coperto dall'overlay costruzioni mobile, disegnato piu' tardi
+    // nel frame; `tutorialOkRect` resta `null` (sopra), quindi non serve
+    // nemmeno bloccare input.onTap a parte per questo caso.
+    if (tutorialState?.showOkButton && !buildMenuOpen) {
       const okScale = 1.3;
       const okFrame = frameFor("tut_ok");
       if (okFrame) {
@@ -5080,39 +5312,45 @@ export async function mountMatch(ctx, params = {}) {
       }
     }
 
-    // Avviso "ATTACK INCOMING" (src/objects/aincom, game/src/balloons.js): una
-    // mongolfiera spia ha completato il suo giro. [C] aincom/Create.gml +
-    // Alarm_1/2.gml: lampeggia (mostra/nasconde ogni 30 tick = 0.5s) per 240
-    // tick (4s) al centro della view — qui al centro dello schermo, coerente
-    // col resto della GUI in spazio schermo (STUDIO.md §7.3 "L'interfaccia va
-    // in uno spazio schermo separato").
-    if (r12.alertT > 0) {
-      const ainco = frameFor("ainco");
-      // r.draw ancora sull'origine dello sprite (data/sprites.json: "ainco" ha
-      // origin ~(w/2, h/2), gia' centrato — a differenza di "icone_oriz" sopra,
-      // che ha origine in alto a sinistra), quindi il centro schermo e' gia'
-      // il punto giusto da passare, non il suo angolo in alto a sinistra.
-      if (ainco && Math.floor((ALERT_DURATION - r12.alertT) / 0.5) % 2 === 0) {
-        r.draw(ainco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
-      }
+    // Avviso "ATTACK INCOMING"/"THUNDERSTORM INCOMING" (src/objects/aincom/
+    // tincom) — **[Bug corretto, segnalato dall'autore: "a volte non ci
+    // stanno nello schermo"]** Erano i due ultimi banner ancora disegnati
+    // come raster a scala 1 (`ainco` 949x59, `tinco` 1370x59 — data/
+    // sprites.json): larghi abbastanza da uscire dai bordi su schermi
+    // stretti, un limite che nessuna quantita' di margine risolve per un
+    // bitmap a dimensione fissa. Sostituiti da testo HTML vero
+    // (drawHtmlText(), stesso trattamento gia' scelto per il resto della UI
+    // — barra risorse/menu di pausa/balloon del tutorial), sempre al centro
+    // schermo come un elemento GUI qualunque (spazio schermo fisso, non
+    // mondo): `bannerFontSize()` sotto lo fa anche RESTARE dentro lo
+    // schermo, riducendo la dimensione in proporzione alla larghezza
+    // disponibile invece di scalare un raster (che sfumerebbe scalando).
+    // Stesso lampeggio (mostra/nasconde ogni 0.5s per 4s) di prima — [C]
+    // aincom/Create.gml + Alarm_1/2.gml, tincom/Create.gml. `&& !paused`:
+    // stesso motivo della barra risorse/del balloon del tutorial piu' sopra
+    // — testo HTML vero, fuori dal canvas che pauseBlur.blurScreen() sfuma
+    // per il menu di pausa, quindi va saltato del tutto mentre paused e'
+    // true invece di restare nitido sopra al resto sfumato.
+    function bannerFontSize(text, maxSize) {
+      const avail = canvas.clientWidth - 40;
+      return Math.max(14, Math.min(maxSize, avail / (text.length * 0.62)));
     }
-    // Avviso "il temporale sta arrivando" (src/objects/tincom, solo su
-    // `match` — game/src/state.js, stepWeather()): stesso identico
-    // trattamento di "ainco" appena sopra (lampeggia ogni 0.5s per 4s al
-    // centro dello schermo), stessa origine gia' centrata dello sprite
-    // (data/sprites.json: "tinco" 1370x59, origin 685,29).
-    if (r12.tincomT > 0) {
-      const tinco = frameFor("tinco");
-      if (tinco && Math.floor((TINCOM_DURATION - r12.tincomT) / 0.5) % 2 === 0) {
-        r.draw(tinco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
-      }
+    if (r12.alertT > 0 && !paused && Math.floor((ALERT_DURATION - r12.alertT) / 0.5) % 2 === 0) {
+      const text = "ATTACK INCOMING";
+      drawHtmlText(text, canvas.clientWidth / 2, canvas.clientHeight / 2,
+        { size: bannerFontSize(text, 48), maxWidth: canvas.clientWidth - 40 });
+    }
+    if (r12.tincomT > 0 && !paused && Math.floor((TINCOM_DURATION - r12.tincomT) / 0.5) % 2 === 0) {
+      const text = "THUNDERSTORM INCOMING";
+      drawHtmlText(text, canvas.clientWidth / 2, canvas.clientHeight / 2,
+        { size: bannerFontSize(text, 48), maxWidth: canvas.clientWidth - 40 });
     }
     // Il pannello prestiti (bankPanelOpen, state.js LOANS) — vero modale in
     // spazio schermo (vedi il commento su bankPanelOpen piu' sopra per il
     // perche'), disegnato per ultimo cosi' resta sempre sopra a tutto il
     // resto della GUI. `loanscr`/`getlo1..4` hanno gia' l'origine al centro
-    // (data/sprites.json), quindi il centro schermo e' gia' il punto giusto,
-    // come "ainco" sopra. Scala calcolata invece di UI_SCALE fisso: "loanscr"
+    // (data/sprites.json), quindi il centro schermo e' gia' il punto giusto.
+    // Scala calcolata invece di UI_SCALE fisso: "loanscr"
     // (540x1086) e' grande quanto un'intera view, UI_SCALE (pensata per le
     // iconcine da ~100px del resto della barra) lo lascerebbe enorme o
     // minuscolo a seconda dello schermo — qui si adatta sempre a circa l'85%
@@ -5185,6 +5423,7 @@ export async function mountMatch(ctx, params = {}) {
     if (outcome) drawOutcomeOverlay();
     else if (paused) { if (pauseSubmenu === "saving") drawSavingOptionsOverlay(); else drawPauseOverlay(); }
     else if (buildingInfoPanel) drawBuildingInfoPanel();
+    else if (buildMenuOpen) drawBuildMenuOverlay();
 
     // Cutscene iniziale del tutorial (game/src/tutorial.js): disegnata per
     // ultima, in spazio schermo, sopra a TUTTO il resto (mondo + UI vera) —
