@@ -514,51 +514,50 @@ export async function mountTitle(ctx) {
   requestAnimationFrame(frame);
 
   // [Nuova funzionalita', richiesta dall'autore: "aggiungi le scritte NIMBUS
-  // (centrata in alto) e REDUX (piccola sotto), con un effetto di glitch
-  // sui caratteri"] Testo HTML vero, Montserrat (self-hosted, index.html —
-  // stesso font gia' usato per menu di pausa/tutorial/barra risorse in
-  // main.js), non uno sprite: nessun equivalente nel decompilato (`title`
-  // non aveva un titolo testuale separato dal banner, STUDIO.md — era tutto
-  // dentro `logigogi`, sopra), un tocco puramente nuovo per questa title
-  // screen. "REDUX" segnala che questo E' la riscrittura, non l'originale.
+  // (centrata in alto) e REDUX (piccola sotto)"] Testo HTML vero,
+  // Montserrat (self-hosted, index.html — stesso font gia' usato per menu
+  // di pausa/tutorial/barra risorse in main.js), non uno sprite: nessun
+  // equivalente nel decompilato (`title` non aveva un titolo testuale
+  // separato dal banner, STUDIO.md — era tutto dentro `logigogi`, sopra),
+  // un tocco puramente nuovo per questa title screen. "REDUX" segnala che
+  // questo E' la riscrittura, non l'originale.
+  //
+  // [Corretto: l'autore intendeva un effetto diverso da quello scelto la
+  // prima volta] Non una sostituzione casuale dei caratteri — lo stesso
+  // sdoppiamento cromatico (ciano/blu) gia' usato per il logo della
+  // schermata di caricamento (index.html, .logoWrap .ghost/@keyframes
+  // rgbGlitch): due copie dello stesso testo, colorate e sovrapposte esatte
+  // (position:absolute;inset:0) in `mix-blend-mode:screen`, invisibili
+  // (opacity 0) per quasi tutto il ciclo di `rgbGlitch` e visibili solo per
+  // una manciata di frame — lo stesso "sfarfallio" di trasmissione, non
+  // testo che cambia. Le keyframe sono gia' globali in index.html (non
+  // scope-ate a `.logoWrap`), riusate qui senza duplicarle.
   const titleWrap = document.createElement("div");
   titleWrap.style.cssText = "position:fixed;left:0;right:0;top:max(28px,6vh);text-align:center;" +
     "pointer-events:none;z-index:4;font-family:Montserrat,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;";
-  const nimbusEl = document.createElement("div");
-  nimbusEl.style.cssText = "font-size:clamp(34px,7vw,64px);font-weight:800;color:#fff;" +
-    "letter-spacing:0.1em;text-shadow:0 2px 14px rgba(0,0,0,0.55);";
-  const reduxEl = document.createElement("div");
-  reduxEl.style.cssText = "font-size:clamp(12px,1.6vw,16px);font-weight:700;color:rgba(255,255,255,0.8);" +
-    "letter-spacing:0.5em;margin-top:2px;text-shadow:0 1px 6px rgba(0,0,0,0.55);";
-  titleWrap.append(nimbusEl, reduxEl);
-  document.body.appendChild(titleWrap);
-
-  // Effetto "glitch": nessun equivalente da decompilato da seguire qui
-  // (**[I]**, puramente estetico) — ogni GLITCH_INTERVAL, con probabilita'
-  // GLITCH_CHANCE, 1-2 caratteri VERI del testo vengono sostituiti per un
-  // solo tick con un simbolo a caso di GLITCH_CHARS, poi il tick successivo
-  // torna al testo reale (nessuno stato "glitchato" che si accumula): uno
-  // sfarfallio sporadico e leggero, non un disturbo costante che renderebbe
-  // il titolo illeggibile.
-  const GLITCH_CHARS = "!<>-_\\/[]{}=+*^#%&";
-  const GLITCH_INTERVAL = 150;
-  const GLITCH_CHANCE = 0.12;
-  function startGlitch(el, text) {
-    el.textContent = text;
-    return setInterval(() => {
-      if (Math.random() > GLITCH_CHANCE) { el.textContent = text; return; }
-      const chars = text.split("");
-      const hits = 1 + (Math.random() < 0.3 ? 1 : 0);
-      for (let n = 0; n < hits; n++) {
-        const i = Math.floor(Math.random() * chars.length);
-        if (chars[i] === " ") continue;
-        chars[i] = GLITCH_CHARS[(Math.random() * GLITCH_CHARS.length) | 0];
-      }
-      el.textContent = chars.join("");
-    }, GLITCH_INTERVAL);
+  const NIMBUS_SIZE = "font-size:clamp(34px,7vw,64px);font-weight:800;letter-spacing:0.1em;";
+  const REDUX_SIZE = "font-size:clamp(12px,1.6vw,16px);font-weight:700;letter-spacing:0.5em;margin-top:2px;";
+  // Stessi colori/ritardo del secondo strato (`.ghost.blue`, index.html) —
+  // il ritardo di 0,06s fra ciano e blu e' quello che da' l'aspetto di uno
+  // sdoppiamento vero invece di un semplice lampo bicolore in sincrono.
+  const GHOST_LAYERS = [["#00e5ff", "0s"], ["#4d5bff", ".06s"]];
+  function glitchLine(text, sizeCss, baseColorCss) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:relative;" + sizeCss + baseColorCss;
+    wrap.textContent = text;
+    for (const [color, delay] of GHOST_LAYERS) {
+      const ghost = document.createElement("div");
+      ghost.textContent = text;
+      ghost.style.cssText = "position:absolute;inset:0;opacity:0;pointer-events:none;" + sizeCss +
+        `color:${color};mix-blend-mode:screen;animation:rgbGlitch 5.4s infinite;animation-delay:${delay};`;
+      wrap.appendChild(ghost);
+    }
+    return wrap;
   }
-  const nimbusGlitch = startGlitch(nimbusEl, "NIMBUS");
-  const reduxGlitch = startGlitch(reduxEl, "REDUX");
+  const nimbusLine = glitchLine("NIMBUS", NIMBUS_SIZE, "color:#fff;text-shadow:0 2px 14px rgba(0,0,0,0.55);");
+  const reduxLine = glitchLine("REDUX", REDUX_SIZE, "color:rgba(255,255,255,0.8);text-shadow:0 1px 6px rgba(0,0,0,0.55);");
+  titleWrap.append(nimbusLine, reduxLine);
+  document.body.appendChild(titleWrap);
 
   const msgEl = document.createElement("div");
   msgEl.style.cssText = "position:fixed;left:0;right:0;bottom:10%;text-align:center;" +
@@ -631,8 +630,6 @@ export async function mountTitle(ctx) {
       clearInterval(msgInterval);
       msgEl.remove();
       loadFileBtn.remove();
-      clearInterval(nimbusGlitch);
-      clearInterval(reduxGlitch);
       titleWrap.remove();
     },
   };
