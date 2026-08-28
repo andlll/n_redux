@@ -192,7 +192,25 @@ export async function mountTitle(ctx) {
   const sortWorld = (a, b) => effDepth(b) - effDepth(a);
 
   const camWorld = new Camera();
-  camWorld.bounds = { left: 0, top: 0, right: mScene.width, bottom: mScene.height };
+  // [Bug corretto, segnalato dall'autore: "la piattaforma va troppo a
+  // destra/sinistra, si vede lo sprite tagliato"] `bounds` erano le
+  // dimensioni dell'INTERA room `match` (mScene.width/height — 3900x2090,
+  // molto piu' grandi della sola citta' cotta in cityBg) — di fatto mai
+  // applicate: CAM_CENTER/CAM_DRIFT sotto scrivono camWorld.x/y DIRETTAMENTE
+  // ogni frame, non tramite panByScreen()/update() (gli unici due punti
+  // della classe che chiamano clamp() da soli, game/src/camera.js), quindi
+  // la deriva poteva portare il bordo schermo oltre il bordo VERO di
+  // cityBg (CITY_RECT/cityBg.width/height, sopra), esponendo il vuoto oltre
+  // l'immagine invece di fermarsi quando il suo bordo tocca il bordo dello
+  // schermo. `bounds` ora e' il rettangolo vero di cityBg, con un
+  // `camWorld.clamp()` esplicito nel loop dopo aver scritto x/y (sotto) —
+  // riusa la stessa logica gia' pronta della classe, compreso il fallback
+  // "centra invece di incastrarti" se il mondo e' piu' stretto della vista
+  // (schermi molto larghi dove cityBg da solo non basta a coprire tutto).
+  camWorld.bounds = {
+    left: CITY_RECT.x, top: CITY_RECT.y,
+    right: CITY_RECT.x + cityBg.width, bottom: CITY_RECT.y + cityBg.height,
+  };
   camWorld.minZoom = camWorld.maxZoom = 1.6;
   camWorld.setZoomImmediate(1.6);
   // Un ritaglio intorno a r120 (la base volante, STUDIO.md): si vede sia la
@@ -248,13 +266,33 @@ export async function mountTitle(ctx) {
     return (r << 16) | (g << 8) | b;
   }
 
+  // [Bug corretto, segnalato dall'autore: "aerei/dirigibili devono partire
+  // da fuori schermo in movimento, altrimenti sembrano comparire gia' a
+  // meta' schermo"] spawnThreat() (threats.js) nasce a coordinate FISSE
+  // (spawnX -170 per air/bombar, -1000 per dirig) calibrate sull'intera
+  // mappa `match_easy` — la camera qui (camWorld, molto piu' stretta,
+  // ancorata a CAM_CENTER/CITY_RECT sopra, per niente la stessa finestra di
+  // `match_easy`) non ha alcuna relazione con quelle coordinate: a seconda
+  // della finestra del browser potevano gia' cadere dentro l'area visibile
+  // invece che fuori. THREAT_SPAWN_MARGIN in piu' oltre al bordo, stesso
+  // principio del margine di RAIN_MARGIN/CLOUD_SPAWNS altrove — non spunta
+  // "a filo" del bordo dello schermo.
+  const THREAT_SPAWN_MARGIN = 150;
   function updateThreats(dt) {
     // Mantiene un rifornimento costante cosi' aerei/bombardieri/dirigibili
     // continuano ad arrivare per tutto il tempo che il menu resta a schermo,
     // invece di esaurirsi dopo le prime ondate come farebbe r12 vero senza
     // spie a rialimentarli.
     fakeR12.ondan = 3; fakeR12.bombn = 1; fakeR12.diron = 1;
+    const spawnedBefore = threats.length;
     stepThreatSpawner(fakeR12, threats, dt);
+    // Sposta SOLO i nuovi arrivi di questo frame appena fuori dal bordo
+    // sinistro VERO della camera (ricalcolato ogni volta: cambia con
+    // resize/la deriva di camWorld) — direzione/velocita' di volo restano
+    // quelle vere di spawnThreat(), sempre verso destra (COS30 positivo,
+    // threats.js/stepThreats()), solo il punto di partenza cambia.
+    const leftEdge = camWorld.x - camWorld.worldW / 2;
+    for (let i = spawnedBefore; i < threats.length; i++) threats[i].x = leftEdge - THREAT_SPAWN_MARGIN;
     stepThreats(threats, bombs, explosions, dt, fakeR12, aerSmoke, debris);
     stepBombs(bombs, explosions, [], dt, fakeR12);
     stepExplosions(explosions, dt);
@@ -357,10 +395,15 @@ export async function mountTitle(ctx) {
     stepAtmosphere(atmo, dt, false);
     stepSemaphores(semaphores, dt);
     stepBuildingLights(dt, isNightAt(elapsed));
-    updateThreats(dt);
 
+    // camWorld.x/y VANNO risolti prima di updateThreats() sotto: gli riposiziona
+    // i nuovi arrivi appena fuori dal bordo sinistro vero di QUESTO frame
+    // (vedi il commento su THREAT_SPAWN_MARGIN sopra), non quello del frame
+    // precedente.
     camWorld.x = CAM_CENTER.x + Math.sin((elapsed / CAM_PERIOD) * Math.PI * 2) * CAM_DRIFT.x;
     camWorld.y = CAM_CENTER.y + Math.cos((elapsed / CAM_PERIOD) * Math.PI * 2) * CAM_DRIFT.y;
+    camWorld.clamp();
+    updateThreats(dt);
 
     r.beginFrame(canvas.width, canvas.height);
     bgT += dt;
