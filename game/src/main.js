@@ -2943,10 +2943,10 @@ export async function mountMatch(ctx, params = {}) {
   // quattro bottoni mutuamente esclusivi non tracciati qui): l'ordine qui e'
   // solo "tutti visibili, uno per slot", non quello esatto.
   const OTHER_BUILDINGS = [
-    { type: "parco", selec: 7, spr: "p7", sprSel: "p7ss", label: "Park", cost: 500 },
-    { type: "missile", selec: 3, spr: "p3", sprSel: "p3ss", label: "Missile Launcher", cost: 5000 },
-    { type: "eolico", selec: 4, spr: "p4", sprSel: "p4ss", label: "Wind Turbine", cost: 50000 },   // ora vero, BUILDING_TYPES.eolico
-    { type: "laser", selec: 5, spr: "p5", sprSel: "p5ss", label: "Laser", cost: 20000 },
+    { type: "parco", selec: 7, spr: "p7", tint: 0x139f13, label: "Park", cost: 500 },
+    { type: "missile", selec: 3, spr: "p3", tint: 0x892020, label: "Missile Launcher", cost: 5000 },
+    { type: "eolico", selec: 4, spr: "p4", tint: 0x8b6c17, label: "Wind Turbine", cost: 50000 },   // ora vero, BUILDING_TYPES.eolico
+    { type: "laser", selec: 5, spr: "p5", tint: 0x5c0d64, label: "Laser", cost: 20000 },
     // "Grattacielo" era il nome (mai verificato) di una versione precedente
     // di questa riga: **[C]** src/objects/level2palazz (il popup "livello 2
     // sbloccato" agganciato a `pu6/Mouse_MouseEnter.gml`, stesso schema di
@@ -2956,16 +2956,16 @@ export async function mountMatch(ctx, params = {}) {
     // `BUILDING_TYPES.grattacielo` (STAR_BUILDINGS sotto, la terza stella),
     // un edificio completamente diverso da questo — nessuna relazione se non
     // l'omonimia mai risolta a suo tempo.
-    { type: "palazzo", selec: 6, spr: "p6", sprSel: "p6ss", label: "Building", cost: 6000 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
-    { type: "club", selec: 60, spr: "pdj", sprSel: "pdjss", label: "Club", cost: 3500 },   // ora vero, BUILDING_TYPES.club
-    { type: "solare", selec: 61, spr: "psolare", sprSel: "psolaress", label: "Solar Panels", cost: 1000 },
-    { type: "gatling", selec: 62, spr: "pgatling", sprSel: "pgatlingss", label: "Gatling Gun", cost: 10000 },
-    { type: "villa", selec: 63, spr: "pvilla", sprSel: "pvillass", label: "Villa", cost: 7500 },
-    { type: "museo", selec: 70, spr: "pmuseo", sprSel: "pmuseoss", label: "Museum", cost: 35000 },   // ora vero, BUILDING_TYPES.museo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "palazzo", selec: 6, spr: "p6", tint: 0x114f18, label: "Building", cost: 6000 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "club", selec: 60, spr: "pdj", tint: 0xc24398, label: "Club", cost: 3500 },   // ora vero, BUILDING_TYPES.club
+    { type: "solare", selec: 61, spr: "psolare", tint: 0xb57008, label: "Solar Panels", cost: 1000 },
+    { type: "gatling", selec: 62, spr: "pgatling", tint: 0x8b0808, label: "Gatling Gun", cost: 10000 },
+    { type: "villa", selec: 63, spr: "pvilla", tint: 0x1e666b, label: "Villa", cost: 7500 },
+    { type: "museo", selec: 70, spr: "pmuseo", tint: 0xa47f7f, label: "Museum", cost: 35000 },   // ora vero, BUILDING_TYPES.museo — piazzamento a trascinamento, vedi armPlacement()
     // [C] STUDIO.md "cosa manca": lo strumento vero di demolizione/
     // riparazione (selec==11), mai ricostruito — la distruzione oggi e'
     // immediata (destroyBuilding()) invece di passare da questo strumento.
-    { type: "ruspa", selec: 11, spr: "ru", sprSel: "russ", label: "Bulldozer", cost: null },
+    { type: "ruspa", selec: 11, spr: "ru", tint: 0xe00000, label: "Bulldozer", cost: null },
   ];
   for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
   const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
@@ -2989,11 +2989,11 @@ export async function mountMatch(ctx, params = {}) {
   // gia' un edificio di quel tipo.
   const STAR_BUILDINGS = [
     {
-      type: "monum", selec: 71, spr: "sta1", sprSel: "sta1s", label: "Monument", cost: 20000,
+      type: "monum", selec: 71, spr: "sta1", tint: 0x82824f, label: "Monument", cost: 20000,
       unlocked: () => (r12.distrutti ?? 0) > 49 && !buildings.some((b) => b.type === "monum"),
     },
     {
-      type: "banca", selec: 72, spr: "sta2", sprSel: "sta2s", label: "Bank", cost: 0,
+      type: "banca", selec: 72, spr: "sta2", tint: 0x82824f, label: "Bank", cost: 0,
       // [Bug corretto, segnalato dall'autore: "lo sblocco della banca
       // dovrebbe essere subordinato... alla creazione del monumento"]
       // **[C]** `pu1/Step.gml`: la create di `stella2` e' annidata dentro
@@ -3030,7 +3030,7 @@ export async function mountMatch(ctx, params = {}) {
     // mai una piattaforma da espandere, resta percio' irraggiungibile
     // (fedele, non un buco: `platformState` e' `null` li').
     {
-      type: "grattacielo", selec: 82, spr: "sta3", sprSel: "sta3s", label: "Skyscraper", cost: 200000,
+      type: "grattacielo", selec: 82, spr: "sta3", tint: 0x82824f, label: "Skyscraper", cost: 200000,
       unlocked: () => buildings.some((b) => b.type === "banca")
         && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded"
         && !buildings.some((b) => b.type === "grattacielo"),
@@ -4707,9 +4707,19 @@ export async function mountMatch(ctx, params = {}) {
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
     // ancora ricostruita (STUDIO.md §6/§9), e replica la struttura a tre
     // righe alternate del pannello originale (`menoo`, vedi sopra) invece di
-    // mostrarle tutte insieme. `pu1`/`pu2`/... hanno due sprite, normale e
-    // "selezionato" (`pX`/`pXss`, scambiati in base a `r12.selec` — non e'
-    // un tint, sono disegni diversi). Nell'originale erano ancorati a x fissi
+    // mostrarle tutte insieme. `pu1`/`pu2`/... avevano nell'arte originale
+    // due sprite, normale e "selezionato" (`pX`/`pXss`, scambiati in base a
+    // `r12.selec`) — **[Bug corretto/ottimizzazione, segnalato dall'autore]**
+    // misurando le due varianti pixel per pixel (`pXss` non e' un secondo
+    // disegno: stessa sagoma esatta di `pX`, IoU 1.0 su tutte le 16 coppie,
+    // solo il colore di riempimento cambia) risulta che ERA gia' un tint,
+    // solo "cotto" in un secondo raster invece di applicato a runtime — la
+    // stessa `setColorize()` gia' usata per le icone nere della UI (sotto)
+    // lo riproduce identico da un SOLO sprite per bottone (`b.tint`, sopra in
+    // OTHER_BUILDINGS/STAR_BUILDINGS), dimezzando gli sprite da impacchettare
+    // per l'intera riga (tools/23_atlas.py, gruppo "gui") senza perdere
+    // dettaglio: non c'e' nessun dettaglio in piu' da perdere, sono sagome
+    // piatte in tinta unita'. Nell'originale erano ancorati a x fissi
     // (`action_move_to`/`N*global.sca`); qui si accodano da sinistra usando
     // la larghezza vera di ciascuno sprite (`GAP` px fra l'uno e l'altro).
     // `chies` non ha un bottone: non e' un tipo piazzabile (vedi sopra).
@@ -4739,10 +4749,10 @@ export async function mountMatch(ctx, params = {}) {
       // menoo 1 "edifici" ([C] pu1/Create.gml li crea tutti insieme): i due
       // veri (casa/industria) + il resto del menu, segnaposto (vedi sopra).
       ? [
-          { kind: "building", type: "casa", spr: "p1", sprSel: "p1ss" },
-          { kind: "building", type: "industria", spr: "p2", sprSel: "p2ss" },
-          ...OTHER_BUILDINGS.map((b) => ({ kind: "building", type: b.type, spr: b.spr, sprSel: b.sprSel })),
-          ...STAR_BUILDINGS.filter((b) => b.unlocked()).map((b) => ({ kind: "building", type: b.type, spr: b.spr, sprSel: b.sprSel })),
+          { kind: "building", type: "casa", spr: "p1", tint: 0x114f1f },
+          { kind: "building", type: "industria", spr: "p2", tint: 0x603415 },
+          ...OTHER_BUILDINGS.map((b) => ({ kind: "building", type: b.type, spr: b.spr, tint: b.tint })),
+          ...STAR_BUILDINGS.filter((b) => b.unlocked()).map((b) => ({ kind: "building", type: b.type, spr: b.spr, tint: b.tint })),
           { kind: "menu", menoo: 0, spr: "baccc", label: "Back" },
         ]
       : menoo === 2
@@ -4773,7 +4783,7 @@ export async function mountMatch(ctx, params = {}) {
     // (uiScrollX va sempre bloccato all'intervallo [0, maxScroll] di QUESTA
     // riga, che cambia ad ogni `menoo` — una riga corta non deve poter
     // scorrere via lo scroll accumulato su una riga lunga vista prima).
-    const frames = row.map((b) => frameFor(b.kind === "building" && selectedType === b.type ? b.sprSel : b.spr));
+    const frames = row.map((b) => frameFor(b.spr));
     let rowWidth = 0;
     for (const f of frames) if (f) rowWidth += f.w * UI_SCALE + GAP;
     if (rowWidth > 0) rowWidth -= GAP;
@@ -4809,10 +4819,14 @@ export async function mountMatch(ctx, params = {}) {
     // da sola non basta a scurirle) ma sopra quella della tinta piena di
     // `baura` di notte (~0.2, la stessa usata dalla vignetta sopra) — dove
     // il nero puro sparirebbe davvero.
-    // I bottoni edificio SELEZIONATI (sprite `sprSel`, sotto) restano
-    // esclusi: quello NON e' un'icona nera ma un disegno a colori scelto a
-    // mano nell'arte originale (STUDIO.md, "GUI vera" — "non un tint, sono
-    // disegni diversi"), colorize lo appiattirebbe perdendo quella scelta.
+    // I bottoni edificio SELEZIONATI usano lo stesso meccanismo: `b.tint`
+    // (OTHER_BUILDINGS/STAR_BUILDINGS/casa/industria, sopra) e' il colore
+    // pieno gia' misurato dal vecchio sprite `pXss` — sempre disegnati in
+    // colorize mode, INDIPENDENTEMENTE da `iconsDark` (a differenza delle
+    // icone nere sotto: qui non e' un aggiustamento di leggibilita' di
+    // notte, e' semplicemente COME si disegna un bottone selezionato, di
+    // giorno come di notte — `r.setAmbient(1,1,1)` poco sopra rende questo
+    // layer GUI comunque immune al ciclo giorno/notte).
     for (let i = 0; i < row.length; i++) {
       const b = row[i], f = frames[i];
       if (!f) continue;
@@ -4823,15 +4837,13 @@ export async function mountMatch(ctx, params = {}) {
       // schermo che intercetterebbero un tap sulla mappa sottostante.
       if (rx + w >= 0 && rx <= canvas.clientWidth) {
         // [Bug corretto, richiesto dall'autore: "la mano stessa deve avere
-        // una tint blu" quando lo strumento mano e' attivo] Nessun altro
-        // bottone di questa riga ha uno sprite "selezionato" a parte
-        // (`sprSel`, solo i bottoni edificio in menoo 1) — qui una tinta
-        // blu al posto del bianco neutro basta a segnalare "strumento
-        // attivo", coerente con `r12.selec === 0` = mano/deselezionato
-        // gia' usato sopra per spegnere l'hover viola dei placeholder.
+        // una tint blu" quando lo strumento mano e' attivo] Una tinta blu
+        // al posto del bianco neutro basta a segnalare "strumento attivo",
+        // coerente con `r12.selec === 0` = mano/deselezionato gia' usato
+        // sopra per spegnere l'hover viola dei placeholder.
         const usingHandTint = b.kind === "deselect" && r12.selec === 0;
-        const tint = usingHandTint ? 0x66aaff : 0xffffff;
-        const usingSelSprite = b.kind === "building" && selectedType === b.type;
+        const usingSelBuilding = b.kind === "building" && selectedType === b.type;
+        const tint = usingSelBuilding ? b.tint : (usingHandTint ? 0x66aaff : 0xffffff);
         // [Bug corretto, segnalato dall'autore: "la mano non si colora
         // quando selezionata"] `handee` e' una sagoma nera pura come le
         // altre icone della riga (vedi il commento sopra su
@@ -4840,7 +4852,7 @@ export async function mountMatch(ctx, params = {}) {
         // davvero — non solo quando `iconsDark`, sempre quando la mano e'
         // lo strumento attivo, altrimenti la tint resta invisibile di
         // giorno.
-        r.setColorize((iconsDark || usingHandTint) && !usingSelSprite);
+        r.setColorize(usingSelBuilding || iconsDark || usingHandTint);
         r.draw(f, rx, baseY, UI_SCALE, tint, 1);
         uiButtons.push({ x: rx, y: baseY - h, w, h, ...b });
         rowTop = Math.min(rowTop, baseY - h);
