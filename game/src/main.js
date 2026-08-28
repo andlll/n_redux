@@ -5080,33 +5080,37 @@ export async function mountMatch(ctx, params = {}) {
       }
     }
 
-    // Avviso "ATTACK INCOMING" (src/objects/aincom, game/src/balloons.js): una
-    // mongolfiera spia ha completato il suo giro. [C] aincom/Create.gml +
-    // Alarm_1/2.gml: lampeggia (mostra/nasconde ogni 30 tick = 0.5s) per 240
-    // tick (4s) al centro della view — qui al centro dello schermo, coerente
-    // col resto della GUI in spazio schermo (STUDIO.md §7.3 "L'interfaccia va
-    // in uno spazio schermo separato").
-    if (r12.alertT > 0) {
-      const ainco = frameFor("ainco");
-      // r.draw ancora sull'origine dello sprite (data/sprites.json: "ainco" ha
-      // origin ~(w/2, h/2), gia' centrato — a differenza di "icone_oriz" sopra,
-      // che ha origine in alto a sinistra), quindi il centro schermo e' gia'
-      // il punto giusto da passare, non il suo angolo in alto a sinistra.
-      if (ainco && Math.floor((ALERT_DURATION - r12.alertT) / 0.5) % 2 === 0) {
-        r.draw(ainco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
-      }
+    // Banner d'allerta lampeggianti a centro schermo — "ATTACK INCOMING"
+    // (src/objects/aincom, game/src/balloons.js: una mongolfiera spia ha
+    // completato il suo giro) e "il temporale sta arrivando" (src/objects/
+    // tincom, solo su `match` — game/src/state.js, stepWeather()). [C]
+    // stesso trattamento per entrambi: lampeggia (mostra/nasconde ogni 30
+    // tick = 0.5s) per 240 tick (4s) al centro della view — qui al centro
+    // dello schermo, coerente col resto della GUI in spazio schermo
+    // (STUDIO.md §7.3 "L'interfaccia va in uno spazio schermo separato").
+    // r.draw ancora sull'origine dello sprite (data/sprites.json: entrambi
+    // hanno origine gia' centrata, "ainco" ~(w/2, h/2) — a differenza di
+    // "icone_oriz" sopra, che ha origine in alto a sinistra), quindi il
+    // centro schermo e' gia' il punto giusto da passare.
+    //
+    // [Bug corretto, segnalato dall'autore: "a volte non ci stanno nello
+    // schermo"] Disegnati prima sempre a scala 1 (pixel nativi): "ainco" e'
+    // largo 949px, "tinco" 1370px (data/sprites.json) — su mobile o una
+    // finestra stretta, piu' larghi dello schermo stesso, tagliati fuori ai
+    // due lati. `scale` qui si stringe quando serve per starci sempre
+    // dentro (stessa idea gia' in uso per "loanscr" del pannello prestiti,
+    // bankScale poco sopra), ma non supera mai 1: un banner d'allerta non
+    // deve crescere oltre il proprio disegno originale solo perche' lo
+    // schermo e' enorme, a differenza di un pannello a piena view come
+    // quello dei prestiti.
+    function drawBlinkBanner(sprName, elapsedT, totalDuration) {
+      const f = frameFor(sprName);
+      if (!f || Math.floor((totalDuration - elapsedT) / 0.5) % 2 !== 0) return;
+      const scale = Math.min(1, (canvas.clientWidth - 48) / f.w);
+      r.draw(f, canvas.clientWidth / 2, canvas.clientHeight / 2, scale, 0xffffff, 1);
     }
-    // Avviso "il temporale sta arrivando" (src/objects/tincom, solo su
-    // `match` — game/src/state.js, stepWeather()): stesso identico
-    // trattamento di "ainco" appena sopra (lampeggia ogni 0.5s per 4s al
-    // centro dello schermo), stessa origine gia' centrata dello sprite
-    // (data/sprites.json: "tinco" 1370x59, origin 685,29).
-    if (r12.tincomT > 0) {
-      const tinco = frameFor("tinco");
-      if (tinco && Math.floor((TINCOM_DURATION - r12.tincomT) / 0.5) % 2 === 0) {
-        r.draw(tinco, canvas.clientWidth / 2, canvas.clientHeight / 2, 1, 0xffffff, 1);
-      }
-    }
+    if (r12.alertT > 0) drawBlinkBanner("ainco", r12.alertT, ALERT_DURATION);
+    if (r12.tincomT > 0) drawBlinkBanner("tinco", r12.tincomT, TINCOM_DURATION);
     // Il pannello prestiti (bankPanelOpen, state.js LOANS) — vero modale in
     // spazio schermo (vedi il commento su bankPanelOpen piu' sopra per il
     // perche'), disegnato per ultimo cosi' resta sempre sopra a tutto il
