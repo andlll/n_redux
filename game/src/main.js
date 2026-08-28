@@ -4617,9 +4617,17 @@ export async function mountMatch(ctx, params = {}) {
     r.setColorize(iconsDark);
     if (barFrame) r.draw(barFrame, barX, barY, 1, 0xffffff, 1);
     r.setColorize(false);
+    // [Bug corretto, segnalato dall'autore: "in pausa le scritte Montserrat
+    // non si blurrano insieme al resto"] Testo HTML vero (sopra), fuori dal
+    // canvas: `drawPauseOverlay()` sfuma solo cio' che WebGL ha gia'
+    // disegnato (`PauseBlur`, `copyTexImage2D` — game/src/gl.js), un
+    // elemento DOM sopra il canvas resta sempre nitido qualunque cosa
+    // succeda li' sotto. Niente da sfumare qui: piu' semplice non
+    // disegnarli affatto mentre il menu di pausa e' aperto, invece di
+    // lasciarli stonare nitidi sopra uno sfondo sfocato.
     const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                    [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
-    for (const [value, x] of stats) {
+    if (!paused) for (const [value, x] of stats) {
       drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
     }
     // Data (mese + anno, game/src/state.js stepCalendar()) — [C] repre/
@@ -4632,8 +4640,10 @@ export async function mountMatch(ctx, params = {}) {
     // stesso motivo di `barY+19` sopra: drawHtmlText() centra verticalmente
     // sull'ancora invece di partire dal bordo superiore del glifo come
     // drawText()).
-    drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 9, { size: 15, align: "left", color: barTextColor });
-    drawHtmlText(String(Math.round(r12.time)), barX + 448, barY + 29, { size: 15, align: "left", color: barTextColor });
+    if (!paused) {
+      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 9, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(String(Math.round(r12.time)), barX + 448, barY + 29, { size: 15, align: "left", color: barTextColor });
+    }
     // La "faccina" della felicita' (src/objects/hapware — segnalata
     // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
     // che diventa triste quando la felicita' scende sotto una soglia" — la
@@ -4688,7 +4698,7 @@ export async function mountMatch(ctx, params = {}) {
       r.setColorize(iconsDark);
       if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
       r.setColorize(false);
-      drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
+      if (!paused) drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
@@ -5038,7 +5048,12 @@ export async function mountMatch(ctx, params = {}) {
     // wrapText()/measureText()): lo misura DOPO averlo scritto
     // (`getBoundingClientRect()`), poi riposiziona sia lui che lo sfondo
     // WebGL in base all'altezza vera appena letta.
-    if (tutorialState?.showText) {
+    // `&& !paused`: stesso motivo della barra risorse poco sopra — il testo
+    // HTML del balloon non si sfuma insieme al resto quando si apre il
+    // menu di pausa (fuori dal canvas, PauseBlur non lo vede). Salta anche
+    // lo sfondo WebGL arrotondato: un box vuoto senza testo dentro
+    // sarebbe solo confuso.
+    if (tutorialState?.showText && !paused) {
       const pad = 20;
       // boxRight lascia spazio al pollice (tut_ok, disegnato subito sotto:
       // stessa larghezza 45*1.3 li' usata, + margine) SOLO quando il
