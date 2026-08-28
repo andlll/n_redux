@@ -14,6 +14,49 @@
   html, body { margin: 0; height: 100%; background: #0b1020; overflow: hidden;
                touch-action: none; overscroll-behavior: none; }
   #view { display: block; width: 100vw; height: 100vh; }
+  /* Montserrat (SIL Open Font License, game/fonts/OFL.txt) — sostituisce il
+     font bitmap "gotham" usato prima per il menu di pausa/il balloon del
+     tutorial (game/src/main.js): segnalato dall'autore, quel font ha un
+     atlas troppo piccolo per restare nitido oltre scala 1, quindi "sgranato"
+     comunque sugli elementi piu' grandi. Testo HTML vero (vettoriale, come
+     la scritta "loading" qui sotto) invece di un secondo atlas bitmap piu'
+     grande: nitido a QUALUNQUE dimensione, non solo un compromesso migliore.
+     Un solo peso (700, ~19KB, solo il sottoinsieme "latin" — l'interfaccia e'
+     tutta in inglese) scaricato una volta sola qui, non da Google Fonts a
+     runtime: lo stesso principio "il repo e' autosufficiente" di ogni altro
+     asset del motore (README, "non serve nessuna cartella locale... tutto
+     cio' che non e' versionato si rigenera da cio' che lo e'") — un sito
+     gia' pensato per girare offline da file statici non deve acquisire
+     proprio ora una dipendenza di rete a runtime da un dominio esterno. */
+  @font-face {
+    font-family: "Montserrat";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("./fonts/montserrat-700.woff2") format("woff2");
+  }
+  /* Elementi del pool di testo HTML riusato dal menu di pausa/dal balloon
+     del tutorial (game/src/main.js, drawHtmlText()) — un solo posto per lo
+     stile comune, `left`/`top`/`font-size`/contenuto impostati da li' frame
+     per frame. `pointer-events: none`: il tocco/click passa sempre al
+     canvas sotto, che continua a fare il proprio hit-test sugli stessi
+     rettangoli gia' usati per disegnare gli sfondi WebGL dei bottoni — lo
+     stesso principio gia' scelto per la scritta "loading" e il pollice del
+     tutorial (schermate di caricamento, sopra), non un nuovo livello di
+     input da tenere sincronizzato. */
+  .gameText {
+    position: fixed;
+    display: none;
+    font-family: Montserrat, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-weight: 700;
+    line-height: 1.4;
+    pointer-events: none;
+    z-index: 6;
+    color: #232838;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   /* Schermata di caricamento: sfondo nero pieno-schermo col logo Mount Fuji
      Software (tools/26_logo.py) centrato — STUDIO.md §3, il flusso di room
      originale e' `loguji` (logo Fuji) -> `title` (il menu) -> ...: lo splash

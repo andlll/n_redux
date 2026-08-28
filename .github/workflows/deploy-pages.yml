@@ -42,7 +42,7 @@ jobs:
 
       - name: Rigenera i font bitmap della UI
         run: |
-          for font in gotham_mid gotham_mini gotham_mobile; do
+          for font in gotham_mid gotham_mini; do
             python3 tools/25_font.py "$font"
             python3 tools/24_blit.py "font_$font"
           done

@@ -97,6 +97,7 @@ touch nella versione mobile.
 | `raw/` | sì | Tutti i blocchi decompilati e il disassemblato |
 | `assets/textures/` | sì | Le 78 texture page originali: **la fonte di tutti i pixel** |
 | `game/` | sì | Il nuovo motore (WebGL2, nessuna dipendenza) |
+| `game/fonts/` | sì | Montserrat (SIL OFL, `game/fonts/OFL.txt`): l'unico asset del motore non estratto da `NIMBUS.exe` — testo HTML vero (menu di pausa/tutorial) sopra al canvas, self-hosted invece che da Google Fonts a runtime |
 | `tools/` | sì | Toolchain di estrazione e pipeline asset |
 | `game/assets/` | no | Atlas per room, generati |
 | `assets/sprites/` | no | I 17.224 frame singoli, generati |

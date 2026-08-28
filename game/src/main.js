@@ -369,29 +369,16 @@ export async function mountMatch(ctx, params = {}) {
   // valore di `repre.mon` (il mese, 1..12 — state.js, r12.month) — mai una
   // tabella nel decompilato, ricostruita qui come tale.
   const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  // [C] tutorial_square/DrawGUI.gml: `draw_set_font(gotham_mobile)` — il
-  // font del balloon di testo del tutorial, diverso da quello della barra
-  // risorse sopra. Caricato solo per questa room (nessun'altra lo usa).
-  const fontMobile = roomName === "tutorial" ? await loadFont(gl, "gotham_mobile") : null;
-  // Font del menu di pausa/"saving options" (drawPauseOverlay()/
-  // drawSavingOptionsOverlay() piu' sotto): quel pannello e' interamente
-  // nostro, nessun `action_font` del decompilato da rispettare (a
-  // differenza di `fontMini` sopra) — libero di scegliere il font piu'
-  // adatto. Segnalato dall'autore: il testo del menu di pausa era
-  // "sgranato" — `fontMini` ha un atlas di soli 13px di em (tagliato per
-  // le cifre minuscole della barra risorse, mai pensato per un titolo),
-  // ingrandito li' di 2-3x con lo stesso NEAREST pixel-perfect di
-  // font.js: risultato tecnicamente "corretto" (nessuno sfarfallio/
-  // sub-pixel) ma comunque a blocchi grossi, ogni texel sorgente diventa
-  // un quadrato di 2x2/3x3 pixel schermo ben visibile. `gotham` (18px di
-  // em, la taglia "normale" del gioco invece della variante mini) ha
-  // texel di partenza piu' fitti: alla stessa taglia finale serve un
-  // fattore di scala minore (spesso 1x, nessun ingrandimento affatto),
-  // quindi molto meno "a blocchi" — la stessa famiglia (Gotham) gia'
-  // suggerita dalla scritta HTML della schermata di caricamento
-  // (index.html), solo bitmap invece di vettoriale (il renderer qui e'
-  // WebGL puro, non puo' disegnare testo DOM sopra al canvas).
-  const fontUI = await loadFont(gl, "gotham");
+  // Il balloon di testo del tutorial e il menu di pausa/"saving options" NON
+  // usano piu' un font bitmap dedicato (erano "gotham_mobile"/"gotham" —
+  // entrambi rimasti comunque un po' "sgranati" a scale grandi, segnalato
+  // di nuovo dall'autore dopo il fix precedente su "gotham"): quei pannelli
+  // sono interamente nostri, nessun `action_font` del decompilato da
+  // rispettare (a differenza di `fontMini` sopra, l'unico rimasto bitmap —
+  // la barra risorse SI ha un font originale da riprodurre). Testo HTML
+  // vero invece (Montserrat, index.html/game/fonts/ — vedi drawHtmlText()
+  // sotto): nitido a QUALUNQUE dimensione, non un compromesso migliore fra
+  // due atlas bitmap.
 
   // -------------------------------------------------------- piazzabili e edifici
   // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
@@ -2206,7 +2193,75 @@ export async function mountMatch(ctx, params = {}) {
   // pannello, che lascia intravedere di piu' il mondo sfocato dietro.
   const PANEL_TINT = 0xffffff, PANEL_ALPHA = 0.78;
   const BUTTON_TINT = 0xffffff, BUTTON_ALPHA = 0.92;
-  const TEXT_TINT = 0x232838;
+  // Colore del testo HTML del menu di pausa/il balloon del tutorial
+  // (drawHtmlText(), sotto) — stesso valore di `.gameText { color }` in
+  // index.html, tenuto qui anche in caso servisse cambiarlo a runtime
+  // (non oggi: nessuno dei due pannelli lo fa mai).
+  const TEXT_TINT = "#232838";
+
+  // Pool fisso di elementi HTML riusati dal menu di pausa/dal sotto-pannello
+  // "saving options" (drawPauseOverlay()/drawSavingOptionsOverlay() sotto)
+  // — Montserrat vero (index.html/game/fonts/), non piu' un font bitmap:
+  // segnalato dall'autore, "gotham" (il fix precedente) restava comunque
+  // un po' sgranato oltre scala 1, un limite intrinseco di QUALUNQUE atlas
+  // bitmap — un font vettoriale vero non ce l'ha, a qualunque dimensione.
+  // Un pool invece di creare/distruggere elementi ogni frame: 8 bastano per
+  // il pannello piu' affollato (titolo + le 7 righe del menu principale),
+  // riusati identici per "saving options" (titolo + 5 righe) — quelli in
+  // piu' restano semplicemente nascosti (`hideUnusedText()`, sotto) invece
+  // di essere ricreati. `resetTextPool()` va chiamata una volta a inizio
+  // frame, `hideUnusedText()` una volta alla fine — cosi' un frame in cui
+  // NESSuno dei due pannelli disegna (non in pausa) nasconde tutto da solo,
+  // senza un ramo dedicato "pulisci se non in pausa". +2, non 8 esatti: il
+  // mondo "congelato" sotto il menu di pausa resta disegnato ogni frame
+  // (solo la SIMULAZIONE si ferma, `frozen`/`if (!paused)` altrove) — in
+  // pausa durante il tutorial il balloon (1 slot) e il pannello principale
+  // (8) chiedono un elemento ciascuno nello STESSO frame, 9 in tutto.
+  const TEXT_POOL_SIZE = 10;
+  const textPool = Array.from({ length: TEXT_POOL_SIZE }, () => {
+    const el = document.createElement("div");
+    el.className = "gameText";
+    document.body.appendChild(el);
+    return el;
+  });
+  let textPoolUsed = 0;
+  function resetTextPool() { textPoolUsed = 0; }
+  function hideUnusedText() {
+    for (let i = textPoolUsed; i < textPool.length; i++) textPool[i].style.display = "none";
+  }
+  /** Prende il prossimo elemento libero dal pool, lo posiziona/testizza e lo
+   * rende visibile — un'etichetta centrata su (cx,cy) di norma (i bottoni/
+   * il titolo del menu di pausa), oppure un blocco di paragrafo allineato a
+   * sinistra con `wrap:true` (il balloon del tutorial, sotto: piu' righe,
+   * la larghezza vera la decide il CSS invece di wrapText()/measureText()
+   * — mai stati pensati per un font vettoriale). Ritorna l'elemento cosi'
+   * chi chiama puo' leggerne `getBoundingClientRect()` quando serve
+   * conoscere le dimensioni VERE renderizzate (il balloon, per dimensionare
+   * lo sfondo WebGL intorno al testo). */
+  function drawHtmlText(text, x, y, { size = 16, maxWidth, wrap = false } = {}) {
+    const el = textPool[textPoolUsed++];
+    el.textContent = text;
+    el.style.display = "block";
+    el.style.fontSize = `${size}px`;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    if (wrap) {
+      el.style.textAlign = "left";
+      el.style.whiteSpace = "normal";
+      el.style.overflow = "visible";
+      el.style.textOverflow = "clip";
+      el.style.width = `${maxWidth}px`;
+      el.style.transform = "none";
+    } else {
+      el.style.textAlign = "center";
+      el.style.whiteSpace = "nowrap";
+      el.style.overflow = "hidden";
+      el.style.textOverflow = "ellipsis";
+      el.style.maxWidth = maxWidth != null ? `${maxWidth}px` : "";
+      el.style.transform = "translate(-50%, -50%)";
+    }
+    return el;
+  }
 
   /**
    * Menu di pausa (`paused`, sopra): cattura il canvas gia' disegnato per
@@ -2264,30 +2319,19 @@ export async function mountMatch(ctx, params = {}) {
     // mondo sfocato invece di un bianco piatto.
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
-    // `fontUI` (definito sopra), non `fontMini`: quest'ultimo e' tagliato a
-    // 13px di em per le cifre della barra risorse, troppo grezzo per un
-    // titolo/etichetta ingrandita 2-3x (il "sgranato" segnalato dall'autore).
-    // Scala massima 2, non 3: `fontUI` parte gia' da un em piu' grande di
-    // `fontMini`, un fattore 3 lo renderebbe piu' grande di prima invece che
-    // "un po' piu' piccolo" (richiesto insieme al fix).
+    // Montserrat vero (drawHtmlText(), sopra) invece del font bitmap
+    // "gotham" di prima — nitido a qualunque dimensione, niente piu'
+    // scala intera/fitTextScale() da calcolare.
     const title = "PAUSE";
-    const titleScale = fitTextScale(fontUI, title, panelW - 24, 2);
-    drawText(r, fontUI, title, px + (panelW - measureText(fontUI, title, titleScale)) / 2, py + 22, titleScale, TEXT_TINT, 1);
+    drawHtmlText(title, px + panelW / 2, py + 34, { size: 26 });
 
     pauseMenuButtons = [];
     const btnW = panelW - 60, btnH = 46, btnGap = 14;
-    // Una sola scala per tutti i bottoni (il minimo che ci sta per
-    // l'etichetta piu' lunga), non una per riga: bottoni di taglia diversa
-    // nello stesso menu sembrerebbero un errore, non una scelta.
-    const textScale = Math.min(...rows.map((row) => fitTextScale(fontUI, row.label, btnW - 20, 2)));
     let by = py + 96;
     for (const row of rows) {
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
-      // 24, non 17 (usato per fontMini altrove): l'altezza maiuscola nativa
-      // di `fontUI` a scala 1 (font_gotham.json, glifo "A") — mantiene le
-      // etichette centrate verticalmente nel bottone con l'atlas piu' grande.
-      drawText(r, fontUI, row.label, bx + (btnW - measureText(fontUI, row.label, textScale)) / 2, by + (btnH - 24 * textScale) / 2, textScale, TEXT_TINT, 1);
+      drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
       pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
@@ -2318,29 +2362,25 @@ export async function mountMatch(ctx, params = {}) {
       { label: `Save with low oil: ${autosave.duringLowOil ? "ON" : "OFF"}`, action: "toggleLowOil" },
       { label: "Back", action: "back" },
     ];
-    // Pannello largo abbastanza per la riga piu' lunga a scala 1 (`fontUI`,
-    // sotto, e' piu' grande di `fontMini`: "Save during attacks: OFF" non
-    // ci starebbe piu' nei 360 fissi di prima, uscirebbe dai bottoni)
-    // — 360 resta il minimo/il caso comune, cresce solo se serve.
-    const maxLabelW = Math.max(...rows.map((row) => measureText(fontUI, row.label, 1)));
-    const panelW = Math.min(Math.max(360, maxLabelW + 80), cw - 40), panelH = 96 + rows.length * 60 + 20;
+    // 360 fisso di nuovo (com'era prima del fix su "gotham"): Montserrat,
+    // proporzionale, ci sta comoda anche sulla riga piu' lunga ("Save
+    // during attacks: OFF") senza bisogno di allargare il pannello — a
+    // differenza del font bitmap monospazio-per-carattere di prima, un
+    // font vero varia larghezza per lettera, molto piu' compatto.
+    const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
-    // `fontUI`, non `fontMini` — stesso fix "sgranato" di drawPauseOverlay()
-    // sopra, stesso pannello.
     const title = "SAVING OPTIONS";
-    const titleScale = fitTextScale(fontUI, title, panelW - 24, 2);
-    drawText(r, fontUI, title, px + (panelW - measureText(fontUI, title, titleScale)) / 2, py + 26, titleScale, TEXT_TINT, 1);
+    drawHtmlText(title, px + panelW / 2, py + 38, { size: 22, maxWidth: panelW - 24 });
 
     pauseMenuButtons = [];
     const btnW = panelW - 60, btnH = 46, btnGap = 14;
-    const textScale = Math.min(...rows.map((row) => fitTextScale(fontUI, row.label, btnW - 20, 2)));
     let by = py + 96;
     for (const row of rows) {
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
-      drawText(r, fontUI, row.label, bx + (btnW - measureText(fontUI, row.label, textScale)) / 2, by + (btnH - 24 * textScale) / 2, textScale, TEXT_TINT, 1);
+      drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
       pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
@@ -3532,6 +3572,11 @@ export async function mountMatch(ctx, params = {}) {
   let last = performance.now();
   function frame(now) {
     if (stopped) return;
+    // Un solo reset per frame, prima di ogni possibile drawHtmlText() (il
+    // balloon del tutorial e il menu di pausa/"saving options", entrambi
+    // piu' sotto) — hideUnusedText() (in fondo a questa stessa funzione)
+    // nasconde poi quanto resta del pool non riusato.
+    resetTextPool();
     // [Bug corretto, segnalato dall'autore: "su desktop non riesco ad
     // avviare match, rimane fermo in caricamento con schermo nero"] Un
     // errore imprevisto in un punto qualunque del ciclo di frame (migliaia
@@ -4820,13 +4865,16 @@ export async function mountMatch(ctx, params = {}) {
     // `draw_set_alpha(0.7)` + `draw_roundrect_colour_ext(..., 16777215,
     // 16777215, 0)` (un rettangolo BIANCO pieno arrotondato, non nero) poi
     // `draw_set_alpha(1)` + `draw_text_ext_colour(..., 0,0,0,0, 1)` (testo
-    // NERO in piena opacita') col font `gotham_mobile` — stesso font/stile
-    // dell'originale (fontMobile sopra, tools/25_font.py; rettangolo
-    // arrotondato, tutorialBoxFrame()/makeRoundedRectTexture() sopra) —
-    // **[I]** larghezza/testo a capo qui invece che nel motore GML nativo
-    // (wrapText() sopra, via measureText()).
-    if (tutorialState?.showText && fontMobile) {
-      const textScale = 1;
+    // NERO in piena opacita') — lo sfondo arrotondato resta WebGL
+    // (tutorialBoxFrame()/makeRoundedRectTexture() sopra, gia' nitido:
+    // nessun font coinvolto), il testo e' Montserrat vero invece del font
+    // bitmap "gotham_mobile" di prima (drawHtmlText(), sopra — segnalato
+    // "sgranato" dall'autore come il menu di pausa). Il testo va disegnato
+    // PRIMA di sapere `boxH` (l'HTML va a capo da solo, niente piu'
+    // wrapText()/measureText()): lo misura DOPO averlo scritto
+    // (`getBoundingClientRect()`), poi riposiziona sia lui che lo sfondo
+    // WebGL in base all'altezza vera appena letta.
+    if (tutorialState?.showText) {
       const pad = 20;
       // boxRight lascia spazio al pollice (tut_ok, disegnato subito sotto:
       // stessa larghezza 45*1.3 li' usata, + margine) SOLO quando il
@@ -4835,17 +4883,14 @@ export async function mountMatch(ctx, params = {}) {
       // box usa tutta la larghezza, senza lasciare un vuoto a destra per un
       // pollice che non c'e'.
       const boxLeft = 30, boxRight = canvas.clientWidth - 30 - (tutorialState.showOkButton ? 45 * 1.3 + 45 : 0);
-      const lineH = fontMobile.meta.emSize * textScale * 1.35;
-      const lines = wrapText(fontMobile, TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "", textScale, boxRight - boxLeft - pad * 2);
-      const boxH = lines.length * lineH + pad * 2;
+      const textW = boxRight - boxLeft - pad * 2;
+      const textEl = drawHtmlText(TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "", boxLeft + pad, 0,
+        { size: 16, maxWidth: textW, wrap: true });
+      const boxH = textEl.getBoundingClientRect().height + pad * 2;
       const boxBottom = canvas.clientHeight - tutorialState.uiGap;
       const boxTop = boxBottom - boxH;
+      textEl.style.top = `${boxTop + pad}px`;
       r.draw(tutorialBoxFrame(boxRight - boxLeft, boxH), boxLeft, boxTop, 1, 0xffffff, 0.7);
-      let ty = boxTop + pad;
-      for (const line of lines) {
-        drawText(r, fontMobile, line, boxLeft + pad, ty, textScale, 0x000000, 1);
-        ty += lineH;
-      }
     }
     // Bottone "avanti/esci" del tutorial: il vero sprite `tut_ok` (STUDIO.md
     // — l'oggetto si chiama `tutorial_thumb`, un pollice in su, non testo
@@ -5011,6 +5056,13 @@ export async function mountMatch(ctx, params = {}) {
       r.flush();
     }
 
+    // Nasconde ogni elemento del pool di testo HTML (drawHtmlText(), sopra)
+    // non riusato in QUESTO frame — sia il caso comune (fuori pausa/
+    // tutorial: nessuno dei due pannelli chiama drawHtmlText(), tutto il
+    // pool va nascosto) sia il passaggio da un pannello piu' affollato a
+    // uno con meno righe (es. "saving options" -> pausa principale).
+    hideUnusedText();
+
     requestAnimationFrame(frame);
     } catch (err) {
       console.error("nimbus: errore nel ciclo di frame di match, torno al menu", err);
@@ -5066,6 +5118,12 @@ export async function mountMatch(ctx, params = {}) {
       stopped = true;
       window.removeEventListener("keydown", onKeydown);
       delete window.__nimbus;
+      // Pool di testo HTML del menu di pausa/il balloon del tutorial
+      // (textPool/drawHtmlText(), sopra) — stesso principio di msgEl/
+      // loadFileBtn in title.js: nodi DOM creati da questo mount, tocca a
+      // lui toglierli, altrimenti rientrare in questa stessa room piu'
+      // volte nella sessione (SPA, game/src/app.js) li accumulerebbe.
+      for (const el of textPool) el.remove();
     },
   };
 }
