@@ -42,15 +42,16 @@ export async function mountTitle(ctx) {
 
   // ---------------------------------------------------------------- title UI
   const scene = await fetch("./data/title.scene.json").then((x) => x.json());
-  // `reportProgress("title", ...)`/`reportProgress("match", ...)` (chiave
-  // diversa per atlas, sotto): entrambe le chiamate alimentano la STESSA
-  // percentuale sulla schermata di caricamento (app.js/reportProgress()
-  // le somma), cosi' l'attesa del primissimo avvio (questo mount aspetta
-  // sia l'atlas dei bottoni sia quello — molto piu' grande — dello sfondo
-  // sfumato) mostra un unico avanzamento coerente invece di due barre che
-  // si sovrascriverebbero a vicenda.
+  // `reportProgress("title", ..., "loading interface")`/`reportProgress
+  // ("match", ..., "loading city")` sotto: due fasi in sequenza (l'atlas dei
+  // bottoni, poi quello — molto piu' grande — dello sfondo sfumato), non una
+  // sola sommata (app.js/reportProgress() la mostrava cosi' prima del fix
+  // sul crollo a meta' segnalato dall'autore, vedi il commento li'). Ogni
+  // fase riparte onestamente da 0 con la propria etichetta, cosi' il
+  // secondo "0%" si legge come "e' iniziata la fase dopo" invece che come
+  // un blocco.
   const { atlas, pageTex } = await loadRoomAtlas(gl, "title", {
-    onProgress: (loaded, total) => reportProgress("title", loaded, total),
+    onProgress: (loaded, total) => reportProgress("title", loaded, total, "loading interface"),
   });
   function frameFor(sprName, frameIdx = 0) {
     const frames = atlas.sprites[sprName];
@@ -90,7 +91,7 @@ export async function mountTitle(ctx) {
   // ------------------------------------------------------------- sfondo: match
   const mScene = await fetch("./data/match.scene.json").then((x) => x.json());
   const { atlas: mAtlas, pageTex: mPageTex } = await loadRoomAtlas(gl, "match", {
-    onProgress: (loaded, total) => reportProgress("match", loaded, total),
+    onProgress: (loaded, total) => reportProgress("match", loaded, total, "loading city"),
   });
   // [Bug corretto, segnalato dall'autore: "appena avvio match il sito si
   // refresha tornando alla schermata logo e poi al menu", su mobile] Qui
@@ -138,7 +139,15 @@ export async function mountTitle(ctx) {
   // diagonale gia' simulata qui sotto da atmo/stepAtmosphere), quindi non
   // vanno disegnate come decoro fisso — il cielo sfumato dietro il menu ha
   // gia' il proprio generatore dinamico (atmo.clouds, sotto).
-  const worldStatic = mScene.instances.filter((it) => it.obj !== "placeholder" && it.obj !== "ni" && it.obj !== "nifast");
+  // `aura`/`baura` (main.js ha lo stesso filtro, stesso motivo — "è rimasto
+  // un quadratino celeste in alto a sinistra"): senza sostituto dinamico
+  // qui (questo sfondo non ha un ciclo giorno/notte, resta sempre "giorno"),
+  // ma vanno comunque tolti allo stesso modo — sono il punto di partenza
+  // GML per un effetto ormai non riprodotto, non decoro vero, e lo sprite
+  // nativo non scalato di `baura` (il quadratino) sbucherebbe qui allo
+  // stesso identico angolo del bounding box.
+  const worldStatic = mScene.instances.filter((it) => it.obj !== "placeholder" && it.obj !== "ni" && it.obj !== "nifast"
+    && it.obj !== "aura" && it.obj !== "baura");
   applyMatchPlatform(worldStatic);   // la base volante — STUDIO.md, game/src/platform.js
   // honda1/honda2 (le due auto "gia' in marcia" di `match`, game/src/cars.js)
   // sostituite dalle istanze simulate sotto — stesso motivo della rimozione

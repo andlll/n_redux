@@ -69,29 +69,48 @@ function hideLoading() {
 // una barra/percentuale invece del solo logo che pulsa"): title.js/main.js
 // passano un `onProgress(loaded, total)` a loadRoomAtlas() (assets.js, conta
 // le pagine CORE dell'atlas — quelle che il mount aspetta davvero prima di
-// disegnare il primo frame) tramite `ctx.reportProgress(key, loaded, total)`
-// qui sotto. Una `key` per sorgente (di norma il roomName dell'atlas: title.js
-// ne usa DUE — "title" per i bottoni e "match" per lo sfondo sfumato del
-// menu, sommate) cosi' piu' atlas caricati insieme in una stessa schermata
-// contribuiscono allo stesso avanzamento complessivo invece di sovrascriversi
-// a vicenda.
+// disegnare il primo frame) tramite `ctx.reportProgress(key, loaded, total,
+// label)` qui sotto.
+//
+// [Bug corretto, segnalato dall'autore: "a volte vedo due percentuali di
+// avanzamento, quando la prima arriva al 100 parte una seconda che
+// ricomincia da 0"] title.js aspetta DUE atlas in sequenza per montare il
+// menu (`title`, i bottoni, poi `match`, molto piu' grande — lo sfondo
+// sfumato dietro): prima di questo fix le due sorgenti venivano SOMMATE
+// (stessa `key` -> stesso totale complessivo) per mostrare "un unico
+// avanzamento coerente" — ma la somma e' calcolata sulle sorgenti CONOSCIUTE
+// finora: appena "title" arriva al 100% (e' l'unica sorgente registrata,
+// essendo le due chiamate sequenziali, non parallele) la percentuale
+// mostrata e' gia' 100%; nell'istante in cui parte "match" il suo totale
+// (molte pagine in piu' di "title") si aggiunge al denominatore mentre il
+// numeratore resta quasi fermo — la percentuale crolla di colpo verso lo
+// 0%, esattamente il "riparte da 0" segnalato, prima di risalire mentre
+// "match" carica davvero. Non un bug della somma in se' (due sorgenti
+// CONTEMPORANEE risultano comunque in un'unica barra coerente, come
+// intendeva il commento originale) ma della sequenzialita' di title.js.
+//
+// Qui si mostra il solo avanzamento della sorgente PIU' RECENTE invece di
+// sommarle: niente piu' crollo a meta' (ogni fase ha la propria barra 0..100
+// pulita), e ogni chiamata porta anche un'etichetta testuale di cosa sta
+// caricando (title.js/main.js, sotto) mostrata sopra la percentuale — cosi'
+// un secondo "riparte da 0" (fra una fase e la successiva, es. interfaccia
+// -> mondo di sfondo) si legge come "e' iniziata la fase dopo", non come un
+// blocco o un errore.
 const progressFills = [loading, levelLoading].map((el) => el.querySelector(".fill"));
 const progressPcts = [loading, levelLoading].map((el) => el.querySelector(".progressPct"));
-const progressSources = new Map();   // key -> { loaded, total }
+const progressLabels = [loading, levelLoading].map((el) => el.querySelector(".progressLabel"));
+const DEFAULT_PROGRESS_LABEL = "loading";
 function resetProgress() {
-  progressSources.clear();
-  setLoadingProgressUI(0);
+  setLoadingProgressUI(0, DEFAULT_PROGRESS_LABEL);
 }
-function setLoadingProgressUI(frac) {
+function setLoadingProgressUI(frac, label) {
   const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
   for (const fill of progressFills) fill.style.width = pct + "%";
   for (const pctEl of progressPcts) pctEl.textContent = pct + "%";
+  for (const labelEl of progressLabels) labelEl.textContent = label;
 }
-function reportProgress(key, loaded, total) {
-  progressSources.set(key, { loaded, total });
-  let loaded_ = 0, total_ = 0;
-  for (const s of progressSources.values()) { loaded_ += s.loaded; total_ += s.total; }
-  setLoadingProgressUI(total_ > 0 ? loaded_ / total_ : 0);
+function reportProgress(key, loaded, total, label = DEFAULT_PROGRESS_LABEL) {
+  setLoadingProgressUI(total > 0 ? loaded / total : 0, label);
 }
 
 // Azzera tutti gli handler impostati dalla schermata precedente prima di

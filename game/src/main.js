@@ -212,7 +212,27 @@ export async function mountMatch(ctx, params = {}) {
   // ogni frame da stepAtmosphere() piu' sotto), queste istanze della room
   // sono solo il punto di partenza "prima" che l'originale stesso avrebbe
   // gia' fatto sparire/mettere in moto.
-  const staticWorld = scene.instances.filter((it) => it.obj !== "ni" && it.obj !== "nifast").sort(sortWorld);
+  // [Bug corretto, segnalato dall'autore: "è rimasto un quadratino celeste
+  // in alto a sinistra"] `aura`/`baura` (src/objects, entrambi piazzati una
+  // sola volta nella room a x=0,y=0 — STUDIO.md, bauraColorAt()/
+  // auraOverlayAt() piu' sotto) sono gia' completamente sostituiti da quelle
+  // due funzioni: un quad a tinta dinamica per `aura` (l'overlay giorno/
+  // notte sopra il mondo) e la vignetta fuori mappa per `baura` (il suo
+  // sprite "vero", opaco, resta sempre coperto DENTRO la room dal terreno —
+  // vedi i commenti li'). Prima di questo fix nessuno dei due era escluso
+  // qui: restavano nella lista come qualunque altro decoro fisso, disegnati
+  // al proprio frame NATIVO (mai scalato "90x90" come nell'originale
+  // `action_sprite_transform`, STUDIO.md — quella trasformazione non e' mai
+  // stata ricostruita, dato che serviva solo a coprire l'intera room per un
+  // oggetto ora sostituito) — un piccolo riquadro azzurro cielo (lo sprite
+  // "day" di `baura`, la stessa tinta di BAURA_DAY) a x=0,y=0. La piattaforma
+  // isometrica e' ruotata: quel punto e' un angolo "vuoto" del bounding box
+  // rettangolare della room, il terreno (che normalmente lo coprirebbe) non
+  // ci arriva — cosi' il quadratino restava visibile, in particolare zoomando
+  // (l'angolo del bounding box entra in vista solo allo zoom giusto, mai a
+  // quello iniziale "cover" che mostra solo il centro della piattaforma).
+  const staticWorld = scene.instances.filter((it) => it.obj !== "ni" && it.obj !== "nifast"
+    && it.obj !== "aura" && it.obj !== "baura").sort(sortWorld);
 
   // ---------------------------------------------------------------- atlas
   // Le pagine sono reimpacchettate per room da tools/23_atlas.py + 24_blit.py:
@@ -223,7 +243,7 @@ export async function mountMatch(ctx, params = {}) {
   // assets.js) cache atlas+texture per room: rientrare in questa stessa room
   // piu' volte nella sessione (SPA, game/src/app.js) non le riscarica.
   const { atlas, pageTex } = await loadRoomAtlas(gl, roomName, {
-    onProgress: (loaded, total) => reportProgress(roomName, loaded, total),
+    onProgress: (loaded, total) => reportProgress(roomName, loaded, total, "loading city"),
   });
   // `frameIdx` (default 0): quasi tutti gli sprite del motore sono statici,
   // una sola posa (STUDIO.md, "nessun sistema di image_speed") — ma alcuni
@@ -349,10 +369,16 @@ export async function mountMatch(ctx, params = {}) {
   // valore di `repre.mon` (il mese, 1..12 — state.js, r12.month) — mai una
   // tabella nel decompilato, ricostruita qui come tale.
   const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  // [C] tutorial_square/DrawGUI.gml: `draw_set_font(gotham_mobile)` — il
-  // font del balloon di testo del tutorial, diverso da quello della barra
-  // risorse sopra. Caricato solo per questa room (nessun'altra lo usa).
-  const fontMobile = roomName === "tutorial" ? await loadFont(gl, "gotham_mobile") : null;
+  // Il balloon di testo del tutorial e il menu di pausa/"saving options" NON
+  // usano piu' un font bitmap dedicato (erano "gotham_mobile"/"gotham" —
+  // entrambi rimasti comunque un po' "sgranati" a scale grandi, segnalato
+  // di nuovo dall'autore dopo il fix precedente su "gotham"): quei pannelli
+  // sono interamente nostri, nessun `action_font` del decompilato da
+  // rispettare (a differenza di `fontMini` sopra, l'unico rimasto bitmap —
+  // la barra risorse SI ha un font originale da riprodurre). Testo HTML
+  // vero invece (Montserrat, index.html/game/fonts/ — vedi drawHtmlText()
+  // sotto): nitido a QUALUNQUE dimensione, non un compromesso migliore fra
+  // due atlas bitmap.
 
   // -------------------------------------------------------- piazzabili e edifici
   // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
@@ -2167,7 +2193,75 @@ export async function mountMatch(ctx, params = {}) {
   // pannello, che lascia intravedere di piu' il mondo sfocato dietro.
   const PANEL_TINT = 0xffffff, PANEL_ALPHA = 0.78;
   const BUTTON_TINT = 0xffffff, BUTTON_ALPHA = 0.92;
-  const TEXT_TINT = 0x232838;
+  // Colore del testo HTML del menu di pausa/il balloon del tutorial
+  // (drawHtmlText(), sotto) — stesso valore di `.gameText { color }` in
+  // index.html, tenuto qui anche in caso servisse cambiarlo a runtime
+  // (non oggi: nessuno dei due pannelli lo fa mai).
+  const TEXT_TINT = "#232838";
+
+  // Pool fisso di elementi HTML riusati dal menu di pausa/dal sotto-pannello
+  // "saving options" (drawPauseOverlay()/drawSavingOptionsOverlay() sotto)
+  // — Montserrat vero (index.html/game/fonts/), non piu' un font bitmap:
+  // segnalato dall'autore, "gotham" (il fix precedente) restava comunque
+  // un po' sgranato oltre scala 1, un limite intrinseco di QUALUNQUE atlas
+  // bitmap — un font vettoriale vero non ce l'ha, a qualunque dimensione.
+  // Un pool invece di creare/distruggere elementi ogni frame: 8 bastano per
+  // il pannello piu' affollato (titolo + le 7 righe del menu principale),
+  // riusati identici per "saving options" (titolo + 5 righe) — quelli in
+  // piu' restano semplicemente nascosti (`hideUnusedText()`, sotto) invece
+  // di essere ricreati. `resetTextPool()` va chiamata una volta a inizio
+  // frame, `hideUnusedText()` una volta alla fine — cosi' un frame in cui
+  // NESSuno dei due pannelli disegna (non in pausa) nasconde tutto da solo,
+  // senza un ramo dedicato "pulisci se non in pausa". +2, non 8 esatti: il
+  // mondo "congelato" sotto il menu di pausa resta disegnato ogni frame
+  // (solo la SIMULAZIONE si ferma, `frozen`/`if (!paused)` altrove) — in
+  // pausa durante il tutorial il balloon (1 slot) e il pannello principale
+  // (8) chiedono un elemento ciascuno nello STESSO frame, 9 in tutto.
+  const TEXT_POOL_SIZE = 10;
+  const textPool = Array.from({ length: TEXT_POOL_SIZE }, () => {
+    const el = document.createElement("div");
+    el.className = "gameText";
+    document.body.appendChild(el);
+    return el;
+  });
+  let textPoolUsed = 0;
+  function resetTextPool() { textPoolUsed = 0; }
+  function hideUnusedText() {
+    for (let i = textPoolUsed; i < textPool.length; i++) textPool[i].style.display = "none";
+  }
+  /** Prende il prossimo elemento libero dal pool, lo posiziona/testizza e lo
+   * rende visibile — un'etichetta centrata su (cx,cy) di norma (i bottoni/
+   * il titolo del menu di pausa), oppure un blocco di paragrafo allineato a
+   * sinistra con `wrap:true` (il balloon del tutorial, sotto: piu' righe,
+   * la larghezza vera la decide il CSS invece di wrapText()/measureText()
+   * — mai stati pensati per un font vettoriale). Ritorna l'elemento cosi'
+   * chi chiama puo' leggerne `getBoundingClientRect()` quando serve
+   * conoscere le dimensioni VERE renderizzate (il balloon, per dimensionare
+   * lo sfondo WebGL intorno al testo). */
+  function drawHtmlText(text, x, y, { size = 16, maxWidth, wrap = false } = {}) {
+    const el = textPool[textPoolUsed++];
+    el.textContent = text;
+    el.style.display = "block";
+    el.style.fontSize = `${size}px`;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    if (wrap) {
+      el.style.textAlign = "left";
+      el.style.whiteSpace = "normal";
+      el.style.overflow = "visible";
+      el.style.textOverflow = "clip";
+      el.style.width = `${maxWidth}px`;
+      el.style.transform = "none";
+    } else {
+      el.style.textAlign = "center";
+      el.style.whiteSpace = "nowrap";
+      el.style.overflow = "hidden";
+      el.style.textOverflow = "ellipsis";
+      el.style.maxWidth = maxWidth != null ? `${maxWidth}px` : "";
+      el.style.transform = "translate(-50%, -50%)";
+    }
+    return el;
+  }
 
   /**
    * Menu di pausa (`paused`, sopra): cattura il canvas gia' disegnato per
@@ -2225,21 +2319,19 @@ export async function mountMatch(ctx, params = {}) {
     // mondo sfocato invece di un bianco piatto.
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
+    // Montserrat vero (drawHtmlText(), sopra) invece del font bitmap
+    // "gotham" di prima — nitido a qualunque dimensione, niente piu'
+    // scala intera/fitTextScale() da calcolare.
     const title = "PAUSE";
-    const titleScale = fitTextScale(fontMini, title, panelW - 24, 3);
-    drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 22, titleScale, TEXT_TINT, 1);
+    drawHtmlText(title, px + panelW / 2, py + 34, { size: 26 });
 
     pauseMenuButtons = [];
     const btnW = panelW - 60, btnH = 46, btnGap = 14;
-    // Una sola scala per tutti i bottoni (il minimo che ci sta per
-    // l'etichetta piu' lunga), non una per riga: bottoni di taglia diversa
-    // nello stesso menu sembrerebbero un errore, non una scelta.
-    const textScale = Math.min(...rows.map((row) => fitTextScale(fontMini, row.label, btnW - 20, 2)));
     let by = py + 96;
     for (const row of rows) {
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
-      drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, TEXT_TINT, 1);
+      drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
       pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
@@ -2270,22 +2362,25 @@ export async function mountMatch(ctx, params = {}) {
       { label: `Save with low oil: ${autosave.duringLowOil ? "ON" : "OFF"}`, action: "toggleLowOil" },
       { label: "Back", action: "back" },
     ];
+    // 360 fisso di nuovo (com'era prima del fix su "gotham"): Montserrat,
+    // proporzionale, ci sta comoda anche sulla riga piu' lunga ("Save
+    // during attacks: OFF") senza bisogno di allargare il pannello — a
+    // differenza del font bitmap monospazio-per-carattere di prima, un
+    // font vero varia larghezza per lettera, molto piu' compatto.
     const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
     const title = "SAVING OPTIONS";
-    const titleScale = fitTextScale(fontMini, title, panelW - 24, 3);
-    drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 26, titleScale, TEXT_TINT, 1);
+    drawHtmlText(title, px + panelW / 2, py + 38, { size: 22, maxWidth: panelW - 24 });
 
     pauseMenuButtons = [];
     const btnW = panelW - 60, btnH = 46, btnGap = 14;
-    const textScale = Math.min(...rows.map((row) => fitTextScale(fontMini, row.label, btnW - 20, 2)));
     let by = py + 96;
     for (const row of rows) {
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
-      drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, TEXT_TINT, 1);
+      drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
       pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
@@ -3394,6 +3489,19 @@ export async function mountMatch(ctx, params = {}) {
     // stesso 2x massimo di ingrandimento su qualunque dispositivo, mobile
     // incluso.
     cam.minZoom = pixelPerfectZoom() * 0.5;
+    // [Bug corretto, richiesto dall'autore: "in generale non permettere di
+    // visualizzare al giocatore area fuori dallo spazio della room (tutti e
+    // tre i livelli)"] Al di sopra di questo zoom, in ALMENO una delle due
+    // dimensioni il mondo inquadrato (`cam.worldW`/`worldH`) supera la room
+    // vera (`scene.width`/`height`) — `cam.clamp()` (camera.js) a quel punto
+    // smette di poter incastrare i bordi e RICENTRA soltanto, lasciando
+    // margine vuoto intorno alla piattaforma (coperto qui dalla vignetta
+    // fuori mappa, main.js piu' sotto — ma l'autore vuole che quel margine
+    // non sia proprio raggiungibile). `Math.min`, non `Math.max`: lo stesso
+    // identico calcolo gia' usato dal ramo mobile sotto per il fit "cover"
+    // (un margine vuoto compare appena una delle due dimensioni lo supera,
+    // quindi serve il rapporto PIU' vincolante, non il meno vincolante).
+    const roomCoverZoom = Math.min(scene.width / cam.viewW, scene.height / cam.viewH);
     if (!isMobile) {
       // Desktop: lo zoom di default resta pixel-perfect (mai un "fit to
       // screen" frazionario, che sfumerebbe gli sprite) — ma ora e' solo il
@@ -3405,16 +3513,16 @@ export async function mountMatch(ctx, params = {}) {
       // dal ramo mobile sotto, cosi' un resize (finestra ridimensionata,
       // spostata su un monitor a dpr diverso) non scavalca piu' uno zoom
       // scelto dal giocatore.
-      // [Bug corretto, richiesto dall'autore: "consenti anche uno zoom out
-      // fino a 0.5"] Prima `maxZoom` COINCIDEVA col default pixel-perfect:
-      // la rotella poteva solo avvicinare, mai allontanare oltre il primo
-      // frame — su `match`/`tutorial` non si poteva mai vedere piu' mappa di
-      // quella iniziale. `* 2` raddoppia il limite di zoom-OUT (`cam.zoom`
-      // piu' grande = piu' mondo inquadrato, camera.js): al doppio del
-      // pixel-perfect uno sprite finisce a meta' della propria taglia
-      // nativa a schermo (scala 0.5, la stessa unita' di `cam.minZoom`
-      // sopra, dove e' invece il limite di zoom-IN).
-      cam.maxZoom = pixelPerfectZoom() * 2;
+      // [Bug corretto di nuovo, stesso sintomo] Una richiesta precedente
+      // ("consenti anche uno zoom out fino a 0.5") aveva portato `maxZoom` a
+      // `pixelPerfectZoom() * 2` — ma su una room grande (`match`, 3900x2090)
+      // quel raddoppio supera `roomCoverZoom` (sopra), mostrando l'esterno
+      // della piattaforma. `Math.min` con `roomCoverZoom` riporta il limite
+      // di zoom-OUT al piu' permissivo dei due SENZA mai superare il bordo
+      // della room — su un desktop/room dove il doppio pixel-perfect resta
+      // comunque dentro la room (schermi piccoli, room piccole) il
+      // comportamento richiesto in precedenza resta invariato.
+      cam.maxZoom = Math.min(pixelPerfectZoom() * 2, roomCoverZoom);
       if (!userMoved) cam.setZoomImmediate(pixelPerfectZoom());
     } else if (canvas.clientWidth > 0) {
       // `Math.min`, non `Math.max`: la room e' quasi sempre piu' larga che
@@ -3430,13 +3538,20 @@ export async function mountMatch(ctx, params = {}) {
       // tutta la larghezza della mappa in un colpo solo (si scorre lateralmente,
       // clamp() sotto gestisce gia' il pan quando il mondo e' piu' stretto
       // della room).
-      const fitZoom = Math.min(scene.width / cam.viewW, scene.height / cam.viewH);
-      // [Bug corretto, richiesto dall'autore: "consenti anche uno zoom out
-      // fino a 0.5"] `* 1.3` (poco oltre il fit "cover") non arrivava alla
-      // meta' scala richiesta — `* 2`, stessa scelta del ramo desktop sopra,
-      // porta anche qui il limite di zoom-OUT fino a scala 0.5 rispetto al
-      // fit di partenza.
-      cam.maxZoom = fitZoom * 2;
+      // `roomCoverZoom` sopra e' lo stesso identico calcolo — riusato invece
+      // di ridichiararlo qui, resta comunque "fitZoom" nel resto di questo
+      // ramo (il nome gia' usato per `setZoomImmediate()`/`cam.x`/`cam.y`
+      // sotto, meno da toccare).
+      const fitZoom = roomCoverZoom;
+      // [Bug corretto di nuovo, stesso sintomo del ramo desktop sopra:
+      // richiesto dall'autore, "non permettere di visualizzare area fuori
+      // dallo spazio della room"] Prima: `fitZoom * 2` (`* 1.3` ancora
+      // prima) — una richiesta precedente per uno zoom-out fino a scala 0.5,
+      // ma OLTRE `fitZoom` (il fit "cover" vero, sopra) il mondo inquadrato
+      // supera la room in almeno una dimensione: `cam.maxZoom` non deve mai
+      // superarlo, `fitZoom` stesso e' gia' il limite piu' permissivo che
+      // non mostra mai l'esterno della piattaforma.
+      cam.maxZoom = fitZoom;
       if (!userMoved) {
         cam.setZoomImmediate(fitZoom);
         // `initialFocusX`/`initialFocusY` (calcolati sopra, dove viene
@@ -3457,6 +3572,11 @@ export async function mountMatch(ctx, params = {}) {
   let last = performance.now();
   function frame(now) {
     if (stopped) return;
+    // Un solo reset per frame, prima di ogni possibile drawHtmlText() (il
+    // balloon del tutorial e il menu di pausa/"saving options", entrambi
+    // piu' sotto) — hideUnusedText() (in fondo a questa stessa funzione)
+    // nasconde poi quanto resta del pool non riusato.
+    resetTextPool();
     // [Bug corretto, segnalato dall'autore: "su desktop non riesco ad
     // avviare match, rimane fermo in caricamento con schermo nero"] Un
     // errore imprevisto in un punto qualunque del ciclo di frame (migliaia
@@ -4009,8 +4129,11 @@ export async function mountMatch(ctx, params = {}) {
       const frameIdx = Math.min(EXPLOSION_FRAME_COUNT - 1, Math.floor(ex.t / TICK));
       dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr, frameIdx), _scale: ex.scale });
     }
-    // Il fuoco vero (game/src/projectiles.js): i razzi del lanciarazzi.
-    for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr) });
+    // Il fuoco vero (game/src/projectiles.js): i razzi del lanciarazzi e i
+    // traccianti del gatling. `p.angle` (solo il gatling, projectiles.js/
+    // spawnProjectile()) ruota lo sprite come "image_angle = direction" —
+    // vedi `_angle` nel loop del layer mondo sopra.
+    for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr), _angle: p.angle });
     // Fumo di scia (game/src/projectiles.js, spawnSmoko): depth -9000 fisso
     // come le monete blu ([C] smoko/_object.json), ma senza `_selfLit` — un
     // residuo di sparo, non un simbolo dell'interfaccia, si scurisce di
@@ -4176,7 +4299,12 @@ export async function mountMatch(ctx, params = {}) {
       if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < t) continue;
       const base = (it.obj === "placeholder" && it._armed) ? ARMED_TINT : (it._tint ?? 0xffffff);
       const tint = it._selfLit ? base : mulTint(base, amb.rgb);
-      r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
+      // `_angle` (solo i traccianti del gatling, projectiles.js/main.js
+      // sopra — "image_angle pari alla direzione"): drawRotated() invece
+      // del draw() allineato agli assi, stesso principio della freccia del
+      // tutorial/le gocce di pioggia (drawRotated(), sopra).
+      if (it._angle != null) drawRotated(f, it.x, it.y, it._angle, it._scale ?? 1, tint, it._alpha ?? 1);
+      else r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
     }
     // Fantasma di anteprima per eolico/grattacielo (multiTilePreview, sopra):
     // alpha 0.5, nessuna tinta ambientale (come le luci/`_selfLit` sopra —
@@ -4662,8 +4790,27 @@ export async function mountMatch(ctx, params = {}) {
         // Fase 9: gia' scelto il tipo "casa" (fase 8), qui manca solo un
         // lotto libero — nessun bottone da puntare, solo il suggerimento
         // sopra.
+        // [Bug corretto, segnalato dall'autore: "la freccia che punta i
+        // lotti vuoti dovrebbe smettere di comparire quando sto costruendo
+        // cio' che viene richiesto per avanzare, anche se c'e' solo il
+        // cantiere — posati 5 cantieri non deve continuare a vedersi la
+        // freccia sui lotti vuoti"] L'avanzamento vero (stepTutorialAuto(),
+        // tutorial.js) aspetta 5 case COMPLETE (`builtAtLevel("casa",1)`,
+        // livello 1 — giusto, "population grows" solo a fine cantiere), ma
+        // `selectedType` resta "casa" per tutta la fase (si costruisce piu'
+        // di un lotto senza riselezionare lo strumento ogni volta, main.js/
+        // placeAt() non lo azzera mai da solo): senza questo controllo la
+        // freccia continuava a suggerire un lotto libero IN PIU' anche dopo
+        // che il giocatore aveva gia' piazzato i 5 cantieri richiesti,
+        // finche' l'ultimo non finiva di costruirsi — spingendo a costruirne
+        // di piu' del necessario. Qui basta che i 5 esistano GIA', a
+        // livello 0 (cantiere) o 1 (appena finita): non oltre, altrimenti
+        // le case GIA' in piedi all'avvio del tutorial (livello 2/3,
+        // casa2/casa3 — STUDIO.md, stepTutorialAuto() in tutorial.js) le
+        // farebbero sparire la freccia subito, PRIMA che il giocatore abbia
+        // anche solo iniziato a costruire.
         case 9: {
-          target = suggestedPlotTarget();
+          target = buildings.filter((b) => b.type === "casa" && b.level <= 1).length >= 5 ? null : suggestedPlotTarget();
           break;
         }
         case 8: case 12: case 16: case 19: {
@@ -4674,8 +4821,19 @@ export async function mountMatch(ctx, params = {}) {
           // fase 9 sopra): una volta selezionato il tipo giusto la freccia
           // passa dal bottone al lotto suggerito, invece di restare ferma
           // su un bottone gia' premuto.
+          // Stesso fix di fase 9 sopra: 12/16/19 aspettano solo UN nuovo
+          // edificio oltre quelli gia' in piedi all'avvio del tutorial
+          // (`tutind`/`tutpar`/`tutrl`, createTutorialState() — contati
+          // dalla room, STESSO "livello 1" implicito di quei nomi scena,
+          // STUDIO.md), quindi appena quello e' piazzato (anche solo il
+          // cantiere, livello 0/1 — non gli edifici gia' maturi della room,
+          // stesso motivo del filtro `b.level <= 1` in fase 9 sopra) la
+          // freccia deve smettere di suggerire un altro lotto.
+          const neededCount = { industria: tutorialState.tutind + 1, parco: tutorialState.tutpar + 1, missile: tutorialState.tutrl + 1 }[type];
+          const alreadyPlaced = neededCount !== undefined
+            && buildings.filter((b) => b.type === type && b.level <= 1).length >= neededCount;
           target = selectedType === type && tutorialState.phase !== 8
-            ? suggestedPlotTarget()
+            ? (alreadyPlaced ? null : suggestedPlotTarget())
             : pointAtButton(byKind((btn) => btn.kind === "building" && btn.type === type)
                 ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1)
                 ?? findIndietro());
@@ -4688,20 +4846,35 @@ export async function mountMatch(ctx, params = {}) {
       }
       if (target) {
         const arrowFrame = frameFor("fr_ros", Math.floor(tutorialState.arrowFrame));
-        if (arrowFrame) drawRotated(arrowFrame, target.x, target.y, target.angle, UI_SCALE, 0xffffff, 1);
+        // [Bug corretto, segnalato dall'autore: "la freccia del tutorial
+        // dovrebbe diventare bianca quando il resto della GUI diventa
+        // bianca di notte"] Stessa protezione gia' usata per la barra
+        // risorse/i bottoni in basso (`iconsDark`/`setColorize()`, sopra):
+        // senza, il tint 0xffffff qui sotto non basta da solo a schiarire
+        // uno sprite scuro (moltiplicare nero per bianco resta nero) —
+        // serve la "colorize mode" per sostituirlo davvero con una sagoma
+        // piena bianca di notte/nella vignetta scura.
+        if (arrowFrame) {
+          r.setColorize(iconsDark);
+          drawRotated(arrowFrame, target.x, target.y, target.angle, UI_SCALE, 0xffffff, 1);
+          r.setColorize(false);
+        }
       }
     }
     // Balloon di testo del tutorial — [C] tutorial_square/DrawGUI.gml:
     // `draw_set_alpha(0.7)` + `draw_roundrect_colour_ext(..., 16777215,
     // 16777215, 0)` (un rettangolo BIANCO pieno arrotondato, non nero) poi
     // `draw_set_alpha(1)` + `draw_text_ext_colour(..., 0,0,0,0, 1)` (testo
-    // NERO in piena opacita') col font `gotham_mobile` — stesso font/stile
-    // dell'originale (fontMobile sopra, tools/25_font.py; rettangolo
-    // arrotondato, tutorialBoxFrame()/makeRoundedRectTexture() sopra) —
-    // **[I]** larghezza/testo a capo qui invece che nel motore GML nativo
-    // (wrapText() sopra, via measureText()).
-    if (tutorialState?.showText && fontMobile) {
-      const textScale = 1;
+    // NERO in piena opacita') — lo sfondo arrotondato resta WebGL
+    // (tutorialBoxFrame()/makeRoundedRectTexture() sopra, gia' nitido:
+    // nessun font coinvolto), il testo e' Montserrat vero invece del font
+    // bitmap "gotham_mobile" di prima (drawHtmlText(), sopra — segnalato
+    // "sgranato" dall'autore come il menu di pausa). Il testo va disegnato
+    // PRIMA di sapere `boxH` (l'HTML va a capo da solo, niente piu'
+    // wrapText()/measureText()): lo misura DOPO averlo scritto
+    // (`getBoundingClientRect()`), poi riposiziona sia lui che lo sfondo
+    // WebGL in base all'altezza vera appena letta.
+    if (tutorialState?.showText) {
       const pad = 20;
       // boxRight lascia spazio al pollice (tut_ok, disegnato subito sotto:
       // stessa larghezza 45*1.3 li' usata, + margine) SOLO quando il
@@ -4710,17 +4883,14 @@ export async function mountMatch(ctx, params = {}) {
       // box usa tutta la larghezza, senza lasciare un vuoto a destra per un
       // pollice che non c'e'.
       const boxLeft = 30, boxRight = canvas.clientWidth - 30 - (tutorialState.showOkButton ? 45 * 1.3 + 45 : 0);
-      const lineH = fontMobile.meta.emSize * textScale * 1.35;
-      const lines = wrapText(fontMobile, TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "", textScale, boxRight - boxLeft - pad * 2);
-      const boxH = lines.length * lineH + pad * 2;
+      const textW = boxRight - boxLeft - pad * 2;
+      const textEl = drawHtmlText(TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "", boxLeft + pad, 0,
+        { size: 16, maxWidth: textW, wrap: true });
+      const boxH = textEl.getBoundingClientRect().height + pad * 2;
       const boxBottom = canvas.clientHeight - tutorialState.uiGap;
       const boxTop = boxBottom - boxH;
+      textEl.style.top = `${boxTop + pad}px`;
       r.draw(tutorialBoxFrame(boxRight - boxLeft, boxH), boxLeft, boxTop, 1, 0xffffff, 0.7);
-      let ty = boxTop + pad;
-      for (const line of lines) {
-        drawText(r, fontMobile, line, boxLeft + pad, ty, textScale, 0x000000, 1);
-        ty += lineH;
-      }
     }
     // Bottone "avanti/esci" del tutorial: il vero sprite `tut_ok` (STUDIO.md
     // — l'oggetto si chiama `tutorial_thumb`, un pollice in su, non testo
@@ -4886,6 +5056,13 @@ export async function mountMatch(ctx, params = {}) {
       r.flush();
     }
 
+    // Nasconde ogni elemento del pool di testo HTML (drawHtmlText(), sopra)
+    // non riusato in QUESTO frame — sia il caso comune (fuori pausa/
+    // tutorial: nessuno dei due pannelli chiama drawHtmlText(), tutto il
+    // pool va nascosto) sia il passaggio da un pannello piu' affollato a
+    // uno con meno righe (es. "saving options" -> pausa principale).
+    hideUnusedText();
+
     requestAnimationFrame(frame);
     } catch (err) {
       console.error("nimbus: errore nel ciclo di frame di match, torno al menu", err);
@@ -4941,6 +5118,12 @@ export async function mountMatch(ctx, params = {}) {
       stopped = true;
       window.removeEventListener("keydown", onKeydown);
       delete window.__nimbus;
+      // Pool di testo HTML del menu di pausa/il balloon del tutorial
+      // (textPool/drawHtmlText(), sopra) — stesso principio di msgEl/
+      // loadFileBtn in title.js: nodi DOM creati da questo mount, tocca a
+      // lui toglierli, altrimenti rientrare in questa stessa room piu'
+      // volte nella sessione (SPA, game/src/app.js) li accumulerebbe.
+      for (const el of textPool) el.remove();
     },
   };
 }

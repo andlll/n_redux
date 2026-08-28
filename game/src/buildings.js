@@ -2561,7 +2561,20 @@ export function stepStormDamage(buildings, dt, r12, onStrike) {
 // passo della griglia dei placeholder in `match_easy` (~116px fra vicini
 // diretti): abbastanza da bloccare i vicini immediati, non i vicini di
 // vicini.
-const TURRET_MIN_DIST = 200;
+//
+// [Bug corretto, segnalato dall'autore: "c'e' ancora un bug per cui non
+// posso costruire vicino alle strutture di difesa"] 200 era troppo vicino
+// al secondo anello della griglia isometrica, non solo al primo: misurando
+// le distanze vere fra placeholder su `match`/`match_easy` (game/data/
+// *.scene.json), i vicini DIRETTI stanno a ~112-118px (il valore gia' letto
+// sopra), ma il PROSSIMO anello (due passi di griglia, non piu' un vicino
+// immediato) sta a ~195-201px — a cavallo esatto della vecchia soglia 200,
+// quindi bloccato quasi per intero insieme ai vicini veri invece di restare
+// libero: da qui il "non riesco a costruire torrette vicino ad altre
+// torrette" anche su lotti che non sono affatto adiacenti. 130 sta
+// comodamente sopra il primo anello (~118) e comodamente sotto il secondo
+// (~195) — blocca solo i vicini immediati, come da intento originale.
+const TURRET_MIN_DIST = 130;
 
 /** true se (x,y) e' troppo vicino a una torretta gia' piazzata (in cantiere o finita). */
 export function tooCloseToTurret(buildings, x, y) {

@@ -160,7 +160,7 @@ const WEAPONS = {
   // `muzzleSmoke` sotto: [C] `yellow_pro/Create.gml` lo crea una volta
   // sola, a differenza del razzo che lo riarma di continuo in volo).
   gatling: {
-    kind: "projectile", twin: true, muzzle: GATLING_MUZZLE,
+    kind: "projectile", twin: true, muzzle: GATLING_MUZZLE, rotates: true,
     // [Bug corretto, segnalato dall'autore: "il gatling spara troppo
     // lentamente (probabilmente ha erroneamente lo stesso tempo di
     // cooldown del lanciarazzi)"] **[C]** una lettura precedente aveva
@@ -281,10 +281,22 @@ export function stepSmoko(trails, dt) {
   }
 }
 
+// [Bug corretto, segnalato dall'autore: "i proiettili del gatling devono
+// avere image_angle pari alla direzione"] **[C]** `yellow_pro/Create.gml`:
+// `image_angle = direction` — lo stesso `angleDeg` gia' usato qui sotto per
+// calcolare `vx`/`vy` (STESSA convenzione GameMaker, 0=est/antiorario, vedi
+// drawRotated()/main.js). Il proiettile non lo conservava affatto: main.js
+// lo disegnava come qualunque altro decoro fisso (nessuna rotazione), sempre
+// alla posa di default dello sprite. `weapon.rotates` (solo su
+// WEAPONS.gatling, sotto): "gatmissse" e' un tracciante sottile (67x6px),
+// restava sempre orizzontale a schermo qualunque fosse la direzione VERA
+// del colpo — il missile ("redb", 32x32, un pallino) resta com'era, mai
+// stato segnalato e nessuna conferma che l'originale ruotasse anche lui.
 function spawnProjectile(x, y, angleDeg, weapon) {
   const rad = (angleDeg * Math.PI) / 180;
   return {
     x, y, vx: Math.cos(rad) * weapon.speed, vy: -Math.sin(rad) * weapon.speed,
+    angle: weapon.rotates ? angleDeg : null,
     t: 0, spr: weapon.spr, life: weapon.life, hitRadius: weapon.hitRadius,
     damage: weapon.damage, trailT: 0, trailPeriod: weapon.trailPeriod,
   };
