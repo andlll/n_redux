@@ -31,7 +31,7 @@ import { save, load, serializeSave, saveToFile, loadFromFile, loadAutosaveSettin
 import { loadFont, drawText, measureText, fitTextScale } from "./font.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
-  TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE,
+  TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN,
 } from "./tutorial.js";
 
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
@@ -4287,8 +4287,11 @@ export async function mountMatch(ctx, params = {}) {
       // non solo da `r12`/`buildings`.
       if (tutorialState) {
         if (tutorialState.cutscene) {
-          const cutAspect = canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : 16 / 9;
-          const cutDone = stepCutscene(tutorialState.cutscene, cutsceneDt, cutAspect, !!platformState);
+          // Niente piu' `aspect` da passare (STUDIO.md/tutorial.js, il fix
+          // sugli aerei "fermi per qualche frame": la posizione in pixel si
+          // calcola ora a valle, nel disegno sotto, dove la vera larghezza
+          // dello sprite e' gia' nota).
+          const cutDone = stepCutscene(tutorialState.cutscene, cutsceneDt, !!platformState);
           // `spawnThreats`/`killDirig` (tutorial.js, sopra stepCutscene()):
           // one-shot alla transizione di fase, "planes"->"black1" e
           // "battle"->"black2" — tutorial.js non conosce `threats` (non e'
@@ -5713,7 +5716,10 @@ export async function mountMatch(ctx, params = {}) {
     //    su tutta la canvas (qualunque risoluzione: copertura piena
     //    garantita, a differenza di una prima versione che lo piazzava a
     //    coordinate mondo fisse), i tre aerei attraversano lo schermo da
-    //    bordo a bordo in coordinate normalizzate.
+    //    bordo a bordo — in PIXEL veri (tutorial.js, il commento su
+    //    CUTSCENE_CLIMB_TAN: `p.k`, 0..1, e' l'unica cosa che tutorial.js
+    //    traccia, il resto si calcola qui sotto sapendo gia' la vera
+    //    larghezza dello sprite).
     //  - "black1"/"black2": **[C]** `blacker1|blacker2/DrawGUI.gml` —
     //    schermo nero pieno (`draw_rectangle(0,0,5000,5000,0)`, qui un
     //    rettangolo grande quanto il canvas basta) con la scritta "Mount
@@ -5740,7 +5746,30 @@ export async function mountMatch(ctx, params = {}) {
         }
         for (const p of tutorialState.cutscene.planes) {
           const f = frameFor(p.spr);
-          if (f) r.draw(f, p.xFrac * cw, p.yFrac * ch, 1, 0xffffff, 1);
+          if (!f) continue;
+          // [Bug corretto, segnalato dall'autore: "vedo gli aerei fermi per
+          // qualche frame quando parte il livello"] `x` va da
+          // COMPLETAMENTE fuori schermo a sinistra (bordo destro dello
+          // sprite esattamente a x=0, k=0) a COMPLETAMENTE fuori schermo a
+          // destra (bordo sinistro esattamente a x=cw, k=1) — usa la vera
+          // larghezza in pixel dello sprite appena letta (`f.w`), non piu'
+          // una frazione fissa dello schermo (tutorial.js, il commento su
+          // CUTSCENE_CLIMB_TAN spiega perche' quella frazione non bastava:
+          // `tuto_bomb` da solo e' largo 716px, piu' del margine di
+          // qualunque schermo tranne i piu' larghi). `travelPx` e' la
+          // stessa distanza usata sotto per la salita in diagonale, cosi'
+          // le due restano coerenti fra loro.
+          const travelPx = cw + f.w;
+          const x = -f.w + p.k * travelPx;
+          // y: sale in diagonale a CUTSCENE_CLIMB_TAN (tutorial.js, ~18°)
+          // calcolato in pixel VERI dallo stesso `travelPx` — l'angolo a
+          // schermo e' quindi sempre esattamente quello, qualunque sia la
+          // forma della finestra, senza bisogno di un `aspect` passato da
+          // fuori (STUDIO.md: prima veniva ricavato dal rapporto cw/ch
+          // proprio per ottenere lo stesso risultato in frazioni — lavorare
+          // gia' in pixel lo rende diretto).
+          const y = p.yFrac * ch - p.k * travelPx * CUTSCENE_CLIMB_TAN;
+          r.draw(f, x, y, 1, 0xffffff, 1);
         }
         r.flush();
       } else if (phase === "black1" || phase === "black2") {

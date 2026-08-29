@@ -263,14 +263,34 @@ const CUTSCENE_PLANES = [
 // coperto solo una piccola fetta della larghezza — un guizzo, non un
 // sorvolo. Qui la salita si calibra invece su un angolo piu' moderato ma
 // comunque inequivocabilmente diagonale (~18°, ben oltre la soglia
-// percepibile), calcolata dal vero rapporto d'aspetto dello schermo
-// (`aspect` = cw/ch, passato da main.js) cosi' l'angolo A SCHERMO resta
-// lo stesso qualunque sia la forma della finestra (desktop panoramico o
-// telefono in verticale) — la stessa idea di "aereo che sale in
-// diagonale" di prima, semplicemente calibrata perche' si VEDA.
-const CUTSCENE_TRAVEL_X = 1.6;   // [C] da -0.3 (fuori sinistra) a 1.3 (fuori destra)
+// percepibile) — esportata come TANGENTE (`CUTSCENE_CLIMB_TAN`, non
+// l'angolo) perche' e' main.js a fare il calcolo pixel per pixel (vedi
+// sotto), non piu' qui.
+//
+// [Bug corretto, segnalato dall'autore: "vedo gli aerei fermi per qualche
+// frame quando parte il livello"] **[I]** Fino a qui `xFrac` partiva da un
+// margine FISSO (-0.3, "fuori sinistra") — una frazione dello SCHERMO, non
+// della vera larghezza in pixel di ciascuno sprite: `tuto_bomb` (data/
+// sprites.json) e' largo 716px, `tuto_fig1`/`tuto_fig2` 426px. Su
+// qualunque schermo dove 0.3*cw e' minore di questi (praticamente sempre —
+// perfino un desktop panoramico da 1280px da' solo 384px di margine,
+// MENO della larghezza di `tuto_bomb`), una fetta consistente dello
+// sprite restava GIA' dentro l'area visibile fin dal frame 0 — e visto
+// che ogni aereo ha anche un ritardo proprio prima di muoversi (`startT`,
+// 0/0.2/0.4s: gli aerei non partono tutti insieme), quella fetta restava
+// li' FERMA per quei primi frame, prima che il proprio `startT` scadesse
+// e cominciasse a scorrere. Non bastava allargare il margine fisso (nessuna
+// frazione unica di `cw` nasconde in modo affidabile sprite di larghezze
+// diverse su schermi di larghezze diverse, dal telefono stretto al
+// desktop panoramico): main.js ora calcola la posizione X in PIXEL veri,
+// usando la vera larghezza dello sprite (`f.w`) letta dall'atlas — il
+// bordo destro dello sprite parte esattamente a x=0 (zero pixel visibili)
+// e il bordo sinistro finisce esattamente a x=cw (zero pixel visibili),
+// qualunque siano sprite e schermo. Qui in tutorial.js resta solo il
+// progresso normalizzato `k` (0..1, tempo puro): main.js lo traduce in
+// pixel sapendo gia' quanto e' largo lo sprite che sta per disegnare.
 const CUTSCENE_CLIMB_ANGLE = (18 * Math.PI) / 180;
-const CUTSCENE_TAN = Math.tan(CUTSCENE_CLIMB_ANGLE);
+export const CUTSCENE_CLIMB_TAN = Math.tan(CUTSCENE_CLIMB_ANGLE);
 
 // [C] blacker1/Create.gml, letto riga per riga: 3 `bombar` a x=-170 fisso
 // (lo stesso `spawnX` che il regista vero usa per questo tipo,
@@ -300,7 +320,7 @@ function spawnBattle(hasPlatform) {
 }
 
 export function createCutscene() {
-  const planes = CUTSCENE_PLANES.map((p) => ({ ...p, yFrac0: p.yFrac, xFrac: -0.3 }));
+  const planes = CUTSCENE_PLANES.map((p) => ({ ...p, k: 0 }));
   return { phase: "planes", phaseT: 0, planes, spawnThreats: null, killDirig: false };
 }
 
@@ -315,12 +335,13 @@ export function createCutscene() {
  * transizione — main.js li legge subito dopo aver chiamato questa funzione
  * (non restano "in coda": un frame dopo sono gia' tornati `null`/`false`).
  *
- * `aspect` (larghezza/altezza dello schermo corrente) serve solo alla fase
- * "planes", a calcolare la salita in diagonale dei tre aerei ad un angolo
- * VISIBILE a schermo — vedi il commento sopra CUTSCENE_CLIMB_ANGLE. Il
- * tassello di sfondo lo ripete a tappeto chi disegna (main.js), non serve
- * qui. `hasPlatform` (vedi spawnBattle() sopra) serve solo alla transizione
- * "planes"->"black1", quando nasce la battaglia.
+ * Durante la fase "planes" questa funzione aggiorna solo `p.k` (0..1, puro
+ * progresso nel tempo) per ciascun aereo — NON piu' una posizione in pixel
+ * o in frazione di schermo: main.js (che conosce la vera larghezza in
+ * pixel dello sprite, letta dall'atlas) traduce `k` in una posizione reale
+ * al momento di disegnare, vedi il commento su CUTSCENE_CLIMB_TAN sopra
+ * per il perche'. `hasPlatform` (vedi spawnBattle() sopra) serve solo alla
+ * transizione "planes"->"black1", quando nasce la battaglia.
  *
  * [Bug corretto, segnalato dall'autore: "gli aerei del tutorial iniziano
  * fermi poi si muovono"] `dt` qui e' quello VERO passato da main.js
@@ -330,20 +351,13 @@ export function createCutscene() {
  * le texture dell'atlas in GPU) avanza la cutscene della sua vera durata
  * invece che di soli 0.05s "di gioco", cosi' non sembra rallentare/
  * fermarsi proprio nell'istante in cui il framerate vero e' piu' basso. */
-export function stepCutscene(cutscene, dt, aspect = 16 / 9, hasPlatform = false) {
+export function stepCutscene(cutscene, dt, hasPlatform = false) {
   cutscene.spawnThreats = null;
   cutscene.killDirig = false;
   cutscene.phaseT += dt;
   if (cutscene.phase === "planes") {
-    // Salita totale (frazione di altezza schermo) equivalente a
-    // CUTSCENE_CLIMB_ANGLE in pixel: Δy_px = Δx_px * tan(angolo), con
-    // Δx_px = CUTSCENE_TRAVEL_X * cw e Δy_px = climb * ch, quindi
-    // climb = CUTSCENE_TRAVEL_X * tan(angolo) * (cw/ch).
-    const climb = CUTSCENE_TRAVEL_X * CUTSCENE_TAN * aspect;
     for (const p of cutscene.planes) {
-      const k = Math.max(0, Math.min(1, (cutscene.phaseT - p.startT) / p.dur));
-      p.xFrac = -0.3 + k * CUTSCENE_TRAVEL_X;   // da -0.3 (fuori a sinistra) a 1.3 (fuori a destra)
-      p.yFrac = p.yFrac0 - k * climb;   // sale in diagonale, ad un angolo davvero visibile
+      p.k = Math.max(0, Math.min(1, (cutscene.phaseT - p.startT) / p.dur));
     }
     if (cutscene.phaseT >= CUTSCENE_PLANES_DURATION) {
       cutscene.phase = "black1";
