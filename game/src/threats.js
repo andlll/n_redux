@@ -209,13 +209,21 @@ function spawnAerSmoke(x, y, sourceDepth) {
  * `match_easy`, STUDIO.md) quell'effetto non ha senso: non c'e' nessuna
  * piattaforma sotto cui sparire, un aereo "di sfondo" finirebbe solo per
  * volare dietro agli edifici in modo incoerente. Li' il dado non gira
- * nemmeno: ogni `air` nasce sempre "in prima fila", come bombar/dirig. */
-export function spawnThreat(type, hasPlatform) {
+ * nemmeno: ogni `air` nasce sempre "in prima fila", come bombar/dirig.
+ *
+ * `pos`: override opzionale `{x, y}` — di default (assente) nasce al bordo
+ * schermo come il regista vero delle ondate (`def.spawnX`/`spawnY`, sopra),
+ * ma la scena di combattimento della cutscene iniziale del tutorial
+ * (`blacker1/Create.gml`, tutorial.js) crea gli stessi tre tipi a
+ * coordinate FISSE del decompilato invece che a dado/bordo schermo — meglio
+ * un parametro qui che duplicare la forma dell'oggetto ritornato in un
+ * secondo posto. */
+export function spawnThreat(type, hasPlatform, pos) {
   const def = THREAT_TYPES[type];
   const front = type !== "air" || !hasPlatform || dice(2);
   const air = type === "air" ? pickAirSpr() : null;
   return {
-    type, x: def.spawnX, y: rand(def.spawnY[0], def.spawnY[1]),
+    type, x: pos?.x ?? def.spawnX, y: pos?.y ?? rand(def.spawnY[0], def.spawnY[1]),
     spd: type === "dirig" ? 2 : type === "bombar" ? (dice(2) ? 8 : 6) : (dice(2) ? 16 : 13),  // [C]
     depth: front ? -3990 : 2, scale: front ? 1 : 0.75, desto: front,
     spr: air ? air.spr : type === "bombar" ? "bomberspr" : "dirspr",

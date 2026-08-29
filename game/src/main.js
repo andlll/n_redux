@@ -4288,7 +4288,25 @@ export async function mountMatch(ctx, params = {}) {
       if (tutorialState) {
         if (tutorialState.cutscene) {
           const cutAspect = canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : 16 / 9;
-          if (stepCutscene(tutorialState.cutscene, cutsceneDt, cutAspect)) tutorialState.cutscene = null;
+          const cutDone = stepCutscene(tutorialState.cutscene, cutsceneDt, cutAspect, !!platformState);
+          // `spawnThreats`/`killDirig` (tutorial.js, sopra stepCutscene()):
+          // one-shot alla transizione di fase, "planes"->"black1" e
+          // "battle"->"black2" — tutorial.js non conosce `threats` (non e'
+          // sua responsabilita' possedere lo stato del mondo), quindi
+          // ritorna cosa fare e main.js lo applica qui, PRIMA di
+          // stepThreats() (sotto, fuori da questo blocco `if`) cosi' la
+          // battaglia appena nata viene gia' animata nello stesso frame in
+          // cui nasce. [C] blacker1/Create.gml crea gli stessi tipi che il
+          // regista vero (stepThreatSpawner) usa in partita — nessun array
+          // a parte, la stessa `threats` di sempre.
+          if (tutorialState.cutscene.spawnThreats) threats.push(...tutorialState.cutscene.spawnThreats);
+          // [C] blacker2/Create.gml: `with (dirig) { action_kill_object() }`
+          // — nessuna esplosione, il decompilato lo fa sparire di scatto
+          // (a differenza di una morte vera, spawnDeathEffect() non gira
+          // qui): stesso trattamento, un filtro invece di un
+          // `action_kill_object()` per istanza.
+          if (tutorialState.cutscene.killDirig) threats = threats.filter((th) => th.type !== "dirig");
+          if (cutDone) tutorialState.cutscene = null;
         } else {
           if (tutorialState.practiceCoinSpawned && !coins.some((c) => c._tutorialPractice)) {
             tutorialState.coinCollected = true;
@@ -5687,28 +5705,53 @@ export async function mountMatch(ctx, params = {}) {
     else if (buildMenuOpen) drawBuildMenuOverlay();
 
     // Cutscene iniziale del tutorial (game/src/tutorial.js): disegnata per
-    // ultima, in spazio schermo, sopra a TUTTO il resto (mondo + UI vera) —
-    // una vera cutscene a schermo pieno, non un livello del mondo qualunque.
-    // Il tassello "macerie" (tuto_sfondo) si ripete a tappeto su tutta la
-    // canvas (qualunque risoluzione: copertura piena garantita, a differenza
-    // di una prima versione che lo piazzava a coordinate mondo fisse — vedi
-    // il commento su CUTSCENE_DURATION in tutorial.js), i tre aerei
-    // attraversano lo schermo da bordo a bordo in coordinate normalizzate.
+    // ultima, sopra a TUTTO il resto (mondo + UI vera) — quattro fasi
+    // (`cutscene.phase`, vedi il commento su CUTSCENE_PLANES_DURATION in
+    // tutorial.js), non piu' solo il sorvolo:
+    //  - "planes": il sorvolo vero e proprio, interamente in spazio
+    //    schermo. Il tassello "macerie" (tuto_sfondo) si ripete a tappeto
+    //    su tutta la canvas (qualunque risoluzione: copertura piena
+    //    garantita, a differenza di una prima versione che lo piazzava a
+    //    coordinate mondo fisse), i tre aerei attraversano lo schermo da
+    //    bordo a bordo in coordinate normalizzate.
+    //  - "black1"/"black2": **[C]** `blacker1|blacker2/DrawGUI.gml` —
+    //    schermo nero pieno (`draw_rectangle(0,0,5000,5000,0)`, qui un
+    //    rettangolo grande quanto il canvas basta) con la scritta "Mount
+    //    Fuji Software" sopra (`mfs1`/`mfs11` — Windows/Android, qui
+    //    isMobile — per "black1"; `mfs2`, un secondo logo/scritta piu'
+    //    piccolo, per "black2"), centrata come nel decompilato
+    //    (`view_wview[0]/2, view_hview[0]/2`).
+    //  - "battle": NESSUN overlay qui — il mondo, gia' disegnato PRIMA di
+    //    questo blocco nello stesso frame, resta interamente visibile: e'
+    //    la scena di combattimento vera e propria (bombar/air/dirig,
+    //    stepThreats() sopra) direttamente sulla piattaforma, non un
+    //    livello a parte.
     if (tutorialState?.cutscene) {
       const cw = canvas.clientWidth, ch = canvas.clientHeight;
-      r.setAmbient(1, 1, 1);
-      r.setProjection(screenProjection(cw, ch));
-      const bgFrame = frameFor("tuto_sfondo", 0, true);
-      if (bgFrame) {
-        for (let y = 0; y < ch; y += bgFrame.h) {
-          for (let x = 0; x < cw; x += bgFrame.w) r.draw(bgFrame, x, y, 1, 0xffffff, 1);
+      const phase = tutorialState.cutscene.phase;
+      if (phase === "planes") {
+        r.setAmbient(1, 1, 1);
+        r.setProjection(screenProjection(cw, ch));
+        const bgFrame = frameFor("tuto_sfondo", 0, true);
+        if (bgFrame) {
+          for (let y = 0; y < ch; y += bgFrame.h) {
+            for (let x = 0; x < cw; x += bgFrame.w) r.draw(bgFrame, x, y, 1, 0xffffff, 1);
+          }
         }
+        for (const p of tutorialState.cutscene.planes) {
+          const f = frameFor(p.spr);
+          if (f) r.draw(f, p.xFrac * cw, p.yFrac * ch, 1, 0xffffff, 1);
+        }
+        r.flush();
+      } else if (phase === "black1" || phase === "black2") {
+        r.setAmbient(1, 1, 1);
+        r.setProjection(screenProjection(cw, ch));
+        r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 1);
+        const sprName = phase === "black1" ? (isMobile ? "mfs11" : "mfs1") : "mfs2";
+        const f = frameFor(sprName);
+        if (f) r.draw(f, cw / 2, ch / 2, 1, 0xffffff, 1);
+        r.flush();
       }
-      for (const p of tutorialState.cutscene.planes) {
-        const f = frameFor(p.spr);
-        if (f) r.draw(f, p.xFrac * cw, p.yFrac * ch, 1, 0xffffff, 1);
-      }
-      r.flush();
     }
 
     // Icona "salvataggio in corso" (saveIconT/showSaveIcon(), sopra) —

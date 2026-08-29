@@ -22,6 +22,8 @@
 // "vuoto" ogni tocco su due): **[I]** qui avanza di 1 intero per tocco,
 // niente fase vuota — un dettaglio cosmetico, non l'esito finale (comunque
 // "il prossimo messaggio ad ogni tocco").
+import { spawnThreat } from "./threats.js";
+
 export const TUTORIAL_TEXTS = [
   "Damn! It looks like they destroyed half of the city! As new mayor you must rebuild it before they come back!",
   "First off, you should demolish those ruins, so that we can build new houses there.",
@@ -119,7 +121,7 @@ export function createTutorialState(scene) {
     // sull'esito): l'HUD del tutorial (freccia/balloon/bottone, uccisi
     // dalla cutscene nel decompilato) resta nascosto finche' `cutscene`
     // non e' null.
-    cutscene: airTut2 ? createCutscene() : null,
+    cutscene: airTut2 ? createCutscene() : null,   // vedi createCutscene()/stepCutscene() sotto
     arrowFrame: 0,
   };
 }
@@ -171,13 +173,60 @@ export const LAST_PHASE = TUTORIAL_TEXTS.length - 1;   // 32
 // risoluzione) e i tre aerei attraversano lo schermo da un bordo
 // all'altro in coordinate normalizzate — copertura piena garantita,
 // indipendente da dove la camera vera della room punta.
-// Durata: **[I]** 4s (240 tick nel decompilato, Alarm_1 — il momento in
-// cui l'originale uccide aerei/sfondo e fa comparire l'overlay nero
-// `blacker1`, la schermata di game over del gioco base, mai implementata
-// altrove — STUDIO.md §6): quell'overlay e' SALTATO di proposito
-// (deviazione concordata), l'HUD del tutorial torna visibile subito
-// dopo invece di restare bloccato per sempre come farebbe l'originale.
-const CUTSCENE_DURATION = 4;   // secondi — [C] air_tut2/Alarm_1: 240 tick
+// Durata di QUESTA prima fase: 4s (240 tick nel decompilato, Alarm_1 — il
+// momento in cui l'originale uccide aerei/sfondo e fa comparire l'overlay
+// nero `blacker1`).
+//
+// [Corretto: non era affatto la schermata di game over del gioco base come
+// ipotizzato in un primo momento (STUDIO.md §6), ne' un vicolo cieco da
+// saltare] Seguita fino in fondo la catena `blacker1` -> `blacker12` ->
+// `blacker2` (src/objects, letti riga per riga): e' un'INTERA seconda meta'
+// della cutscene, non un game over. **[C]**:
+//  1. "planes" (questa fase, 240 tick/4s): il sorvolo in spazio schermo
+//     sopra, gia' portato.
+//  2. "black1" (`blacker1`, 90 tick/Alarm_0): schermo NERO pieno con la
+//     scritta "Mount Fuji Software" — sprite `mfs1` su Windows, `mfs11` su
+//     Android (`blacker1/DrawGUI.gml`: `draw_rectangle` nero pieno-schermo
+//     poi `action_draw_sprite(mfsN, view_wview[0]/2, view_hview[0]/2, -1)`,
+//     centrato). Nello STESSO istante `blacker1/Create.gml` fa nascere la
+//     VERA scena di combattimento in coordinate MONDO (non schermo): 3
+//     `bombar` + 9 `air` + 1 `dirig`, in posizioni fisse (CUTSCENE_BOMBAR_Y/
+//     CUTSCENE_DIRIG_POS sotto) — nascosta dietro il nero per ora.
+//  3. "battle" (`blacker12`, 240 tick/Alarm_0): il nero sparisce (`blacker1`
+//     si autodistrugge quando scade) ma l'HUD del tutorial resta ancora
+//     morto — la battaglia appena nata (ancora viva, stessi oggetti/stesso
+//     comportamento `air`|`bombar`|`dirig` del gioco vero, threats.js) e'
+//     visibile per intero DIRETTAMENTE SULLA PIATTAFORMA per 4 secondi,
+//     senza nessun velo sopra: e' la "scena di combattimento" che l'autore
+//     ricordava, mai portata prima d'ora.
+//  4. "black2" (`blacker2`, 200 tick/Alarm_0): un secondo schermo nero,
+//     sprite `mfs2` — un secondo logo/scritta PIU' PICCOLO di `mfs1`
+//     (data/sprites.json: 296x54 contro 620x118 — non lo stesso ripetuto
+//     due volte). Nello stesso istante `blacker2/Create.gml` uccide ogni
+//     `dirig` rimasto (lo zeppelin, il piu' lento e resistente dei tre —
+//     l'unico tipo ripulito qui: `air`/`bombar` restano vivi, continuano a
+//     volare/bombardare/scadere per conto proprio anche dopo, esattamente
+//     come nel decompilato, che non ha nessun Destroy per loro in
+//     blacker12/blacker2). Alla fine di questa fase `blacker2/Destroy.gml`
+//     ricrea `tutorial_thumb`/`tutorial_square`: l'HUD del tutorial torna,
+//     si riparte dalla fase 0 del balloon di testo.
+// Le posizioni/gli oggetti della battaglia riusano `spawnThreat()`
+// (threats.js) — la STESSA fabbrica del regista vero delle ondate
+// (STUDIO.md, "le minacce vere"): stesso sprite/vita/velocita'/dado
+// fronte-retro per tipo, solo le posizioni di nascita sono quelle fisse del
+// decompilato invece che quelle a dado/bordo schermo del regista normale.
+// `stepCutscene()` sotto non tocca direttamente l'array `threats` di
+// main.js (tutorial.js non conosce lo stato del mondo): ritorna i nuovi
+// nemici (`cutscene.spawnThreats`, un one-shot alla transizione
+// "planes"->"black1") e un flag (`cutscene.killDirig`, un one-shot alla
+// transizione "battle"->"black2") che main.js applica al proprio array
+// subito dopo averli letti — stesso principio di `stepTutorialAuto()`
+// sopra (un `ctx` passato da fuori), qui capovolto (dati passati FUORI)
+// perche' e' main.js, non tutorial.js, a possedere `threats`.
+const CUTSCENE_PLANES_DURATION = 4;         // secondi — [C] air_tut2/Alarm_1: 240 tick
+const CUTSCENE_BLACK1_DURATION = 90 / 60;   // secondi — [C] blacker1/Alarm_0: 90 tick
+const CUTSCENE_BATTLE_DURATION = 240 / 60;  // secondi — [C] blacker12/Alarm_0: 240 tick
+const CUTSCENE_BLACK2_DURATION = 200 / 60;  // secondi — [C] blacker2/Alarm_0: 200 tick
 
 // Attraversano lo schermo da un bordo oltre l'altro (frazione della
 // larghezza vista, -0.3..1.3) in tempi/altezze leggermente sfalsati fra
@@ -223,17 +272,55 @@ const CUTSCENE_TRAVEL_X = 1.6;   // [C] da -0.3 (fuori sinistra) a 1.3 (fuori de
 const CUTSCENE_CLIMB_ANGLE = (18 * Math.PI) / 180;
 const CUTSCENE_TAN = Math.tan(CUTSCENE_CLIMB_ANGLE);
 
-export function createCutscene() {
-  const planes = CUTSCENE_PLANES.map((p) => ({ ...p, yFrac0: p.yFrac, xFrac: -0.3 }));
-  return { t: 0, planes };
+// [C] blacker1/Create.gml, letto riga per riga: 3 `bombar` a x=-170 fisso
+// (lo stesso `spawnX` che il regista vero usa per questo tipo,
+// threats.js/THREAT_TYPES.bombar) ma a TRE y fisse invece che a dado; 9
+// `air` a x=-170 e y a dado — nessun override di posizione per questi, il
+// range e' gia' lo stesso `spawnY` del regista vero ([380,1620]); 1 `dirig`
+// a (200,1200), GIA' dentro la scena invece che fuori campo a sinistra
+// come lo spawn normale di questo tipo (x=-1000) — entra "gia' in scena",
+// non da fuori schermo.
+const CUTSCENE_BOMBAR_Y = [400, 420, 1500];
+const CUTSCENE_AIR_COUNT = 9;
+const CUTSCENE_DIRIG_POS = { x: 200, y: 1200 };
+
+/** La scena di combattimento della cutscene (vedi il commento sopra
+ * CUTSCENE_PLANES_DURATION) — chiamata una sola volta, alla transizione
+ * "planes"->"black1". `hasPlatform`: stesso booleano gia' passato dal
+ * regista vero (main.js, `!!platformState`) al normale `spawnThreat()` —
+ * la room "tutorial" ha una piattaforma vera (main.js, `platformState`
+ * creato anche per lei, non solo per `match`), quindi gli `air` qui
+ * possono nascere "di sfondo" esattamente come nel gioco vero. */
+function spawnBattle(hasPlatform) {
+  const list = [];
+  for (const y of CUTSCENE_BOMBAR_Y) list.push(spawnThreat("bombar", hasPlatform, { x: -170, y }));
+  for (let i = 0; i < CUTSCENE_AIR_COUNT; i++) list.push(spawnThreat("air", hasPlatform));
+  list.push(spawnThreat("dirig", hasPlatform, CUTSCENE_DIRIG_POS));
+  return list;
 }
 
-/** Ritorna `true` quando la cutscene e' finita (main.js smette di
- * disegnarla e riporta l'HUD del tutorial). `aspect` (larghezza/altezza
- * dello schermo corrente) serve a calcolare la salita in diagonale dei
- * tre aerei ad un angolo VISIBILE a schermo — vedi il commento sopra
- * CUTSCENE_CLIMB_ANGLE. Il tassello di sfondo lo ripete a tappeto chi
- * disegna (main.js), non serve qui.
+export function createCutscene() {
+  const planes = CUTSCENE_PLANES.map((p) => ({ ...p, yFrac0: p.yFrac, xFrac: -0.3 }));
+  return { phase: "planes", phaseT: 0, planes, spawnThreats: null, killDirig: false };
+}
+
+/** Avanza la cutscene di UN frame e ritorna `true` quando l'intera catena a
+ * 4 fasi e' finita (main.js smette di disegnarla e riporta l'HUD del
+ * tutorial) — vedi il commento sopra CUTSCENE_PLANES_DURATION per le fasi.
+ * `cutscene.phase` (stringa, "planes"|"black1"|"battle"|"black2") e'
+ * pubblico: main.js lo legge per decidere COSA disegnare in questo frame
+ * (il sorvolo, lo schermo nero con quale logo, o niente sopra al mondo).
+ * `cutscene.spawnThreats`/`cutscene.killDirig` sono azzerati ad OGNI
+ * chiamata e valorizzati solo nel frame esatto della rispettiva
+ * transizione — main.js li legge subito dopo aver chiamato questa funzione
+ * (non restano "in coda": un frame dopo sono gia' tornati `null`/`false`).
+ *
+ * `aspect` (larghezza/altezza dello schermo corrente) serve solo alla fase
+ * "planes", a calcolare la salita in diagonale dei tre aerei ad un angolo
+ * VISIBILE a schermo — vedi il commento sopra CUTSCENE_CLIMB_ANGLE. Il
+ * tassello di sfondo lo ripete a tappeto chi disegna (main.js), non serve
+ * qui. `hasPlatform` (vedi spawnBattle() sopra) serve solo alla transizione
+ * "planes"->"black1", quando nasce la battaglia.
  *
  * [Bug corretto, segnalato dall'autore: "gli aerei del tutorial iniziano
  * fermi poi si muovono"] `dt` qui e' quello VERO passato da main.js
@@ -243,17 +330,36 @@ export function createCutscene() {
  * le texture dell'atlas in GPU) avanza la cutscene della sua vera durata
  * invece che di soli 0.05s "di gioco", cosi' non sembra rallentare/
  * fermarsi proprio nell'istante in cui il framerate vero e' piu' basso. */
-export function stepCutscene(cutscene, dt, aspect = 16 / 9) {
-  cutscene.t += dt;
-  // Salita totale (frazione di altezza schermo) equivalente a
-  // CUTSCENE_CLIMB_ANGLE in pixel: Δy_px = Δx_px * tan(angolo), con
-  // Δx_px = CUTSCENE_TRAVEL_X * cw e Δy_px = climb * ch, quindi
-  // climb = CUTSCENE_TRAVEL_X * tan(angolo) * (cw/ch).
-  const climb = CUTSCENE_TRAVEL_X * CUTSCENE_TAN * aspect;
-  for (const p of cutscene.planes) {
-    const k = Math.max(0, Math.min(1, (cutscene.t - p.startT) / p.dur));
-    p.xFrac = -0.3 + k * CUTSCENE_TRAVEL_X;   // da -0.3 (fuori a sinistra) a 1.3 (fuori a destra)
-    p.yFrac = p.yFrac0 - k * climb;   // sale in diagonale, ad un angolo davvero visibile
+export function stepCutscene(cutscene, dt, aspect = 16 / 9, hasPlatform = false) {
+  cutscene.spawnThreats = null;
+  cutscene.killDirig = false;
+  cutscene.phaseT += dt;
+  if (cutscene.phase === "planes") {
+    // Salita totale (frazione di altezza schermo) equivalente a
+    // CUTSCENE_CLIMB_ANGLE in pixel: Δy_px = Δx_px * tan(angolo), con
+    // Δx_px = CUTSCENE_TRAVEL_X * cw e Δy_px = climb * ch, quindi
+    // climb = CUTSCENE_TRAVEL_X * tan(angolo) * (cw/ch).
+    const climb = CUTSCENE_TRAVEL_X * CUTSCENE_TAN * aspect;
+    for (const p of cutscene.planes) {
+      const k = Math.max(0, Math.min(1, (cutscene.phaseT - p.startT) / p.dur));
+      p.xFrac = -0.3 + k * CUTSCENE_TRAVEL_X;   // da -0.3 (fuori a sinistra) a 1.3 (fuori a destra)
+      p.yFrac = p.yFrac0 - k * climb;   // sale in diagonale, ad un angolo davvero visibile
+    }
+    if (cutscene.phaseT >= CUTSCENE_PLANES_DURATION) {
+      cutscene.phase = "black1";
+      cutscene.phaseT = 0;
+      cutscene.spawnThreats = spawnBattle(hasPlatform);
+    }
+  } else if (cutscene.phase === "black1") {
+    if (cutscene.phaseT >= CUTSCENE_BLACK1_DURATION) { cutscene.phase = "battle"; cutscene.phaseT = 0; }
+  } else if (cutscene.phase === "battle") {
+    if (cutscene.phaseT >= CUTSCENE_BATTLE_DURATION) {
+      cutscene.phase = "black2";
+      cutscene.phaseT = 0;
+      cutscene.killDirig = true;
+    }
+  } else if (cutscene.phase === "black2") {
+    if (cutscene.phaseT >= CUTSCENE_BLACK2_DURATION) return true;
   }
-  return cutscene.t >= CUTSCENE_DURATION;
+  return false;
 }
