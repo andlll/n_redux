@@ -266,13 +266,36 @@ export async function mountMatch(ctx, params = {}) {
   // I pochi chiamanti che invece CACHANO `_f` una volta sola
   // (`staticWorld`, sotto) vengono guariti esplicitamente, vedi
   // healMissingArt()/il ciclo di frame piu' in basso.
-  function frameFor(sprName, frameIdx = 0) {
+  // [Bug corretto, segnalato dall'autore: "gap di pixel tra una texture e
+  // l'altra del mare" durante la cutscene del tutorial] `tools/23_atlas.py`
+  // impacchetta gli sprite bordo a bordo, senza nessun gutter fra l'uno e
+  // l'altro — per uno sprite disegnato una volta sola lo sfumato LINEAR di
+  // un texel oltre il proprio bordo (nel prossimo sprite impacchettato li'
+  // accanto) e' impercettibile, ma "tuto_sfondo" (il tassello di mare della
+  // cutscene, sotto) viene ripetuto A TAPPETO fianco a fianco con SE STESSO:
+  // ad ogni giunzione fra due copie, quello stesso mezzo texel sfumato
+  // (bordo destro/basso di una copia contro un vicino ESTRANEO nell'atlas,
+  // non contro l'inizio dell'altra copia) diventa una riga verticale/
+  // orizzontale visibile — un colore che non c'entra niente col mare,
+  // ripetuto ad ogni bordo di tassello. `inset` (di default `false`, quindi
+  // zero cambiamento per ogni altro chiamante di frameFor) restringe il
+  // rettangolo UV di mezzo texel su ogni lato prima di ritornarlo: il
+  // campionamento LINEAR non arriva mai al vero bordo dello sprite, quindi
+  // non puo' mai leggere il vicino — il tassello perde una frazione di
+  // texel invisibile ai bordi (acqua contro acqua, sulla stessa immagine),
+  // molto meglio di una cucitura colorata visibile.
+  function frameFor(sprName, frameIdx = 0, inset = false) {
     const frames = atlas.sprites[sprName];
     if (!frames || !frames.length) return null;
     const f = frames[Math.max(0, Math.min(frameIdx, frames.length - 1))];
-    if (!pageTex[f.p]) return null;
-    return { tex: pageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1,
-             w: f.w, h: f.h, ox: f.ox, oy: f.oy };
+    const page = pageTex[f.p];
+    if (!page) return null;
+    let { u0, v0, u1, v1 } = f;
+    if (inset) {
+      const halfU = 0.5 / page.width, halfV = 0.5 / page.height;
+      u0 += halfU; v0 += halfV; u1 -= halfU; v1 -= halfV;
+    }
+    return { tex: page.tex, u0, v0, u1, v1, w: f.w, h: f.h, ox: f.ox, oy: f.oy };
   }
   // Quante sottoimmagini ha davvero uno sprite nell'atlas — serve solo a chi
   // deve fare il modulo per un'animazione che gira in loop invece di fermarsi
@@ -2569,7 +2592,10 @@ export async function mountMatch(ctx, params = {}) {
     const cell = 76, gridPad = 16;
     const panelW = Math.min(BUILD_GRID_COLS * cell + gridPad * 2, cw - 40);
     const trueCell = (panelW - gridPad * 2) / BUILD_GRID_COLS;
-    const headerH = 56, btnH = 46;
+    // headerH: prima 56px, spazio per l'etichetta "BUILDINGS" ora rimossa
+    // (drawBuildMenuOverlay(), sotto) — ridotto a un margine puro sopra la
+    // griglia, non piu' un'intestazione vuota.
+    const headerH = 20, btnH = 46;
     const panelH = headerH + rows.length * trueCell + 16 + btnH + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
     return { rows, px, py, panelW, panelH, cell: trueCell, gridPad, headerH, btnH };
@@ -2610,7 +2636,14 @@ export async function mountMatch(ctx, params = {}) {
 
     const { px, py, panelW, panelH } = buildMenuLayout(cw, ch);
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
-    drawHtmlText("BUILDINGS", px + panelW / 2, py + 30, { size: 22, maxWidth: panelW - 24 });
+    // [Bug corretto, richiesto dall'autore: "togliere la scritta 'buildings'
+    // in alto (e' un'informazione ovvia)"] Il pannello si apre SOLO toccando
+    // il bottone "Buildings menu" (groo): a differenza del menu di pausa
+    // (che puo' comparire da piu' punti d'ingresso e quindi ha bisogno di
+    // dirsi cosa e') qui il contesto e' gia' ovvio a chi lo ha appena aperto
+    // — l'etichetta era ridondante. `headerH` (buildMenuLayout(), sotto) e'
+    // stato ridotto in proporzione: senza testo non serve piu' tutto quello
+    // spazio sopra la griglia.
 
     for (const b of buildMenuButtons) {
       if (!b.type) continue;   // "Back", disegnato a parte sotto
@@ -2623,8 +2656,34 @@ export async function mountMatch(ctx, params = {}) {
       // va quindi calcolato a mano per centrarlo nella cella, non basta
       // passare il centro della cella come punto di ancoraggio.
       const iconX = b.x + (b.w - f.w * scale) / 2;
-      const iconY = b.y + (b.h + f.h * scale) / 2;
-      r.draw(f, iconX, iconY, scale, 0xffffff, 1);
+      // [Bug corretto, segnalato dall'autore: "la linea nera di base degli
+      // sprite e' disallineata tra gli edifici della stessa riga"] Prima
+      // `iconY` centrava ogni sprite VERTICALMENTE nella propria cella
+      // (`b.y + (b.h + f.h*scale)/2`, meta' strada fra il bordo e il centro
+      // usando l'ALTEZZA PROPRIA dello sprite) — corretto per uno sprite
+      // isolato, ma edifici diversi hanno altezze diverse (un parco basso e
+      // largo contro un grattacielo alto e stretto): centrare ciascuno per
+      // conto proprio piazza le loro basi (il bordo inferiore, dove tocca
+      // "terra") ad altezze DIVERSE, una fila apparentemente sfalsata anche
+      // se le celle sono allineate. Qui ogni sprite appoggia invece sulla
+      // STESSA linea di base (il fondo della cella, con lo stesso margine di
+      // 7px gia' usato in orizzontale sopra) indipendentemente dalla propria
+      // altezza — coerente riga per riga, e anche fra righe diverse.
+      const iconY = b.y + b.h - 7;
+      // [Nuova funzionalita', richiesta dall'autore: "usare colorize per
+      // l'edificio attualmente selezionato"] Stesso trattamento gia' usato
+      // per i bottoni SELEZIONATI della riga scorrevole in basso (vedi il
+      // commento su `usingSelBuilding`/`b.tint` piu' sotto in questo file):
+      // `setColorize(true)` sostituisce l'RGB della sagoma con `b.tint` a
+      // tinta piena invece di lasciarla nera/nel suo colore naturale,
+      // marcando a colpo d'occhio quale dei bottoni di questa griglia e' lo
+      // strumento davvero attivo in questo momento — prima nessuno dei due
+      // stati (selezionato o no) si distingueva dall'altro qui dentro.
+      const isSelected = selectedType === b.type;
+      const icon = isSelected ? findBuildingIcon(b.type) : null;
+      r.setColorize(isSelected);
+      r.draw(f, iconX, iconY, scale, isSelected ? (icon?.tint ?? 0xffffff) : 0xffffff, 1);
+      r.setColorize(false);
     }
     const backBtn = buildMenuButtons[buildMenuButtons.length - 1];
     r.draw(pauseButtonFrame(backBtn.w, backBtn.h), backBtn.x, backBtn.y, 1, BUTTON_TINT, BUTTON_ALPHA);
@@ -3169,6 +3228,20 @@ export async function mountMatch(ctx, params = {}) {
     },
   ];
   for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; BUILDING_LABEL[b.type] = b.label; }
+
+  /** Sprite/tint del bottone di un tipo edificio, per tipo — usato dal
+   * badge "edificio selezionato" sulla barra mobile (drawUiRow(), sotto:
+   * `selectedType` non e' piu' visibile da nessuna parte una volta chiuso
+   * l'overlay a griglia, STUDIO.md/tools qui sotto) e da
+   * drawBuildMenuOverlay() per evidenziare il bottone selezionato dentro
+   * l'overlay stesso. `casa`/`industria` non vivono in OTHER_BUILDINGS
+   * (STUDIO.md sopra), cercati qui a mano prima di ricadere sulle liste vere.
+   */
+  function findBuildingIcon(type) {
+    if (type === "casa") return { spr: "p1", tint: 0x114f1f };
+    if (type === "industria") return { spr: "p2", tint: 0x603415 };
+    return OTHER_BUILDINGS.find((b) => b.type === type) ?? STAR_BUILDINGS.find((b) => b.type === type) ?? null;
+  }
 
   /** Raccoglie una moneta e fa partire la sua "bolla" (coinPops sopra) —
    * unico punto d'ingresso condiviso da input.onTap (tap/click, sotto) e
@@ -3896,6 +3969,24 @@ export async function mountMatch(ctx, params = {}) {
     // un dt negativo qui si propagherebbe a tutti i timer (c.frame incluso,
     // rendendo frameFor() con un indice negativo e un array out-of-bounds).
     const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
+    // [Bug corretto, segnalato dall'autore: "gli aerei del tutorial iniziano
+    // fermi poi si muovono"] `dt` sopra e' volutamente clampato a 0.05s per
+    // proteggere la simulazione vera (fisica, spawn) da un salto enorme dopo
+    // uno stallo — ma la cutscene iniziale (stepCutscene(), sotto) non ha
+    // NESSUNA fisica da proteggere, solo un'interpolazione lineare nel tempo
+    // (tutorial.js, `k = (t-startT)/dur` gia' clampato a 0..1): proprio il
+    // momento in cui la cutscene parte e' anche il momento in cui il
+    // browser e' piu' occupato (upload GPU delle texture dell'atlas appena
+    // arrivato, subito dopo mount()), quindi i primi frame veri hanno un
+    // `now - last` reale MOLTO piu' grande di 0.05s — con `dt` clampato la
+    // cutscene avanza comunque solo di 0.05s "di gioco" per ognuno di quei
+    // frame radi, cioe' in slow-motion, esattamente il "restano fermi"
+    // segnalato (gli aerei si muovono per davvero, solo troppo poco per
+    // essere percepito, finche' il framerate reale non si stabilizza). Qui
+    // un secondo dt, senza il tetto di 0.05s, passato SOLO a stepCutscene()
+    // (main.js piu' sotto): la cutscene resta sincronizzata al tempo reale
+    // anche durante uno stallo iniziale, invece di rallentare con lui.
+    const cutsceneDt = Math.max(0, (now - last) / 1000);
     last = now;
     phaseT += dt;
     resize();
@@ -4085,7 +4176,7 @@ export async function mountMatch(ctx, params = {}) {
       if (tutorialState) {
         if (tutorialState.cutscene) {
           const cutAspect = canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : 16 / 9;
-          if (stepCutscene(tutorialState.cutscene, dt, cutAspect)) tutorialState.cutscene = null;
+          if (stepCutscene(tutorialState.cutscene, cutsceneDt, cutAspect)) tutorialState.cutscene = null;
         } else {
           if (tutorialState.practiceCoinSpawned && !coins.some((c) => c._tutorialPractice)) {
             tutorialState.coinCollected = true;
@@ -4808,9 +4899,22 @@ export async function mountMatch(ctx, params = {}) {
     // sfumarsi con tutto il resto. Le icone WebGL della barra (barFrame/
     // hapFrame/crysFrame, sopra/sotto) restano invece disegnate anche in
     // pausa: fanno gia' parte del canvas catturato, si sfumano da sole.
+    // [Bug corretto, segnalato dall'autore: "durante la scena iniziale si
+    // vedono i numerini delle risorse in alto", stessa cosa per il menu
+    // Buildings del mobile] Stesso identico problema anche durante la
+    // cutscene del tutorial (tutorialState.cutscene, sotto: disegna un
+    // tassello pieno-schermo SOPRA il canvas, ma DOPO che questa barra e'
+    // gia' stata accodata — copre `barFrame`/hapFrame/crysFrame perche' sono
+    // gia' nello stesso canvas, ma non questi elementi HTML separati) e
+    // durante drawBuildMenuOverlay() (buildMenuOpen: oscura/sfuma lo stesso
+    // canvas ma non puo' toccare il DOM sopra di lui) — in entrambi i casi i
+    // numeri nudi restavano leggibili sopra a un fondale che dovrebbe
+    // nasconderli. `hideResourceText` raccoglie tutti i casi in cui il resto
+    // della barra risorse e' gia' coperto/oscurato da qualcos'altro.
+    const hideResourceText = paused || buildMenuOpen || !!tutorialState?.cutscene;
     const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                    [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
-    if (!paused) for (const [value, x] of stats) {
+    if (!hideResourceText) for (const [value, x] of stats) {
       drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
     }
     // Data (mese + anno, game/src/state.js stepCalendar()) — [C] repre/
@@ -4823,7 +4927,7 @@ export async function mountMatch(ctx, params = {}) {
     // stesso motivo di `barY+19` sopra: drawHtmlText() centra verticalmente
     // sull'ancora invece di partire dal bordo superiore del glifo come
     // drawText()).
-    if (!paused) {
+    if (!hideResourceText) {
       drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 9, { size: 15, align: "left", color: barTextColor });
       drawHtmlText(String(Math.round(r12.time)), barX + 448, barY + 29, { size: 15, align: "left", color: barTextColor });
     }
@@ -4881,7 +4985,7 @@ export async function mountMatch(ctx, params = {}) {
       r.setColorize(iconsDark);
       if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
       r.setColorize(false);
-      if (!paused) drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
+      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
@@ -5035,6 +5139,38 @@ export async function mountMatch(ctx, params = {}) {
       rx += w + GAP;
     }
     r.setColorize(false);
+    // [Nuova funzionalita', richiesta dall'autore: "trovare il modo di
+    // mostrare l'edificio attualmente selezionato anche in piccolo fuori
+    // dalla finestra Buildings"] Su mobile `menoo` resta sempre a 0 (onTap
+    // sopra: toccare "groo" apre solo l'overlay a griglia, non passa mai a
+    // menoo=1) — la riga appena disegnata quindi non mostra MAI quale tipo
+    // e' selezionato in questo momento, a differenza di desktop (dove la
+    // riga edifici vera resta a vista con l'evidenziazione di
+    // `usingSelBuilding` sopra). Un piccolo badge sul bottone stesso
+    // "Buildings menu" colma il buco: una miniatura dell'edificio scelto,
+    // sempre visibile anche a finestra chiusa, stesso sprite/tint gia'
+    // usati dentro l'overlay (findBuildingIcon(), sopra) — non uno stato
+    // duplicato da tenere sincronizzato a parte.
+    if (isMobile && selectedType) {
+      const menuBtn = uiButtons.find((btn) => btn.kind === "menu" && btn.menoo === 1);
+      const icon = menuBtn && findBuildingIcon(selectedType);
+      const iconFrame = icon && frameFor(icon.spr);
+      if (menuBtn && iconFrame) {
+        const badgeD = 26;
+        const bx = menuBtn.x + menuBtn.w - 4, by = menuBtn.y + 4;
+        // Anello chiaro sottile prima del disco scuro: alcuni tint edificio
+        // (`icon.tint`, es. il verde molto scuro di "casa") si confondono
+        // altrimenti con la sagoma nera piena dell'icona "groo" proprio
+        // sotto — un bordo chiaro separa sempre il badge dal suo sfondo,
+        // qualunque sia il colore dell'edificio selezionato in quel momento.
+        r.draw(solidFrame(bubbleTex, badgeD + 3, badgeD + 3), bx - (badgeD + 3) / 2, by - (badgeD + 3) / 2, 1, 0xe8eaf0, 0.9);
+        r.draw(solidFrame(bubbleTex, badgeD, badgeD), bx - badgeD / 2, by - badgeD / 2, 1, 0x14161c, 0.92);
+        const iconScale = Math.min((badgeD - 8) / iconFrame.w, (badgeD - 8) / iconFrame.h);
+        r.setColorize(true);
+        r.draw(iconFrame, bx - (iconFrame.w * iconScale) / 2, by + (iconFrame.h * iconScale) / 2, iconScale, icon.tint, 1);
+        r.setColorize(false);
+      }
+    }
     // Banda di trascinamento per lo scroll: tutta la larghezza schermo, dal
     // bordo superiore della riga fino in fondo — non solo i pixel dei
     // bottoni, cosi' anche un dito che parte fra due bottoni o dopo l'ultimo
@@ -5437,7 +5573,7 @@ export async function mountMatch(ctx, params = {}) {
       const cw = canvas.clientWidth, ch = canvas.clientHeight;
       r.setAmbient(1, 1, 1);
       r.setProjection(screenProjection(cw, ch));
-      const bgFrame = frameFor("tuto_sfondo");
+      const bgFrame = frameFor("tuto_sfondo", 0, true);
       if (bgFrame) {
         for (let y = 0; y < ch; y += bgFrame.h) {
           for (let x = 0; x < cw; x += bgFrame.w) r.draw(bgFrame, x, y, 1, 0xffffff, 1);

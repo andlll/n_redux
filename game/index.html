@@ -13,7 +13,23 @@
 <style>
   html, body { margin: 0; height: 100%; background: #0b1020; overflow: hidden;
                touch-action: none; overscroll-behavior: none; }
-  #view { display: block; width: 100vw; height: 100vh; }
+  /* [Bug corretto, segnalato dall'autore: "su Safari iPhone la barra
+     indirizzi in basso copre i pulsanti"] `100vh` su Safari iOS e' sempre la
+     LARGE viewport height — l'altezza disponibile quando la barra
+     indirizzi/strumenti e' arretrata al minimo — anche mentre la barra e'
+     mostrata per intero: il canvas veniva quindi disegnato piu' alto di
+     quanto lo schermo mostri davvero, e ogni elemento ancorato al fondo
+     (barra azioni, bottone pausa: `canvas.clientHeight - UI_MARGIN`, main.js)
+     finiva sotto il bordo visibile, coperto dalla barra del browser.
+     `100dvh` (dynamic viewport height, supportata da Safari 15.4+/2022 in
+     poi) si ricalcola invece da sola ogni volta che la barra
+     comprime/espande — nessun rilevamento manuale necessario: `resize()`
+     (main.js) legge gia' `canvas.clientWidth/clientHeight` ad OGNI frame,
+     quindi l'intera UI (bottoni, camera, HUD) segue gia' in automatico
+     qualunque cambio di questa singola regola CSS. La riga `100vh` sopra
+     resta come fallback per un browser che non capisce ancora `100dvh`
+     (ignora la dichiarazione che non riconosce, tiene quella prima). */
+  #view { display: block; width: 100vw; height: 100vh; height: 100dvh; }
   /* Montserrat (SIL Open Font License, game/fonts/OFL.txt) — sostituisce il
      font bitmap "gotham" usato prima per il menu di pausa/il balloon del
      tutorial (game/src/main.js): segnalato dall'autore, quel font ha un

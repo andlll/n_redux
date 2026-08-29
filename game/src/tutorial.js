@@ -233,7 +233,16 @@ export function createCutscene() {
  * dello schermo corrente) serve a calcolare la salita in diagonale dei
  * tre aerei ad un angolo VISIBILE a schermo — vedi il commento sopra
  * CUTSCENE_CLIMB_ANGLE. Il tassello di sfondo lo ripete a tappeto chi
- * disegna (main.js), non serve qui. */
+ * disegna (main.js), non serve qui.
+ *
+ * [Bug corretto, segnalato dall'autore: "gli aerei del tutorial iniziano
+ * fermi poi si muovono"] `dt` qui e' quello VERO passato da main.js
+ * (`cutsceneDt`, senza il tetto di 0.05s del `dt` usato dal resto della
+ * simulazione — vedi il commento li'): un frame reale piu' lungo del
+ * solito (tipico appena dopo il mount, mentre il browser carica ancora
+ * le texture dell'atlas in GPU) avanza la cutscene della sua vera durata
+ * invece che di soli 0.05s "di gioco", cosi' non sembra rallentare/
+ * fermarsi proprio nell'istante in cui il framerate vero e' piu' basso. */
 export function stepCutscene(cutscene, dt, aspect = 16 / 9) {
   cutscene.t += dt;
   // Salita totale (frazione di altezza schermo) equivalente a
