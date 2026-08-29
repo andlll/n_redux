@@ -4999,6 +4999,26 @@ export async function mountMatch(ctx, params = {}) {
     const UI_MARGIN = 8;
     const barFrame = frameFor("icone_oriz");
     const barX = UI_MARGIN, barY = UI_MARGIN;
+    // [Nuovo, segnalato dall'autore: "su telefono la barra risorse in alto
+    // e' spesso illeggibile perche' lo schermo e' troppo stretto"] La barra
+    // e' un blocco di coordinate fisse tarato per una schermata larga
+    // ~570px (l'ultimo elemento, la faccina della felicita' sotto, arriva a
+    // x=520+50*0.62): su un telefono in verticale (~360-414px tipici)
+    // sfora oltre il bordo destro invece di andare a capo da solo (sono
+    // elementi HTML `position:fixed` a x/y assoluti, non un layout che
+    // wrappa, index.html) — mese/anno e faccina/cristalli restano fuori
+    // schermo. Comprimere l'intero blocco in scala (invece di spostare gli
+    // elementi di coda su una seconda riga) evita di dover inventare un
+    // layout a due righe e le collisioni con banner/tutorial che assumono
+    // gia' la barra su una riga sola (STUDIO.md), mantenendo intatto
+    // l'allineamento icona/numero gia' "cotto" dentro icone_oriz: e'
+    // un'unica scala uniforme, applicata identica a immagine, offset e
+    // font-size di ogni pezzo qui sotto. Il floor (0.5) e' solo una rete di
+    // sicurezza per larghezze degeneri (es. un resize a meta' frame), non
+    // un limite pensato per restare leggibile: nella pratica nessun
+    // telefono e' cosi' stretto da raggiungerlo.
+    const BAR_NATURAL_WIDTH = 520 + 50 * 0.62;
+    const barScale = Math.min(1, Math.max(0.5, (canvas.clientWidth - UI_MARGIN * 2) / BAR_NATURAL_WIDTH));
     // [Bug corretto, segnalato dall'autore: "quando i pulsanti della GUI
     // diventano bianchi devono diventare bianchi anche quelli della GUI
     // superiore"] `icone_oriz` e' la stessa famiglia di pittogrammi neri
@@ -5022,7 +5042,7 @@ export async function mountMatch(ctx, params = {}) {
     // sull'elemento, non un tint moltiplicato su una texture.
     const barTextColor = iconsDark ? "#ffffff" : "#000000";
     r.setColorize(iconsDark);
-    if (barFrame) r.draw(barFrame, barX, barY, 1, 0xffffff, 1);
+    if (barFrame) r.draw(barFrame, barX, barY, barScale, 0xffffff, 1);
     r.setColorize(false);
     // [Bug corretto, segnalato dall'autore: "in pausa le scritte della UI
     // non si blurrano"] Questi numeri sono elementi HTML veri (drawHtmlText(),
@@ -5045,10 +5065,11 @@ export async function mountMatch(ctx, params = {}) {
     // nasconderli. `hideResourceText` raccoglie tutti i casi in cui il resto
     // della barra risorse e' gia' coperto/oscurato da qualcos'altro.
     const hideResourceText = paused || buildMenuOpen || !!tutorialState?.cutscene;
+    const barFontSize = 15 * barScale;
     const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                    [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
     if (!hideResourceText) for (const [value, x] of stats) {
-      drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(String(value), barX + x * barScale, barY + 19 * barScale, { size: barFontSize, align: "left", color: barTextColor });
     }
     // Data (mese + anno, game/src/state.js stepCalendar()) — [C] repre/
     // DrawGUI.gml: il mese e' testo ("Jan".."Dec", da `repre.mon` — non
@@ -5061,8 +5082,8 @@ export async function mountMatch(ctx, params = {}) {
     // sull'ancora invece di partire dal bordo superiore del glifo come
     // drawText()).
     if (!hideResourceText) {
-      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 9, { size: 15, align: "left", color: barTextColor });
-      drawHtmlText(String(Math.round(r12.time)), barX + 448, barY + 29, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456 * barScale, barY + 9 * barScale, { size: barFontSize, align: "left", color: barTextColor });
+      drawHtmlText(String(Math.round(r12.time)), barX + 448 * barScale, barY + 29 * barScale, { size: barFontSize, align: "left", color: barTextColor });
     }
     // La "faccina" della felicita' (src/objects/hapware — segnalata
     // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
@@ -5083,7 +5104,7 @@ export async function mountMatch(ctx, params = {}) {
     // GML y=20, quindi 42-20=22).
     const hapFrame = frameFor(r12.hap >= r12.pop ? "hap3" : "hap1");
     r.setColorize(iconsDark);
-    if (hapFrame) r.draw(hapFrame, barX + 520, barY + 22, 0.62, 0xffffff, 1);
+    if (hapFrame) r.draw(hapFrame, barX + 520 * barScale, barY + 22 * barScale, 0.62 * barScale, 0xffffff, 1);
     r.setColorize(false);
     // Cristalli (r12.crys: balloons.js, il loot di `monviolo`; platform.js,
     // il gettone lasciato dal monviolo in volo verso il faro) — **[I]**
@@ -5116,9 +5137,9 @@ export async function mountMatch(ctx, params = {}) {
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
       r.setColorize(iconsDark);
-      if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
+      if (crysFrame) r.draw(crysFrame, barX - 6 * barScale, barY + 48 * barScale, 0.9 * barScale, 0xffffff, 1);
       r.setColorize(false);
-      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
+      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), barX + 34 * barScale, barY + 77 * barScale, { size: barFontSize, align: "left", color: barTextColor });
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
