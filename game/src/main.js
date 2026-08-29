@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -2974,6 +2974,41 @@ export async function mountMatch(ctx, params = {}) {
   let picked = null;
   let message = "";
   let messageT = 0;
+  // Shortcut sandbox (input.onTap, sotto): tap consecutivi su chies,
+  // azzerati se il gap fra un tap e il successivo supera CHIES_TAP_WINDOW_MS.
+  let chiesTapCount = 0;
+  let chiesTapLastAt = 0;
+  const CHIES_TAP_TARGET = 20;
+  const CHIES_TAP_WINDOW_MS = 1200;
+  /**
+   * [Nuova funzionalita', richiesta dall'autore: "uno shortcut per la
+   * modalita' sandbox, tipo tap su chies 20 volte di fila"] Nessun
+   * equivalente nel decompilato — un easter egg nostro, non ricostruito da
+   * nessun oggetto originale. Chiamata da OGNI tap che tocca chies, sia che
+   * apra il pannello informativo (buildingInfoPanel, input.onTap sotto) sia
+   * che lo trovi gia' aperto e lo chiuda — un tap su due andrebbe perso
+   * contando solo nel ramo "picked.obj === 'building'", visto che il tap
+   * SUCCESSIVO su un pannello gia' aperto lo chiude in un ramo separato
+   * senza mai rifare il picking. "Di fila" e' un limite di TEMPO fra un tap
+   * e il successivo, non di sequenza sugli altri bottoni: una scelta di
+   * semplicita', non un requisito esplicito dell'autore. Ritorna `true` se
+   * questo tap ha appena fatto scattare la soglia (il chiamante allora non
+   * deve fare nient'altro con questo tocco, solo azzerare eventuali pannelli
+   * aperti).
+   */
+  function registerChiesTap() {
+    const nowMs = performance.now();
+    chiesTapCount = (nowMs - chiesTapLastAt <= CHIES_TAP_WINDOW_MS) ? chiesTapCount + 1 : 1;
+    chiesTapLastAt = nowMs;
+    if (chiesTapCount < CHIES_TAP_TARGET) return false;
+    chiesTapCount = 0;
+    sandbox.on = !sandbox.on;
+    message = sandbox.on
+      ? "sandbox mode ON: infinite resources, everything unlocked"
+      : "sandbox mode OFF";
+    messageT = 4;
+    return true;
+  }
   // Icona "salvataggio in corso" (src/objects/savvvvvco, sprite "savicona",
   // tools/23_atlas.py — [C] r12/Alarm_10.gml, l'autosalvataggio ogni 30s
   // dell'originale, e reversi/Mouse_LeftPressed.gml, il salvataggio
@@ -3192,6 +3227,7 @@ export async function mountMatch(ctx, params = {}) {
    * scatterebbe mai — stessa scelta gia' fatta da `maxChiesLevel()`/
    * `upgradeUnlocked()` in buildings.js per `requiresChiesLevel`. */
   function buildingLocked(type) {
+    if (sandbox.on) return false;   // [Nuova funzionalita', richiesta dall'autore: sandbox sblocca tutto, vedi CHIES_TAP_* sotto
     const need = CHIES_UNLOCK_BY_TYPE[type];
     if (!need) return false;
     return (buildings.find((b) => b.type === "chies")?.level ?? 0) < need;
@@ -3223,7 +3259,11 @@ export async function mountMatch(ctx, params = {}) {
   const STAR_BUILDINGS = [
     {
       type: "monum", selec: 71, spr: "sta1", tint: 0x82824f, label: "Monument", cost: 20000,
-      unlocked: () => (r12.distrutti ?? 0) > 49 && !buildings.some((b) => b.type === "monum"),
+      // `sandbox.on ||` (buildings.js, sopra): bypassa la soglia vera, non
+      // il guard "gia' costruito" subito dopo — un secondo tap sul
+      // monumento gia' in piedi non deve far ricomparire il bottone nemmeno
+      // in sandbox, stessa ragione gia' scritta sopra per gli altri due.
+      unlocked: () => (sandbox.on || (r12.distrutti ?? 0) > 49) && !buildings.some((b) => b.type === "monum"),
     },
     {
       type: "banca", selec: 72, spr: "sta2", tint: 0x82824f, label: "Bank", cost: 0,
@@ -3238,9 +3278,11 @@ export async function mountMatch(ctx, params = {}) {
       // la banca non doveva mai comparire, indipendentemente da livello di
       // chies o popolazione.
       unlocked: () => {
+        if (buildings.some((b) => b.type === "banca")) return false;
+        if (sandbox.on) return true;
         const chies = buildings.find((b) => b.type === "chies");
         return buildings.some((b) => b.type === "monum")
-          && !!chies && chies.level > 1 && r12.pop >= 3000 && !buildings.some((b) => b.type === "banca");
+          && !!chies && chies.level > 1 && r12.pop >= 3000;
       },
     },
     // Terza stella: `grattacielo` (buildings.js — corregge la conclusione
@@ -3264,9 +3306,11 @@ export async function mountMatch(ctx, params = {}) {
     // (fedele, non un buco: `platformState` e' `null` li').
     {
       type: "grattacielo", selec: 82, spr: "sta3", tint: 0x82824f, label: "Skyscraper", cost: 200000,
-      unlocked: () => buildings.some((b) => b.type === "banca")
-        && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded"
-        && !buildings.some((b) => b.type === "grattacielo"),
+      // `sandbox.on ||` bypassa anche il vincolo "solo su `match`" (sopra:
+      // `platformState` e' `null` su `match_easy`) — coerente con "tutto
+      // sbloccato", non piu' fedele all'originale a quel punto.
+      unlocked: () => !buildings.some((b) => b.type === "grattacielo") && (sandbox.on || (buildings.some((b) => b.type === "banca")
+        && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded")),
     },
   ];
   for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; BUILDING_LABEL[b.type] = b.label; }
@@ -3447,6 +3491,10 @@ export async function mountMatch(ctx, params = {}) {
     // lo chiude (non solo il bottone dedicato, disegnato per scoperta/
     // chiarezza), mai raggiunge il mondo sotto mentre e' aperto.
     if (buildingInfoPanel) {
+      // registerChiesTap() (sopra): il pannello di chies e' gia' aperto —
+      // questo tap lo chiude come ogni altro, ma deve comunque contare per
+      // lo shortcut sandbox (vedi il commento su registerChiesTap()).
+      if (buildingInfoPanel.type === "chies") registerChiesTap();
       buildingInfoPanel = null;
       return;
     }
@@ -3718,6 +3766,12 @@ export async function mountMatch(ctx, params = {}) {
       messageT = 3;
     } else if (picked.obj === "building") {
       const b = picked.ref;
+      // Shortcut sandbox (registerChiesTap(), sopra): conta questo tap ma
+      // NON lo intercetta finche' non fa scattare la soglia — tap 1..19 su
+      // chies cadono comunque nei rami sotto (tipicamente il pannello
+      // informativo, r12.selec===0) esattamente come se questo controllo
+      // non ci fosse.
+      if (b.type === "chies" && registerChiesTap()) return;
       // [C] parco/Mouse_LeftPressed.gml, ramo selec==61: un tocco su un parco
       // GIA' FINITO con "Pannelli solari" selezionato non richiede un
       // placeholder libero — crea il pannello direttamente sopra il parco

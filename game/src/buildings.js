@@ -1838,8 +1838,23 @@ export function placeFinishedBuilding(type, x, y, depth, level, r12) {
 // effettivamente usabile.
 export let DEBUG_INFINITE_RESOURCES = false;
 
+/**
+ * Modalita' sandbox: **[Nuova funzionalita', richiesta dall'autore]** un
+ * interruttore attivabile IN PARTITA (main.js, tap ripetuto su `chies` —
+ * nessun equivalente nel decompilato, e' solo nostro), non un flag di
+ * debug da editare a mano come `DEBUG_INFINITE_RESOURCES` sopra: stesso
+ * effetto (risorse infinite, `canAfford()` sotto), PIU' lo sblocco dei
+ * piazzabili gated a livello chiesa (`buildingLocked()`, main.js) e delle
+ * soglie di potenziamento (`upgradeUnlocked()`/`tryStartUpgrade()` sotto).
+ * Un oggetto (non un semplice `let` esportato) cosi' main.js puo' mutare
+ * `sandbox.on` direttamente: un binding `import` e' di sola lettura nel
+ * modulo che importa, una PROPRIETA' di un oggetto importato invece si
+ * puo' scrivere da fuori senza bisogno di funzioni getter/setter apposta.
+ */
+export const sandbox = { on: false };
+
 export function canAfford(r12, cost) {
-  if (DEBUG_INFINITE_RESOURCES) return true;
+  if (DEBUG_INFINITE_RESOURCES || sandbox.on) return true;
   for (const k in cost) if ((r12[k] ?? 0) < cost[k]) return false;
   return true;
 }
@@ -2039,6 +2054,11 @@ function maxChiesLevel(buildings) {
 export function upgradeUnlocked(b, r12, buildings) {
   const up = nextUpgrade(b);
   if (!up) return false;
+  // Sandbox (sopra): bypassa soglia di progresso e gate di livello chiesa,
+  // stesso spirito di canAfford() sopra per il costo — solo "livello
+  // massimo" (nextUpgrade() che torna `null`, appena sopra) resta un limite
+  // vero anche in sandbox, non c'e' un potenziamento oltre l'ultimo da dare.
+  if (sandbox.on) return true;
   const p = upgradeProgress(b, up, r12);
   if (p.done < p.needed) return false;
   if (up.requiresChiesLevel != null && maxChiesLevel(buildings) < up.requiresChiesLevel) return false;
@@ -2055,14 +2075,16 @@ export function tryStartUpgrade(b, r12, buildings) {
   if (b.construction) return "construction already in progress";
   const up = nextUpgrade(b);
   if (!up) return "max level";
-  const p = upgradeProgress(b, up, r12);
-  if (p.done < p.needed) {
-    if (p.kind === "makee") return `need ${p.needed} production cycles (now ${p.done})`;
-    if (p.kind === "ava") return `need full growth (${p.done}/${p.needed})`;
-    return `need population ${p.needed} (now ${p.done.toFixed(0)})`;
-  }
-  if (up.requiresChiesLevel != null && maxChiesLevel(buildings) < up.requiresChiesLevel) {
-    return `requires the church at level ${up.requiresChiesLevel}`;
+  if (!sandbox.on) {
+    const p = upgradeProgress(b, up, r12);
+    if (p.done < p.needed) {
+      if (p.kind === "makee") return `need ${p.needed} production cycles (now ${p.done})`;
+      if (p.kind === "ava") return `need full growth (${p.done}/${p.needed})`;
+      return `need population ${p.needed} (now ${p.done.toFixed(0)})`;
+    }
+    if (up.requiresChiesLevel != null && maxChiesLevel(buildings) < up.requiresChiesLevel) {
+      return `requires the church at level ${up.requiresChiesLevel}`;
+    }
   }
   if (!canAfford(r12, up.cost)) {
     const need = Object.entries(up.cost).map(([k, v]) => `${v} ${k}`).join(", ");

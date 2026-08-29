@@ -10,7 +10,7 @@
 // (§6 "Cosa non so ancora": le regole vere dell'economia non sono note) e'
 // marcato [I]: plausibile, da rivedere quando studieremo gli edifici reali.
 
-import { DEBUG_INFINITE_RESOURCES } from "./buildings.js";
+import { DEBUG_INFINITE_RESOURCES, sandbox } from "./buildings.js";
 
 /**
  * `isMatch`: **[C]** `r12/Create.gml` da' un oil/hap di partenza diverso a
@@ -153,7 +153,7 @@ export function clampR12(r12, buildings) {
   r12.ele = Math.min(9999, Math.max(-100, r12.ele));              // [C]
   r12.mon = Math.min(999999, r12.mon);                            // [C]
   r12.pop = Math.max(0, r12.pop);                                 // [C]
-  if (DEBUG_INFINITE_RESOURCES) {
+  if (DEBUG_INFINITE_RESOURCES || sandbox.on) {
     // A questo punto r12.mon/r12.oil sono i valori VERI di questo giro, gia'
     // passati dai clamp reali sopra (compreso il tetto per livello chies
     // dell'olio) — il delta da quanto valevano l'ultima volta che questa
