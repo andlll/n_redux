@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -31,7 +31,7 @@ import { save, load, serializeSave, saveToFile, loadFromFile, loadAutosaveSettin
 import { loadFont, drawText, measureText, fitTextScale } from "./font.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
-  TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE,
+  TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN,
 } from "./tutorial.js";
 
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
@@ -2681,8 +2681,13 @@ export async function mountMatch(ctx, params = {}) {
       // stati (selezionato o no) si distingueva dall'altro qui dentro.
       const isSelected = selectedType === b.type;
       const icon = isSelected ? findBuildingIcon(b.type) : null;
+      // `locked`: stessa soglia di livello chiesa della riga scorrevole
+      // desktop (buildingLocked()/LOCKED_BUTTON_ALPHA, definite piu' sotto
+      // in questo file insieme a OTHER_BUILDINGS — stessa griglia di
+      // BUILD_GRID_TYPES sopra, quindi stesso ordine e stessi tipi).
+      const locked = buildingLocked(b.type);
       r.setColorize(isSelected);
-      r.draw(f, iconX, iconY, scale, isSelected ? (icon?.tint ?? 0xffffff) : 0xffffff, 1);
+      r.draw(f, iconX, iconY, scale, isSelected ? (icon?.tint ?? 0xffffff) : 0xffffff, locked ? LOCKED_BUTTON_ALPHA : 1);
       r.setColorize(false);
     }
     const backBtn = buildMenuButtons[buildMenuButtons.length - 1];
@@ -2969,6 +2974,41 @@ export async function mountMatch(ctx, params = {}) {
   let picked = null;
   let message = "";
   let messageT = 0;
+  // Shortcut sandbox (input.onTap, sotto): tap consecutivi su chies,
+  // azzerati se il gap fra un tap e il successivo supera CHIES_TAP_WINDOW_MS.
+  let chiesTapCount = 0;
+  let chiesTapLastAt = 0;
+  const CHIES_TAP_TARGET = 20;
+  const CHIES_TAP_WINDOW_MS = 1200;
+  /**
+   * [Nuova funzionalita', richiesta dall'autore: "uno shortcut per la
+   * modalita' sandbox, tipo tap su chies 20 volte di fila"] Nessun
+   * equivalente nel decompilato — un easter egg nostro, non ricostruito da
+   * nessun oggetto originale. Chiamata da OGNI tap che tocca chies, sia che
+   * apra il pannello informativo (buildingInfoPanel, input.onTap sotto) sia
+   * che lo trovi gia' aperto e lo chiuda — un tap su due andrebbe perso
+   * contando solo nel ramo "picked.obj === 'building'", visto che il tap
+   * SUCCESSIVO su un pannello gia' aperto lo chiude in un ramo separato
+   * senza mai rifare il picking. "Di fila" e' un limite di TEMPO fra un tap
+   * e il successivo, non di sequenza sugli altri bottoni: una scelta di
+   * semplicita', non un requisito esplicito dell'autore. Ritorna `true` se
+   * questo tap ha appena fatto scattare la soglia (il chiamante allora non
+   * deve fare nient'altro con questo tocco, solo azzerare eventuali pannelli
+   * aperti).
+   */
+  function registerChiesTap() {
+    const nowMs = performance.now();
+    chiesTapCount = (nowMs - chiesTapLastAt <= CHIES_TAP_WINDOW_MS) ? chiesTapCount + 1 : 1;
+    chiesTapLastAt = nowMs;
+    if (chiesTapCount < CHIES_TAP_TARGET) return false;
+    chiesTapCount = 0;
+    sandbox.on = !sandbox.on;
+    message = sandbox.on
+      ? "sandbox mode ON: infinite resources, everything unlocked"
+      : "sandbox mode OFF";
+    messageT = 4;
+    return true;
+  }
   // Icona "salvataggio in corso" (src/objects/savvvvvco, sprite "savicona",
   // tools/23_atlas.py — [C] r12/Alarm_10.gml, l'autosalvataggio ogni 30s
   // dell'originale, e reversi/Mouse_LeftPressed.gml, il salvataggio
@@ -3129,15 +3169,29 @@ export async function mountMatch(ctx, params = {}) {
   // costruire (vedi `def` sotto, in `input.onTap`). Questo array resta
   // comunque la fonte unica di sprite/selec/costo per il bottone, vero o
   // segnaposto che sia — non toglierne una riga quando il tipo diventa
-  // implementato. L'originale li affianca in ordine diverso (STUDIO.md §9:
-  // pu7 e' unlocked a parte, pu4prov/pu5prov condividono uno slot con altri
-  // quattro bottoni mutuamente esclusivi non tracciati qui): l'ordine qui e'
-  // solo "tutti visibili, uno per slot", non quello esatto.
+  // implementato. Ordine allineato a `BUILD_GRID_TYPES` (la griglia mobile,
+  // sotto — la stessa richiesta dall'autore), appiattito riga per riga:
+  // parco/missile (riga 1, dopo casa/industria che vivono a parte) poi
+  // palazzo/solare/club/gatling (riga 2), villa/eolico/museo/laser (riga 3)
+  // — cosi' la riga scorrevole desktop mostra gli edifici nello stesso
+  // ordine della griglia mobile invece di uno arbitrario (STUDIO.md §9
+  // annotava "non quello esatto": ora lo e', su richiesta dell'autore).
+  // `chiesUnlock`: **[C]** pu6|pudj|pugatling|pusolare/Step.gml — palazzo/
+  // club/gatling/solare restano bloccati finche' `chies.level<2` (il popup
+  // "livello 2 sbloccato" di level2palazz/level2club/level2gatling/level2sol
+  // sopra); puvillone|pumediat/Step.gml — villa/museo bloccati sotto
+  // `chies.level<3` (leve3tounlovilla/level3tounlomedia). L'originale gate
+  // anche eolico/laser a `chies.level>=3` (pu4prov/pu5prov/Step.gml,
+  // leve3tounlo4/5) ma SOLO su `match`, mai su `match_easy` (un secondo
+  // controllo su flag 736 che in questo motore — match_easy, STUDIO.md §9 —
+  // non scatterebbe mai): qui il gate di livello resta, quello di room no,
+  // coerente con come sono gia' stati resi "veri" (STUDIO.md, sopra) senza
+  // quel secondo blocco. `buildingLocked()` sotto legge questo campo;
+  // `parco`/`missile`/`ruspa` non lo dichiarano — mai stati bloccati
+  // nel decompilato (pu3/pu7/Step.gml, nessun `unlosei`/`chies` gate).
   const OTHER_BUILDINGS = [
     { type: "parco", selec: 7, spr: "p7", tint: 0x139f13, label: "Park", cost: 500 },
     { type: "missile", selec: 3, spr: "p3", tint: 0x892020, label: "Missile Launcher", cost: 5000 },
-    { type: "eolico", selec: 4, spr: "p4", tint: 0x8b6c17, label: "Wind Turbine", cost: 50000 },   // ora vero, BUILDING_TYPES.eolico
-    { type: "laser", selec: 5, spr: "p5", tint: 0x5c0d64, label: "Laser", cost: 20000 },
     // "Grattacielo" era il nome (mai verificato) di una versione precedente
     // di questa riga: **[C]** src/objects/level2palazz (il popup "livello 2
     // sbloccato" agganciato a `pu6/Mouse_MouseEnter.gml`, stesso schema di
@@ -3147,12 +3201,14 @@ export async function mountMatch(ctx, params = {}) {
     // `BUILDING_TYPES.grattacielo` (STAR_BUILDINGS sotto, la terza stella),
     // un edificio completamente diverso da questo — nessuna relazione se non
     // l'omonimia mai risolta a suo tempo.
-    { type: "palazzo", selec: 6, spr: "p6", tint: 0x114f18, label: "Building", cost: 6000 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
-    { type: "club", selec: 60, spr: "pdj", tint: 0xc24398, label: "Club", cost: 3500 },   // ora vero, BUILDING_TYPES.club
-    { type: "solare", selec: 61, spr: "psolare", tint: 0xb57008, label: "Solar Panels", cost: 1000 },
-    { type: "gatling", selec: 62, spr: "pgatling", tint: 0x8b0808, label: "Gatling Gun", cost: 10000 },
-    { type: "villa", selec: 63, spr: "pvilla", tint: 0x1e666b, label: "Villa", cost: 7500 },
-    { type: "museo", selec: 70, spr: "pmuseo", tint: 0xa47f7f, label: "Museum", cost: 35000 },   // ora vero, BUILDING_TYPES.museo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "palazzo", selec: 6, spr: "p6", tint: 0x114f18, label: "Building", cost: 6000, chiesUnlock: 2 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "solare", selec: 61, spr: "psolare", tint: 0xb57008, label: "Solar Panels", cost: 1000, chiesUnlock: 2 },
+    { type: "club", selec: 60, spr: "pdj", tint: 0xc24398, label: "Club", cost: 3500, chiesUnlock: 2 },   // ora vero, BUILDING_TYPES.club
+    { type: "gatling", selec: 62, spr: "pgatling", tint: 0x8b0808, label: "Gatling Gun", cost: 10000, chiesUnlock: 2 },
+    { type: "villa", selec: 63, spr: "pvilla", tint: 0x1e666b, label: "Villa", cost: 7500, chiesUnlock: 3 },
+    { type: "eolico", selec: 4, spr: "p4", tint: 0x8b6c17, label: "Wind Turbine", cost: 50000, chiesUnlock: 3 },   // ora vero, BUILDING_TYPES.eolico
+    { type: "museo", selec: 70, spr: "pmuseo", tint: 0xa47f7f, label: "Museum", cost: 35000, chiesUnlock: 3 },   // ora vero, BUILDING_TYPES.museo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "laser", selec: 5, spr: "p5", tint: 0x5c0d64, label: "Laser", cost: 20000, chiesUnlock: 3 },
     // [C] STUDIO.md "cosa manca": lo strumento vero di demolizione/
     // riparazione (selec==11), mai ricostruito — la distruzione oggi e'
     // immediata (destroyBuilding()) invece di passare da questo strumento.
@@ -3160,6 +3216,28 @@ export async function mountMatch(ctx, params = {}) {
   ];
   for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
   const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
+  const CHIES_UNLOCK_BY_TYPE = Object.fromEntries(OTHER_BUILDINGS.filter((b) => b.chiesUnlock).map((b) => [b.type, b.chiesUnlock]));
+  /** [C] vedi il commento su `chiesUnlock` sopra: `true` finche' `chies`
+   * (l'unica istanza, STUDIO.md §5.3) non ha raggiunto il livello richiesto —
+   * `>=`, non `==2`/`==3` come il decompilato (`unlosei`/`unlos`/`unlocinque`
+   * si "latchano" a 1 la prima volta che il livello combacia ESATTAMENTE e
+   * restano tali, STUDIO.md sullo stesso schema gia' scelto per i bottoni
+   * stella): equivalente per una partita che parte gia' dal livello giusto
+   * (es. da un salvataggio), dove un confronto di sola uguaglianza non
+   * scatterebbe mai — stessa scelta gia' fatta da `maxChiesLevel()`/
+   * `upgradeUnlocked()` in buildings.js per `requiresChiesLevel`. */
+  function buildingLocked(type) {
+    if (sandbox.on) return false;   // [Nuova funzionalita', richiesta dall'autore: sandbox sblocca tutto, vedi CHIES_TAP_* sotto
+    const need = CHIES_UNLOCK_BY_TYPE[type];
+    if (!need) return false;
+    return (buildings.find((b) => b.type === "chies")?.level ?? 0) < need;
+  }
+  // [C] STUDIO.md sopra: la stessa dissolvenza usata dal decompilato non
+  // esiste (li' un bottone bloccato mostra semplicemente lo sprite normale,
+  // MAI quello "selezionato", e basta) — qui invece l'edificio bloccato
+  // resta visibile ma sbiadito, cosi' e' chiaro che esiste un edificio la'
+  // e non solo che manca un bottone, richiesto dall'autore.
+  const LOCKED_BUTTON_ALPHA = 0.35;
 
   // Edifici "stella" (STUDIO.md, "monumento"/"banca"): ricompense di
   // traguardo, MAI un bottone statico come il resto del menu — [C] `stella1`/
@@ -3181,7 +3259,11 @@ export async function mountMatch(ctx, params = {}) {
   const STAR_BUILDINGS = [
     {
       type: "monum", selec: 71, spr: "sta1", tint: 0x82824f, label: "Monument", cost: 20000,
-      unlocked: () => (r12.distrutti ?? 0) > 49 && !buildings.some((b) => b.type === "monum"),
+      // `sandbox.on ||` (buildings.js, sopra): bypassa la soglia vera, non
+      // il guard "gia' costruito" subito dopo — un secondo tap sul
+      // monumento gia' in piedi non deve far ricomparire il bottone nemmeno
+      // in sandbox, stessa ragione gia' scritta sopra per gli altri due.
+      unlocked: () => (sandbox.on || (r12.distrutti ?? 0) > 49) && !buildings.some((b) => b.type === "monum"),
     },
     {
       type: "banca", selec: 72, spr: "sta2", tint: 0x82824f, label: "Bank", cost: 0,
@@ -3196,9 +3278,11 @@ export async function mountMatch(ctx, params = {}) {
       // la banca non doveva mai comparire, indipendentemente da livello di
       // chies o popolazione.
       unlocked: () => {
+        if (buildings.some((b) => b.type === "banca")) return false;
+        if (sandbox.on) return true;
         const chies = buildings.find((b) => b.type === "chies");
         return buildings.some((b) => b.type === "monum")
-          && !!chies && chies.level > 1 && r12.pop >= 3000 && !buildings.some((b) => b.type === "banca");
+          && !!chies && chies.level > 1 && r12.pop >= 3000;
       },
     },
     // Terza stella: `grattacielo` (buildings.js — corregge la conclusione
@@ -3222,9 +3306,11 @@ export async function mountMatch(ctx, params = {}) {
     // (fedele, non un buco: `platformState` e' `null` li').
     {
       type: "grattacielo", selec: 82, spr: "sta3", tint: 0x82824f, label: "Skyscraper", cost: 200000,
-      unlocked: () => buildings.some((b) => b.type === "banca")
-        && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded"
-        && !buildings.some((b) => b.type === "grattacielo"),
+      // `sandbox.on ||` bypassa anche il vincolo "solo su `match`" (sopra:
+      // `platformState` e' `null` su `match_easy`) — coerente con "tutto
+      // sbloccato", non piu' fedele all'originale a quel punto.
+      unlocked: () => !buildings.some((b) => b.type === "grattacielo") && (sandbox.on || (buildings.some((b) => b.type === "banca")
+        && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded")),
     },
   ];
   for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; BUILDING_LABEL[b.type] = b.label; }
@@ -3405,6 +3491,10 @@ export async function mountMatch(ctx, params = {}) {
     // lo chiude (non solo il bottone dedicato, disegnato per scoperta/
     // chiarezza), mai raggiunge il mondo sotto mentre e' aperto.
     if (buildingInfoPanel) {
+      // registerChiesTap() (sopra): il pannello di chies e' gia' aperto —
+      // questo tap lo chiude come ogni altro, ma deve comunque contare per
+      // lo shortcut sandbox (vedi il commento su registerChiesTap()).
+      if (buildingInfoPanel.type === "chies") registerChiesTap();
       buildingInfoPanel = null;
       return;
     }
@@ -3416,7 +3506,16 @@ export async function mountMatch(ctx, params = {}) {
     // fuori da ogni bottone chiude senza selezionare nulla.
     if (buildMenuOpen) {
       const hit = buildMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
-      if (hit?.type) {
+      // [C] pu6|pudj|pugatling|pusolare|puvillone|pumediat/Mouse_LeftPressed.gml:
+      // il ramo che scrive `r12.selec` e' innestato dentro `if (unlosei==1)`
+      // — un tocco su un bottone ancora bloccato (buildingLocked(), sopra)
+      // non fa NIENTE nel decompilato, non solo "non seleziona": stesso
+      // qui, un messaggio al posto del silenzio totale dell'originale
+      // (coerente con ogni altro tocco a vuoto di questo motore, sotto).
+      if (hit?.type && buildingLocked(hit.type)) {
+        message = `${BUILDING_LABEL[hit.type] ?? hit.type}: requires the church at level ${CHIES_UNLOCK_BY_TYPE[hit.type]}`;
+        messageT = 3;
+      } else if (hit?.type) {
         selectedType = hit.type;
         r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
       }
@@ -3460,8 +3559,15 @@ export async function mountMatch(ctx, params = {}) {
           ruspaPending = null;
         }  // handbutton
         else if (btn.kind === "building") {                              // casa/industria/...
-          selectedType = btn.type;
-          r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
+          // Stesso gate della griglia mobile qui sopra, per lo stesso
+          // bottone visto nella riga scorrevole desktop (buildingLocked()).
+          if (buildingLocked(btn.type)) {
+            message = `${BUILDING_LABEL[btn.type] ?? btn.type}: requires the church at level ${CHIES_UNLOCK_BY_TYPE[btn.type]}`;
+            messageT = 3;
+          } else {
+            selectedType = btn.type;
+            r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
+          }
         }
         return;
       }
@@ -3660,6 +3766,12 @@ export async function mountMatch(ctx, params = {}) {
       messageT = 3;
     } else if (picked.obj === "building") {
       const b = picked.ref;
+      // Shortcut sandbox (registerChiesTap(), sopra): conta questo tap ma
+      // NON lo intercetta finche' non fa scattare la soglia — tap 1..19 su
+      // chies cadono comunque nei rami sotto (tipicamente il pannello
+      // informativo, r12.selec===0) esattamente come se questo controllo
+      // non ci fosse.
+      if (b.type === "chies" && registerChiesTap()) return;
       // [C] parco/Mouse_LeftPressed.gml, ramo selec==61: un tocco su un parco
       // GIA' FINITO con "Pannelli solari" selezionato non richiede un
       // placeholder libero — crea il pannello direttamente sopra il parco
@@ -4175,8 +4287,29 @@ export async function mountMatch(ctx, params = {}) {
       // non solo da `r12`/`buildings`.
       if (tutorialState) {
         if (tutorialState.cutscene) {
-          const cutAspect = canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : 16 / 9;
-          if (stepCutscene(tutorialState.cutscene, cutsceneDt, cutAspect)) tutorialState.cutscene = null;
+          // Niente piu' `aspect` da passare (STUDIO.md/tutorial.js, il fix
+          // sugli aerei "fermi per qualche frame": la posizione in pixel si
+          // calcola ora a valle, nel disegno sotto, dove la vera larghezza
+          // dello sprite e' gia' nota).
+          const cutDone = stepCutscene(tutorialState.cutscene, cutsceneDt, !!platformState);
+          // `spawnThreats`/`killDirig` (tutorial.js, sopra stepCutscene()):
+          // one-shot alla transizione di fase, "planes"->"black1" e
+          // "battle"->"black2" — tutorial.js non conosce `threats` (non e'
+          // sua responsabilita' possedere lo stato del mondo), quindi
+          // ritorna cosa fare e main.js lo applica qui, PRIMA di
+          // stepThreats() (sotto, fuori da questo blocco `if`) cosi' la
+          // battaglia appena nata viene gia' animata nello stesso frame in
+          // cui nasce. [C] blacker1/Create.gml crea gli stessi tipi che il
+          // regista vero (stepThreatSpawner) usa in partita — nessun array
+          // a parte, la stessa `threats` di sempre.
+          if (tutorialState.cutscene.spawnThreats) threats.push(...tutorialState.cutscene.spawnThreats);
+          // [C] blacker2/Create.gml: `with (dirig) { action_kill_object() }`
+          // — nessuna esplosione, il decompilato lo fa sparire di scatto
+          // (a differenza di una morte vera, spawnDeathEffect() non gira
+          // qui): stesso trattamento, un filtro invece di un
+          // `action_kill_object()` per istanza.
+          if (tutorialState.cutscene.killDirig) threats = threats.filter((th) => th.type !== "dirig");
+          if (cutDone) tutorialState.cutscene = null;
         } else {
           if (tutorialState.practiceCoinSpawned && !coins.some((c) => c._tutorialPractice)) {
             tutorialState.coinCollected = true;
@@ -5131,8 +5264,21 @@ export async function mountMatch(ctx, params = {}) {
         // davvero — non solo quando `iconsDark`, sempre quando la mano e'
         // lo strumento attivo, altrimenti la tint resta invisibile di
         // giorno.
+        // `locked`: bottone edificio ancora sotto la soglia di livello
+        // chiesa (buildingLocked()/LOCKED_BUTTON_ALPHA, sopra) — disegnato
+        // in trasparenza, richiesto dall'autore. **[C]** Il decompilato
+        // (pu6|pudj|pugatling|pusolare/Step.gml) non sbiadiva il bottone:
+        // restava a piena opacita', sempre con lo sprite "normale" (mai
+        // quello "selezionato", l'unico effetto del blocco li'), il tocco
+        // semplicemente non faceva niente (Mouse_LeftPressed innestato in
+        // `if (unlosei==1)`) e solo l'hover rivelava il requisito (il popup
+        // level2*/leve3tounlo* sopra, mai ricostruito qui — nessun hover sul
+        // touch, STUDIO.md §7). La trasparenza e' la resa visiva scelta ora
+        // al posto di quell'hover per rendere visibile lo stato bloccato
+        // anche su schermi touch.
+        const locked = b.kind === "building" && buildingLocked(b.type);
         r.setColorize(usingSelBuilding || iconsDark || usingHandTint);
-        r.draw(f, rx, baseY, UI_SCALE, tint, 1);
+        r.draw(f, rx, baseY, UI_SCALE, tint, locked ? LOCKED_BUTTON_ALPHA : 1);
         uiButtons.push({ x: rx, y: baseY - h, w, h, ...b });
         rowTop = Math.min(rowTop, baseY - h);
       }
@@ -5562,28 +5708,79 @@ export async function mountMatch(ctx, params = {}) {
     else if (buildMenuOpen) drawBuildMenuOverlay();
 
     // Cutscene iniziale del tutorial (game/src/tutorial.js): disegnata per
-    // ultima, in spazio schermo, sopra a TUTTO il resto (mondo + UI vera) —
-    // una vera cutscene a schermo pieno, non un livello del mondo qualunque.
-    // Il tassello "macerie" (tuto_sfondo) si ripete a tappeto su tutta la
-    // canvas (qualunque risoluzione: copertura piena garantita, a differenza
-    // di una prima versione che lo piazzava a coordinate mondo fisse — vedi
-    // il commento su CUTSCENE_DURATION in tutorial.js), i tre aerei
-    // attraversano lo schermo da bordo a bordo in coordinate normalizzate.
+    // ultima, sopra a TUTTO il resto (mondo + UI vera) — quattro fasi
+    // (`cutscene.phase`, vedi il commento su CUTSCENE_PLANES_DURATION in
+    // tutorial.js), non piu' solo il sorvolo:
+    //  - "planes": il sorvolo vero e proprio, interamente in spazio
+    //    schermo. Il tassello "macerie" (tuto_sfondo) si ripete a tappeto
+    //    su tutta la canvas (qualunque risoluzione: copertura piena
+    //    garantita, a differenza di una prima versione che lo piazzava a
+    //    coordinate mondo fisse), i tre aerei attraversano lo schermo da
+    //    bordo a bordo — in PIXEL veri (tutorial.js, il commento su
+    //    CUTSCENE_CLIMB_TAN: `p.k`, 0..1, e' l'unica cosa che tutorial.js
+    //    traccia, il resto si calcola qui sotto sapendo gia' la vera
+    //    larghezza dello sprite).
+    //  - "black1"/"black2": **[C]** `blacker1|blacker2/DrawGUI.gml` —
+    //    schermo nero pieno (`draw_rectangle(0,0,5000,5000,0)`, qui un
+    //    rettangolo grande quanto il canvas basta) con la scritta "Mount
+    //    Fuji Software" sopra (`mfs1`/`mfs11` — Windows/Android, qui
+    //    isMobile — per "black1"; `mfs2`, un secondo logo/scritta piu'
+    //    piccolo, per "black2"), centrata come nel decompilato
+    //    (`view_wview[0]/2, view_hview[0]/2`).
+    //  - "battle": NESSUN overlay qui — il mondo, gia' disegnato PRIMA di
+    //    questo blocco nello stesso frame, resta interamente visibile: e'
+    //    la scena di combattimento vera e propria (bombar/air/dirig,
+    //    stepThreats() sopra) direttamente sulla piattaforma, non un
+    //    livello a parte.
     if (tutorialState?.cutscene) {
       const cw = canvas.clientWidth, ch = canvas.clientHeight;
-      r.setAmbient(1, 1, 1);
-      r.setProjection(screenProjection(cw, ch));
-      const bgFrame = frameFor("tuto_sfondo", 0, true);
-      if (bgFrame) {
-        for (let y = 0; y < ch; y += bgFrame.h) {
-          for (let x = 0; x < cw; x += bgFrame.w) r.draw(bgFrame, x, y, 1, 0xffffff, 1);
+      const phase = tutorialState.cutscene.phase;
+      if (phase === "planes") {
+        r.setAmbient(1, 1, 1);
+        r.setProjection(screenProjection(cw, ch));
+        const bgFrame = frameFor("tuto_sfondo", 0, true);
+        if (bgFrame) {
+          for (let y = 0; y < ch; y += bgFrame.h) {
+            for (let x = 0; x < cw; x += bgFrame.w) r.draw(bgFrame, x, y, 1, 0xffffff, 1);
+          }
         }
+        for (const p of tutorialState.cutscene.planes) {
+          const f = frameFor(p.spr);
+          if (!f) continue;
+          // [Bug corretto, segnalato dall'autore: "vedo gli aerei fermi per
+          // qualche frame quando parte il livello"] `x` va da
+          // COMPLETAMENTE fuori schermo a sinistra (bordo destro dello
+          // sprite esattamente a x=0, k=0) a COMPLETAMENTE fuori schermo a
+          // destra (bordo sinistro esattamente a x=cw, k=1) — usa la vera
+          // larghezza in pixel dello sprite appena letta (`f.w`), non piu'
+          // una frazione fissa dello schermo (tutorial.js, il commento su
+          // CUTSCENE_CLIMB_TAN spiega perche' quella frazione non bastava:
+          // `tuto_bomb` da solo e' largo 716px, piu' del margine di
+          // qualunque schermo tranne i piu' larghi). `travelPx` e' la
+          // stessa distanza usata sotto per la salita in diagonale, cosi'
+          // le due restano coerenti fra loro.
+          const travelPx = cw + f.w;
+          const x = -f.w + p.k * travelPx;
+          // y: sale in diagonale a CUTSCENE_CLIMB_TAN (tutorial.js, ~18°)
+          // calcolato in pixel VERI dallo stesso `travelPx` — l'angolo a
+          // schermo e' quindi sempre esattamente quello, qualunque sia la
+          // forma della finestra, senza bisogno di un `aspect` passato da
+          // fuori (STUDIO.md: prima veniva ricavato dal rapporto cw/ch
+          // proprio per ottenere lo stesso risultato in frazioni — lavorare
+          // gia' in pixel lo rende diretto).
+          const y = p.yFrac * ch - p.k * travelPx * CUTSCENE_CLIMB_TAN;
+          r.draw(f, x, y, 1, 0xffffff, 1);
+        }
+        r.flush();
+      } else if (phase === "black1" || phase === "black2") {
+        r.setAmbient(1, 1, 1);
+        r.setProjection(screenProjection(cw, ch));
+        r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 1);
+        const sprName = phase === "black1" ? (isMobile ? "mfs11" : "mfs1") : "mfs2";
+        const f = frameFor(sprName);
+        if (f) r.draw(f, cw / 2, ch / 2, 1, 0xffffff, 1);
+        r.flush();
       }
-      for (const p of tutorialState.cutscene.planes) {
-        const f = frameFor(p.spr);
-        if (f) r.draw(f, p.xFrac * cw, p.yFrac * ch, 1, 0xffffff, 1);
-      }
-      r.flush();
     }
 
     // Icona "salvataggio in corso" (saveIconT/showSaveIcon(), sopra) —
