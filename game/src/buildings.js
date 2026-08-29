@@ -1836,7 +1836,7 @@ export function placeFinishedBuilding(type, x, y, depth, level, r12) {
 // parte di quanto mon/oil sarebbero DAVVERO in `r12.monReal`/`r12.oilReal`
 // (mostrati nell'HUD di debug da main.js) prima di rialzare la soglia
 // effettivamente usabile.
-export let DEBUG_INFINITE_RESOURCES = true;
+export let DEBUG_INFINITE_RESOURCES = false;
 
 export function canAfford(r12, cost) {
   if (DEBUG_INFINITE_RESOURCES) return true;

@@ -2681,8 +2681,13 @@ export async function mountMatch(ctx, params = {}) {
       // stati (selezionato o no) si distingueva dall'altro qui dentro.
       const isSelected = selectedType === b.type;
       const icon = isSelected ? findBuildingIcon(b.type) : null;
+      // `locked`: stessa soglia di livello chiesa della riga scorrevole
+      // desktop (buildingLocked()/LOCKED_BUTTON_ALPHA, definite piu' sotto
+      // in questo file insieme a OTHER_BUILDINGS — stessa griglia di
+      // BUILD_GRID_TYPES sopra, quindi stesso ordine e stessi tipi).
+      const locked = buildingLocked(b.type);
       r.setColorize(isSelected);
-      r.draw(f, iconX, iconY, scale, isSelected ? (icon?.tint ?? 0xffffff) : 0xffffff, 1);
+      r.draw(f, iconX, iconY, scale, isSelected ? (icon?.tint ?? 0xffffff) : 0xffffff, locked ? LOCKED_BUTTON_ALPHA : 1);
       r.setColorize(false);
     }
     const backBtn = buildMenuButtons[buildMenuButtons.length - 1];
@@ -3129,15 +3134,29 @@ export async function mountMatch(ctx, params = {}) {
   // costruire (vedi `def` sotto, in `input.onTap`). Questo array resta
   // comunque la fonte unica di sprite/selec/costo per il bottone, vero o
   // segnaposto che sia — non toglierne una riga quando il tipo diventa
-  // implementato. L'originale li affianca in ordine diverso (STUDIO.md §9:
-  // pu7 e' unlocked a parte, pu4prov/pu5prov condividono uno slot con altri
-  // quattro bottoni mutuamente esclusivi non tracciati qui): l'ordine qui e'
-  // solo "tutti visibili, uno per slot", non quello esatto.
+  // implementato. Ordine allineato a `BUILD_GRID_TYPES` (la griglia mobile,
+  // sotto — la stessa richiesta dall'autore), appiattito riga per riga:
+  // parco/missile (riga 1, dopo casa/industria che vivono a parte) poi
+  // palazzo/solare/club/gatling (riga 2), villa/eolico/museo/laser (riga 3)
+  // — cosi' la riga scorrevole desktop mostra gli edifici nello stesso
+  // ordine della griglia mobile invece di uno arbitrario (STUDIO.md §9
+  // annotava "non quello esatto": ora lo e', su richiesta dell'autore).
+  // `chiesUnlock`: **[C]** pu6|pudj|pugatling|pusolare/Step.gml — palazzo/
+  // club/gatling/solare restano bloccati finche' `chies.level<2` (il popup
+  // "livello 2 sbloccato" di level2palazz/level2club/level2gatling/level2sol
+  // sopra); puvillone|pumediat/Step.gml — villa/museo bloccati sotto
+  // `chies.level<3` (leve3tounlovilla/level3tounlomedia). L'originale gate
+  // anche eolico/laser a `chies.level>=3` (pu4prov/pu5prov/Step.gml,
+  // leve3tounlo4/5) ma SOLO su `match`, mai su `match_easy` (un secondo
+  // controllo su flag 736 che in questo motore — match_easy, STUDIO.md §9 —
+  // non scatterebbe mai): qui il gate di livello resta, quello di room no,
+  // coerente con come sono gia' stati resi "veri" (STUDIO.md, sopra) senza
+  // quel secondo blocco. `buildingLocked()` sotto legge questo campo;
+  // `parco`/`missile`/`ruspa` non lo dichiarano — mai stati bloccati
+  // nel decompilato (pu3/pu7/Step.gml, nessun `unlosei`/`chies` gate).
   const OTHER_BUILDINGS = [
     { type: "parco", selec: 7, spr: "p7", tint: 0x139f13, label: "Park", cost: 500 },
     { type: "missile", selec: 3, spr: "p3", tint: 0x892020, label: "Missile Launcher", cost: 5000 },
-    { type: "eolico", selec: 4, spr: "p4", tint: 0x8b6c17, label: "Wind Turbine", cost: 50000 },   // ora vero, BUILDING_TYPES.eolico
-    { type: "laser", selec: 5, spr: "p5", tint: 0x5c0d64, label: "Laser", cost: 20000 },
     // "Grattacielo" era il nome (mai verificato) di una versione precedente
     // di questa riga: **[C]** src/objects/level2palazz (il popup "livello 2
     // sbloccato" agganciato a `pu6/Mouse_MouseEnter.gml`, stesso schema di
@@ -3147,12 +3166,14 @@ export async function mountMatch(ctx, params = {}) {
     // `BUILDING_TYPES.grattacielo` (STAR_BUILDINGS sotto, la terza stella),
     // un edificio completamente diverso da questo — nessuna relazione se non
     // l'omonimia mai risolta a suo tempo.
-    { type: "palazzo", selec: 6, spr: "p6", tint: 0x114f18, label: "Building", cost: 6000 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
-    { type: "club", selec: 60, spr: "pdj", tint: 0xc24398, label: "Club", cost: 3500 },   // ora vero, BUILDING_TYPES.club
-    { type: "solare", selec: 61, spr: "psolare", tint: 0xb57008, label: "Solar Panels", cost: 1000 },
-    { type: "gatling", selec: 62, spr: "pgatling", tint: 0x8b0808, label: "Gatling Gun", cost: 10000 },
-    { type: "villa", selec: 63, spr: "pvilla", tint: 0x1e666b, label: "Villa", cost: 7500 },
-    { type: "museo", selec: 70, spr: "pmuseo", tint: 0xa47f7f, label: "Museum", cost: 35000 },   // ora vero, BUILDING_TYPES.museo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "palazzo", selec: 6, spr: "p6", tint: 0x114f18, label: "Building", cost: 6000, chiesUnlock: 2 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "solare", selec: 61, spr: "psolare", tint: 0xb57008, label: "Solar Panels", cost: 1000, chiesUnlock: 2 },
+    { type: "club", selec: 60, spr: "pdj", tint: 0xc24398, label: "Club", cost: 3500, chiesUnlock: 2 },   // ora vero, BUILDING_TYPES.club
+    { type: "gatling", selec: 62, spr: "pgatling", tint: 0x8b0808, label: "Gatling Gun", cost: 10000, chiesUnlock: 2 },
+    { type: "villa", selec: 63, spr: "pvilla", tint: 0x1e666b, label: "Villa", cost: 7500, chiesUnlock: 3 },
+    { type: "eolico", selec: 4, spr: "p4", tint: 0x8b6c17, label: "Wind Turbine", cost: 50000, chiesUnlock: 3 },   // ora vero, BUILDING_TYPES.eolico
+    { type: "museo", selec: 70, spr: "pmuseo", tint: 0xa47f7f, label: "Museum", cost: 35000, chiesUnlock: 3 },   // ora vero, BUILDING_TYPES.museo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "laser", selec: 5, spr: "p5", tint: 0x5c0d64, label: "Laser", cost: 20000, chiesUnlock: 3 },
     // [C] STUDIO.md "cosa manca": lo strumento vero di demolizione/
     // riparazione (selec==11), mai ricostruito — la distruzione oggi e'
     // immediata (destroyBuilding()) invece di passare da questo strumento.
@@ -3160,6 +3181,27 @@ export async function mountMatch(ctx, params = {}) {
   ];
   for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
   const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
+  const CHIES_UNLOCK_BY_TYPE = Object.fromEntries(OTHER_BUILDINGS.filter((b) => b.chiesUnlock).map((b) => [b.type, b.chiesUnlock]));
+  /** [C] vedi il commento su `chiesUnlock` sopra: `true` finche' `chies`
+   * (l'unica istanza, STUDIO.md §5.3) non ha raggiunto il livello richiesto —
+   * `>=`, non `==2`/`==3` come il decompilato (`unlosei`/`unlos`/`unlocinque`
+   * si "latchano" a 1 la prima volta che il livello combacia ESATTAMENTE e
+   * restano tali, STUDIO.md sullo stesso schema gia' scelto per i bottoni
+   * stella): equivalente per una partita che parte gia' dal livello giusto
+   * (es. da un salvataggio), dove un confronto di sola uguaglianza non
+   * scatterebbe mai — stessa scelta gia' fatta da `maxChiesLevel()`/
+   * `upgradeUnlocked()` in buildings.js per `requiresChiesLevel`. */
+  function buildingLocked(type) {
+    const need = CHIES_UNLOCK_BY_TYPE[type];
+    if (!need) return false;
+    return (buildings.find((b) => b.type === "chies")?.level ?? 0) < need;
+  }
+  // [C] STUDIO.md sopra: la stessa dissolvenza usata dal decompilato non
+  // esiste (li' un bottone bloccato mostra semplicemente lo sprite normale,
+  // MAI quello "selezionato", e basta) — qui invece l'edificio bloccato
+  // resta visibile ma sbiadito, cosi' e' chiaro che esiste un edificio la'
+  // e non solo che manca un bottone, richiesto dall'autore.
+  const LOCKED_BUTTON_ALPHA = 0.35;
 
   // Edifici "stella" (STUDIO.md, "monumento"/"banca"): ricompense di
   // traguardo, MAI un bottone statico come il resto del menu — [C] `stella1`/
@@ -3416,7 +3458,16 @@ export async function mountMatch(ctx, params = {}) {
     // fuori da ogni bottone chiude senza selezionare nulla.
     if (buildMenuOpen) {
       const hit = buildMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
-      if (hit?.type) {
+      // [C] pu6|pudj|pugatling|pusolare|puvillone|pumediat/Mouse_LeftPressed.gml:
+      // il ramo che scrive `r12.selec` e' innestato dentro `if (unlosei==1)`
+      // — un tocco su un bottone ancora bloccato (buildingLocked(), sopra)
+      // non fa NIENTE nel decompilato, non solo "non seleziona": stesso
+      // qui, un messaggio al posto del silenzio totale dell'originale
+      // (coerente con ogni altro tocco a vuoto di questo motore, sotto).
+      if (hit?.type && buildingLocked(hit.type)) {
+        message = `${BUILDING_LABEL[hit.type] ?? hit.type}: requires the church at level ${CHIES_UNLOCK_BY_TYPE[hit.type]}`;
+        messageT = 3;
+      } else if (hit?.type) {
         selectedType = hit.type;
         r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
       }
@@ -3460,8 +3511,15 @@ export async function mountMatch(ctx, params = {}) {
           ruspaPending = null;
         }  // handbutton
         else if (btn.kind === "building") {                              // casa/industria/...
-          selectedType = btn.type;
-          r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
+          // Stesso gate della griglia mobile qui sopra, per lo stesso
+          // bottone visto nella riga scorrevole desktop (buildingLocked()).
+          if (buildingLocked(btn.type)) {
+            message = `${BUILDING_LABEL[btn.type] ?? btn.type}: requires the church at level ${CHIES_UNLOCK_BY_TYPE[btn.type]}`;
+            messageT = 3;
+          } else {
+            selectedType = btn.type;
+            r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
+          }
         }
         return;
       }
@@ -5131,8 +5189,21 @@ export async function mountMatch(ctx, params = {}) {
         // davvero — non solo quando `iconsDark`, sempre quando la mano e'
         // lo strumento attivo, altrimenti la tint resta invisibile di
         // giorno.
+        // `locked`: bottone edificio ancora sotto la soglia di livello
+        // chiesa (buildingLocked()/LOCKED_BUTTON_ALPHA, sopra) — disegnato
+        // in trasparenza, richiesto dall'autore. **[C]** Il decompilato
+        // (pu6|pudj|pugatling|pusolare/Step.gml) non sbiadiva il bottone:
+        // restava a piena opacita', sempre con lo sprite "normale" (mai
+        // quello "selezionato", l'unico effetto del blocco li'), il tocco
+        // semplicemente non faceva niente (Mouse_LeftPressed innestato in
+        // `if (unlosei==1)`) e solo l'hover rivelava il requisito (il popup
+        // level2*/leve3tounlo* sopra, mai ricostruito qui — nessun hover sul
+        // touch, STUDIO.md §7). La trasparenza e' la resa visiva scelta ora
+        // al posto di quell'hover per rendere visibile lo stato bloccato
+        // anche su schermi touch.
+        const locked = b.kind === "building" && buildingLocked(b.type);
         r.setColorize(usingSelBuilding || iconsDark || usingHandTint);
-        r.draw(f, rx, baseY, UI_SCALE, tint, 1);
+        r.draw(f, rx, baseY, UI_SCALE, tint, locked ? LOCKED_BUTTON_ALPHA : 1);
         uiButtons.push({ x: rx, y: baseY - h, w, h, ...b });
         rowTop = Math.min(rowTop, baseY - h);
       }
