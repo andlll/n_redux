@@ -441,6 +441,60 @@ export async function mountMatch(ctx, params = {}) {
     return ph;
   }
 
+  // [Bug corretto, segnalato dall'autore: "verifica il codice originale, le
+  // rovine non sparivano di colpo"] `ruin1|2|3/Mouse_LeftPressed.gml` non
+  // sgombera il rudere all'istante: paga E POI crea `impacasa1r`/`impacasa2r`/
+  // `impacasa3r` (STUDIO.md sopra) — lo stesso oggetto, con la stessa identica
+  // catena `Alarm_0..4`, che `tryRuspaRebuild()` (buildings.js) gia' riusa per
+  // ruspare un edificio VIVO: ~30+340+30 tic (~6.7s, action_set_alarm alla
+  // mano) di impalcatura generica per taglia (`ir11`/`ir12` per un rudere di
+  // taglia 1, `ir21`/`ir22` per la 2, `ir31`/`ir32` per la 3 — le stesse
+  // BUILDING_TYPES.casa/industria.construct.steps di un cantiere vero, non
+  // sprite dedicati ai ruderi) prima di sparire (`action_kill_object()`,
+  // l'ultimo Alarm della catena). La decisione dell'autore sopra
+  // (`clearedPlaceholder()`: un lotto libero, non un nuovo edificio) resta
+  // invariata — qui si aggiunge solo la CODA visiva che mancava fra il tap e
+  // lo sgombero vero, non si cambia il risultato finale.
+  const RUIN_CLEAR_TICKS = 30;
+  const RUIN_CLEAR_STEPS = (level) => [
+    { spr: `ir${level}2`, dur: RUIN_CLEAR_TICKS },
+    { spr: `ir${level}1`, dur: 340 },
+    { spr: `ir${level}2`, dur: RUIN_CLEAR_TICKS },
+  ];
+  /** Avanza il ciclo di impalcature di ogni rudere in `list` (`ruins` o
+   * `ruinLots`, stessa forma {x,y,level,spr,_f,clearing}) di `dt` secondi —
+   * chiamata ogni frame come stepConstructions() sotto, stesso principio.
+   * `clearing` nasce con `stepIndex: -1` (sotto, al tap): qui al primo
+   * avanzamento utile monta subito il primo sprite invece di aspettare che
+   * scada anche il suo `dur`, cosi' l'impalcatura compare nello stesso frame
+   * del pagamento invece che un frame dopo. A fine catena chiama `onDone`
+   * (main.js, sotto: `clearedPlaceholder()`) e rimuove la voce da `list`. */
+  function stepRuinClearing(list, dt, onDone) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      const entry = list[i];
+      const c = entry.clearing;
+      if (!c) continue;
+      const steps = RUIN_CLEAR_STEPS(entry.level ?? 1);
+      if (c.stepIndex === -1) {
+        c.stepIndex = 0;
+        entry.spr = steps[0].spr;
+        entry._f = frameFor(entry.spr);
+      }
+      c.t += dt;
+      while (c.t >= steps[c.stepIndex].dur * TICK) {
+        c.t -= steps[c.stepIndex].dur * TICK;
+        c.stepIndex++;
+        if (c.stepIndex >= steps.length) {
+          onDone(entry);
+          list.splice(i, 1);
+          break;
+        }
+        entry.spr = steps[c.stepIndex].spr;
+        entry._f = frameFor(entry.spr);
+      }
+    }
+  }
+
   // `chies` e' gia' un'istanza vera nella room (src/rooms/match_easy.json:
   // un solo `chies` a (851,513), STUDIO.md §5.3), non nasce da un
   // placeholder. Va tolta da `staticWorld` (altrimenti sarebbe disegnata due
@@ -3716,28 +3770,33 @@ export async function mountMatch(ctx, params = {}) {
     // seguiva alla lettera `ruin1|2/Mouse_LeftPressed.gml` (che nel
     // decompilato ricostruisce davvero, non sgombera soltanto), ma qui la
     // scelta esplicita e' che demolire lasci un lotto libero, non gia'
-    // occupato da una nuova costruzione.
+    // occupato da una nuova costruzione. [Bug corretto, segnalato
+    // dall'autore: "le rovine non sparivano di colpo"] Il pagamento resta
+    // immediato ma non sgombera piu' subito: monta `clearing` (avanzato da
+    // stepRuinClearing() sopra, ogni frame) cosi' l'impalcatura generica
+    // della sua taglia compare per ~6.7s (fedele a `ruin1|2|3/
+    // Mouse_LeftPressed.gml`, vedi il commento su RUIN_CLEAR_STEPS) prima
+    // che il lotto si liberi per davvero. `!lot.clearing` blocca un secondo
+    // tap (e quindi un secondo pagamento) mentre il ciclo e' gia' in corso.
     if (picked.obj === "ruinLot") {
       const lot = picked.ref;
       message = ""; messageT = 0;
-      if (r12.selec === 11 && canAfford(r12, { mon: lot.cost })) {
+      if (!lot.clearing && r12.selec === 11 && canAfford(r12, { mon: lot.cost })) {
         r12.mon -= lot.cost;
-        clearedPlaceholder(lot.x, lot.y);
-        ruinLots.splice(ruinLots.indexOf(lot), 1);
+        lot.clearing = { stepIndex: -1, t: 0 };
       }
       picked = null;
       return;
     }
     // Rudere VERO da battaglia (destroyBuilding() sopra) — stessa identica
-    // meccanica di "ruinLot" appena sopra (stesso `clearedPlaceholder()`),
-    // solo su `ruins` invece di `ruinLots`.
+    // meccanica di "ruinLot" appena sopra (stesso ciclo di impalcature via
+    // `clearing`/stepRuinClearing()), solo su `ruins` invece di `ruinLots`.
     if (picked.obj === "ruin") {
       const ru = picked.ref;
       message = ""; messageT = 0;
-      if (r12.selec === 11 && canAfford(r12, { mon: ru.cost })) {
+      if (!ru.clearing && r12.selec === 11 && canAfford(r12, { mon: ru.cost })) {
         r12.mon -= ru.cost;
-        clearedPlaceholder(ru.x, ru.y);
-        ruins.splice(ruins.indexOf(ru), 1);
+        ru.clearing = { stepIndex: -1, t: 0 };
       }
       picked = null;
       return;
@@ -4137,6 +4196,12 @@ export async function mountMatch(ctx, params = {}) {
     const frozen = paused || outcome?.kind === "defeat";
     if (!frozen) {
       stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
+      // Ciclo di impalcature dei ruderi sotto ruspa (stepRuinClearing()
+      // sopra) — stesso principio di stepConstructions() appena sopra, un
+      // timer a parte perche' un rudere in `ruins`/`ruinLots` non e' un
+      // `buildings` vero (niente `.construction`).
+      stepRuinClearing(ruins, dt, (ru) => clearedPlaceholder(ru.x, ru.y));
+      stepRuinClearing(ruinLots, dt, (lot) => clearedPlaceholder(lot.x, lot.y));
       // Vittoria (`outcome` sopra): il grattacielo (STAR_BUILDINGS, l'ultima
       // delle tre "stelle") appena finito di costruire — `b.construction`
       // diventa `null` proprio dentro stepConstructions() appena chiamata
@@ -4499,18 +4564,21 @@ export async function mountMatch(ctx, params = {}) {
       }
     }
     for (const d of decorEntities) dynamic.push(d);
-    // Ruderi (destroyBuilding() sopra): niente da avanzare ogni frame (non si
-    // muovono, non cambiano sprite). Sotto ruspa lasciano un placeholder
+    // Ruderi (destroyBuilding() sopra) — sotto ruspa lasciano un placeholder
     // vuoto (clearedPlaceholder(), sopra) — stesso trattamento hover/tinta
     // rossa gia' in uso per i lotti-rudere del tutorial (`ruinLots` sotto),
     // qui esteso a QUALUNQUE room: un rudere da
     // battaglia puo' comparire su `match`/`match_easy` quanto su `tutorial`.
     // [I] Nessun cartellino prezzo all'hover (a differenza del popup ruspa
     // su un edificio vivo, `ruspaPending` sopra): ne' `ruinLot` lo mostra
-    // gia' — stesso gap, non nuovo qui.
+    // gia' — stesso gap, non nuovo qui. `._f`/`.spr` di un rudere in
+    // `clearing` cambiano ogni frame (stepRuinClearing() sopra, sopra
+    // stepConstructions()): il tint rosso "tappabile" invece si spegne
+    // (`!entry.clearing` sotto) proprio perche' un secondo tap durante il
+    // ciclo di impalcature non fa piu' niente (guardia in input.onTap).
     const hoverWorld = input.hover && input.hoverPointerType === "mouse" ? cam.screenToWorld(input.hover.x, input.hover.y) : null;
     for (const ru of ruins) {
-      const hovered = !!hoverWorld && r12.selec === 11 && ru._f && inFrameRect(hoverWorld.x, hoverWorld.y, ru.x, ru.y, ru._f);
+      const hovered = !ru.clearing && !!hoverWorld && r12.selec === 11 && ru._f && inFrameRect(hoverWorld.x, hoverWorld.y, ru.x, ru.y, ru._f);
       ru._hovered = hovered;
       dynamic.push({
         obj: "ruin", ref: ru, x: ru.x, y: ru.y, depth: ru.depth, _f: ru._f,
@@ -4525,7 +4593,7 @@ export async function mountMatch(ctx, params = {}) {
     if (tutorialState) {
       const hw = hoverWorld;
       for (const lot of ruinLots) {
-        const hovered = !!hw && r12.selec === 11 && lot._f && inFrameRect(hw.x, hw.y, lot.x, lot.y, lot._f);
+        const hovered = !lot.clearing && !!hw && r12.selec === 11 && lot._f && inFrameRect(hw.x, hw.y, lot.x, lot.y, lot._f);
         lot._hovered = hovered;
         // [C] ruin1|2/Mouse_MouseEnter.gml: action_sprite_color(255,1) — 255 e'
         // "puro rosso" nel formato colore di GameMaker (R+G*256+B*65536, vedi
