@@ -4506,7 +4506,6 @@ export async function mountMatch(ctx, params = {}) {
       // qualunque altro edificio — sempre -y diretto, mai il `fixedDepth` del
       // tipo sotto di lei.
       if (b.frontSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.frontSpr) });
-      if (b.capSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.capSpr) });
       // Impalcatura/gru rotanti del grattacielo (game/src/scaffold.js): decoro
       // puro, si scurisce di notte come ogni altro (nessun `_selfLit`, vedi
       // scaffoldParts()).
