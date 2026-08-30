@@ -165,14 +165,14 @@ export const BUILDING_TYPES = {
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
         { spr: "ir12", dur: 30 },
         { spr: "ir11", dur: 370, spawn: [
-          { spr: "toppers", dx: 0, dy: -42, depthOffset: -80 },
+          { spr: "toppers", dx: 0, dy: -42, depthOffset: -80, life: 260 },
         ] },
         { spr: "ir12", dur: 30 },
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
       ],
     },
     upgrades: [
-      {                          // livello 1 -> 2, upind12 costo + impaind1to2r (troncato a tic 0..10)
+      {                          // livello 1 -> 2, upind12 costo + impaind1to2r
         atMakee: 667,              // [C] industria1/Step.gml: upo==0 && makee>=667 -> crea upind12
         cost: { mon: 5000 },      // [C] upind12/Mouse_LeftPressed.gml
         finalSprite: "i21", life: 100,             // [C] industria2/Create.gml
@@ -182,10 +182,17 @@ export const BUILDING_TYPES = {
         decor: ["i21l", "i21b", "i21c"],           // [I] variante 1 delle 2 di industria2/Create.gml
         drain: { mon: 3, every: 20 },              // [C] impaind1to2r/Alarm_10.gml
         hap: { create: -100, destroy: 150 },       // [C] industria2/Create.gml + Destroy.gml (vedi livello 1 sopra)
-        cap: "im2f",   // [C] impaind1to2f/Alarm_1.gml: sprite_set(im2f) — il "coperchio" a gru che
-                        // chiude la traccia f (impalcatura in sovraimpressione, mai ricostruita finora,
-                        // vedi `front` sotto) man mano che l'edificio sale di livello
-        steps: [                                    // [C] impaind1to2r/Create.gml + Alarm_0.gml, tic 0..10
+        // [C] impaind1to2r/Create.gml + Alarm_0.gml: catena completa, tic
+        // 0..22 (STUDIO.md/stepConstructions() sopra: prima troncata a tic
+        // 0..10, mancava tutta la coda di smontaggio vero tic 11..22).
+        // `revealAtStep` (indice 12 qui sotto, il SECONDO dei due passi in
+        // cui e' spezzata la pausa lunga di tic==10): impaind1to2f/Alarm_0,
+        // tic==10 arma sia l'alarm che crea `industria2` (+700 tic da qui)
+        // sia il proseguimento della propria catena (+800): l'edificio vero
+        // nasce quindi 700 tic dentro la pausa di 800, non al suo inizio ne'
+        // alla sua fine — da qui lo split 700+100.
+        revealAtStep: 12,
+        steps: [                                    // [C] impaind1to2r/Create.gml + Alarm_0.gml, tic 0..22
           { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
           { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
           { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
@@ -198,10 +205,33 @@ export const BUILDING_TYPES = {
           { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
           { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
           { spr: "ir42", dur: 40 },
-          { spr: "ir41", dur: 800 },   // tic==10: l'originale continua fino a tic 22 (coda cosmetica, vedi sopra)
+          // [Bug corretto, segnalato dall'autore: "il tetto e' un oggetto
+          // separato, verifica Create/Alarm delle varie impalcature"] Il
+          // "tetto" vero non e' `im2f`/`im4f` (Alarm_1 morto, vedi il
+          // commento su stepConstructions() sopra) ma il TOPPER (`tops3`,
+          // sprite reale gia' "toppers" — STESSO oggetto/sprite gia' usato
+          // per monum/banca/villa/club/missile/solare/palazzo/museo, vedi
+          // quei commenti): [C] impaind1to2f/Alarm_0.gml, tic==10 lo crea a
+          // (0,-170) nello stesso istante in cui arma la pausa — mancava
+          // qui, l'unico posto (con le altre 3 catene sotto) dove non era
+          // ancora stato aggiunto.
+          { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172, life: 700 }] },   // tic==10, prima meta' (pre-reveal)
+          { spr: "ir41", dur: 100 },   // tic==10, seconda meta' — revealAtStep
+          // Coda di smontaggio vero (tic 11..21, 20 tic ciascuno): stessa
+          // catena a tier percorsa al contrario (4->3->2->1), poi
+          // action_kill_object() a tic==22 — nessun passo dedicato per
+          // quello, e' semplicemente la fine dell'array.
+          { spr: "ir42", dur: 20 },
+          { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 20 },
+          { spr: "ir31", dur: 20 }, { spr: "ir32", dur: 20 },
+          { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 20 },
+          { spr: "ir21", dur: 20 }, { spr: "ir22", dur: 20 },
+          { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 20 },
+          { spr: "ir11", dur: 20 }, { spr: "ir12", dur: 20 },
+          { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 20 },
         ],
       },
-      {                          // livello 2 -> 3, upind23 costo + impaind2to3r (troncato a tic 0..10)
+      {                          // livello 2 -> 3, upind23 costo + impaind2to3r
         atMakee: 1000,             // [C] industria2/Step.gml: upo==0 && makee>=1000 -> crea upind23
         cost: { mon: 10000 },     // [C] upind23/Mouse_LeftPressed.gml
         finalSprite: "i31", life: 200,             // [C] industria3/Create.gml
@@ -215,8 +245,15 @@ export const BUILDING_TYPES = {
         // esatto del -150 alla nascita (ne' del -100/-150 accumulati salendo
         // dai livelli precedenti): l'originale stesso non torna in pareggio.
         hap: { create: -150, destroy: 400 },
-        cap: "im4f",   // [C] impaind2to3f/Alarm_1.gml, stesso ruolo di im2f sopra ma all'altezza massima
-        steps: [                                    // [C] impaind2to3r/Create.gml + Alarm_0.gml, tic 0..10
+        // [C] impaind2to3r/Create.gml + Alarm_0.gml: catena completa, tic
+        // 0..22 (stesso gap di industria1->2 sopra: prima troncata a tic
+        // 0..10). `revealAtStep` (12, il secondo dei due passi della pausa
+        // di tic==10): impaind2to3f/Alarm_0, tic==10 arma la creazione di
+        // `industria3` a +1330 tic e il proseguimento della catena a +1400
+        // — split 1330+70 (vedi il commento su stepConstructions() in
+        // buildings.js per il perche' generale del meccanismo).
+        revealAtStep: 12,
+        steps: [                                    // [C] impaind2to3r/Create.gml + Alarm_0.gml, tic 0..22
           { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
           { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
           { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
@@ -229,7 +266,21 @@ export const BUILDING_TYPES = {
           { spr: "ir31", dur: 40 },
           { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
           { spr: "ir42", dur: 40 },
-          { spr: "ir41", dur: 1400 },  // tic==10: come sopra, coda cosmetica non riprodotta
+          // Il topper vero (`tops3i`, sprite "toppers" — stesso oggetto di
+          // industria1->2 sopra, solo il timer di autodistruzione cambia):
+          // [C] impaind2to3f/Alarm_0.gml, tic==10 lo crea a (0,-170).
+          { spr: "ir41", dur: 1330, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172, life: 1330 }] },  // tic==10, prima meta' (pre-reveal)
+          { spr: "ir41", dur: 70 },    // tic==10, seconda meta' — revealAtStep
+          // Coda di smontaggio vero (tic 11..21, 20 tic ciascuno), stessa
+          // catena a tier percorsa al contrario di industria1->2 sopra.
+          { spr: "ir42", dur: 20 },
+          { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 20 },
+          { spr: "ir31", dur: 20 }, { spr: "ir32", dur: 20 },
+          { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 20 },
+          { spr: "ir21", dur: 20 }, { spr: "ir22", dur: 20 },
+          { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 20 },
+          { spr: "ir11", dur: 20 }, { spr: "ir12", dur: 20 },
+          { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 20 },
         ],
       },
     ],
@@ -366,7 +417,7 @@ export const BUILDING_TYPES = {
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
         { spr: "ir12", dur: 30 },
         { spr: "ir11", dur: 310, spawn: [
-          { spr: "toppers", dx: 0, dy: -42, depthOffset: -80 },
+          { spr: "toppers", dx: 0, dy: -42, depthOffset: -80, life: 260 },
         ] },
         { spr: "ir12", dur: 30 },
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
@@ -384,7 +435,15 @@ export const BUILDING_TYPES = {
         deathPop: -34,                // [C] casa2/Destroy.gml
         ruin: ["ru21", "ru22", "ru23", "ru24"],   // [C] casa2/Step.gml: create_object(ruin2)
         drain: { mon: 2, every: 10 },   // [C] impa1to2r/Alarm_10.gml
-        cap: "im2f",   // [C] impa1to2f/Alarm_1.gml, stesso ruolo di industria (vedi upind12 sopra)
+        // [C] impa1to2r/Create.gml + Alarm_0.gml: catena completa (l'array
+        // sotto era gia' completo, ma rivelava l'edificio troppo tardi —
+        // vedi `revealAtStep`). `revealAtStep` (indice 6, il secondo dei
+        // due passi in cui e' spezzata la pausa di tic==4): impa1to2f/
+        // Alarm_0, tic==5 arma sia la creazione di `casa2` (+460 tic da li')
+        // sia il proseguimento della propria catena (+600) — split 460+140
+        // (stesso meccanismo di industria1->2/2->3, buildings.js sotto,
+        // stepConstructions()).
+        revealAtStep: 6,
         variants: [                  // [C] casa2/Create.gml, stesso schema di casa1
           { spr: "c211", decor: "c211l" }, { spr: "c212", decor: "c212l" },
           { spr: "c213", decor: "c213l" }, { spr: "c214", decor: "c214l" },
@@ -401,15 +460,20 @@ export const BUILDING_TYPES = {
           { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
           { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
           { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
-          { spr: "ir22", dur: 40 }, { spr: "ir21", dur: 600 },
+          { spr: "ir22", dur: 40 },
+          // Il topper vero (`tops2`, sprite "toppers" — stesso oggetto di
+          // missile/club sopra, offset piu' basso perche' casa2 e' piu'
+          // bassa di un edificio a torre): [C] impa1to2f/Alarm_0.gml,
+          // tic==5 lo crea a (0,-86).
+          { spr: "ir21", dur: 460, spawn: [{ spr: "toppers", dx: 0, dy: -86, depthOffset: -88, life: 460 }] },   // tic==4, prima meta' (pre-reveal)
+          { spr: "ir21", dur: 140 },   // tic==4, seconda meta' — revealAtStep
           { spr: "ir21", dur: 40 },   // tic 5->6: nessun cambio sprite nell'originale, solo un'attesa in piu'
           { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
           { spr: "ir11", dur: 40 }, { spr: "ir12", dur: 40 },
           { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 40 },
         ],
       },
-      {                            // livello 2 -> 3, upsign23 costo + impa2to3r (troncato a tic 0..10, coda
-                                    // cosmetica fino a tic 22 come impaind2to3r di industria, STUDIO.md sopra)
+      {                            // livello 2 -> 3, upsign23 costo + impa2to3r
         atAva: 5,                   // [C] casa2/Alarm_2.gml: ava==5 crea upsign23
         cost: { mon: 2000 },       // [C] upsign23/Mouse_LeftPressed.gml
         life: 300,                  // [C] casa3/Create.gml
@@ -419,7 +483,13 @@ export const BUILDING_TYPES = {
         deathPop: -60,                // [C] casa3/Destroy.gml
         ruin: ["ru31", "ru32", "ru33", "ru34"],   // [C] casa3/Step.gml: create_object(ruin3)
         drain: { mon: 3, every: 20 },   // [C] impa2to3r/Alarm_10.gml
-        cap: "im4f",   // [C] impa2to3f/Alarm_1.gml, stesso ruolo di industria (vedi upind23 sopra)
+        // [C] impa2to3r/Create.gml + Alarm_0.gml: catena completa, tic
+        // 0..22 (stesso gap di industria1->2/2->3 sopra: prima troncata a
+        // tic 0..10). `revealAtStep` (12, il secondo dei due passi della
+        // pausa di tic==10): impa2to3f/Alarm_0, tic==10 arma la creazione
+        // di `casa3` a +700 tic e il proseguimento della catena a +800 —
+        // split 700+100.
+        revealAtStep: 12,
         variants: [                  // [C] casa3/Create.gml, stesso schema di casa1/casa2
           { spr: "c311", decor: "c311l" }, { spr: "c312", decor: "c312l" },
           { spr: "c313", decor: "c313l" }, { spr: "c314", decor: "c314l" },
@@ -432,7 +502,7 @@ export const BUILDING_TYPES = {
           { spr: "c351", decor: "c351l" }, { spr: "c352", decor: "c352l" },
           { spr: "c353", decor: "c353l" }, { spr: "c354", decor: "c354l" },
         ],
-        steps: [                     // [C] impa2to3r/Create.gml + Alarm_0.gml, tic 0..10
+        steps: [                     // [C] impa2to3r/Create.gml + Alarm_0.gml, tic 0..22
           { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
           { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
           { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
@@ -445,7 +515,21 @@ export const BUILDING_TYPES = {
           { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
           { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
           { spr: "ir42", dur: 40 },
-          { spr: "ir41", dur: 800 },   // tic==10: l'originale continua fino a tic 22 (coda cosmetica)
+          // Il topper vero (`tops3`, sprite "toppers" — stesso oggetto di
+          // industria1->2/monum/banca sopra): [C] impa2to3f/Alarm_0.gml,
+          // tic==10 lo crea a (0,-170).
+          { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172, life: 700 }] },   // tic==10, prima meta' (pre-reveal)
+          { spr: "ir41", dur: 100 },   // tic==10, seconda meta' — revealAtStep
+          // Coda di smontaggio vero (tic 11..21, 20 tic ciascuno), stessa
+          // catena a tier percorsa al contrario di industria1->2/2->3 sopra.
+          { spr: "ir42", dur: 20 },
+          { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 20 },
+          { spr: "ir31", dur: 20 }, { spr: "ir32", dur: 20 },
+          { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 20 },
+          { spr: "ir21", dur: 20 }, { spr: "ir22", dur: 20 },
+          { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 20 },
+          { spr: "ir11", dur: 20 }, { spr: "ir12", dur: 20 },
+          { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 20 },
         ],
       },
     ],
@@ -510,7 +594,7 @@ export const BUILDING_TYPES = {
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
         { spr: "ir22", dur: 40 },
         { spr: "ir21", dur: 640, spawn: [                 // tic==4 (durata 600) + tic==5 (durata 40, nessun
-          { spr: "toppers", dx: 0, dy: -86, depthOffset: -88 },              // cambio sprite nel decompilato): fuse in un solo
+          { spr: "toppers", dx: 0, dy: -86, depthOffset: -88, life: 460 },              // cambio sprite nel decompilato): fuse in un solo
         ] },                                                // passo — [C] impamissf/Alarm_0.gml tic==5 crea "tops2"
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
         { spr: "ir11", dur: 40 }, { spr: "ir12", dur: 40 },
@@ -557,7 +641,7 @@ export const BUILDING_TYPES = {
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 370 },
         { spr: "ir12", dur: 30 },
         { spr: "ir11", dur: 310, spawn: [                 // [C] impasolf/Alarm_4.gml crea "tops1" (sprite
-          { spr: "toppers", dx: 0, dy: -42, depthOffset: -80 },              // "toppers", stessa forma di "tops2" per missile/
+          { spr: "toppers", dx: 0, dy: -42, depthOffset: -80, life: 260 },              // "toppers", stessa forma di "tops2" per missile/
         ] },                                                // club ma offset -42 invece di -86) a meta' cantiere
         { spr: "ir12", dur: 30 },
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
@@ -675,7 +759,7 @@ export const BUILDING_TYPES = {
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
         { spr: "ir22", dur: 40 },
         { spr: "ir21", dur: 640, spawn: [
-          { spr: "toppers", dx: 0, dy: -86, depthOffset: -88 },
+          { spr: "toppers", dx: 0, dy: -86, depthOffset: -88, life: 460 },
         ] },
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
         { spr: "ir11", dur: 40 }, { spr: "ir12", dur: 40 },
@@ -762,7 +846,7 @@ export const BUILDING_TYPES = {
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
         { spr: "ir12", dur: 30 },
         { spr: "ir11", dur: 310, spawn: [
-          { spr: "toppers", dx: 0, dy: -42, depthOffset: -80 },
+          { spr: "toppers", dx: 0, dy: -42, depthOffset: -80, life: 260 },
         ] },
         { spr: "ir12", dur: 30 },
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 30 },
@@ -818,7 +902,7 @@ export const BUILDING_TYPES = {
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
         { spr: "ir22", dur: 40 },
         { spr: "ir21", dur: 640, spawn: [
-          { spr: "toppers", dx: 0, dy: -86, depthOffset: -88 },
+          { spr: "toppers", dx: 0, dy: -86, depthOffset: -88, life: 460 },
         ] },
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
         { spr: "ir11", dur: 40 }, { spr: "ir12", dur: 40 },
@@ -854,14 +938,21 @@ export const BUILDING_TYPES = {
       ruspaCost: 100000, ruspaFirstStepDur: 30,
       ruin: ["ru31", "ru32", "ru33", "ru34"],   // [C] lasergun/Step.gml: create_object(ruin3) — "taglia 3"
       decor: [],                                   // [C] lasergun/Create.gml non crea nessun cddvd
-      // [C] impalaser_r/Create.gml + Alarm_0.gml: 23 tic in tutto (0..22),
-      // ma gli ultimi 12 (11..22) sono lo stesso specchio "costruisci poi
-      // ripiega la gru" gia' troncato per impaind1to2r/2to3r (STUDIO.md,
-      // industria "due semplificazioni") — troncato qui allo stesso modo,
-      // tic 0..10. tic6 pianta 4 "grubig" (sprite "gr21", gia' in atlas per
-      // il decoro di fine cantiere altrove) ai quattro angoli — l'unico
-      // edificio con una gru per lato invece di una sola.
-      steps: [
+      // [C] impalaser_r|f/Create.gml + Alarm_0.gml: catena completa, tic
+      // 0..22 — stessa identica forma di impaind2to3r|f (industria 2->3,
+      // buildings.js sopra: tic per tic lo stesso codice, verificato anche
+      // qui), prima troncata a tic 0..10 come quella. tic6 pianta 4
+      // "grubig" (sprite "gr21", gia' in atlas per il decoro di fine
+      // cantiere altrove) ai quattro angoli — l'unico edificio con una gru
+      // per lato invece di una sola. `revealAtStep` (12, il secondo dei due
+      // passi della pausa di tic==10): impalaser_f/Alarm_0, tic==10 arma la
+      // creazione di `lasergun` a +1330 tic e il proseguimento della catena
+      // a +1400 — split 1330+70 (stesso meccanismo di industria2->3,
+      // stepConstructions() sopra). Il topper vero (`tops3i`, sprite
+      // "toppers" — stesso oggetto di industria2->3, `life` altrettanto
+      // 1330): impalaser_f/Alarm_0.gml, tic==10 lo crea a (0,-170).
+      revealAtStep: 12,
+      steps: [                                    // [C] impalaser_r/Create.gml + Alarm_0.gml, tic 0..22
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
         { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
@@ -874,7 +965,18 @@ export const BUILDING_TYPES = {
         { spr: "ir31", dur: 40 },
         { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
         { spr: "ir42", dur: 40 },
-        { spr: "ir41", dur: 1400 },
+        { spr: "ir41", dur: 1330, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172, life: 1330 }] },  // tic==10, prima meta' (pre-reveal)
+        { spr: "ir41", dur: 70 },    // tic==10, seconda meta' — revealAtStep
+        // Coda di smontaggio vero (tic 11..21, 20 tic ciascuno), stessa
+        // catena a tier percorsa al contrario di industria2->3 sopra.
+        { spr: "ir42", dur: 20 },
+        { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 20 },
+        { spr: "ir31", dur: 20 }, { spr: "ir32", dur: 20 },
+        { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 20 },
+        { spr: "ir21", dur: 20 }, { spr: "ir22", dur: 20 },
+        { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 20 },
+        { spr: "ir11", dur: 20 }, { spr: "ir12", dur: 20 },
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 20 },
       ],
     },
   },
@@ -1139,7 +1241,7 @@ export const BUILDING_TYPES = {
         { spr: "sr35", dur: 40 }, { spr: "sr36", dur: 40 },
         { spr: ["sr41", "sr42", "sr43", "sr44"], dur: 40 },
         { spr: "sr45", dur: 40 },
-        { spr: "sr46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170, depthOffset: -172 }] },
+        { spr: "sr46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170, depthOffset: -172, life: 700 }] },
       ],
     },
     // **Secondo livello, ora portato**: casa4s/Alarm_2.gml continua oltre
@@ -1217,7 +1319,7 @@ export const BUILDING_TYPES = {
           // quel nome), quindi frameFor() tornava sempre `null`: il topper
           // del secondo livello non spariva ne' appariva ruotato male, era
           // semplicemente invisibile.
-          { spr: "sr84", dur: 1200, spawn: [{ spr: "topls", dx: 0, dy: -340, depthOffset: -344 }] },
+          { spr: "sr84", dur: 1200, spawn: [{ spr: "topls", dx: 0, dy: -340, depthOffset: -344, life: 1100 }] },
         ],
       },
     ],
@@ -1295,7 +1397,7 @@ export const BUILDING_TYPES = {
         // dell'atlas che li diceva "uguali per entrambi gli assi" era letto
         // male. Puramente cosmetico (topper mai controllato da vicino sui
         // due assi fianco a fianco), corretto qui.
-        { spr: "rd46", dur: 700, spawn: [{ spr: "topld", dx: 0, dy: -170, depthOffset: -172 }] },
+        { spr: "rd46", dur: 700, spawn: [{ spr: "topld", dx: 0, dy: -170, depthOffset: -172, life: 700 }] },
       ],
     },
     // **Secondo livello** — stessa entry di palazzo sopra, asse "rd": [C]
@@ -1356,7 +1458,7 @@ export const BUILDING_TYPES = {
           // non "tops5d" — l'atlas non ha nessuno sprite chiamato "tops5d",
           // quindi il topper del secondo livello su questo asse era
           // altrettanto invisibile.
-          { spr: "dr84", dur: 1200, spawn: [{ spr: "topld", dx: 0, dy: -340, depthOffset: -344 }] },
+          { spr: "dr84", dur: 1200, spawn: [{ spr: "topld", dx: 0, dy: -340, depthOffset: -344, life: 1100 }] },
         ],
       },
     ],
@@ -1428,7 +1530,7 @@ export const BUILDING_TYPES = {
         { spr: "sr35", dur: 40 }, { spr: "sr36", dur: 40 },
         { spr: ["sr41", "sr42", "sr43", "sr44"], dur: 40 },
         { spr: "sr45", dur: 40 },
-        { spr: "sr46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170, depthOffset: -172 }] },
+        { spr: "sr46", dur: 700, spawn: [{ spr: "topls", dx: 0, dy: -170, depthOffset: -172, life: 700 }] },
       ],
     },
     // [C] media1s/Alarm_3.gml: ogni 120 tic, SEMPRE lo stesso valore (`ava`
@@ -1481,7 +1583,7 @@ export const BUILDING_TYPES = {
         // dall'autore ("il topper... risulta sempre nella stessa
         // posizione"): "topld" e' il topper reale dell'asse "d" (tops4d/
         // _object.json, stesso sprite gia' letto per palazzoRd).
-        { spr: "rd46", dur: 700, spawn: [{ spr: "topld", dx: 0, dy: -170, depthOffset: -172 }] },
+        { spr: "rd46", dur: 700, spawn: [{ spr: "topld", dx: 0, dy: -170, depthOffset: -172, life: 700 }] },
       ],
     },
     consumption: [[{ day: 60, night: 150, mon: 60 }]],
@@ -1532,7 +1634,7 @@ export const BUILDING_TYPES = {
         { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
         { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
         { spr: "ir42", dur: 40 },
-        { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172 }] },
+        { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172, life: 700 }] },
       ],
     },
     // [C] monum: nessun Alarm_5/storm armato in Create.gml (a differenza di
@@ -1600,7 +1702,7 @@ export const BUILDING_TYPES = {
         { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
         { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
         { spr: "ir42", dur: 40 },
-        { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172 }] },
+        { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172, life: 700 }] },
       ],
     },
     consumption: [[{ day: 18, night: 27 }]],   // [C] banca1/Alarm_3.gml, ogni 120 tic — costante, nessun `ava` (banca non cresce)
@@ -2243,17 +2345,65 @@ function applyLevelFinish(b, def, up, c, r12, onDecor, deferDecor = false) {
  * (`b.construction` torna `null`) — e' il punto giusto per far sparire il
  * decoro transitorio, non `onDecor`.
  *
- * [I] Segnalato dall'autore: l'edificio finito deve comparire quando
- * l'impalcatura ENTRA nell'ultimo passo (la fase di smontaggio — la stessa
- * finestra in cui compare `up.cap`, sotto), non quando quel passo finisce.
- * [C] Nel decompilato la traccia "f" (impalcatura in sovraimpressione, mai
- * ricostruita per intero — STUDIO.md "due semplificazioni") crea gia'
- * l'edificio del livello successivo MENTRE "r" e' ancora impegnata nella
- * coda cosmetica finale, che qui e' un solo passo lungo invece della sua
- * vera durata (11 tic mai portati): la costruzione vera e' gia' finita da
- * quel momento, resta solo la scenografia dello smontaggio — `applyLevelFinish()`
- * sopra ora scatta li' (`c.finished`), non piu' quando l'ultimo passo
- * chiude e l'impalcatura sparisce per davvero.
+ * `up.revealAtStep` (default `up.steps.length - 1`, l'ultimo passo — quasi
+ * tutti i tipi): l'indice del passo alla cui ENTRATA l'edificio finito
+ * compare (applyLevelFinish() sotto, `c.finished`), non alla sua uscita.
+ * [C] impaind1to2r|f/impaind2to3r|f/impa1to2r|f/impa2to3r|f (i 4 upgrade
+ * industria/casa con una "coda cosmetica" — vedi i `steps` in
+ * BUILDING_TYPES sopra): l'oggetto "f" (impalcatura in sovraimpressione)
+ * crea l'edificio vero con un alarm one-shot armato a meta' della pausa in
+ * cima alla catena — 700/1330/460/700 tic dopo l'inizio della pausa sui
+ * quattro rispettivamente, MAI all'inizio ne' alla fine — mentre l'oggetto
+ * "r" (qui: `up.steps`) e' ancora fermo sullo stesso sprite, e resta fermo
+ * cosi' altri 70-140 tic PRIMA di iniziare a smontarsi per davvero (un
+ * livello alla volta, in ordine inverso). Per questi 4 upgrade la pausa e'
+ * percio' spezzata in due passi (`revealAtStep` punta al secondo, non
+ * all'ultimo dell'array — la coda di smontaggio segue dopo): l'edificio non
+ * compare mai mentre l'impalcatura sta gia' scendendo, ne' resta invisibile
+ * mentre e' gia' finita. Ogni altro tipo (un solo passo di pausa, MAI
+ * seguito da una coda: la sua fine E' la fine del cantiere) non ha bisogno
+ * di specificare `revealAtStep` — il default (l'ultimo passo) resta
+ * corretto per definizione.
+ *
+ * [Bug corretto, segnalato dall'autore: "verifica che il tetto
+ * dell'impalcatura corrisponda alla creazione dell'edificio, e che venga
+ * via prima delle laterali"] Due controlli distinti, con risposte diverse:
+ *
+ * 1. Il "tetto" come `cap` (`im2f`/`im4f`, letto da
+ * `impaind1to2f/Alarm_1.gml`) NON esiste: quell'Alarm — come gli
+ * `Alarm_2..4/6..8/10/11` dello stesso oggetto, e i loro equivalenti sui 3
+ * gemelli — non e' MAI armato da nessun'altra parte del codice (verificato
+ * sia sulla GML ricostruita sia sul bytecode grezzo, `raw/asm`: ogni
+ * `action_set_alarm` in quei 4 oggetti punta solo a se stesso, slot 0 o 5,
+ * mai 1; nessun altro oggetto del gioco fa mai `with (impaind1to2f) {...}`
+ * o equivalente). Rimosso, non sostituito.
+ *
+ * 2. Il vero "tetto" che l'autore ricordava PERO' esiste, verificato: e' il
+ * TOPPER (`tops1`/`tops2`/`tops3`/`tops3i`/`tops4s`/`tops4d`/`tops5s`/
+ * `tops5d` — nomi dell'OGGETTO GameMaker, sprite reale sempre "toppers"/
+ * "topls"/"topld", STUDIO.md/`addConstructionSpawn()` in main.js, gia' in
+ * uso per industria/casa livello 0->1, missile, solare, club, villa, gatling,
+ * monum, banca, palazzo, museo). [C] impaind1to2f/Alarm_0.gml, tic==10 (lo
+ * stesso istante in cui arma la pausa) crea `tops3` a (0,-170) — mancava
+ * PERO' proprio sui 4 upgrade industria/casa qui sotto, l'unico posto
+ * rimasto senza (`spawn` aggiunto ad ognuno).
+ *
+ * [Bug corretto, segnalato dall'autore: "fai come nell'originale"] Il
+ * topper vero si autodistrugge da solo (il proprio `action_set_alarm` —
+ * es. tops3=700 tic) esattamente al momento in cui l'edificio vero nasce,
+ * MAI alla vera fine del cantiere — un timer completamente indipendente
+ * dall'impalcatura che lo ha creato. Prima restava invece finche'
+ * `onFinish` lo rimuoveva (main.js, removeTransientDecor() — la vera fine,
+ * per i 4 upgrade qui sotto ben DOPO la coda di smontaggio): un topper
+ * visibile per intero il tempo dello smontaggio, invece di sparire PRIMA
+ * che l'impalcatura sotto cominci a scendere (esattamente il difetto
+ * temuto dall'autore, anche se sul topper e non sulle laterali stesse).
+ * `life` (il valore letto qui sotto, uno per topper — 260/460/700/1330/1100
+ * a seconda di quale tops* lo crea davvero) da' al decoro un timer TUTTO
+ * SUO (main.js: addDecor()/`_life`, stepTransientDecor() — chiamata ogni
+ * frame, indipendente da `b.construction`), che lo rimuove al primo dei due
+ * fra questo e la vera fine del cantiere: fedele in ogni caso, non solo nei
+ * 4 upgrade che hanno innescato la domanda.
  *
  * [Bug corretto] `onDecor` chiama `spawnDecor()` (main.js), che PRIMA
  * rimpiazzava indiscriminatamente OGNI decoro dell'edificio — compreso il
@@ -2273,6 +2423,7 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     const def = BUILDING_TYPES[b.type];
     const up = c.upgradeIndex === -1 ? def.construct : def.upgrades[c.upgradeIndex];
     let cur = up.steps[c.stepIndex];
+    const revealAtStep = up.revealAtStep ?? up.steps.length - 1;
     if (c.curSpr === undefined) {
       c.curSpr = pickSpr(cur.spr);
       // `c.curSpd` (frame/tic dello sprite di QUESTO passo, main.js lo legge
@@ -2281,7 +2432,7 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       // solo frame vero, l'animazione non farebbe differenza).
       c.curSpd = cur.spd ?? 0;
       if (cur.spawn) onSpawn?.(b, cur.spawn);
-      if (c.stepIndex === up.steps.length - 1 && !c.finished && !up.revealAtEnd) {
+      if (c.stepIndex === revealAtStep && !c.finished && !up.revealAtEnd) {
         applyLevelFinish(b, def, up, c, r12, onDecor, true);
         c.finished = true;
       }
@@ -2325,11 +2476,6 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     // va piu' sovrascritto ogni frame.
     if (!c.finished && !clearingLot) b.spr = c.curSpr;
     b.frontSpr = clearingLot ? null : frontSprFor(c.curSpr);
-    // Il coperchio a gru (`up.cap`) compare durante l'ultimo passo: e'
-    // sempre quello lungo ("l'edificio e' quasi finito", vedi steps sopra),
-    // la stessa finestra in cui l'originale lo mostra davvero (poco dopo
-    // l'inizio del cantiere, ma resta a schermo comunque fino alla fine).
-    b.capSpr = (up.cap && c.stepIndex === up.steps.length - 1) ? up.cap : null;
     // [C] `c.rebuilding` (tryRuspaRebuild() sopra): il primo passo di un
     // cantiere avviato dalla ruspa dura `ruspaFirstStepDur`, non `cur.dur`
     // — solo il primo, il resto della catena e' identico a un cantiere
@@ -2349,7 +2495,7 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       // solo frame vero, l'animazione non farebbe differenza).
       c.curSpd = cur.spd ?? 0;
       if (cur.spawn) onSpawn?.(b, cur.spawn);
-      if (c.stepIndex === up.steps.length - 1 && !c.finished && !up.revealAtEnd) {
+      if (c.stepIndex === revealAtStep && !c.finished && !up.revealAtEnd) {
         applyLevelFinish(b, def, up, c, r12, onDecor, true);
         c.finished = true;
       }
@@ -2394,7 +2540,7 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       // `deferDecor`, `onDecor` e' gia' scattato).
       if (c.pendingDecor !== undefined) { onDecor?.(b, c.pendingDecor); c.pendingDecor = undefined; }
       b.construction = null;
-      b.frontSpr = null; b.capSpr = null;
+      b.frontSpr = null;
       onFinish?.(b);
     }
   }

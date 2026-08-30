@@ -441,6 +441,60 @@ export async function mountMatch(ctx, params = {}) {
     return ph;
   }
 
+  // [Bug corretto, segnalato dall'autore: "verifica il codice originale, le
+  // rovine non sparivano di colpo"] `ruin1|2|3/Mouse_LeftPressed.gml` non
+  // sgombera il rudere all'istante: paga E POI crea `impacasa1r`/`impacasa2r`/
+  // `impacasa3r` (STUDIO.md sopra) — lo stesso oggetto, con la stessa identica
+  // catena `Alarm_0..4`, che `tryRuspaRebuild()` (buildings.js) gia' riusa per
+  // ruspare un edificio VIVO: ~30+340+30 tic (~6.7s, action_set_alarm alla
+  // mano) di impalcatura generica per taglia (`ir11`/`ir12` per un rudere di
+  // taglia 1, `ir21`/`ir22` per la 2, `ir31`/`ir32` per la 3 — le stesse
+  // BUILDING_TYPES.casa/industria.construct.steps di un cantiere vero, non
+  // sprite dedicati ai ruderi) prima di sparire (`action_kill_object()`,
+  // l'ultimo Alarm della catena). La decisione dell'autore sopra
+  // (`clearedPlaceholder()`: un lotto libero, non un nuovo edificio) resta
+  // invariata — qui si aggiunge solo la CODA visiva che mancava fra il tap e
+  // lo sgombero vero, non si cambia il risultato finale.
+  const RUIN_CLEAR_TICKS = 30;
+  const RUIN_CLEAR_STEPS = (level) => [
+    { spr: `ir${level}2`, dur: RUIN_CLEAR_TICKS },
+    { spr: `ir${level}1`, dur: 340 },
+    { spr: `ir${level}2`, dur: RUIN_CLEAR_TICKS },
+  ];
+  /** Avanza il ciclo di impalcature di ogni rudere in `list` (`ruins` o
+   * `ruinLots`, stessa forma {x,y,level,spr,_f,clearing}) di `dt` secondi —
+   * chiamata ogni frame come stepConstructions() sotto, stesso principio.
+   * `clearing` nasce con `stepIndex: -1` (sotto, al tap): qui al primo
+   * avanzamento utile monta subito il primo sprite invece di aspettare che
+   * scada anche il suo `dur`, cosi' l'impalcatura compare nello stesso frame
+   * del pagamento invece che un frame dopo. A fine catena chiama `onDone`
+   * (main.js, sotto: `clearedPlaceholder()`) e rimuove la voce da `list`. */
+  function stepRuinClearing(list, dt, onDone) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      const entry = list[i];
+      const c = entry.clearing;
+      if (!c) continue;
+      const steps = RUIN_CLEAR_STEPS(entry.level ?? 1);
+      if (c.stepIndex === -1) {
+        c.stepIndex = 0;
+        entry.spr = steps[0].spr;
+        entry._f = frameFor(entry.spr);
+      }
+      c.t += dt;
+      while (c.t >= steps[c.stepIndex].dur * TICK) {
+        c.t -= steps[c.stepIndex].dur * TICK;
+        c.stepIndex++;
+        if (c.stepIndex >= steps.length) {
+          onDone(entry);
+          list.splice(i, 1);
+          break;
+        }
+        entry.spr = steps[c.stepIndex].spr;
+        entry._f = frameFor(entry.spr);
+      }
+    }
+  }
+
   // `chies` e' gia' un'istanza vera nella room (src/rooms/match_easy.json:
   // un solo `chies` a (851,513), STUDIO.md §5.3), non nasce da un
   // placeholder. Va tolta da `staticWorld` (altrimenti sarebbe disegnata due
@@ -636,6 +690,9 @@ export async function mountMatch(ctx, params = {}) {
   // rettangolo schermo del pollice, ricalcolato ad ogni frame, letto da
   // input.onTap per il tocco.
   let tutorialOkRect = null;   // { x, y, w, h }, ricalcolato ad ogni frame dal disegno
+  // { left, right, top, bottom } del box testo, ricalcolato ad ogni frame:
+  // serve al pollice (sotto) per agganciarsi sopra al box invece che di fianco.
+  let tutorialBoxRect = null;
   if (roomName === "tutorial") {
     tutorialState = createTutorialState(scene);
     ruinLots = extractRuinLots(scene);
@@ -981,7 +1038,7 @@ export async function mountMatch(ctx, params = {}) {
     // e' un vero scostamento (2 lotti, o `parco`/fixedDepth), altrimenti
     // `-building.y` come prima.
     const baseDepth = building.depth === 0 ? -building.y : building.depth;
-    for (const { spr, dx, dy, lit = true, fadeTicks, depthOffset = 0 } of spawns) {
+    for (const { spr, dx, dy, lit = true, fadeTicks, depthOffset = 0, life } of spawns) {
       const y = building.y + dy;
       const isClub = building.type === "club";
       const scrubSpr = lit && !isClub ? scrubSpriteFor(spr) : null;
@@ -1000,10 +1057,38 @@ export async function mountMatch(ctx, params = {}) {
         } : {}),   // parte spento, come "empty" in originale (Create.gml)
         // `transient` (addConstructionSpawn() sotto): decoro di cantiere
         // (gru/topper), escluso dal filtro di spawnDecor() — sparisce solo in
-        // removeTransientDecor(), alla vera fine del cantiere.
+        // removeTransientDecor(), alla vera fine del cantiere (o prima,
+        // `_life` sotto, per i topper).
         ...(transient ? { transient: true } : {}),
+        // `_life` (`life`, buildings.js — SOLO i topper: tops1/2/3/3i/4s/4d/
+        // 5s/5d si autodistruggono da soli col proprio `action_set_alarm`,
+        // indipendente dal cantiere che li ha creati — STUDIO.md/il
+        // commento su stepConstructions() in buildings.js) — [Bug corretto,
+        // segnalato dall'autore: "fai come nell'originale"] senza questo il
+        // topper restava (removeTransientDecor(), sotto) fino alla vera fine
+        // del cantiere, molto DOPO il vero action_kill_object() del topper
+        // originale (che scatta esattamente quando l'edificio vero nasce,
+        // non quando l'impalcatura finisce di smontarsi) — un topper visibile
+        // qualche secondo di troppo sopra un edificio gia' rivelato. stepTransientDecor()
+        // (sotto) lo consuma ogni frame; `life == null` (ogni altro spawn,
+        // gru incluse — le gru vere non passano di qui, vedi addConstructionSpawn())
+        // lascia il decoro come sempre, rimosso solo da removeTransientDecor().
+        ...(life != null ? { _life: life * TICK } : {}),
       });
     }
+  }
+
+  /** Consuma `_life` dei decori transitori con un timer proprio (i topper,
+   * addDecor()/`life` sopra) di `dt` secondi — un secondo filtro oltre a
+   * removeTransientDecor() (sotto, la vera fine del cantiere): un topper
+   * sparisce al PRIMO dei due che arriva, esattamente come l'originale (il
+   * proprio `action_kill_object()` puo' scattare ben prima che l'impalcatura
+   * abbia finito di smontarsi). Chiamata una volta a frame, stesso principio
+   * di stepLights() — ma quelli non hanno `_life` (solo i topper lo
+   * dichiarano), quindi qui non serve nessun controllo sul tipo di decoro. */
+  function stepTransientDecor(dt) {
+    for (const d of decorEntities) if (d._life != null) d._life -= dt;
+    decorEntities = decorEntities.filter((d) => d._life == null || d._life > 0);
   }
 
   /** `onSpawn` di stepConstructions() (buildings.js): le gru e i "topper"
@@ -3713,28 +3798,33 @@ export async function mountMatch(ctx, params = {}) {
     // seguiva alla lettera `ruin1|2/Mouse_LeftPressed.gml` (che nel
     // decompilato ricostruisce davvero, non sgombera soltanto), ma qui la
     // scelta esplicita e' che demolire lasci un lotto libero, non gia'
-    // occupato da una nuova costruzione.
+    // occupato da una nuova costruzione. [Bug corretto, segnalato
+    // dall'autore: "le rovine non sparivano di colpo"] Il pagamento resta
+    // immediato ma non sgombera piu' subito: monta `clearing` (avanzato da
+    // stepRuinClearing() sopra, ogni frame) cosi' l'impalcatura generica
+    // della sua taglia compare per ~6.7s (fedele a `ruin1|2|3/
+    // Mouse_LeftPressed.gml`, vedi il commento su RUIN_CLEAR_STEPS) prima
+    // che il lotto si liberi per davvero. `!lot.clearing` blocca un secondo
+    // tap (e quindi un secondo pagamento) mentre il ciclo e' gia' in corso.
     if (picked.obj === "ruinLot") {
       const lot = picked.ref;
       message = ""; messageT = 0;
-      if (r12.selec === 11 && canAfford(r12, { mon: lot.cost })) {
+      if (!lot.clearing && r12.selec === 11 && canAfford(r12, { mon: lot.cost })) {
         r12.mon -= lot.cost;
-        clearedPlaceholder(lot.x, lot.y);
-        ruinLots.splice(ruinLots.indexOf(lot), 1);
+        lot.clearing = { stepIndex: -1, t: 0 };
       }
       picked = null;
       return;
     }
     // Rudere VERO da battaglia (destroyBuilding() sopra) — stessa identica
-    // meccanica di "ruinLot" appena sopra (stesso `clearedPlaceholder()`),
-    // solo su `ruins` invece di `ruinLots`.
+    // meccanica di "ruinLot" appena sopra (stesso ciclo di impalcature via
+    // `clearing`/stepRuinClearing()), solo su `ruins` invece di `ruinLots`.
     if (picked.obj === "ruin") {
       const ru = picked.ref;
       message = ""; messageT = 0;
-      if (r12.selec === 11 && canAfford(r12, { mon: ru.cost })) {
+      if (!ru.clearing && r12.selec === 11 && canAfford(r12, { mon: ru.cost })) {
         r12.mon -= ru.cost;
-        clearedPlaceholder(ru.x, ru.y);
-        ruins.splice(ruins.indexOf(ru), 1);
+        ru.clearing = { stepIndex: -1, t: 0 };
       }
       picked = null;
       return;
@@ -4134,6 +4224,12 @@ export async function mountMatch(ctx, params = {}) {
     const frozen = paused || outcome?.kind === "defeat";
     if (!frozen) {
       stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
+      // Ciclo di impalcature dei ruderi sotto ruspa (stepRuinClearing()
+      // sopra) — stesso principio di stepConstructions() appena sopra, un
+      // timer a parte perche' un rudere in `ruins`/`ruinLots` non e' un
+      // `buildings` vero (niente `.construction`).
+      stepRuinClearing(ruins, dt, (ru) => clearedPlaceholder(ru.x, ru.y));
+      stepRuinClearing(ruinLots, dt, (lot) => clearedPlaceholder(lot.x, lot.y));
       // Vittoria (`outcome` sopra): il grattacielo (STAR_BUILDINGS, l'ultima
       // delle tre "stelle") appena finito di costruire — `b.construction`
       // diventa `null` proprio dentro stepConstructions() appena chiamata
@@ -4212,6 +4308,7 @@ export async function mountMatch(ctx, params = {}) {
         carmakerIdx++;
       }
       stepLights(decorEntities, dt, night, r12);
+      stepTransientDecor(dt);
       stepSemaphores(semaphores, dt);
       // [Bug corretto, segnalato dall'autore: "durante il temporale
       // comparivano una marea di nuvole in piu'"] `!!r12.storm` da solo
@@ -4438,7 +4535,6 @@ export async function mountMatch(ctx, params = {}) {
       // qualunque altro edificio — sempre -y diretto, mai il `fixedDepth` del
       // tipo sotto di lei.
       if (b.frontSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.frontSpr) });
-      if (b.capSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.capSpr) });
       // Impalcatura/gru rotanti del grattacielo (game/src/scaffold.js): decoro
       // puro, si scurisce di notte come ogni altro (nessun `_selfLit`, vedi
       // scaffoldParts()).
@@ -4496,18 +4592,21 @@ export async function mountMatch(ctx, params = {}) {
       }
     }
     for (const d of decorEntities) dynamic.push(d);
-    // Ruderi (destroyBuilding() sopra): niente da avanzare ogni frame (non si
-    // muovono, non cambiano sprite). Sotto ruspa lasciano un placeholder
+    // Ruderi (destroyBuilding() sopra) — sotto ruspa lasciano un placeholder
     // vuoto (clearedPlaceholder(), sopra) — stesso trattamento hover/tinta
     // rossa gia' in uso per i lotti-rudere del tutorial (`ruinLots` sotto),
     // qui esteso a QUALUNQUE room: un rudere da
     // battaglia puo' comparire su `match`/`match_easy` quanto su `tutorial`.
     // [I] Nessun cartellino prezzo all'hover (a differenza del popup ruspa
     // su un edificio vivo, `ruspaPending` sopra): ne' `ruinLot` lo mostra
-    // gia' — stesso gap, non nuovo qui.
+    // gia' — stesso gap, non nuovo qui. `._f`/`.spr` di un rudere in
+    // `clearing` cambiano ogni frame (stepRuinClearing() sopra, sopra
+    // stepConstructions()): il tint rosso "tappabile" invece si spegne
+    // (`!entry.clearing` sotto) proprio perche' un secondo tap durante il
+    // ciclo di impalcature non fa piu' niente (guardia in input.onTap).
     const hoverWorld = input.hover && input.hoverPointerType === "mouse" ? cam.screenToWorld(input.hover.x, input.hover.y) : null;
     for (const ru of ruins) {
-      const hovered = !!hoverWorld && r12.selec === 11 && ru._f && inFrameRect(hoverWorld.x, hoverWorld.y, ru.x, ru.y, ru._f);
+      const hovered = !ru.clearing && !!hoverWorld && r12.selec === 11 && ru._f && inFrameRect(hoverWorld.x, hoverWorld.y, ru.x, ru.y, ru._f);
       ru._hovered = hovered;
       dynamic.push({
         obj: "ruin", ref: ru, x: ru.x, y: ru.y, depth: ru.depth, _f: ru._f,
@@ -4522,7 +4621,7 @@ export async function mountMatch(ctx, params = {}) {
     if (tutorialState) {
       const hw = hoverWorld;
       for (const lot of ruinLots) {
-        const hovered = !!hw && r12.selec === 11 && lot._f && inFrameRect(hw.x, hw.y, lot.x, lot.y, lot._f);
+        const hovered = !lot.clearing && !!hw && r12.selec === 11 && lot._f && inFrameRect(hw.x, hw.y, lot.x, lot.y, lot._f);
         lot._hovered = hovered;
         // [C] ruin1|2/Mouse_MouseEnter.gml: action_sprite_color(255,1) — 255 e'
         // "puro rosso" nel formato colore di GameMaker (R+G*256+B*65536, vedi
@@ -4999,6 +5098,26 @@ export async function mountMatch(ctx, params = {}) {
     const UI_MARGIN = 8;
     const barFrame = frameFor("icone_oriz");
     const barX = UI_MARGIN, barY = UI_MARGIN;
+    // [Nuovo, segnalato dall'autore: "su telefono la barra risorse in alto
+    // e' spesso illeggibile perche' lo schermo e' troppo stretto"] La barra
+    // e' un blocco di coordinate fisse tarato per una schermata larga
+    // ~570px (l'ultimo elemento, la faccina della felicita' sotto, arriva a
+    // x=520+50*0.62): su un telefono in verticale (~360-414px tipici)
+    // sfora oltre il bordo destro invece di andare a capo da solo (sono
+    // elementi HTML `position:fixed` a x/y assoluti, non un layout che
+    // wrappa, index.html) — mese/anno e faccina/cristalli restano fuori
+    // schermo. Comprimere l'intero blocco in scala (invece di spostare gli
+    // elementi di coda su una seconda riga) evita di dover inventare un
+    // layout a due righe e le collisioni con banner/tutorial che assumono
+    // gia' la barra su una riga sola (STUDIO.md), mantenendo intatto
+    // l'allineamento icona/numero gia' "cotto" dentro icone_oriz: e'
+    // un'unica scala uniforme, applicata identica a immagine, offset e
+    // font-size di ogni pezzo qui sotto. Il floor (0.5) e' solo una rete di
+    // sicurezza per larghezze degeneri (es. un resize a meta' frame), non
+    // un limite pensato per restare leggibile: nella pratica nessun
+    // telefono e' cosi' stretto da raggiungerlo.
+    const BAR_NATURAL_WIDTH = 520 + 50 * 0.62;
+    const barScale = Math.min(1, Math.max(0.5, (canvas.clientWidth - UI_MARGIN * 2) / BAR_NATURAL_WIDTH));
     // [Bug corretto, segnalato dall'autore: "quando i pulsanti della GUI
     // diventano bianchi devono diventare bianchi anche quelli della GUI
     // superiore"] `icone_oriz` e' la stessa famiglia di pittogrammi neri
@@ -5022,7 +5141,7 @@ export async function mountMatch(ctx, params = {}) {
     // sull'elemento, non un tint moltiplicato su una texture.
     const barTextColor = iconsDark ? "#ffffff" : "#000000";
     r.setColorize(iconsDark);
-    if (barFrame) r.draw(barFrame, barX, barY, 1, 0xffffff, 1);
+    if (barFrame) r.draw(barFrame, barX, barY, barScale, 0xffffff, 1);
     r.setColorize(false);
     // [Bug corretto, segnalato dall'autore: "in pausa le scritte della UI
     // non si blurrano"] Questi numeri sono elementi HTML veri (drawHtmlText(),
@@ -5045,10 +5164,11 @@ export async function mountMatch(ctx, params = {}) {
     // nasconderli. `hideResourceText` raccoglie tutti i casi in cui il resto
     // della barra risorse e' gia' coperto/oscurato da qualcos'altro.
     const hideResourceText = paused || buildMenuOpen || !!tutorialState?.cutscene;
+    const barFontSize = 15 * barScale;
     const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                    [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
     if (!hideResourceText) for (const [value, x] of stats) {
-      drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(String(value), barX + x * barScale, barY + 19 * barScale, { size: barFontSize, align: "left", color: barTextColor });
     }
     // Data (mese + anno, game/src/state.js stepCalendar()) — [C] repre/
     // DrawGUI.gml: il mese e' testo ("Jan".."Dec", da `repre.mon` — non
@@ -5061,8 +5181,8 @@ export async function mountMatch(ctx, params = {}) {
     // sull'ancora invece di partire dal bordo superiore del glifo come
     // drawText()).
     if (!hideResourceText) {
-      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456, barY + 9, { size: 15, align: "left", color: barTextColor });
-      drawHtmlText(String(Math.round(r12.time)), barX + 448, barY + 29, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456 * barScale, barY + 9 * barScale, { size: barFontSize, align: "left", color: barTextColor });
+      drawHtmlText(String(Math.round(r12.time)), barX + 448 * barScale, barY + 29 * barScale, { size: barFontSize, align: "left", color: barTextColor });
     }
     // La "faccina" della felicita' (src/objects/hapware — segnalata
     // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
@@ -5083,7 +5203,7 @@ export async function mountMatch(ctx, params = {}) {
     // GML y=20, quindi 42-20=22).
     const hapFrame = frameFor(r12.hap >= r12.pop ? "hap3" : "hap1");
     r.setColorize(iconsDark);
-    if (hapFrame) r.draw(hapFrame, barX + 520, barY + 22, 0.62, 0xffffff, 1);
+    if (hapFrame) r.draw(hapFrame, barX + 520 * barScale, barY + 22 * barScale, 0.62 * barScale, 0xffffff, 1);
     r.setColorize(false);
     // Cristalli (r12.crys: balloons.js, il loot di `monviolo`; platform.js,
     // il gettone lasciato dal monviolo in volo verso il faro) — **[I]**
@@ -5116,9 +5236,9 @@ export async function mountMatch(ctx, params = {}) {
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
       r.setColorize(iconsDark);
-      if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
+      if (crysFrame) r.draw(crysFrame, barX - 6 * barScale, barY + 48 * barScale, 0.9 * barScale, 0xffffff, 1);
       r.setColorize(false);
-      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
+      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), barX + 34 * barScale, barY + 77 * barScale, { size: barFontSize, align: "left", color: barTextColor });
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
@@ -5550,13 +5670,13 @@ export async function mountMatch(ctx, params = {}) {
     // pausa" qui sopra, stavolta per l'overlay invece del menu di pausa).
     if (tutorialState?.showText && !paused && !buildMenuOpen) {
       const pad = 20;
-      // boxRight lascia spazio al pollice (tut_ok, disegnato subito sotto:
-      // stessa larghezza 45*1.3 li' usata, + margine) SOLO quando il
-      // bottone e' davvero disegnato — nelle fasi gameplay-gated
-      // (showOkButton false, testo comunque visibile: vedi il fix sopra) il
-      // box usa tutta la larghezza, senza lasciare un vuoto a destra per un
-      // pollice che non c'e'.
-      const boxLeft = 30, boxRight = canvas.clientWidth - 30 - (tutorialState.showOkButton ? 45 * 1.3 + 45 : 0);
+      // [Bug corretto, segnalato dall'autore: "su mobile il pollice e'
+      // gigante e occupa troppo spazio"] Il box usa ora sempre tutta la
+      // larghezza — prima riservava spazio a destra per il pollice (tut_ok,
+      // disegnato subito sotto) quando visibile, restringendo di molto il
+      // testo su schermi stretti. Il pollice si e' spostato SOPRA il box
+      // (vedi sotto) invece che di fianco: non serve piu' alcun vuoto qui.
+      const boxLeft = 30, boxRight = canvas.clientWidth - 30;
       const textW = boxRight - boxLeft - pad * 2;
       const textEl = drawHtmlText(TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "", boxLeft + pad, 0,
         { size: 16, maxWidth: textW, wrap: true });
@@ -5565,6 +5685,9 @@ export async function mountMatch(ctx, params = {}) {
       const boxTop = boxBottom - boxH;
       textEl.style.top = `${boxTop + pad}px`;
       r.draw(tutorialBoxFrame(boxRight - boxLeft, boxH), boxLeft, boxTop, 1, 0xffffff, 0.7);
+      // Letto subito sotto per agganciare il pollice sopra al box invece che
+      // di fianco (stesso bordo destro di prima, solo impilato in verticale).
+      tutorialBoxRect = { left: boxLeft, right: boxRight, top: boxTop, bottom: boxBottom };
     }
     // Bottone "avanti/esci" del tutorial: il vero sprite `tut_ok` (STUDIO.md
     // — l'oggetto si chiama `tutorial_thumb`, un pollice in su, non testo
@@ -5576,11 +5699,23 @@ export async function mountMatch(ctx, params = {}) {
     // nel frame; `tutorialOkRect` resta `null` (sopra), quindi non serve
     // nemmeno bloccare input.onTap a parte per questo caso.
     if (tutorialState?.showOkButton && !buildMenuOpen) {
-      const okScale = 1.3;
+      // [Bug corretto, segnalato dall'autore: "su mobile il pollice e'
+      // gigante e occupa troppo spazio"] Scala 1.3 -> 1: sagoma nativa
+      // (45x52), gia' sopra il minimo ~44px comunemente raccomandato per un
+      // tocco (h=52) senza restare il singolo elemento piu' vistoso della
+      // GUI del tutorial. Spostato SOPRA il box del testo (stesso bordo
+      // destro di `tutorialBoxRect`, sopra) invece che di fianco: prima
+      // rubava fino a un quarto della larghezza schermo al box su un
+      // telefono stretto, ora il box usa tutta la larghezza (vedi sopra) e
+      // il pollice sta per conto suo in una riga propria.
+      const okScale = 1;
+      const okGap = 12;
       const okFrame = frameFor("tut_ok");
       if (okFrame) {
         const w = okFrame.w * okScale, h = okFrame.h * okScale;
-        const x = canvas.clientWidth - 30 - w, y = canvas.clientHeight - tutorialState.uiGap - h;
+        const boxRight = tutorialBoxRect?.right ?? (canvas.clientWidth - 30);
+        const boxTop = tutorialBoxRect?.top ?? (canvas.clientHeight - tutorialState.uiGap);
+        const x = boxRight - w, y = boxTop - okGap - h;
         // [Bug corretto, segnalato dall'autore: "il pollice in su del
         // tutorial dovrebbe diventare bianco di notte come il resto della
         // GUI"] Stessa protezione di arrowFrame poco sopra e della barra
