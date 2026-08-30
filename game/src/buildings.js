@@ -938,14 +938,21 @@ export const BUILDING_TYPES = {
       ruspaCost: 100000, ruspaFirstStepDur: 30,
       ruin: ["ru31", "ru32", "ru33", "ru34"],   // [C] lasergun/Step.gml: create_object(ruin3) — "taglia 3"
       decor: [],                                   // [C] lasergun/Create.gml non crea nessun cddvd
-      // [C] impalaser_r/Create.gml + Alarm_0.gml: 23 tic in tutto (0..22),
-      // ma gli ultimi 12 (11..22) sono lo stesso specchio "costruisci poi
-      // ripiega la gru" gia' troncato per impaind1to2r/2to3r (STUDIO.md,
-      // industria "due semplificazioni") — troncato qui allo stesso modo,
-      // tic 0..10. tic6 pianta 4 "grubig" (sprite "gr21", gia' in atlas per
-      // il decoro di fine cantiere altrove) ai quattro angoli — l'unico
-      // edificio con una gru per lato invece di una sola.
-      steps: [
+      // [C] impalaser_r|f/Create.gml + Alarm_0.gml: catena completa, tic
+      // 0..22 — stessa identica forma di impaind2to3r|f (industria 2->3,
+      // buildings.js sopra: tic per tic lo stesso codice, verificato anche
+      // qui), prima troncata a tic 0..10 come quella. tic6 pianta 4
+      // "grubig" (sprite "gr21", gia' in atlas per il decoro di fine
+      // cantiere altrove) ai quattro angoli — l'unico edificio con una gru
+      // per lato invece di una sola. `revealAtStep` (12, il secondo dei due
+      // passi della pausa di tic==10): impalaser_f/Alarm_0, tic==10 arma la
+      // creazione di `lasergun` a +1330 tic e il proseguimento della catena
+      // a +1400 — split 1330+70 (stesso meccanismo di industria2->3,
+      // stepConstructions() sopra). Il topper vero (`tops3i`, sprite
+      // "toppers" — stesso oggetto di industria2->3, `life` altrettanto
+      // 1330): impalaser_f/Alarm_0.gml, tic==10 lo crea a (0,-170).
+      revealAtStep: 12,
+      steps: [                                    // [C] impalaser_r/Create.gml + Alarm_0.gml, tic 0..22
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
         { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
         { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
@@ -958,7 +965,18 @@ export const BUILDING_TYPES = {
         { spr: "ir31", dur: 40 },
         { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
         { spr: "ir42", dur: 40 },
-        { spr: "ir41", dur: 1400 },
+        { spr: "ir41", dur: 1330, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172, life: 1330 }] },  // tic==10, prima meta' (pre-reveal)
+        { spr: "ir41", dur: 70 },    // tic==10, seconda meta' — revealAtStep
+        // Coda di smontaggio vero (tic 11..21, 20 tic ciascuno), stessa
+        // catena a tier percorsa al contrario di industria2->3 sopra.
+        { spr: "ir42", dur: 20 },
+        { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 20 },
+        { spr: "ir31", dur: 20 }, { spr: "ir32", dur: 20 },
+        { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 20 },
+        { spr: "ir21", dur: 20 }, { spr: "ir22", dur: 20 },
+        { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 20 },
+        { spr: "ir11", dur: 20 }, { spr: "ir12", dur: 20 },
+        { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 20 },
       ],
     },
   },
