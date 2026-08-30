@@ -636,6 +636,9 @@ export async function mountMatch(ctx, params = {}) {
   // rettangolo schermo del pollice, ricalcolato ad ogni frame, letto da
   // input.onTap per il tocco.
   let tutorialOkRect = null;   // { x, y, w, h }, ricalcolato ad ogni frame dal disegno
+  // { left, right, top, bottom } del box testo, ricalcolato ad ogni frame:
+  // serve al pollice (sotto) per agganciarsi sopra al box invece che di fianco.
+  let tutorialBoxRect = null;
   if (roomName === "tutorial") {
     tutorialState = createTutorialState(scene);
     ruinLots = extractRuinLots(scene);
@@ -5571,13 +5574,13 @@ export async function mountMatch(ctx, params = {}) {
     // pausa" qui sopra, stavolta per l'overlay invece del menu di pausa).
     if (tutorialState?.showText && !paused && !buildMenuOpen) {
       const pad = 20;
-      // boxRight lascia spazio al pollice (tut_ok, disegnato subito sotto:
-      // stessa larghezza 45*1.3 li' usata, + margine) SOLO quando il
-      // bottone e' davvero disegnato — nelle fasi gameplay-gated
-      // (showOkButton false, testo comunque visibile: vedi il fix sopra) il
-      // box usa tutta la larghezza, senza lasciare un vuoto a destra per un
-      // pollice che non c'e'.
-      const boxLeft = 30, boxRight = canvas.clientWidth - 30 - (tutorialState.showOkButton ? 45 * 1.3 + 45 : 0);
+      // [Bug corretto, segnalato dall'autore: "su mobile il pollice e'
+      // gigante e occupa troppo spazio"] Il box usa ora sempre tutta la
+      // larghezza — prima riservava spazio a destra per il pollice (tut_ok,
+      // disegnato subito sotto) quando visibile, restringendo di molto il
+      // testo su schermi stretti. Il pollice si e' spostato SOPRA il box
+      // (vedi sotto) invece che di fianco: non serve piu' alcun vuoto qui.
+      const boxLeft = 30, boxRight = canvas.clientWidth - 30;
       const textW = boxRight - boxLeft - pad * 2;
       const textEl = drawHtmlText(TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "", boxLeft + pad, 0,
         { size: 16, maxWidth: textW, wrap: true });
@@ -5586,6 +5589,9 @@ export async function mountMatch(ctx, params = {}) {
       const boxTop = boxBottom - boxH;
       textEl.style.top = `${boxTop + pad}px`;
       r.draw(tutorialBoxFrame(boxRight - boxLeft, boxH), boxLeft, boxTop, 1, 0xffffff, 0.7);
+      // Letto subito sotto per agganciare il pollice sopra al box invece che
+      // di fianco (stesso bordo destro di prima, solo impilato in verticale).
+      tutorialBoxRect = { left: boxLeft, right: boxRight, top: boxTop, bottom: boxBottom };
     }
     // Bottone "avanti/esci" del tutorial: il vero sprite `tut_ok` (STUDIO.md
     // — l'oggetto si chiama `tutorial_thumb`, un pollice in su, non testo
@@ -5597,11 +5603,23 @@ export async function mountMatch(ctx, params = {}) {
     // nel frame; `tutorialOkRect` resta `null` (sopra), quindi non serve
     // nemmeno bloccare input.onTap a parte per questo caso.
     if (tutorialState?.showOkButton && !buildMenuOpen) {
-      const okScale = 1.3;
+      // [Bug corretto, segnalato dall'autore: "su mobile il pollice e'
+      // gigante e occupa troppo spazio"] Scala 1.3 -> 1: sagoma nativa
+      // (45x52), gia' sopra il minimo ~44px comunemente raccomandato per un
+      // tocco (h=52) senza restare il singolo elemento piu' vistoso della
+      // GUI del tutorial. Spostato SOPRA il box del testo (stesso bordo
+      // destro di `tutorialBoxRect`, sopra) invece che di fianco: prima
+      // rubava fino a un quarto della larghezza schermo al box su un
+      // telefono stretto, ora il box usa tutta la larghezza (vedi sopra) e
+      // il pollice sta per conto suo in una riga propria.
+      const okScale = 1;
+      const okGap = 12;
       const okFrame = frameFor("tut_ok");
       if (okFrame) {
         const w = okFrame.w * okScale, h = okFrame.h * okScale;
-        const x = canvas.clientWidth - 30 - w, y = canvas.clientHeight - tutorialState.uiGap - h;
+        const boxRight = tutorialBoxRect?.right ?? (canvas.clientWidth - 30);
+        const boxTop = tutorialBoxRect?.top ?? (canvas.clientHeight - tutorialState.uiGap);
+        const x = boxRight - w, y = boxTop - okGap - h;
         // [Bug corretto, segnalato dall'autore: "il pollice in su del
         // tutorial dovrebbe diventare bianco di notte come il resto della
         // GUI"] Stessa protezione di arrowFrame poco sopra e della barra
