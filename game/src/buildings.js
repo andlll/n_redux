@@ -205,7 +205,17 @@ export const BUILDING_TYPES = {
           { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
           { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
           { spr: "ir42", dur: 40 },
-          { spr: "ir41", dur: 700 },   // tic==10, prima meta' (pre-reveal)
+          // [Bug corretto, segnalato dall'autore: "il tetto e' un oggetto
+          // separato, verifica Create/Alarm delle varie impalcature"] Il
+          // "tetto" vero non e' `im2f`/`im4f` (Alarm_1 morto, vedi il
+          // commento su stepConstructions() sopra) ma il TOPPER (`tops3`,
+          // sprite reale gia' "toppers" — STESSO oggetto/sprite gia' usato
+          // per monum/banca/villa/club/missile/solare/palazzo/museo, vedi
+          // quei commenti): [C] impaind1to2f/Alarm_0.gml, tic==10 lo crea a
+          // (0,-170) nello stesso istante in cui arma la pausa — mancava
+          // qui, l'unico posto (con le altre 3 catene sotto) dove non era
+          // ancora stato aggiunto.
+          { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172 }] },   // tic==10, prima meta' (pre-reveal)
           { spr: "ir41", dur: 100 },   // tic==10, seconda meta' — revealAtStep
           // Coda di smontaggio vero (tic 11..21, 20 tic ciascuno): stessa
           // catena a tier percorsa al contrario (4->3->2->1), poi
@@ -256,7 +266,10 @@ export const BUILDING_TYPES = {
           { spr: "ir31", dur: 40 },
           { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
           { spr: "ir42", dur: 40 },
-          { spr: "ir41", dur: 1330 },  // tic==10, prima meta' (pre-reveal)
+          // Il topper vero (`tops3i`, sprite "toppers" — stesso oggetto di
+          // industria1->2 sopra, solo il timer di autodistruzione cambia):
+          // [C] impaind2to3f/Alarm_0.gml, tic==10 lo crea a (0,-170).
+          { spr: "ir41", dur: 1330, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172 }] },  // tic==10, prima meta' (pre-reveal)
           { spr: "ir41", dur: 70 },    // tic==10, seconda meta' — revealAtStep
           // Coda di smontaggio vero (tic 11..21, 20 tic ciascuno), stessa
           // catena a tier percorsa al contrario di industria1->2 sopra.
@@ -448,7 +461,11 @@ export const BUILDING_TYPES = {
           { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
           { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
           { spr: "ir22", dur: 40 },
-          { spr: "ir21", dur: 460 },   // tic==4, prima meta' (pre-reveal)
+          // Il topper vero (`tops2`, sprite "toppers" — stesso oggetto di
+          // missile/club sopra, offset piu' basso perche' casa2 e' piu'
+          // bassa di un edificio a torre): [C] impa1to2f/Alarm_0.gml,
+          // tic==5 lo crea a (0,-86).
+          { spr: "ir21", dur: 460, spawn: [{ spr: "toppers", dx: 0, dy: -86, depthOffset: -88 }] },   // tic==4, prima meta' (pre-reveal)
           { spr: "ir21", dur: 140 },   // tic==4, seconda meta' — revealAtStep
           { spr: "ir21", dur: 40 },   // tic 5->6: nessun cambio sprite nell'originale, solo un'attesa in piu'
           { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
@@ -498,7 +515,10 @@ export const BUILDING_TYPES = {
           { spr: "ir32", dur: 40 }, { spr: "ir31", dur: 40 },
           { spr: ["ir43", "ir44", "ir45", "ir46"], dur: 40 },
           { spr: "ir42", dur: 40 },
-          { spr: "ir41", dur: 700 },   // tic==10, prima meta' (pre-reveal)
+          // Il topper vero (`tops3`, sprite "toppers" — stesso oggetto di
+          // industria1->2/monum/banca sopra): [C] impa2to3f/Alarm_0.gml,
+          // tic==10 lo crea a (0,-170).
+          { spr: "ir41", dur: 700, spawn: [{ spr: "toppers", dx: 0, dy: -170, depthOffset: -172 }] },   // tic==10, prima meta' (pre-reveal)
           { spr: "ir41", dur: 100 },   // tic==10, seconda meta' — revealAtStep
           // Coda di smontaggio vero (tic 11..21, 20 tic ciascuno), stessa
           // catena a tier percorsa al contrario di industria1->2/2->3 sopra.
@@ -2329,19 +2349,36 @@ function applyLevelFinish(b, def, up, c, r12, onDecor, deferDecor = false) {
  *
  * [Bug corretto, segnalato dall'autore: "verifica che il tetto
  * dell'impalcatura corrisponda alla creazione dell'edificio, e che venga
- * via prima delle laterali"] Non esiste nessun "tetto" a parte da
- * verificare: un `cap` (`im2f`/`im4f`) era stato letto qui da
- * `impaind1to2f/Alarm_1.gml`, ma quell'Alarm — come gli `Alarm_2..4/6..8/
- * 10/11` dello stesso oggetto, e i loro equivalenti sui 3 gemelli — non e'
- * MAI armato da nessun'altra parte del codice (verificato cercando ogni
- * `action_set_alarm(_, 1)`/riferimento esterno a questi 4 oggetti: zero
- * risultati oltre alla loro stessa creazione): codice morto, quasi
- * certamente un residuo di una versione precedente rimpiazzata dalla
- * catena a `tic` unificata (`up.steps`) che gia' usiamo. Quello sprite non
- * compare MAI in una partita vera dell'originale — rimosso, non sostituito:
- * niente vola perche' non c'e' nessun tetto che si stacca prima o dopo le
- * laterali, l'unico oggetto vero (l'impalcatura di `up.steps`, sopra) fa
- * gia' tutto da solo con la stessa identica catena avanti/indietro.
+ * via prima delle laterali"] Due controlli distinti, con risposte diverse:
+ *
+ * 1. Il "tetto" come `cap` (`im2f`/`im4f`, letto da
+ * `impaind1to2f/Alarm_1.gml`) NON esiste: quell'Alarm — come gli
+ * `Alarm_2..4/6..8/10/11` dello stesso oggetto, e i loro equivalenti sui 3
+ * gemelli — non e' MAI armato da nessun'altra parte del codice (verificato
+ * sia sulla GML ricostruita sia sul bytecode grezzo, `raw/asm`: ogni
+ * `action_set_alarm` in quei 4 oggetti punta solo a se stesso, slot 0 o 5,
+ * mai 1; nessun altro oggetto del gioco fa mai `with (impaind1to2f) {...}`
+ * o equivalente). Rimosso, non sostituito.
+ *
+ * 2. Il vero "tetto" che l'autore ricordava PERO' esiste, verificato: e' il
+ * TOPPER (`tops1`/`tops2`/`tops3`/`tops3i`/`tops5s`/`tops5d` — nomi
+ * dell'OGGETTO GameMaker, sprite reale sempre "toppers"/"topls"/"topld",
+ * STUDIO.md/`addConstructionSpawn()` in main.js, gia' verificato e in uso
+ * per industria/casa livello 0->1, missile, solare, club, villa, monum,
+ * banca, palazzo, museo). [C] impaind1to2f/Alarm_0.gml, tic==10 (lo stesso
+ * istante in cui arma la pausa) crea `tops3` a (0,-170) — mancava PERO'
+ * proprio sui 4 upgrade industria/casa qui sotto, l'unico posto rimasto
+ * senza (`spawn` aggiunto ad ognuno). Il topper vero si autodistrugge da
+ * solo (il proprio `action_set_alarm`, es. tops3=700 tic) esattamente al
+ * momento della rivelazione, non alla vera fine del cantiere: qui invece
+ * resta finche' `onFinish` lo rimuove (la vera fine, dopo la coda di
+ * smontaggio aggiunta sopra per gli stessi 4 upgrade) — un topper visibile
+ * qualche secondo in piu' del dovuto sopra un edificio gia' rivelato,
+ * mentre l'impalcatura sotto finisce di scendere. Non c'e' ancora un modo
+ * per rimuovere UN SOLO pezzo di decoro transitorio prima della vera fine
+ * (`removeTransientDecor()`, main.js, li rimuove tutti insieme): lasciato
+ * cosi' com'e' — un dettaglio, non l'impalcatura che vola che l'autore
+ * temeva.
  *
  * [Bug corretto] `onDecor` chiama `spawnDecor()` (main.js), che PRIMA
  * rimpiazzava indiscriminatamente OGNI decoro dell'edificio — compreso il
