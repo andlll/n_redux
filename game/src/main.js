@@ -1038,7 +1038,7 @@ export async function mountMatch(ctx, params = {}) {
     // e' un vero scostamento (2 lotti, o `parco`/fixedDepth), altrimenti
     // `-building.y` come prima.
     const baseDepth = building.depth === 0 ? -building.y : building.depth;
-    for (const { spr, dx, dy, lit = true, fadeTicks, depthOffset = 0 } of spawns) {
+    for (const { spr, dx, dy, lit = true, fadeTicks, depthOffset = 0, life } of spawns) {
       const y = building.y + dy;
       const isClub = building.type === "club";
       const scrubSpr = lit && !isClub ? scrubSpriteFor(spr) : null;
@@ -1057,10 +1057,38 @@ export async function mountMatch(ctx, params = {}) {
         } : {}),   // parte spento, come "empty" in originale (Create.gml)
         // `transient` (addConstructionSpawn() sotto): decoro di cantiere
         // (gru/topper), escluso dal filtro di spawnDecor() — sparisce solo in
-        // removeTransientDecor(), alla vera fine del cantiere.
+        // removeTransientDecor(), alla vera fine del cantiere (o prima,
+        // `_life` sotto, per i topper).
         ...(transient ? { transient: true } : {}),
+        // `_life` (`life`, buildings.js — SOLO i topper: tops1/2/3/3i/4s/4d/
+        // 5s/5d si autodistruggono da soli col proprio `action_set_alarm`,
+        // indipendente dal cantiere che li ha creati — STUDIO.md/il
+        // commento su stepConstructions() in buildings.js) — [Bug corretto,
+        // segnalato dall'autore: "fai come nell'originale"] senza questo il
+        // topper restava (removeTransientDecor(), sotto) fino alla vera fine
+        // del cantiere, molto DOPO il vero action_kill_object() del topper
+        // originale (che scatta esattamente quando l'edificio vero nasce,
+        // non quando l'impalcatura finisce di smontarsi) — un topper visibile
+        // qualche secondo di troppo sopra un edificio gia' rivelato. stepTransientDecor()
+        // (sotto) lo consuma ogni frame; `life == null` (ogni altro spawn,
+        // gru incluse — le gru vere non passano di qui, vedi addConstructionSpawn())
+        // lascia il decoro come sempre, rimosso solo da removeTransientDecor().
+        ...(life != null ? { _life: life * TICK } : {}),
       });
     }
+  }
+
+  /** Consuma `_life` dei decori transitori con un timer proprio (i topper,
+   * addDecor()/`life` sopra) di `dt` secondi — un secondo filtro oltre a
+   * removeTransientDecor() (sotto, la vera fine del cantiere): un topper
+   * sparisce al PRIMO dei due che arriva, esattamente come l'originale (il
+   * proprio `action_kill_object()` puo' scattare ben prima che l'impalcatura
+   * abbia finito di smontarsi). Chiamata una volta a frame, stesso principio
+   * di stepLights() — ma quelli non hanno `_life` (solo i topper lo
+   * dichiarano), quindi qui non serve nessun controllo sul tipo di decoro. */
+  function stepTransientDecor(dt) {
+    for (const d of decorEntities) if (d._life != null) d._life -= dt;
+    decorEntities = decorEntities.filter((d) => d._life == null || d._life > 0);
   }
 
   /** `onSpawn` di stepConstructions() (buildings.js): le gru e i "topper"
@@ -4280,6 +4308,7 @@ export async function mountMatch(ctx, params = {}) {
         carmakerIdx++;
       }
       stepLights(decorEntities, dt, night, r12);
+      stepTransientDecor(dt);
       stepSemaphores(semaphores, dt);
       // [Bug corretto, segnalato dall'autore: "durante il temporale
       // comparivano una marea di nuvole in piu'"] `!!r12.storm` da solo
