@@ -3883,6 +3883,34 @@ paragrafo 8.
     alcun comportamento visibile a cui collegarlo: non e' un gap, è già
     completo così com'è.
 
+    **Approfondito su richiesta dell'autore** ("non mi ricordo cosa ci
+    avessi programmato dentro"): nessun'altra pista trovata. Confronto
+    diretto con `biotech` (raggruppato insieme ad `autocore` sotto
+    "Tecnologie" nella tabella di §4, la stessa classificazione che aveva
+    fatto sospettare un legame) mostra un contrasto netto — `biotech` ha
+    un intero ciclo vero: guadagnato all'hover su `soldbio`
+    (`Mouse_MouseEnter.gml`, +1), mostrato in `crysrepre/DrawGUI.gml`
+    (barra risorse), consumato/azzerato da `stella3/Step.gml` (un
+    edificio "stella", `game/src/buildings.js` STAR_BUILDINGS), letto da
+    `iconic_box`/`crysmenu` per la UI hover — mentre `autocore` non ha
+    NESSUNO di questi: nessun oggetto lo incrementa, nessuna barra lo
+    mostra, nessun edificio lo consuma. Cercato anche ogni sprite/oggetto/
+    istanza di room con "core"/"reactor"/"nucleo" nel nome (compreso
+    `autot`/`autof`/`auton`, l'unica altra famiglia "auto*" del gioco: un
+    tooltip a comparsa sul livello massimo di `chies`, la chiesa —
+    coincidenza di nome, nessun legame con `autocore`): nessun risultato,
+    nessuna "quarta tecnologia" scartata visibile da qui. **La spiegazione
+    più supportata dal codice stesso** (non una certezza, solo l'ipotesi
+    con più indizi a favore): un flag di debug/telemetria interno,
+    aggiornato ad ogni tick insieme al resto della logica di spawn
+    ondate ma mai collegato a un'interfaccia — magari usato "live" in
+    fase di sviluppo (un watch nel debugger di GameMaker, o un HUD di
+    debug poi rimosso) invece che pensato come una risorsa raccolta dal
+    giocatore come `biotech`/`crys`. Il decompilato non conserva codice
+    rimosso: se l'idea originale era diversa, quella parte del gioco non
+    è mai stata compilata insieme al resto, quindi non è recuperabile da
+    qui — serve la memoria dell'autore, non altro grep.
+
 - **`nifast` — lo spawner di nuvole veloci di `match`, letto per bene:
   pronto per essere collegato ad `atmosphere.js` in una sessione futura.**
   Confronto riga per riga fra `ni`/`nidark`/`nidark_slow`/`nifast` (le
