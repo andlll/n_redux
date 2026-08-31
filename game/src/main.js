@@ -540,9 +540,29 @@ export async function mountMatch(ctx, params = {}) {
         c.curSpr = pickSpr(cur.spr);
         if (cur.spawn) addConstructionSpawn(c.fb, cur.spawn);
       }
-      entry.spr = c.curSpr;
-      entry._f = frameFor(entry.spr);
-      entry.frontSpr = frontSprFor(entry.spr);
+      // [Nuova sequenza, richiesta dall'autore: "sui cantieri delle rovine
+      // prima l'impalcatura viene montata, poi la rovina sparisce, poi
+      // l'impalcatura viene smontata, in tutti i casi"] Prima di questa
+      // correzione `entry.spr` veniva sovrascritto con lo sprite di
+      // cantiere (`c.curSpr`) fin dal primissimo frame — il rudere spariva
+      // di scatto nell'ISTANTE del tap, sostituito da una fondamenta spoglia
+      // ancora prima che l'impalcatura fosse davvero "montata" sopra di lui.
+      // Durante il primo passo (`c.stepIndex === 0`, la stessa finestra
+      // accorciata da `ruspaFirstStepDur` sotto — stesso principio gia' in
+      // uso per un edificio VIVO ruspato, buildings.js/`clearingLot`)
+      // `entry.spr`/`_f` restano quindi quelli del rudere vero (mai toccati
+      // qui): solo `frontSpr` (l'impalcatura in sovraimpressione,
+      // calcolata dallo sprite di cantiere corrente, non da quello del
+      // rudere — altrimenti frontSprFor() non riconoscerebbe un prefisso
+      // "ru1x") compare gia' da subito, sopra il rudere ancora visibile —
+      // "l'impalcatura viene montata". Solo dal SECONDO passo in poi il
+      // "retro" passa alla sagoma vera di cantiere: e' quello il momento in
+      // cui "la rovina sparisce" per davvero, mai prima. L'ultimo passo che
+      // esaurisce l'array (sotto, `else`) resta il momento in cui
+      // l'impalcatura residua sparisce insieme al posto lasciato libero —
+      // "l'impalcatura viene smontata", invariato.
+      if (c.stepIndex > 0) { entry.spr = c.curSpr; entry._f = frameFor(entry.spr); }
+      entry.frontSpr = frontSprFor(c.curSpr);
       c.t += dt;
       const dur = (c.stepIndex === 0 && up.ruspaFirstStepDur != null) ? up.ruspaFirstStepDur : cur.dur;
       if (c.t < dur * TICK) continue;
@@ -2483,6 +2503,59 @@ export async function mountMatch(ctx, params = {}) {
   });
   let textPoolUsed = 0;
   function resetTextPool() { textPoolUsed = 0; }
+  // [Nuova funzionalita', richiesta dall'autore: "sostituisci gli sprite
+  // mfs1/mfs11/mfs2 delle due schermate nere della cutscene iniziale del
+  // tutorial con scritte Montserrat vere, stesso effetto grafico del menu
+  // (title.js/glitchLine — sdoppiamento cromatico ciano/blu, mix-blend-mode:
+  // screen) ma molto piu' intenso: qui restano a schermo solo 1.5s/3.3s
+  // (CUTSCENE_BLACK1_DURATION/BLACK2_DURATION, tutorial.js), contro il
+  // lampo raro (visibile ~4% di un ciclo di 5.4s) del titolo, che in una
+  // finestra cosi' breve sparirebbe quasi sempre senza mai flashare —
+  // `rgbGlitchIntense` (index.html) e' un ciclo molto piu' corto e SEMPRE
+  // visibile invece che un lampo occasionale. Testo, non piu' i due sprite
+  // decompilati ("mfs1"/"mfs11" — Windows/Android, "Mount Fuji Software
+  // presents" — e "mfs2", "NIMBUS"): solo "MOUNT FUJI SOFTWARE" (niente
+  // "presents") per la prima schermata, "NIMBUS"/"REDUX" (le stesse due
+  // righe, stessa gerarchia di dimensione, del titolo del menu principale)
+  // per la seconda.
+  const CUTSCENE_GHOST_LAYERS = [["#00e5ff", "0s"], ["#4d5bff", ".05s"]];
+  function glitchCutsceneLine(text, sizeCss, baseColorCss) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:relative;" + sizeCss + baseColorCss;
+    wrap.textContent = text;
+    for (const [color, delay] of CUTSCENE_GHOST_LAYERS) {
+      const ghost = document.createElement("div");
+      ghost.className = "cutsceneGhost";
+      ghost.textContent = text;
+      ghost.style.cssText = "position:absolute;inset:0;pointer-events:none;" + sizeCss +
+        `color:${color};mix-blend-mode:screen;animation:rgbGlitchIntense .5s infinite;animation-delay:${delay};`;
+      wrap.appendChild(ghost);
+    }
+    return wrap;
+  }
+  const CUTSCENE_TITLE_SIZE = "font-size:clamp(22px,5.4vw,48px);font-weight:800;letter-spacing:0.08em;";
+  const CUTSCENE_SUB_SIZE = "font-size:clamp(11px,1.4vw,15px);font-weight:700;letter-spacing:0.45em;margin-top:2px;";
+  const cutsceneTextWrap = document.createElement("div");
+  cutsceneTextWrap.style.cssText = "position:fixed;left:0;right:0;top:50%;transform:translateY(-50%);" +
+    "text-align:center;pointer-events:none;z-index:7;display:none;" +
+    "font-family:Montserrat,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;";
+  document.body.appendChild(cutsceneTextWrap);
+  // `mode`: null (nascosta) | "mfs1" (prima schermata nera) | "mfs2"
+  // (seconda) — nomi presi dagli sprite che sostituiscono, per coerenza col
+  // resto del file. Ricostruisce i nodi solo al CAMBIO di modalita' (non
+  // ogni frame): la cutscene passa di qui una volta sola per fase.
+  function setCutsceneText(mode) {
+    cutsceneTextWrap.style.display = mode ? "block" : "none";
+    if (cutsceneTextWrap.dataset.mode === (mode ?? "")) return;
+    cutsceneTextWrap.dataset.mode = mode ?? "";
+    cutsceneTextWrap.replaceChildren();
+    if (mode === "mfs1") {
+      cutsceneTextWrap.appendChild(glitchCutsceneLine("MOUNT FUJI SOFTWARE", CUTSCENE_TITLE_SIZE, "color:#fff;text-shadow:0 2px 14px rgba(0,0,0,0.55);"));
+    } else if (mode === "mfs2") {
+      cutsceneTextWrap.appendChild(glitchCutsceneLine("NIMBUS", CUTSCENE_TITLE_SIZE, "color:#fff;text-shadow:0 2px 14px rgba(0,0,0,0.55);"));
+      cutsceneTextWrap.appendChild(glitchCutsceneLine("REDUX", CUTSCENE_SUB_SIZE, "color:rgba(255,255,255,0.8);text-shadow:0 1px 6px rgba(0,0,0,0.55);"));
+    }
+  }
   function hideUnusedText() {
     for (let i = textPoolUsed; i < textPool.length; i++) textPool[i].style.display = "none";
   }
@@ -5574,24 +5647,24 @@ export async function mountMatch(ctx, params = {}) {
     // sopra). Su desktop non c'e' nessun vincolo di larghezza analogo (la
     // barra ha gia' spazio a destra del denaro): si accodano invece sulla
     // STESSA riga 1, un'unica fila come nell'originale.
-    // [Bug corretto durante la verifica visiva: "su mobile riga 2 si
-    // accavallava con l'olio e coi cristalli"] Il vecchio layout impilava
-    // mese/ora una sotto l'altra a x=90/82 (quasi la stessa colonna) e la
-    // faccina restava a ROW2_Y-2 — abbastanza in alto da toccare il numero
-    // dell'olio (barY+19, riga 1) non appena la si allarga per fare posto
-    // all'orologio. Qui mese e orologio+ora condividono la STESSA colonna
-    // (x=90, una sotto l'altra) cosi' l'orologio non finisce sopra al
-    // contatore cristalli (barX-6..~85, barY+48 in su — crysFrame/crysText
-    // sotto), e la faccina si sposta piu' a destra/in basso (x=190,
-    // centrata piu' giu') per non toccare ne' l'olio sopra ne' mese/ora a
-    // sinistra.
+    // [Bug corretto, segnalato dall'autore: "sulla seconda riga deve
+    // esserci l'orologio a sinistra, poi data (mese e anno) uno sopra
+    // l'altro a fianco"] Layout precedente: mese sopra, orologio+anno sotto
+    // — ordine sbagliato (l'orologio andava a sinistra di ENTRAMBE le righe
+    // della data, non solo della seconda). Qui l'orologio e' un'unica icona
+    // a sinistra, centrata verticalmente sulle due righe della data (mese
+    // sopra, anno sotto — `r12.time` e' l'anno di gioco, game/src/state.js)
+    // impilate alla sua destra. Il blocco intero parte comunque da x=90
+    // (non dal margine sinistro vero): stessa distanza di sicurezza di
+    // prima dal contatore cristalli (barX-6..~85, barY+48 in su —
+    // crysFrame/crysText sotto), che altrimenti ci finirebbe sotto.
     const ROW2_Y = barY + 50;
-    const ROW2B_Y = ROW2_Y + 22;
-    const monthPos = isMobile ? { x: barX + 90, y: ROW2_Y } : { x: barX + 402, y: barY + 19 };
+    const ROW2B_Y = ROW2_Y + 20;
     const clockScale = isMobile ? 0.5 : 0.85;
-    const clockPos = isMobile ? { x: barX + 90, y: ROW2B_Y - 9 } : { x: barX + 456, y: barY + 8 };
-    const timePos = isMobile ? { x: barX + 114, y: ROW2B_Y } : { x: barX + 484, y: barY + 19 };
-    const hapPos = isMobile ? { x: barX + 190, y: ROW2_Y + 11 } : { x: barX + 528, y: barY + 5 };
+    const clockPos = isMobile ? { x: barX + 90, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 456, y: barY + 8 };
+    const monthPos = isMobile ? { x: barX + 116, y: ROW2_Y } : { x: barX + 402, y: barY + 19 };
+    const timePos = isMobile ? { x: barX + 116, y: ROW2B_Y } : { x: barX + 484, y: barY + 19 };
+    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 528, y: barY + 5 };
     if (!hideResourceText) {
       drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
     }
@@ -6289,11 +6362,16 @@ export async function mountMatch(ctx, params = {}) {
     //    larghezza dello sprite).
     //  - "black1"/"black2": **[C]** `blacker1|blacker2/DrawGUI.gml` —
     //    schermo nero pieno (`draw_rectangle(0,0,5000,5000,0)`, qui un
-    //    rettangolo grande quanto il canvas basta) con la scritta "Mount
-    //    Fuji Software" sopra (`mfs1`/`mfs11` — Windows/Android, qui
-    //    isMobile — per "black1"; `mfs2`, un secondo logo/scritta piu'
-    //    piccolo, per "black2"), centrata come nel decompilato
-    //    (`view_wview[0]/2, view_hview[0]/2`).
+    //    rettangolo grande quanto il canvas basta). [Nuova funzionalita',
+    //    richiesta dall'autore] La scritta sopra non e' piu' lo sprite
+    //    decompilato ("mfs1"/"mfs11" — Windows/Android, "Mount Fuji
+    //    Software presents" — o "mfs2", "NIMBUS"): `setCutsceneText()`
+    //    (sopra) mostra testo HTML Montserrat vero, stesso sdoppiamento
+    //    cromatico ciano/blu del titolo del menu ma molto piu' intenso
+    //    (visibile per tutta la breve durata della fase, non un lampo raro
+    //    — vedi il commento li'), "MOUNT FUJI SOFTWARE" (niente "presents")
+    //    per "black1", "NIMBUS"/"REDUX" (le stesse due righe del menu
+    //    principale) per "black2".
     //  - "battle": NESSUN overlay qui — il mondo, gia' disegnato PRIMA di
     //    questo blocco nello stesso frame, resta interamente visibile: e'
     //    la scena di combattimento vera e propria (bombar/air/dirig,
@@ -6303,6 +6381,7 @@ export async function mountMatch(ctx, params = {}) {
       const cw = canvas.clientWidth, ch = canvas.clientHeight;
       const phase = tutorialState.cutscene.phase;
       if (phase === "planes") {
+        setCutsceneText(null);
         r.setAmbient(1, 1, 1);
         r.setProjection(screenProjection(cw, ch));
         const bgFrame = frameFor("tuto_sfondo", 0, true);
@@ -6343,11 +6422,13 @@ export async function mountMatch(ctx, params = {}) {
         r.setAmbient(1, 1, 1);
         r.setProjection(screenProjection(cw, ch));
         r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 1);
-        const sprName = phase === "black1" ? (isMobile ? "mfs11" : "mfs1") : "mfs2";
-        const f = frameFor(sprName);
-        if (f) r.draw(f, cw / 2, ch / 2, 1, 0xffffff, 1);
         r.flush();
+        setCutsceneText(phase === "black1" ? "mfs1" : "mfs2");
+      } else {
+        setCutsceneText(null);   // "battle": nessun velo, testo nascosto
       }
+    } else {
+      setCutsceneText(null);
     }
 
     // Icona "salvataggio in corso" (saveIconT/showSaveIcon(), sopra) —
@@ -6438,6 +6519,7 @@ export async function mountMatch(ctx, params = {}) {
       // lui toglierli, altrimenti rientrare in questa stessa room piu'
       // volte nella sessione (SPA, game/src/app.js) li accumulerebbe.
       for (const el of textPool) el.remove();
+      cutsceneTextWrap.remove();
     },
   };
 }

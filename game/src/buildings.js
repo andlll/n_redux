@@ -2427,7 +2427,45 @@ function applyLevelFinish(b, def, up, c, r12, onDecor, deferDecor = false) {
  * dell'impalcatura. Ora `onDecor` tocca solo il decoro finale (main.js
  * marca quello transitorio con `transient:true` e lo esclude dal filtro),
  * e `onFinish` lo ripulisce quando l'impalcatura sparisce per davvero.
+ *
+ * [Bug corretto, richiesto dall'autore: "fai sempre corrispondere la
+ * distruzione del topper con la creazione dell'edificio, su ogni cantiere"]
+ * La `life` di un topper (sopra: "un timer TUTTO SUO") viene letta dai dati
+ * di BUILDING_TYPES come un numero fisso — **[C]** l'alarm originale
+ * dell'oggetto GameMaker vero (`tops1`=260, `tops2`=460, `tops3`=700, ...),
+ * lo STESSO oggetto riusato pero' da catene di cantiere con durate totali
+ * diverse fra lo spawn del topper e `revealAtStep`. Verificato con un
+ * controllo sistematico (somma dei `dur` fra lo spawn e il reveal, per ogni
+ * `up.steps` del file): su 7 catene "livello 0->1" (industria/casa/missile/
+ * solare/club/villa/gatling) quell'alarm fisso e' PIU' CORTO del tempo vero
+ * che separa spawn e reveal — il topper spariva quindi PRIMA che l'edificio
+ * comparisse, lasciando un vuoto senza nessuna causa visibile prima che
+ * l'edificio spuntasse dal nulla (esattamente il difetto segnalato). Le
+ * catene gia' verificate come corrette (i 4 upgrade industria/casa +
+ * `laser.construct`, commento sopra) restano tali per costruzione: la somma
+ * ricalcolata combacia gia' con l'alarm originale, la correzione qui sotto
+ * e' un no-op per loro.
+ *
+ * `syncTopperLife()` ricalcola `life` da zero (somma dei `dur` dei passi fra
+ * lo spawn e `revealAtStep`, escluso) per ogni spawn di topper (mai per le
+ * gru — "gr21"/"gru1", che restano coi propri numeri originali: non devono
+ * sparire in sincrono col reveal, restano visibili per conto proprio finche'
+ * `onFinish` non le rimuove alla vera fine) — cosi' la sincronia e' garantita
+ * "sempre SEMPRE" per costruzione, su ogni cantiere presente e futuro, non
+ * un'altra tabella di numeri a mano da tenere allineata. Uno spawn ALLO
+ * STESSO passo del reveal (palazzo/museo/monum/banca e affini: topper ed
+ * edificio nascono gia' insieme, nessuno sfasamento da correggere) resta
+ * invece con la propria `life` invariata: quel valore governa solo quanto
+ * la decorazione resta visibile DOPO il reveal, non se lo precede.
  */
+const TOPPER_SPRITES = new Set(["toppers", "topls", "topld"]);
+function syncTopperLife(spawnList, up, stepIndex, revealAtStep) {
+  if (stepIndex >= revealAtStep) return spawnList;
+  let ticksToReveal = 0;
+  for (let k = stepIndex; k < revealAtStep; k++) ticksToReveal += up.steps[k].dur;
+  return spawnList.map((sp) => (TOPPER_SPRITES.has(sp.spr) ? { ...sp, life: ticksToReveal } : sp));
+}
+
 export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish) {
   for (const b of buildings) {
     const c = b.construction;
@@ -2443,7 +2481,7 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       // sopra): 0 per ogni altro passo di ogni altro edificio (tutti a un
       // solo frame vero, l'animazione non farebbe differenza).
       c.curSpd = cur.spd ?? 0;
-      if (cur.spawn) onSpawn?.(b, cur.spawn);
+      if (cur.spawn) onSpawn?.(b, syncTopperLife(cur.spawn, up, c.stepIndex, revealAtStep));
       if (c.stepIndex === revealAtStep && !c.finished && !up.revealAtEnd) {
         applyLevelFinish(b, def, up, c, r12, onDecor, true);
         c.finished = true;
@@ -2506,7 +2544,7 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       // sopra): 0 per ogni altro passo di ogni altro edificio (tutti a un
       // solo frame vero, l'animazione non farebbe differenza).
       c.curSpd = cur.spd ?? 0;
-      if (cur.spawn) onSpawn?.(b, cur.spawn);
+      if (cur.spawn) onSpawn?.(b, syncTopperLife(cur.spawn, up, c.stepIndex, revealAtStep));
       if (c.stepIndex === revealAtStep && !c.finished && !up.revealAtEnd) {
         applyLevelFinish(b, def, up, c, r12, onDecor, true);
         c.finished = true;

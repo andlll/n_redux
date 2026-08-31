@@ -629,17 +629,20 @@ GAMEPLAY_SPRITES = {
     # (air_tut2 stesso), "tuto_sfondo" il tassello di sfondo che copre
     # l'intera area sorvolata. "empty2" e' lo sprite invisibile di
     # `tutorial_thumb`/`tutorial_square` di base (mai disegnato per davvero,
-    # ma incluso per coerenza con l'atlas — costo trascurabile). Seconda
-    # meta' della cutscene (src/objects/blacker1|blacker2/DrawGUI.gml,
-    # game/src/tutorial.js: fasi "black1"/"black2"): "mfs1"/"mfs11" la
-    # scritta "Mount Fuji Software" su schermo nero (Windows/Android — due
-    # sprite diversi, non lo stesso ridimensionato: data/sprites.json,
-    # 620x118 con crop pieno vs crop 308x54 dentro lo stesso canvas),
-    # "mfs2" un secondo logo/scritta piu' piccolo (296x54) per lo schermo
-    # nero successivo. Le minacce vere della battaglia in mezzo (fase
-    # "battle": bombar/air/dirig) non aggiungono niente qui — sono gia'
-    # tutte in GAMEPLAY_SPRITES["threats"] sopra, riusate cosi' come sono.
-    "tutorial": ["tut_ok", "fr_ros", "tuto_fig1", "tuto_fig2", "tuto_bomb", "tuto_sfondo", "empty2", "mfs1", "mfs11", "mfs2"],
+    # ma incluso per coerenza con l'atlas — costo trascurabile). Le minacce
+    # vere della battaglia in mezzo (fase "battle": bombar/air/dirig) non
+    # aggiungono niente qui — sono gia' tutte in GAMEPLAY_SPRITES["threats"]
+    # sopra, riusate cosi' come sono.
+    #
+    # [Bug corretto, richiesto dall'autore: "sostituisci mfs1/mfs11/mfs2 con
+    # scritte Montserrat vere"] "mfs1"/"mfs11" (la scritta "Mount Fuji
+    # Software presents" su schermo nero, Windows/Android — src/objects/
+    # blacker1/DrawGUI.gml) e "mfs2" (il logo "NIMBUS" piu' piccolo,
+    # blacker2/DrawGUI.gml) non servono piu' a game/src/main.js (fasi
+    # "black1"/"black2" della cutscene): testo HTML vero al loro posto
+    # (stesso sdoppiamento cromatico del titolo del menu, main.js/
+    # setCutsceneText()), non piu' impacchettati.
+    "tutorial": ["tut_ok", "fr_ros", "tuto_fig1", "tuto_fig2", "tuto_bomb", "tuto_sfondo", "empty2"],
     # Il temporale vero (src/objects/tincom, r12/Alarm_2.gml — solo su
     # `match`, mai su `match_easy`, STUDIO.md): "tinco" e' il banner
     # "thunderstorm incoming" che compare per pochi secondi quando il
