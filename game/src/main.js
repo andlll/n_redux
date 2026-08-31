@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -27,7 +27,7 @@ import {
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
-import { save, load, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
+import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
 import { loadFont, drawText, measureText, fitTextScale } from "./font.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
@@ -445,52 +445,102 @@ export async function mountMatch(ctx, params = {}) {
   // rovine non sparivano di colpo"] `ruin1|2|3/Mouse_LeftPressed.gml` non
   // sgombera il rudere all'istante: paga E POI crea `impacasa1r`/`impacasa2r`/
   // `impacasa3r` (STUDIO.md sopra) — lo stesso oggetto, con la stessa identica
-  // catena `Alarm_0..4`, che `tryRuspaRebuild()` (buildings.js) gia' riusa per
-  // ruspare un edificio VIVO: ~30+340+30 tic (~6.7s, action_set_alarm alla
-  // mano) di impalcatura generica per taglia (`ir11`/`ir12` per un rudere di
-  // taglia 1, `ir21`/`ir22` per la 2, `ir31`/`ir32` per la 3 — le stesse
-  // BUILDING_TYPES.casa/industria.construct.steps di un cantiere vero, non
-  // sprite dedicati ai ruderi) prima di sparire (`action_kill_object()`,
-  // l'ultimo Alarm della catena). La decisione dell'autore sopra
-  // (`clearedPlaceholder()`: un lotto libero, non un nuovo edificio) resta
-  // invariata — qui si aggiunge solo la CODA visiva che mancava fra il tap e
-  // lo sgombero vero, non si cambia il risultato finale.
-  const RUIN_CLEAR_TICKS = 30;
-  const RUIN_CLEAR_STEPS = (level) => [
-    { spr: `ir${level}2`, dur: RUIN_CLEAR_TICKS },
-    { spr: `ir${level}1`, dur: 340 },
-    { spr: `ir${level}2`, dur: RUIN_CLEAR_TICKS },
-  ];
+  // catena `Alarm_0..N`, che `tryRuspaRebuild()` (buildings.js) gia' riusa per
+  // ruspare un edificio VIVO: quindi gli STESSI `BUILDING_TYPES.casa.construct/
+  // upgrades[0]/upgrades[1].steps` gia' verificati per quel percorso (diff
+  // riga per riga contro `impacasa{1,2,3}r/f`: stessi sprite `irNN`, stesse
+  // durate, stesso spawn di topper/gru ai tic giusti).
+  //
+  // [Bug corretto, segnalato dall'autore: "le impalcature di demolizione sono
+  // rotte, non compare il pezzo davanti ne' il top"] Una prima versione di
+  // questa coda approssimava la catena a soli 3 passi inventati (sempre lo
+  // stesso sprite del solo lato "r", `ir_1`/`ir_2`) — senza ne' l'impalcatura
+  // "f" in sovraimpressione (`frontSprFor()`, buildings.js) ne' il topper
+  // (`spawn` sui passi veri): nessuno dei due esiste su un rudere con quella
+  // approssimazione. Qui si riusano invece gli step array VERI (sopra),
+  // quindi front track e topper (e le 4 gru della taglia 3,
+  // `addConstructionSpawn()` sotto) tornano gratis, identici a quelli di un
+  // vero cantiere/ruspata su un edificio vivo — `ruspaFirstStepDur` (solo
+  // sulla taglia 1: le taglie 2/3 hanno gia' un primo passo da 30 tic anche
+  // nel cantiere normale, nessun accorciamento da applicare) resta l'unica
+  // differenza dal percorso di `tryRuspaRebuild()`.
+  //
+  // A differenza di un cantiere/upgrade vero pero' un rudere in demolizione
+  // non deve MAI rivelare una casa finita a meta' sequenza — l'originale
+  // stesso non lo fa: ne' `impacasa2r` ne' `impacasa3r` creano mai
+  // un'istanza "casaN", solo il ciclo di sprite fino ad `action_kill_
+  // object()`. Per questo qui non si riusa `stepConstructions()` di
+  // buildings.js (che chiamerebbe `applyLevelFinish()` a `revealAtStep`): si
+  // rilegge `up.steps` a mano, un passo alla volta, fino in fondo all'array.
+  //
+  // [I] Sempre `BUILDING_TYPES.casa`, MAI il tipo originale del rudere:
+  // fedele all'originale, non un'approssimazione nostra — `ruin1/2/3` sono
+  // gli stessi TRE oggetti condivisi da industria/casa/club/villa per
+  // "taglia" (1/2/3, vedi il commento su `ru11..ru34` in
+  // BUILDING_TYPES.industria/casa piu' sopra: "stesso pool... non un rudere
+  // per tipo"), e tutti e tre creano solo `impacasa{1,2,3}r`, mai un
+  // `impaind*`/`impaclub*` dedicato. Resta un gap dichiarato (non nuovo qui,
+  // gia' presente in `ruinRebuildCost()`, buildings.js, che tratta allo
+  // stesso modo ogni livello oltre il 3): i ruderi "taglia 4" di
+  // media/palazzo (`ru41`/`ru41d`, un oggetto ruin4s/ruin4d PROPRIO, mai
+  // riletto) e quelli fuori scala (solare/eolico/monum, ognuno un pool a se')
+  // finiscono comunque qui con gli sprite ir1x/if1x di taglia 1 invece dei
+  // propri — nessuna regressione (stessa approssimazione della versione
+  // precedente di questa funzione), solo non ancora la stessa fedelta' del
+  // percorso taglia 1-3 appena corretto.
+  function ruinClearUp(level) {
+    const def = BUILDING_TYPES.casa;
+    return level <= 1 ? def.construct : def.upgrades[Math.min(level, 3) - 2];
+  }
+  let nextRuinClearId = 1;
   /** Avanza il ciclo di impalcature di ogni rudere in `list` (`ruins` o
-   * `ruinLots`, stessa forma {x,y,level,spr,_f,clearing}) di `dt` secondi —
-   * chiamata ogni frame come stepConstructions() sotto, stesso principio.
-   * `clearing` nasce con `stepIndex: -1` (sotto, al tap): qui al primo
-   * avanzamento utile monta subito il primo sprite invece di aspettare che
-   * scada anche il suo `dur`, cosi' l'impalcatura compare nello stesso frame
-   * del pagamento invece che un frame dopo. A fine catena chiama `onDone`
-   * (main.js, sotto: `clearedPlaceholder()`) e rimuove la voce da `list`. */
+   * `ruinLots`, stessa forma {x,y,level,spr,frontSpr,_f,clearing}) di `dt`
+   * secondi — chiamata ogni frame come stepConstructions() sotto, stesso
+   * principio. `clearing` nasce `{ stepIndex: 0, t: 0 }` (sotto, al tap):
+   * `c.curSpr === undefined` (stesso trucco di stepConstructions()) monta
+   * subito il primo sprite/spawn invece di aspettare che scada anche il suo
+   * `dur`, cosi' l'impalcatura compare nello stesso frame del pagamento
+   * invece che un frame dopo. A fine catena chiama `onDone` (main.js, sotto:
+   * `clearedPlaceholder()`), ripulisce il decoro transitorio (topper/gru,
+   * `c.fb` sotto) e rimuove la voce da `list`.
+   */
   function stepRuinClearing(list, dt, onDone) {
     for (let i = list.length - 1; i >= 0; i--) {
       const entry = list[i];
       const c = entry.clearing;
       if (!c) continue;
-      const steps = RUIN_CLEAR_STEPS(entry.level ?? 1);
-      if (c.stepIndex === -1) {
-        c.stepIndex = 0;
-        entry.spr = steps[0].spr;
-        entry._f = frameFor(entry.spr);
+      const up = ruinClearUp(entry.level ?? 1);
+      // Oggetto "edificio" fittizio, solo per riusare addConstructionSpawn()/
+      // removeTransientDecor()/stepCranes() (main.js/cranes.js) cosi' come
+      // sono invece di duplicarli per un rudere: id proprio (decorEntities
+      // li filtra per buildingId), `depth: 0` (addDecor() lo traduce in -y da
+      // solo, stessa convenzione di ogni edificio vero), `construction: true`
+      // (stepCranes() avanza solo le gru di un "edificio" in cantiere).
+      if (!c.fb) c.fb = { id: `ruinClear${nextRuinClearId++}`, x: entry.x, y: entry.y, depth: 0, type: "casa", construction: true };
+      let cur = up.steps[c.stepIndex];
+      if (c.curSpr === undefined) {
+        c.curSpr = pickSpr(cur.spr);
+        if (cur.spawn) addConstructionSpawn(c.fb, cur.spawn);
       }
+      entry.spr = c.curSpr;
+      entry._f = frameFor(entry.spr);
+      entry.frontSpr = frontSprFor(entry.spr);
       c.t += dt;
-      while (c.t >= steps[c.stepIndex].dur * TICK) {
-        c.t -= steps[c.stepIndex].dur * TICK;
-        c.stepIndex++;
-        if (c.stepIndex >= steps.length) {
-          onDone(entry);
-          list.splice(i, 1);
-          break;
-        }
-        entry.spr = steps[c.stepIndex].spr;
+      const dur = (c.stepIndex === 0 && up.ruspaFirstStepDur != null) ? up.ruspaFirstStepDur : cur.dur;
+      if (c.t < dur * TICK) continue;
+      c.t = 0;
+      c.stepIndex++;
+      if (c.stepIndex < up.steps.length) {
+        cur = up.steps[c.stepIndex];
+        c.curSpr = pickSpr(cur.spr);
+        if (cur.spawn) addConstructionSpawn(c.fb, cur.spawn);
+        entry.spr = c.curSpr;
         entry._f = frameFor(entry.spr);
+        entry.frontSpr = frontSprFor(entry.spr);
+      } else {
+        removeTransientDecor(c.fb);
+        onDone(entry);
+        list.splice(i, 1);
       }
     }
   }
@@ -1826,6 +1876,18 @@ export async function mountMatch(ctx, params = {}) {
     if (!data) return false;
     return applyLoadedData(data);
   }
+  // "Reset game" (menu di pausa, drawConfirmResetOverlay() piu' sotto):
+  // ripristina il livello da zero come una partita mai iniziata — cancella
+  // il quicksave localStorage di questa scena (altrimenti "Load game"/il
+  // prossimo autoload dal menu principale riporterebbe indietro lo stato
+  // appena cancellato) e rimonta la stessa room passando per `navigate()`
+  // invece di ricostruire lo stato a mano qui: e' la stessa strada che
+  // porta gia' a uno stato pulito quando si entra la prima volta da
+  // title.js, niente logica di reset duplicata.
+  function doResetGame() {
+    localStorage.removeItem(saveSlotFor(scene.name));
+    navigate("match", { room: roomParam });
+  }
   // Async (save.js/saveToFile() apre un dialog nativo): il chiamante (input.
   // onTap sotto) non aspetta la Promise, aggiorna `message` da dentro questa
   // funzione stessa quando la scrittura finisce — coerente con ogni altro
@@ -2479,6 +2541,7 @@ export async function mountMatch(ctx, params = {}) {
       { label: "Save to file", action: "saveFile" },
       { label: "Load from file", action: "loadFile" },
       { label: "Saving options", action: "savingOptions" },
+      { label: "Reset game", action: "resetGame" },
       { label: "Back to menu", action: "title" },
     ];
     const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
@@ -2552,6 +2615,50 @@ export async function mountMatch(ctx, params = {}) {
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
       drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
+      pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+      by += btnH + btnGap;
+    }
+    r.flush();
+  }
+
+  /**
+   * Sotto-pannello di conferma per "Reset game" (pauseSubmenu === "confirmReset",
+   * aperto dalla voce omonima di drawPauseOverlay()) — stessa struttura
+   * pannello/bottoni/blur delle altre due, con un avviso al posto delle
+   * righe di stato: doResetGame() (sopra) cancella il quicksave della scena
+   * e rimonta la room da zero, irreversibile, quindi serve un tap in piu'
+   * su "Reset game" invece di scattare subito dal pannello principale.
+   */
+  function drawConfirmResetOverlay() {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
+    r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+
+    const rows = [
+      { label: "Cancel", action: "cancelReset" },
+      { label: "Reset game", action: "confirmReset" },
+    ];
+    const panelW = Math.min(360, cw - 40);
+    const warnH = 70;
+    const panelH = 96 + warnH + rows.length * 60 + 20;
+    const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+    r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
+
+    const title = "RESET GAME";
+    drawHtmlText(title, px + panelW / 2, py + 34, { size: 24 });
+    drawHtmlText(
+      "This will restart the level from scratch. This action cannot be undone.",
+      px + 30, py + 60, { size: 14, maxWidth: panelW - 60, wrap: true },
+    );
+
+    pauseMenuButtons = [];
+    const btnW = panelW - 60, btnH = 46, btnGap = 14;
+    let by = py + 96 + warnH;
+    for (const row of rows) {
+      const bx = px + (panelW - btnW) / 2;
+      r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
+      drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
       pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
@@ -3523,6 +3630,20 @@ export async function mountMatch(ctx, params = {}) {
         }
         return;
       }
+      // "Reset game" (pauseSubmenu === "confirmReset", drawConfirmResetOverlay()
+      // sopra): stesso `pauseMenuButtons` dei pannelli sopra, azioni proprie —
+      // un tap su "Reset game" qui e' la CONFERMA vera (irreversibile,
+      // doResetGame() cancella il quicksave e rimonta la room da zero), non
+      // il tap che apre il pannello (quello e' "resetGame" sul principale,
+      // sotto, che si limita ad aprire questo sotto-pannello).
+      if (pauseSubmenu === "confirmReset") {
+        if (hit?.action === "confirmReset") {
+          doResetGame();
+        } else if (hit?.action === "cancelReset") {
+          pauseSubmenu = null;
+        }
+        return;
+      }
       if (hit?.action === "resume") {
         paused = false;
         pauseSubmenu = null;
@@ -3538,6 +3659,8 @@ export async function mountMatch(ctx, params = {}) {
         doLoadFromFile();   // async, idem
       } else if (hit?.action === "savingOptions") {
         pauseSubmenu = "saving";
+      } else if (hit?.action === "resetGame") {
+        pauseSubmenu = "confirmReset";   // un tap solo non basta: prima la conferma (irreversibile)
       } else if (hit?.action === "title") {
         navigate("menu");
       }
@@ -3801,17 +3924,17 @@ export async function mountMatch(ctx, params = {}) {
     // occupato da una nuova costruzione. [Bug corretto, segnalato
     // dall'autore: "le rovine non sparivano di colpo"] Il pagamento resta
     // immediato ma non sgombera piu' subito: monta `clearing` (avanzato da
-    // stepRuinClearing() sopra, ogni frame) cosi' l'impalcatura generica
-    // della sua taglia compare per ~6.7s (fedele a `ruin1|2|3/
-    // Mouse_LeftPressed.gml`, vedi il commento su RUIN_CLEAR_STEPS) prima
-    // che il lotto si liberi per davvero. `!lot.clearing` blocca un secondo
-    // tap (e quindi un secondo pagamento) mentre il ciclo e' gia' in corso.
+    // stepRuinClearing() sopra, ogni frame) cosi' l'impalcatura vera della
+    // sua taglia (front track + topper/gru inclusi, vedi il commento su
+    // ruinClearUp()/stepRuinClearing() sopra) compare prima che il lotto si
+    // liberi per davvero. `!lot.clearing` blocca un secondo tap (e quindi un
+    // secondo pagamento) mentre il ciclo e' gia' in corso.
     if (picked.obj === "ruinLot") {
       const lot = picked.ref;
       message = ""; messageT = 0;
       if (!lot.clearing && r12.selec === 11 && canAfford(r12, { mon: lot.cost })) {
         r12.mon -= lot.cost;
-        lot.clearing = { stepIndex: -1, t: 0 };
+        lot.clearing = { stepIndex: 0, t: 0 };
       }
       picked = null;
       return;
@@ -3824,7 +3947,7 @@ export async function mountMatch(ctx, params = {}) {
       message = ""; messageT = 0;
       if (!ru.clearing && r12.selec === 11 && canAfford(r12, { mon: ru.cost })) {
         r12.mon -= ru.cost;
-        ru.clearing = { stepIndex: -1, t: 0 };
+        ru.clearing = { stepIndex: 0, t: 0 };
       }
       picked = null;
       return;
@@ -4248,8 +4371,13 @@ export async function mountMatch(ctx, params = {}) {
       stepGrattacieloScaffold(buildings, dt);
       // Le gru di cantiere (game/src/cranes.js) — stesso principio dello
       // scaffolding del grattacielo sopra: un timer tutto loro, indipendente
-      // dal resto del cantiere.
-      stepCranes(buildings, dt);
+      // dal resto del cantiere. `ruinClearingFakes`: le gru della taglia 3
+      // di un rudere in demolizione (stepRuinClearing()/ruinClearUp() sopra,
+      // `c.fb` — un "edificio" fittizio, mai in `buildings`) — stepCranes()
+      // stesso, non una copia: legge solo `.construction`/`._cranes`, che
+      // `c.fb` porta gia'.
+      const ruinClearingFakes = [...ruins, ...ruinLots].map((e) => e.clearing?.fb).filter(Boolean);
+      stepCranes([...buildings, ...ruinClearingFakes], dt);
       stepProduction(buildings, dt, r12);
       stepSolarProduction(buildings, dt, r12, night, dawn);
       stepWindProduction(buildings, dt, r12);
@@ -4612,6 +4740,12 @@ export async function mountMatch(ctx, params = {}) {
         obj: "ruin", ref: ru, x: ru.x, y: ru.y, depth: ru.depth, _f: ru._f,
         ...(hovered ? { _tint: 0xff0000, _selfLit: true } : {}),
       });
+      // Impalcatura in sovraimpressione + topper/gru del rudere sotto ruspa
+      // (stepRuinClearing()/ruinClearUp() sopra) — stesso schema di
+      // `b.frontSpr`/scaffoldParts()/craneParts() sui `buildings` veri poco
+      // sopra, qui su `ru.frontSpr`/`ru.clearing.fb`.
+      if (ru.frontSpr) dynamic.push({ obj: "scaffold", x: ru.x, y: ru.y, depth: -ru.y, _f: frameFor(ru.frontSpr) });
+      if (ru.clearing?.fb) for (const p of craneParts(ru.clearing.fb)) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, p.frame) });
     }
     // Tutorial (game/src/tutorial.js): lotti-rudere (ruin1/ruin2, un
     // meccanismo dedicato — mai le stesse istanze di `ruins` sopra). La
@@ -4631,6 +4765,10 @@ export async function mountMatch(ctx, params = {}) {
           obj: "ruinLot", ref: lot, x: lot.x, y: lot.y, depth: lot.depth, _f: lot._f,
           ...(hovered ? { _tint: 0xff0000, _selfLit: true } : {}),
         });
+        // Impalcatura in sovraimpressione + topper/gru del lotto-rudere sotto
+        // ruspa — stesso schema di `ru.frontSpr`/craneParts() sopra su `ruins`.
+        if (lot.frontSpr) dynamic.push({ obj: "scaffold", x: lot.x, y: lot.y, depth: -lot.y, _f: frameFor(lot.frontSpr) });
+        if (lot.clearing?.fb) for (const p of craneParts(lot.clearing.fb)) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, p.frame) });
       }
     }
     // Auto decorative (game/src/cars.js): x/y/sprite/frame gia' avanzati da
@@ -5098,26 +5236,6 @@ export async function mountMatch(ctx, params = {}) {
     const UI_MARGIN = 8;
     const barFrame = frameFor("icone_oriz");
     const barX = UI_MARGIN, barY = UI_MARGIN;
-    // [Nuovo, segnalato dall'autore: "su telefono la barra risorse in alto
-    // e' spesso illeggibile perche' lo schermo e' troppo stretto"] La barra
-    // e' un blocco di coordinate fisse tarato per una schermata larga
-    // ~570px (l'ultimo elemento, la faccina della felicita' sotto, arriva a
-    // x=520+50*0.62): su un telefono in verticale (~360-414px tipici)
-    // sfora oltre il bordo destro invece di andare a capo da solo (sono
-    // elementi HTML `position:fixed` a x/y assoluti, non un layout che
-    // wrappa, index.html) — mese/anno e faccina/cristalli restano fuori
-    // schermo. Comprimere l'intero blocco in scala (invece di spostare gli
-    // elementi di coda su una seconda riga) evita di dover inventare un
-    // layout a due righe e le collisioni con banner/tutorial che assumono
-    // gia' la barra su una riga sola (STUDIO.md), mantenendo intatto
-    // l'allineamento icona/numero gia' "cotto" dentro icone_oriz: e'
-    // un'unica scala uniforme, applicata identica a immagine, offset e
-    // font-size di ogni pezzo qui sotto. Il floor (0.5) e' solo una rete di
-    // sicurezza per larghezze degeneri (es. un resize a meta' frame), non
-    // un limite pensato per restare leggibile: nella pratica nessun
-    // telefono e' cosi' stretto da raggiungerlo.
-    const BAR_NATURAL_WIDTH = 520 + 50 * 0.62;
-    const barScale = Math.min(1, Math.max(0.5, (canvas.clientWidth - UI_MARGIN * 2) / BAR_NATURAL_WIDTH));
     // [Bug corretto, segnalato dall'autore: "quando i pulsanti della GUI
     // diventano bianchi devono diventare bianchi anche quelli della GUI
     // superiore"] `icone_oriz` e' la stessa famiglia di pittogrammi neri
@@ -5141,7 +5259,7 @@ export async function mountMatch(ctx, params = {}) {
     // sull'elemento, non un tint moltiplicato su una texture.
     const barTextColor = iconsDark ? "#ffffff" : "#000000";
     r.setColorize(iconsDark);
-    if (barFrame) r.draw(barFrame, barX, barY, barScale, 0xffffff, 1);
+    if (barFrame) r.draw(barFrame, barX, barY, 1, 0xffffff, 1);
     r.setColorize(false);
     // [Bug corretto, segnalato dall'autore: "in pausa le scritte della UI
     // non si blurrano"] Questi numeri sono elementi HTML veri (drawHtmlText(),
@@ -5164,25 +5282,29 @@ export async function mountMatch(ctx, params = {}) {
     // nasconderli. `hideResourceText` raccoglie tutti i casi in cui il resto
     // della barra risorse e' gia' coperto/oscurato da qualcos'altro.
     const hideResourceText = paused || buildMenuOpen || !!tutorialState?.cutscene;
-    const barFontSize = 15 * barScale;
     const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                    [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
     if (!hideResourceText) for (const [value, x] of stats) {
-      drawHtmlText(String(value), barX + x * barScale, barY + 19 * barScale, { size: barFontSize, align: "left", color: barTextColor });
+      drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
     }
-    // Data (mese + anno, game/src/state.js stepCalendar()) — [C] repre/
-    // DrawGUI.gml: il mese e' testo ("Jan".."Dec", da `repre.mon` — non
-    // r12, vedi state.js) a x=456/y=20+upp (stessa riga dell'icona, quindi
-    // qui `barY+0`), l'anno e' `r12.time` disegnato appena sotto a x=448/
-    // y=40+upp (`barY+20`) — stessi offset del decompilato, ribasati su
-    // `barY` come gia' fatto sopra per pop/olio/energia/denaro (offset - 20,
-    // la y a cui l'originale disegnava l'icona stessa; +9 in piu' qui sotto,
-    // stesso motivo di `barY+19` sopra: drawHtmlText() centra verticalmente
-    // sull'ancora invece di partire dal bordo superiore del glifo come
-    // drawText()).
+    // Data (mese + anno, game/src/state.js stepCalendar()) e faccina della
+    // felicita' (subito sotto): [Bug corretto, segnalato dall'autore: "su
+    // iPhone la barra risorse compressa per intero e' diventata troppo
+    // piccola"] Nell'originale (e in un tentativo precedente di questa
+    // porting) stavano sulla STESSA riga di pop/olio/energia/denaro sopra,
+    // a x=448..551 — ben oltre la larghezza vera dell'immagine di sfondo
+    // (`icone_oriz`, ~450px, data/sprites.json), quindi su un telefono
+    // stretto finivano fuori schermo (elementi HTML `position:fixed`,
+    // niente wrap automatico). Rimpicciolire l'INTERO blocco con una scala
+    // uniforme li faceva rientrare, ma rendeva illeggibili anche
+    // pop/olio/energia/denaro, che da soli ci stavano gia' comodi. Qui
+    // invece restano a dimensione piena e si spostano su una SECONDA riga
+    // sotto la barra (stessa fascia verticale gia' usata dai cristalli,
+    // sotto), a destra del loro contatore cosi' da non sovrapporsi.
+    const ROW2_Y = barY + 46;
     if (!hideResourceText) {
-      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456 * barScale, barY + 9 * barScale, { size: barFontSize, align: "left", color: barTextColor });
-      drawHtmlText(String(Math.round(r12.time)), barX + 448 * barScale, barY + 29 * barScale, { size: barFontSize, align: "left", color: barTextColor });
+      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 90, ROW2_Y, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(String(Math.round(r12.time)), barX + 82, ROW2_Y + 20, { size: 15, align: "left", color: barTextColor });
     }
     // La "faccina" della felicita' (src/objects/hapware — segnalata
     // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
@@ -5195,15 +5317,15 @@ export async function mountMatch(ctx, params = {}) {
     // (coins.js, stepCoinSpawner: "hap<pop" salta la generazione), quindi
     // "gli edifici non generano piu' soldi" e "la faccina diventa triste"
     // sono gia' la STESSA condizione, solo la seconda meta' (l'icona) mancava.
-    // Posizione/scala **[C]** dirette da hapware/Create|Step.gml: scala 0.62
-    // fissa (mai moltiplicata per `global.sca`/UI_SCALE in questo motore,
-    // stesso trattamento gia' scelto per la barra risorse — STUDIO.md §9,
-    // "zero zoom" sulla UI), offset (520, 42) in coordinate GML ribasate su
-    // `barY` come pop/olio/energia/denaro/data sopra (barY corrisponde a
-    // GML y=20, quindi 42-20=22).
+    // Scala **[C]** diretta da hapware/Create|Step.gml: 0.62 fissa (mai
+    // moltiplicata per `global.sca`/UI_SCALE in questo motore, stesso
+    // trattamento gia' scelto per la barra risorse — STUDIO.md §9, "zero
+    // zoom" sulla UI). Posizione invece NOSTRA (seconda riga, vedi sopra):
+    // l'originale la disegnava sulla stessa riga di pop/olio/energia/denaro,
+    // non ha un equivalente "riga 2" da cui ereditare l'offset.
     const hapFrame = frameFor(r12.hap >= r12.pop ? "hap3" : "hap1");
     r.setColorize(iconsDark);
-    if (hapFrame) r.draw(hapFrame, barX + 520 * barScale, barY + 22 * barScale, 0.62 * barScale, 0xffffff, 1);
+    if (hapFrame) r.draw(hapFrame, barX + 160, ROW2_Y - 2, 0.62, 0xffffff, 1);
     r.setColorize(false);
     // Cristalli (r12.crys: balloons.js, il loot di `monviolo`; platform.js,
     // il gettone lasciato dal monviolo in volo verso il faro) — **[I]**
@@ -5236,9 +5358,9 @@ export async function mountMatch(ctx, params = {}) {
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
       r.setColorize(iconsDark);
-      if (crysFrame) r.draw(crysFrame, barX - 6 * barScale, barY + 48 * barScale, 0.9 * barScale, 0xffffff, 1);
+      if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
       r.setColorize(false);
-      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), barX + 34 * barScale, barY + 77 * barScale, { size: barFontSize, align: "left", color: barTextColor });
+      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
@@ -5838,7 +5960,11 @@ export async function mountMatch(ctx, params = {}) {
     // (che gia' intercetta `outcome` prima del bottone di pausa): i due non
     // vanno mai disegnati insieme.
     if (outcome) drawOutcomeOverlay();
-    else if (paused) { if (pauseSubmenu === "saving") drawSavingOptionsOverlay(); else drawPauseOverlay(); }
+    else if (paused) {
+      if (pauseSubmenu === "saving") drawSavingOptionsOverlay();
+      else if (pauseSubmenu === "confirmReset") drawConfirmResetOverlay();
+      else drawPauseOverlay();
+    }
     else if (buildingInfoPanel) drawBuildingInfoPanel();
     else if (buildMenuOpen) drawBuildMenuOverlay();
 

@@ -1840,7 +1840,10 @@ export const BUILDING_TYPES = {
 
 let nextId = 1;
 
-function pickSpr(spr) {
+// Esportata: stepRuinClearing() (main.js) la riusa per rigiocare a mano gli
+// stessi `up.steps` di un cantiere vero sui ruderi sotto ruspa — vedi il
+// commento li' sopra.
+export function pickSpr(spr) {
   return Array.isArray(spr) ? spr[(Math.random() * spr.length) | 0] : spr;
 }
 
@@ -1876,7 +1879,9 @@ function pickVariant(variants) {
  * non un errore di lettura (STUDIO.md, commento sopra ai `steps` di
  * palazzoRd.upgrades[0]).
  */
-function frontSprFor(spr) {
+// Esportata: stepRuinClearing() (main.js) la riusa per la stessa impalcatura
+// "f" in sovraimpressione, sui ruderi sotto ruspa — vedi il commento li'.
+export function frontSprFor(spr) {
   if (spr.startsWith("ir")) return "if" + spr.slice(2);
   if (spr.startsWith("sr")) return "sf" + spr.slice(2);
   if (spr.startsWith("rd")) return "fd" + spr.slice(2);
