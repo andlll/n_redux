@@ -5729,13 +5729,28 @@ export async function mountMatch(ctx, params = {}) {
     // sopra, gia' corretto per la seconda riga mobile) non era mai stato
     // applicato alla riga unica desktop. DATE_COL_X sta dopo l'orologio
     // (che a `clockScale` finisce verso x=487); mese e anno condividono
-    // adesso la stessa colonna, mese sopra (`barY+3`) e anno sotto
-    // (`barY+21`, stesso passo di riga ~18px della coppia mobile ROW2/
-    // ROW2B) invece che fianco a fianco.
+    // adesso la stessa colonna.
+    // [Bug corretto, segnalato dall'autore: "la faccina e' allineata col
+    // mese invece che con le altre icone, e l'orologio deve cadere esatto a
+    // meta' fra mese e anno"] `drawHtmlText(..., align:"left")` centra
+    // verticalmente sul proprio `y` (transform:"translateY(-50%)", sopra),
+    // e `r.draw()` (game/src/gl.js) centra un frame su `y - oy*scale +
+    // h*scale/2` — con questa formula il VERO centro visivo di ogni
+    // elemento e' stato ricalcolato a mano sui dati reali dei frame (data/
+    // sprites.json): `clockFrame` (subFrameRight di "icone_oriz", ox=0/oy=0,
+    // h=36) a `clockPos.y=barY+8`/scala 0.85 cade a `barY+23.3` — il
+    // riferimento comune, dato che l'orologio era gia' segnalato corretto.
+    // Mese/anno ora si impilano CENTRATI su quel riferimento (`barY+14`/
+    // `barY+32`, stesso passo ~18px di prima ma ricentrato: la loro media
+    // torna a combaciare con l'orologio, non piu' `barY+12` come prima).
     const DATE_COL_X = barX + 500;
-    const monthPos = isMobile ? { x: barX + 116, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 3 };
-    const timePos = isMobile ? { x: barX + 116, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 21 };
-    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 552, y: barY + 5 };
+    const monthPos = isMobile ? { x: barX + 116, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
+    const timePos = isMobile ? { x: barX + 116, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
+    // `hap1`/`hap3` (data/sprites.json): ox=oy=23=w/2=h/2 esatto, quindi il
+    // loro centro visivo coincide SEMPRE con `hapPos.y` stesso qualunque sia
+    // la scala — bastava allinearlo allo stesso `barY+23` di sopra (prima
+    // era `barY+5`, quasi al livello del solo mese).
+    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 552, y: barY + 23 };
     if (!hideResourceText) {
       drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
     }
@@ -5802,9 +5817,16 @@ export async function mountMatch(ctx, params = {}) {
     // energia/denaro/orologio/data/faccina (sopra) ha gia' spazio libero a
     // destra della faccina — il contatore la segue sulla STESSA riga invece
     // di finire isolato sotto, come ogni altra risorsa qui.
+    // [Bug corretto, segnalato dall'autore insieme al resto della riga
+    // (vedi il commento su hapPos/monthPos/timePos sopra)] "crys_ico" (data/
+    // sprites.json: w=27,h=40,ox=-7,oy=-16) NON e' centrato sul proprio
+    // frame come `hap1`/`hap3` — il suo centro visivo (stessa formula di
+    // `r.draw()`) cade a `y - oy*scale + h*scale/2 = y + 27` a scala 0.75,
+    // quindi per allinearlo allo stesso `barY+23.3` dell'orologio la sua `y`
+    // deve stare 27px PIU' IN ALTO, non piu' in basso come prima.
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
-      const crysPos = isMobile ? { x: barX - 6, y: barY + 48 } : { x: barX + 600, y: barY + 10 };
+      const crysPos = isMobile ? { x: barX - 6, y: barY + 48 } : { x: barX + 600, y: barY - 4 };
       const crysScale = isMobile ? 0.9 : 0.75;
       const crysTextPos = isMobile ? { x: barX + 34, y: barY + 77 } : { x: barX + 636, y: barY + 19 };
       r.setColorize(iconsDark);
