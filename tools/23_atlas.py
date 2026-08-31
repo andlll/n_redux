@@ -629,17 +629,20 @@ GAMEPLAY_SPRITES = {
     # (air_tut2 stesso), "tuto_sfondo" il tassello di sfondo che copre
     # l'intera area sorvolata. "empty2" e' lo sprite invisibile di
     # `tutorial_thumb`/`tutorial_square` di base (mai disegnato per davvero,
-    # ma incluso per coerenza con l'atlas — costo trascurabile). Seconda
-    # meta' della cutscene (src/objects/blacker1|blacker2/DrawGUI.gml,
-    # game/src/tutorial.js: fasi "black1"/"black2"): "mfs1"/"mfs11" la
-    # scritta "Mount Fuji Software" su schermo nero (Windows/Android — due
-    # sprite diversi, non lo stesso ridimensionato: data/sprites.json,
-    # 620x118 con crop pieno vs crop 308x54 dentro lo stesso canvas),
-    # "mfs2" un secondo logo/scritta piu' piccolo (296x54) per lo schermo
-    # nero successivo. Le minacce vere della battaglia in mezzo (fase
-    # "battle": bombar/air/dirig) non aggiungono niente qui — sono gia'
-    # tutte in GAMEPLAY_SPRITES["threats"] sopra, riusate cosi' come sono.
-    "tutorial": ["tut_ok", "fr_ros", "tuto_fig1", "tuto_fig2", "tuto_bomb", "tuto_sfondo", "empty2", "mfs1", "mfs11", "mfs2"],
+    # ma incluso per coerenza con l'atlas — costo trascurabile). Le minacce
+    # vere della battaglia in mezzo (fase "battle": bombar/air/dirig) non
+    # aggiungono niente qui — sono gia' tutte in GAMEPLAY_SPRITES["threats"]
+    # sopra, riusate cosi' come sono.
+    #
+    # [Bug corretto, richiesto dall'autore: "sostituisci mfs1/mfs11/mfs2 con
+    # scritte Montserrat vere"] "mfs1"/"mfs11" (la scritta "Mount Fuji
+    # Software presents" su schermo nero, Windows/Android — src/objects/
+    # blacker1/DrawGUI.gml) e "mfs2" (il logo "NIMBUS" piu' piccolo,
+    # blacker2/DrawGUI.gml) non servono piu' a game/src/main.js (fasi
+    # "black1"/"black2" della cutscene): testo HTML vero al loro posto
+    # (stesso sdoppiamento cromatico del titolo del menu, main.js/
+    # setCutsceneText()), non piu' impacchettati.
+    "tutorial": ["tut_ok", "fr_ros", "tuto_fig1", "tuto_fig2", "tuto_bomb", "tuto_sfondo", "empty2"],
     # Il temporale vero (src/objects/tincom, r12/Alarm_2.gml — solo su
     # `match`, mai su `match_easy`, STUDIO.md): "tinco" e' il banner
     # "thunderstorm incoming" che compare per pochi secondi quando il
@@ -661,31 +664,25 @@ EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group}
 # bottoni.
 GAMEPLAY_ROOMS = {"match", "match_easy", "tutorial"}
 
-# [Decisione dell'autore: "citta' statica ma oggetti volanti e bombardamento
-# funzionanti"] game/src/title.js non carica piu' l'intero atlas di `match`
-# (56 pagine, ~800 MB decompressi — tools/29_title_bg.py ricompone invece la
-# citta'/piattaforma FERMA in un'unica immagine da 264 KB) ma continua a
-# animare sopra di lei auto/aerei-bombardieri-zeppelin/nuvole-uccelli/bombe-
-# esplosioni-detriti-fumo/semafori/turbine — lo stesso layer "dynamic" di
-# prima, mai statico. Serve quindi un atlas dedicato (piccolo, non l'intero
-# GAMEPLAY_SPRITES) solo per QUESTI sprite: gli stessi gruppi gia' curati per
-# match/match_easy (cars/cars2/threats/atmosphere/semaphores/platform — il
-# tier core/deferred di sotto li tratta esattamente come per quelle room,
-# cars2/threats restano "deferred" li' per lo stesso motivo, un bonus per la
-# title screen: il primissimo frame non li aspetta) piu' le 16 "finestre
-# accese" delle case/ville gia' finite (TITLE_LIT_LOTS_GLOW, stessa lista di
-# `LIT_LOTS` in title.js — SOLO la variante "l" col bagliore, l'edificio
-# base e' ormai dentro l'immagine cotta): se `LIT_LOTS` cambia la', va
-# aggiornata anche qui, stesso principio doppio-mantenimento gia' dichiarato
-# per tools/29_title_bg.py.
-TITLE_LIT_LOTS_GLOW = [
-    "vil6l", "c211l", "vil7l", "c111l", "vil8l", "c112l", "vil1l", "c121l",
-    "vil9l", "c131l", "vil4l", "c141l", "vil10l", "c151l", "vil5l", "c122l",
-]
+# [Decisione dell'autore: "sostituisci la citta' dietro al menu con la scena
+# di mare dell'inizio del tutorial, sempre sfumata, con tilt a destra/
+# sinistra (tanto e' una texture seamless); tieni il passaggio di aerei/
+# nuvole ma senza bombardamenti"] game/src/title.js non disegna piu' la
+# citta'/piattaforma ferma di `match` (ne' la vecchia immagine cotta offline
+# da tools/29_title_bg.py, rimosso insieme a lei) — lo sfondo e' invece "tuto_sfondo",
+# LO STESSO tassello di mare a tappeto usato dalla cutscene iniziale del
+# tutorial (game/src/tutorial.js/main.js, fase "planes"): gia' seamless e
+# gia' pensato per essere ripetuto su tutta la canvas, non serve nessuna
+# pre-composizione offline. Sopra di lui resta solo il traffico aereo
+# "di sfondo" (`air`, THREAT_TYPES in game/src/threats.js: non bombarda mai,
+# a differenza di `bombar`/`dirig` che invece SI — esclusi qui apposta,
+# "senza bombardamenti" richiesto dall'autore) + nuvole/uccelli
+# (atmosphere.js). Auto/semafori/turbine/finestre accese erano tutti decoro
+# della citta' rimossa: senza una citta' sotto non hanno piu' senso, quindi
+# via anche i rispettivi gruppi (cars/cars2/semaphores/platform) e
+# TITLE_LIT_LOTS_GLOW.
 TITLE_DYNAMIC_SPRITES = sorted(set(
-    GAMEPLAY_SPRITES["cars"] + GAMEPLAY_SPRITES["cars2"] + GAMEPLAY_SPRITES["threats"]
-    + GAMEPLAY_SPRITES["atmosphere"] + GAMEPLAY_SPRITES["semaphores"] + GAMEPLAY_SPRITES["platform"]
-    + TITLE_LIT_LOTS_GLOW
+    GAMEPLAY_SPRITES["threats"] + GAMEPLAY_SPRITES["atmosphere"] + ["tuto_sfondo"]
 ))
 
 # ------------------------------------------------------- core vs deferred

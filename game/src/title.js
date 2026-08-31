@@ -4,33 +4,33 @@
 // mtFUJI SOFTWARE come watermark statico in basso a destra (subFrameRight()/
 // logoMark, sotto): "NIMBUS"/"Mount Fuji, 2019" del vecchio raster sono
 // stati sostituiti da un vero titolo HTML in alto ("NIMBUS"/"REDUX", verso
-// la fine del file). Lo sfondo NON e' piu' `eddaie` (il logo animato del
-// decompilato, 193 sottoimmagini — pesante da impacchettare e, detto
-// dall'autore, "fa un po' cagare"): al suo posto un ritaglio di `match` (la
-// mappa difficile, non `match_easy`) dietro il menu — auto, aerei/
-// dirigibili, semafori, ciclo giorno/notte — sfumato con lo stesso
-// `PauseBlur` (game/src/gl.js) gia' usato per il menu di pausa in
-// game/src/main.js. Nessun combattimento: nessuna torretta esiste qui,
-// quindi aerei/dirigibili volano/sganciano bombe (che detonano a vuoto,
-// `buildings: []`) senza che nulla li abbatta — esattamente "vivi ma non in
-// guerra", come richiesto.
+// la fine del file).
 //
-// [Decisione dell'autore: "citta' statica ma oggetti volanti e
-// bombardamento funzionanti"] La citta'/piattaforma (edifici, strade,
-// alberi — mai animata di suo, STUDIO.md: solo il ciclo giorno/notte la
-// tinge) NON e' piu' ricomposta ogni frame da centinaia di sprite
-// dell'intero atlas di `match` (56 pagine, ~800 MB decompressi in GPU solo
-// per uno sfondo che non cambia mai forma): `tools/29_title_bg.py` la
-// pre-renderizza offline in UN'unica immagine (`assets/title_city.webp`,
-// CITY_RECT sotto — poche centinaia di KB), caricata qui come una texture
-// qualunque (`loadTexture()`, non un intero atlas-room) e disegnata come un
-// solo quad in spazio mondo, PRIMA del layer `dynamic` di sempre — che
-// resta vivo e identico: auto, aerei/bombardieri/zeppelin, bombe/esplosioni/
-// detriti/fumo, nuvole/uccelli, semafori, le turbine che lampeggiano, le
-// finestre che si accendono di notte. L'atlas "title" (sotto) ora
-// impacchetta anche questi sprite dinamici (tools/23_atlas.py,
-// TITLE_DYNAMIC_SPRITES) — piccolo e mirato, non l'intero catalogo
-// GAMEPLAY_SPRITES che serve solo alla partita vera.
+// [Decisione dell'autore: "sostituisci la citta' dietro al menu con la scena
+// di mare dell'inizio del tutorial, sempre sfumata, con tilt a destra/
+// sinistra (tanto e' una texture seamless); tieni sopra il passaggio di
+// aerei/nuvole ma senza bombardamenti"] Lo sfondo NON e' piu' un ritaglio di
+// `match` (la citta'/piattaforma volante, ne' la vecchia versione statica
+// pre-renderizzata da tools/29_title_bg.py, rimosso insieme a lei) ma
+// "tuto_sfondo" — LO STESSO tassello di mare che copre lo schermo durante la
+// fase iniziale della cutscene del tutorial (game/src/tutorial.js/main.js,
+// fase "planes"): gia' seamless e pensato per essere ripetuto a tappeto,
+// quindi disegnato qui in spazio SCHERMO (non serve nessuna pre-composizione
+// offline ne' una camera che lo inquadri "dentro" un'immagine finita) con un
+// leggero scorrimento orizzontale avanti/indietro (SEA_TILT_*, sotto) — da
+// solo invisibile su una texture seamless, ma da' l'idea di un mare mosso
+// invece di un fondale immobile. Sfumato con lo stesso `PauseBlur`
+// (game/src/gl.js) gia' usato per il menu di pausa in game/src/main.js.
+//
+// Sopra il mare resta il traffico aereo "di sfondo": SOLO `air`
+// (game/src/threats.js/THREAT_TYPES — l'unico dei tre tipi che non sgancia
+// mai bombe una volta forzato `desto=false`, vedi updateThreats() sotto) +
+// nuvole/uccelli (atmosphere.js). Niente `bombar`/`dirig` (sganciano sempre
+// bombe) ne' nessuna delle bombe/esplosioni-da-impatto/detriti/fumo che la
+// battaglia vera userebbe: "vivi ma senza guerra", stavolta per davvero,
+// senza nessuna bomba nemmeno a vuoto. Auto/semafori/turbine/finestre
+// accese erano tutti decoro della citta' rimossa: senza una citta' sotto
+// non hanno piu' senso, quindi via anche loro.
 //
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
 // export mountTitle(ctx) invece di uno script a livello di modulo — canvas,
@@ -41,17 +41,13 @@
 // cio' che questo modulo ha registrato da solo (listener di resize, timer,
 // nodo DOM del messaggio), cosi' rientrare nel menu piu' volte nella stessa
 // sessione non accumula loop/listener fantasma.
-import { solidFrame, loadTexture } from "./gl.js";
+import { solidFrame } from "./gl.js";
 import { loadFromFile } from "./save.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
-import { r120MotorDecor } from "./platform.js";
-import { spawnCar, stepCars } from "./cars.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
-import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import {
-  stepThreatSpawner, stepThreats, stepBombs, stepExplosions, EXPLOSION_FRAME_COUNT,
-  stepAerSmoke, AER_SMOKE_FRAME_COUNT, stepDebris,
+  stepThreatSpawner, stepThreats, stepExplosions, EXPLOSION_FRAME_COUNT,
 } from "./threats.js";
 
 const TICK = 1 / 60;
@@ -63,23 +59,34 @@ export async function mountTitle(ctx) {
 
   // ---------------------------------------------------------------- title UI
   const scene = await fetch("./data/title.scene.json").then((x) => x.json());
-  // Un solo atlas ("title", sotto) copre ormai sia i bottoni/banner sia
-  // l'intero layer dinamico dello sfondo (auto/aerei/bombe/nuvole/semafori/
-  // turbine/finestre — vedi il commento in cima al file): la citta' ferma
-  // non passa piu' da qui, e' un'unica texture caricata poco sotto
-  // (`cityBg`). Non c'e' quindi piu' bisogno di una seconda fase "loading
-  // city" separata (`reportProgress()` restava scomoda a due cifre diverse
-  // per un errore di somma gia' corretto altrove, app.js) — un solo
-  // progresso onesto per l'unico atlas rimasto.
+  // Un solo atlas ("title", sotto) copre bottoni/banner PIU' l'intero layer
+  // dinamico dello sfondo (mare/aerei/nuvole — tools/23_atlas.py,
+  // TITLE_DYNAMIC_SPRITES): un solo progresso di caricamento onesto, un solo
+  // atlas da liberare quando si lascia il menu (game/src/app.js,
+  // neededRoomsFor()).
   const { atlas, pageTex } = await loadRoomAtlas(gl, "title", {
     onProgress: (loaded, total) => reportProgress("title", loaded, total, "loading interface"),
   });
-  function frameFor(sprName, frameIdx = 0) {
+  function frameFor(sprName, frameIdx = 0, inset = false) {
     const frames = atlas.sprites[sprName];
     if (!frames || !frames.length) return null;
     const f = frames[Math.max(0, Math.min(frameIdx, frames.length - 1))];
     if (!pageTex[f.p]) return null;
-    return { tex: pageTex[f.p].tex, u0: f.u0, v0: f.v0, u1: f.u1, v1: f.v1, w: f.w, h: f.h, ox: f.ox, oy: f.oy };
+    let { u0, v0, u1, v1 } = f;
+    // [C] tools/23_atlas.py impacchetta gli sprite bordo a bordo, senza
+    // gutter: per un frame disegnato una volta sola lo sfumato LINEAR di un
+    // texel oltre il proprio bordo (il prossimo sprite in atlas, li' accanto)
+    // e' impercettibile, ma "tuto_sfondo" (il tassello di mare, sotto) viene
+    // ripetuto A TAPPETO fianco a fianco con SE STESSO — ad ogni giunzione
+    // quello stesso mezzo texel diventa una riga visibile. `inset` restringe
+    // il rettangolo UV di mezzo texel per lato prima di ritornarlo, stessa
+    // tecnica gia' in uso in game/src/main.js per lo stesso sprite.
+    if (inset) {
+      const page = pageTex[f.p];
+      const halfU = 0.5 / page.width, halfV = 0.5 / page.height;
+      u0 += halfU; v0 += halfV; u1 -= halfU; v1 -= halfV;
+    }
+    return { tex: pageTex[f.p].tex, u0, v0, u1, v1, w: f.w, h: f.h, ox: f.ox, oy: f.oy };
   }
 
   const BUTTONS = scene.instances.filter((it) => ["standma", "easma", "me3"].includes(it.obj));
@@ -130,108 +137,45 @@ export async function mountTitle(ctx) {
   camUI.bounds = { left: 0, top: 0, right: scene.width, bottom: scene.height };
   camUI.x = 1235; camUI.y = 543;
 
-  // ------------------------------------------------------------- sfondo: match
-  // Solo i metadati (JSON, pochi KB): le posizioni dei pali dei semafori
-  // (`object8`, sotto — il "tappo" colorato che lampeggia resta un vero
-  // sprite dinamico) e le dimensioni della room per `camWorld.bounds`. Nessun
-  // atlas immagine caricato da qui: la citta'/piattaforma vera e propria e'
-  // gia' pronta cotta in `cityBg` (sotto).
-  const mScene = await fetch("./data/match.scene.json").then((x) => x.json());
-  const semaphorePoles = mScene.instances.filter((it) => it.obj === "object8");
-  const semaphores = semaphorePoles.map((it) => createSemaphore(it.x, it.y));
+  // ------------------------------------------------------------- sfondo: mare
+  // "tuto_sfondo" (1000x564, data/sprites.json): lo stesso tassello di mare
+  // della cutscene iniziale del tutorial, ripetuto a tappeto in spazio
+  // SCHERMO (non mondo: e' un fondale astratto, non serve nessuna camera che
+  // lo "inquadri" dentro un'area finita) con un leggero scorrimento
+  // orizzontale avanti/indietro — SEA_TILT_PERIOD secondi per un ciclo
+  // completo sinistra->destra->sinistra, SEA_TILT_AMPLITUDE px di ampiezza.
+  const SEA_TILT_PERIOD = 22;
+  const SEA_TILT_AMPLITUDE = 260;
 
-  // Atlas "title": bottoni/banner (gia' caricati sopra) PIU' tutto il layer
-  // dinamico (auto, aerei/bombe/esplosioni/detriti/fumo, nuvole/uccelli, i
-  // "tappi" dei semafori, le turbine, le finestre accese — tools/23_atlas.py/
-  // TITLE_DYNAMIC_SPRITES): `frameFor()` (sopra) serve gia' a tutto questo,
-  // nessuna seconda funzione `mFrameFor()` da tenere in sync.
-  //
-  // La citta'/piattaforma FERMA: un'unica immagine pre-renderizzata offline
-  // (tools/29_title_bg.py — vedi il commento in cima al file), non un atlas-
-  // room. `CITY_RECT` e' l'angolo in alto a sinistra in spazio MONDO in cui
-  // va disegnata (BAKE_X0/BAKE_Y0 di quello script — se cambiano li',
-  // aggiornarli anche qui): la sua larghezza/altezza vera si legge da
-  // `cityBg.width/height` invece di duplicarle a mano.
-  const cityBg = await loadTexture(gl, "./assets/title_city.webp");
-  const CITY_RECT = { x: 200, y: 180 };
-  const cityFrame = { tex: cityBg.tex, u0: 0, v0: 0, u1: 1, v1: 1, w: cityBg.width, h: cityBg.height, ox: 0, oy: 0 };
-
-  // ------------------------------------------------------- edifici illuminati
-  // La citta' cotta in `cityBg` include gia' le case/ville occupate di
-  // LIT_LOTS (tools/29_title_bg.py replica la stessa lista) ma SOLO
-  // l'edificio spento: le finestre accese cambiano nel tempo (fade in/out
-  // giorno/notte, stepBuildingLights() sotto), quindi restano un layer
-  // dinamico separato, disegnato sopra l'immagine ferma ad ogni frame —
-  // stesso principio delle turbine che lampeggiano (r120MotorDecor()).
-  const LIT_LOTS = [
-    { x: 1375, y: 451, spr: "vil6" }, { x: 2253, y: 452, spr: "c211" },
-    { x: 2053, y: 453, spr: "vil7" }, { x: 1275, y: 508, spr: "c111" },
-    { x: 1475, y: 509, spr: "vil8" }, { x: 2154, y: 509, spr: "c112" },
-    { x: 1175, y: 565, spr: "vil1" }, { x: 1375, y: 566, spr: "c121" },
-    { x: 2253, y: 568, spr: "vil9" }, { x: 1624, y: 595, spr: "c131" },
-    { x: 1075, y: 623, spr: "vil4" }, { x: 1274, y: 624, spr: "c141" },
-    { x: 1524, y: 652, spr: "vil10" }, { x: 1722, y: 653, spr: "c151" },
-    { x: 976, y: 681, spr: "vil5" }, { x: 1175, y: 682, spr: "c122" },
-  ];
-  // [I] Stesso fade in/out di stepLights() (main.js), ma senza la soglia
-  // `r12.ele > 3`: qui non c'e' nessuna economia simulata da cui leggerla, e
-  // una citta' decorativa ha sempre corrente a sufficienza.
-  const LIGHT_FADE_SEC = 3;
-  const buildingLights = LIT_LOTS.map((lot) => ({
-    obj: "decor", x: lot.x, y: lot.y, depth: -lot.y - 1, _f: frameFor(lot.spr + "l"),
-    _selfLit: true, _lightT: 0, _alpha: 0,
-  }));
-  function stepBuildingLights(dt, night) {
-    for (const light of buildingLights) {
-      light._lightT = Math.max(0, Math.min(LIGHT_FADE_SEC, light._lightT + (night ? dt : -dt)));
-      light._alpha = light._lightT / LIGHT_FADE_SEC;
-    }
-  }
-
-  function effDepth(it) { return it.depth === 0 ? -it.y : it.depth; }
-  const sortWorld = (a, b) => effDepth(b) - effDepth(a);
-
+  // ------------------------------------------------------ traffico aereo/cielo
+  // camWorld resta una finestra puramente VIRTUALE nello stesso spazio
+  // mondo condiviso da atmosphere.js/threats.js (le posizioni di
+  // nascita di nuvole/uccelli/aerei sono coordinate fisse calibrate per la
+  // mappa `match`/`match_easy`, non per questo schermo): serve solo a
+  // posizionare/tagliare quel traffico, non disegna piu' nessuno sfondo
+  // sotto di se' — nessun `bounds`/`clamp()` da rispettare (STUDIO.md, "zero
+  // zoom" non si applica qui: e' l'unica camera mondo di questa schermata).
   const camWorld = new Camera();
-  // [Bug corretto, segnalato dall'autore: "la piattaforma va troppo a
-  // destra/sinistra, si vede lo sprite tagliato"] `bounds` erano le
-  // dimensioni dell'INTERA room `match` (mScene.width/height — 3900x2090,
-  // molto piu' grandi della sola citta' cotta in cityBg) — di fatto mai
-  // applicate: CAM_CENTER/CAM_DRIFT sotto scrivono camWorld.x/y DIRETTAMENTE
-  // ogni frame, non tramite panByScreen()/update() (gli unici due punti
-  // della classe che chiamano clamp() da soli, game/src/camera.js), quindi
-  // la deriva poteva portare il bordo schermo oltre il bordo VERO di
-  // cityBg (CITY_RECT/cityBg.width/height, sopra), esponendo il vuoto oltre
-  // l'immagine invece di fermarsi quando il suo bordo tocca il bordo dello
-  // schermo. `bounds` ora e' il rettangolo vero di cityBg, con un
-  // `camWorld.clamp()` esplicito nel loop dopo aver scritto x/y (sotto) —
-  // riusa la stessa logica gia' pronta della classe, compreso il fallback
-  // "centra invece di incastrarti" se il mondo e' piu' stretto della vista
-  // (schermi molto larghi dove cityBg da solo non basta a coprire tutto).
-  camWorld.bounds = {
-    left: CITY_RECT.x, top: CITY_RECT.y,
-    right: CITY_RECT.x + cityBg.width, bottom: CITY_RECT.y + cityBg.height,
-  };
   camWorld.minZoom = camWorld.maxZoom = 1.6;
   camWorld.setZoomImmediate(1.6);
-  // Un ritaglio intorno a r120 (la base volante, STUDIO.md): si vede sia la
-  // citta' sopra sia la turbina/i piloni sotto — la stessa inquadratura del
-  // primo screenshot di verifica di r120. Deriva leggermente nel tempo (vedi
-  // updateCamera() sotto), non fermo ne' agganciato all'input.
+  // Stesso ritaglio di sempre (un tempo centrato su r120, la base volante
+  // ormai rimossa insieme alla citta'): la deriva lenta intorno a questo
+  // punto resta comunque un buon punto di vista sul traffico aereo di
+  // sfondo, indipendente da cosa ci fosse sotto.
   const CAM_CENTER = { x: 1450, y: 750 };
   const CAM_DRIFT = { x: 420, y: 90 };
   const CAM_PERIOD = 42;   // secondi per un giro completo della deriva
 
   // ------------------------------------------------------------- simulazione
-  let cars = [spawnCar("honda1", false), spawnCar("honda2", false)];
   let atmo = createAtmosphere();
-  let threats = [], bombs = [], explosions = [], aerSmoke = [], debris = [];
+  let threats = [], explosions = [];
   // Stub minimo di r12: solo i campi che stepThreatSpawner/stepThreats
-  // leggono davvero. `ondan`/`bombn`/`diron` vengono rialimentati piu' sotto
-  // (updateThreats()) invece di lasciarli decadere a zero come farebbe la
-  // vera partita — qui non c'e' nessuna spia che li fa salire, quindi la
-  // "rifornitura" e' la stessa scelta [I] gia' presa altrove in questo
-  // motore quando manca il sistema a monte (STUDIO.md).
-  const fakeR12 = { ondan: 0, bombn: 0, diron: 0, storm: 0, distrutti: 0 };
+  // leggono davvero. Niente `bombn`/`diron`: restando `undefined` (letti con
+  // `?? 0`) bombar/dirig non nascono mai — SOLO `air` (il tipo che, forzato
+  // `desto=false` in updateThreats() sotto, non sgancia mai bombe) popola il
+  // cielo di questa schermata. `storm` resta sempre falsy: nessun fulmine,
+  // nessuna nuvola scura di tempesta.
+  const fakeR12 = { ondan: 0, distrutti: 0 };
 
   // [C] PHASES/ambientAt() di main.js, stesso schema — [I] accelerato: un
   // giro giorno/notte completo ogni 36 minuti veri sarebbe invisibile su una
@@ -254,11 +198,6 @@ export async function mountTitle(ctx) {
     const a = PHASES[i].rgb, b = PHASES[(i + 1) % PHASES.length].rgb;
     return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
   }
-  function isNightAt(tSec) { return PHASES[phaseAt(tSec).i].name === "night"; }
-  // [C] main.js, mulTint(): la tinta ambientale resta per-istanza (non un
-  // uniform globale) cosi' i decori "luce" (`_selfLit`, sopra) possono
-  // saltarla — altrimenti si "accenderebbero" ma restando scuri quanto la
-  // notte intorno, indistinguibili.
   function mulTint(base, rgb) {
     const r = Math.round(((base >> 16) & 255) * rgb[0]);
     const g = Math.round(((base >> 8) & 255) * rgb[1]);
@@ -266,24 +205,25 @@ export async function mountTitle(ctx) {
     return (r << 16) | (g << 8) | b;
   }
 
+  function effDepth(it) { return it.depth === 0 ? -it.y : it.depth; }
+  const sortWorld = (a, b) => effDepth(b) - effDepth(a);
+
   // [Bug corretto, segnalato dall'autore: "aerei/dirigibili devono partire
   // da fuori schermo in movimento, altrimenti sembrano comparire gia' a
   // meta' schermo"] spawnThreat() (threats.js) nasce a coordinate FISSE
-  // (spawnX -170 per air/bombar, -1000 per dirig) calibrate sull'intera
-  // mappa `match_easy` — la camera qui (camWorld, molto piu' stretta,
-  // ancorata a CAM_CENTER/CITY_RECT sopra, per niente la stessa finestra di
-  // `match_easy`) non ha alcuna relazione con quelle coordinate: a seconda
-  // della finestra del browser potevano gia' cadere dentro l'area visibile
-  // invece che fuori. THREAT_SPAWN_MARGIN in piu' oltre al bordo, stesso
-  // principio del margine di RAIN_MARGIN/CLOUD_SPAWNS altrove — non spunta
-  // "a filo" del bordo dello schermo.
+  // (spawnX -170) calibrate sull'intera mappa `match_easy` — la camera qui
+  // (camWorld, molto piu' stretta) non ha alcuna relazione con quelle
+  // coordinate: a seconda della finestra del browser potevano gia' cadere
+  // dentro l'area visibile invece che fuori. THREAT_SPAWN_MARGIN in piu'
+  // oltre al bordo, stesso principio del margine di RAIN_MARGIN/
+  // CLOUD_SPAWNS altrove — non spunta "a filo" del bordo dello schermo.
   const THREAT_SPAWN_MARGIN = 150;
   function updateThreats(dt) {
-    // Mantiene un rifornimento costante cosi' aerei/bombardieri/dirigibili
-    // continuano ad arrivare per tutto il tempo che il menu resta a schermo,
-    // invece di esaurirsi dopo le prime ondate come farebbe r12 vero senza
-    // spie a rialimentarli.
-    fakeR12.ondan = 3; fakeR12.bombn = 1; fakeR12.diron = 1;
+    // Mantiene un rifornimento costante di traffico "di sfondo" cosi' gli
+    // aerei continuano ad arrivare per tutto il tempo che il menu resta a
+    // schermo, invece di esaurirsi dopo le prime ondate come farebbe r12
+    // vero senza spie a rialimentarli.
+    fakeR12.ondan = 3;
     const spawnedBefore = threats.length;
     stepThreatSpawner(fakeR12, threats, dt);
     // Sposta SOLO i nuovi arrivi di questo frame appena fuori dal bordo
@@ -291,13 +231,25 @@ export async function mountTitle(ctx) {
     // resize/la deriva di camWorld) — direzione/velocita' di volo restano
     // quelle vere di spawnThreat(), sempre verso destra (COS30 positivo,
     // threats.js/stepThreats()), solo il punto di partenza cambia.
+    // [Decisione dell'autore: "senza bombardamenti"] `desto` (threats.js,
+    // spawnThreat(): mezza volta vero anche per `air` quando non c'e' una
+    // piattaforma sotto cui nascondersi, STUDIO.md) e' l'UNICO interruttore
+    // che fa sganciare bombe a un `air` — forzato sempre a `false` qui, cosi'
+    // il traffico aereo di questa schermata non bombarda mai, a prescindere
+    // da come nasce.
     const leftEdge = camWorld.x - camWorld.worldW / 2;
-    for (let i = spawnedBefore; i < threats.length; i++) threats[i].x = leftEdge - THREAT_SPAWN_MARGIN;
-    stepThreats(threats, bombs, explosions, dt, fakeR12, aerSmoke, debris);
-    stepBombs(bombs, explosions, [], dt, fakeR12);
+    for (let i = spawnedBefore; i < threats.length; i++) {
+      threats[i].x = leftEdge - THREAT_SPAWN_MARGIN;
+      threats[i].desto = false;
+    }
+    // Niente bombe/detriti/fumo di scia da avanzare: senza `desto` nessun
+    // `air` le genera mai (vedi sopra), e senza fuoco vero (nessuna torretta
+    // su questa schermata) `life` non scende mai sotto il massimo — l'unica
+    // fonte di `explosions` rimasta e' la scadenza naturale (`maxAge`,
+    // threats.js/stepThreats()), un piccolo sbuffo quando un aereo lascia la
+    // scena, non un impatto.
+    stepThreats(threats, [], explosions, dt, fakeR12, [], []);
     stepExplosions(explosions, dt);
-    stepAerSmoke(aerSmoke, dt);
-    stepDebris(debris, explosions, dt);
   }
 
   // ---------------------------------------------------------------- resize
@@ -346,9 +298,9 @@ export async function mountTitle(ctx) {
   // 18fps totali, su rendering software senza vera GPU; una GPU vera, mobile
   // inclusa, e' tipicamente molto piu' veloce). Un intervallo fisso tarato
   // sul caso peggiore restava inutilmente lento — e visibilmente "scattoso"
-  // (auto/aerei continuano ad avanzare ogni frame in JS, ma lo sfondo sfumato
-  // si aggiorna solo ogni BG_INTERVAL: piu' l'intervallo e' largo, piu' il
-  // salto fra un aggiornamento e il successivo si vede, segnalato
+  // (nuvole/aerei continuano ad avanzare ogni frame in JS, ma lo sfondo
+  // sfumato si aggiorna solo ogni BG_INTERVAL: piu' l'intervallo e' largo,
+  // piu' il salto fra un aggiornamento e il successivo si vede, segnalato
   // dall'autore) — anche su dispositivi capaci di aggiornare molto piu'
   // spesso senza appesantirsi. BG_INTERVAL ora si ADATTA al costo vero
   // misurato ogni volta (`costEMA`, una media mobile per non rincorrere
@@ -391,10 +343,11 @@ export async function mountTitle(ctx) {
     }
     if (messageT > 0) messageT -= dt;
 
-    stepCars(cars, dt, { oil: 1 }, false);   // { oil: 1 }: sempre "c'e' ancora olio", rinasce sempre
-    stepAtmosphere(atmo, dt, false);
-    stepSemaphores(semaphores, dt);
-    stepBuildingLights(dt, isNightAt(elapsed));
+    // [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Lo sfondo
+    // sfumato di questo menu e' il mare dell'inizio del tutorial (STUDIO.md
+    // §9, "sfondo menu a mare") — stessa famiglia di `match`/`tutorial`, mai
+    // `match_easy`: nuvole veloci, non quelle lente.
+    stepAtmosphere(atmo, dt, false, true);
 
     // camWorld.x/y VANNO risolti prima di updateThreats() sotto: gli riposiziona
     // i nuovi arrivi appena fuori dal bordo sinistro vero di QUESTO frame
@@ -402,7 +355,6 @@ export async function mountTitle(ctx) {
     // precedente.
     camWorld.x = CAM_CENTER.x + Math.sin((elapsed / CAM_PERIOD) * Math.PI * 2) * CAM_DRIFT.x;
     camWorld.y = CAM_CENTER.y + Math.cos((elapsed / CAM_PERIOD) * Math.PI * 2) * CAM_DRIFT.y;
-    camWorld.clamp();
     updateThreats(dt);
 
     r.beginFrame(canvas.width, canvas.height);
@@ -410,41 +362,34 @@ export async function mountTitle(ctx) {
     if (bgT >= BG_INTERVAL || !blurTex) {
       bgT = 0;
       const bgStart = performance.now();
-      // --- layer mondo (sfumato dopo) ---
-      // [C] main.js: u_ambient resta neutro, la tinta e' applicata per
-      // istanza sotto (mulTint()) cosi' i decori "luce" (buildingLights,
-      // sopra) possono restare alla propria luminosita' vera invece di
-      // scurirsi insieme al resto della scena.
       const amb = ambientAt(elapsed);
+      const cw = canvas.clientWidth, ch = canvas.clientHeight;
+
+      // --- mare (schermo, tassello seamless, tilt sx/dx) ---
       r.setAmbient(1, 1, 1);
+      r.setProjection(screenProjection(cw, ch));
+      const seaFrame = frameFor("tuto_sfondo", 0, true);
+      if (seaFrame) {
+        const tilt = Math.sin((elapsed / SEA_TILT_PERIOD) * Math.PI * 2) * SEA_TILT_AMPLITUDE;
+        const offsetX = ((tilt % seaFrame.w) + seaFrame.w) % seaFrame.w;
+        const seaTint = mulTint(0xffffff, amb);
+        for (let y = 0; y < ch; y += seaFrame.h) {
+          for (let x = -seaFrame.w + offsetX; x < cw; x += seaFrame.w) r.draw(seaFrame, x, y, 1, seaTint, 1);
+        }
+      }
+      r.flush();
+
+      // --- layer dinamico: nuvole/uccelli/aerei, camera mondo (posizioni e
+      // margini di spawn condivisi con atmosphere.js/threats.js) ---
       r.setProjection(camWorld.projection());
-      // La citta'/piattaforma ferma (cityBg/cityFrame, sopra) — un solo
-      // quad, PRIMA di ogni sprite dinamico cosi' auto/aerei/bombe restano
-      // sempre sopra di lei. Stessa tinta giorno/notte che ogni sprite non
-      // self-lit riceveva individualmente prima (mulTint(0xffffff, amb) qui
-      // equivale a tingere l'intera immagine in un colpo solo — risultato
-      // identico, un solo draw invece di un centinaio).
-      r.draw(cityFrame, CITY_RECT.x, CITY_RECT.y, 1, mulTint(0xffffff, amb), 1);
       const dynamic = [];
-      for (const s of semaphores) if (s.spr) dynamic.push({ obj: "decor", x: s.x, y: s.y, depth: s.depth, _f: frameFor(s.spr) });
-      // Le "turbine" di r120 (game/src/platform.js): un lampeggio, non
-      // erano mai state statiche — vedi il commento su blinkMotorVisible() li'.
-      for (const it of r120MotorDecor(elapsed)) dynamic.push({ obj: "decor", x: it.x, y: it.y, depth: it.depth, _f: frameFor(it.spr) });
       for (const c of atmo.clouds) dynamic.push({ obj: "decor", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr) });
       for (const b of atmo.birds) dynamic.push({ obj: "decor", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
-      for (const c of cars) dynamic.push({ obj: "decor", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr, Math.floor(c.frame)), _tint: c.tint });
       for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale });
-      for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y, _f: frameFor(bm.spr) });
-      for (const d of debris) dynamic.push({ obj: "decor", x: d.x, y: d.y, depth: -d.y, _f: frameFor(d.spr) });
       for (const ex of explosions) {
         const fi = Math.min(EXPLOSION_FRAME_COUNT - 1, Math.floor(ex.t / TICK));
         dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr, fi), _scale: ex.scale });
       }
-      for (const p of aerSmoke) {
-        const fi = Math.min(AER_SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
-        dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, fi), _scale: p.scale });
-      }
-      dynamic.push(...buildingLights);
       const frameList = dynamic.sort(sortWorld);
       const vw = camWorld.worldW, vh = camWorld.worldH;
       const l = camWorld.x - vw / 2, t = camWorld.y - vh / 2, rt = l + vw, bt = t + vh;
@@ -453,9 +398,7 @@ export async function mountTitle(ctx) {
         if (!f) continue;
         const x0 = it.x - f.ox, y0 = it.y - f.oy;
         if (x0 > rt || y0 > bt || x0 + f.w < l || y0 + f.h < t) continue;
-        const base = it._tint ?? 0xffffff;
-        const tint = it._selfLit ? base : mulTint(base, amb);
-        r.draw(f, it.x, it.y, it._scale ?? 1, tint, it._alpha ?? 1);
+        r.draw(f, it.x, it.y, it._scale ?? 1, mulTint(0xffffff, amb), 1);
       }
       r.flush();
       // PauseBlur (game/src/gl.js) — stesso identico effetto del menu di

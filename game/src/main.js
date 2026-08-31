@@ -303,6 +303,24 @@ export async function mountMatch(ctx, params = {}) {
   function frameCountFor(sprName) {
     return atlas.sprites[sprName]?.length ?? 1;
   }
+  // Ritaglia un sotto-rettangolo di un frame gia' letto da frameFor() —
+  // stessa tecnica di subFrameRight() in title.js (il marchio mtFUJI
+  // ritagliato da `logigogi`), qui in due varianti: usata sotto per separare
+  // l'icona dell'orologio, cotta insieme alle altre quattro nella stessa
+  // immagine `icone_oriz` (barra risorse), dal resto della barra.
+  // subFrameLeft: tiene [0, pxWidth), stesso ox/oy dell'originale (l'angolo
+  // in alto a sinistra non si sposta, e' il lato destro che si accorcia).
+  function subFrameLeft(f, pxWidth) {
+    const frac = pxWidth / f.w;
+    return { tex: f.tex, u0: f.u0, v0: f.v0, v1: f.v1, u1: f.u0 + (f.u1 - f.u0) * frac, w: pxWidth, h: f.h, ox: f.ox, oy: f.oy };
+  }
+  // subFrameRight: tiene [pxFromLeft, f.w), origine azzerata (ox=0/oy=0) —
+  // un ritaglio non ha piu' l'ancoraggio del frame originale, il chiamante
+  // lo posiziona dal proprio angolo in alto a sinistra.
+  function subFrameRight(f, pxFromLeft) {
+    const frac = pxFromLeft / f.w;
+    return { tex: f.tex, v0: f.v0, v1: f.v1, u0: f.u0 + (f.u1 - f.u0) * frac, u1: f.u1, w: f.w - pxFromLeft, h: f.h, ox: 0, oy: 0 };
+  }
   // [Bug corretto, segnalato dall'autore: "l'area di tap delle strutture di
   // difesa deve coprire tutto l'oggetto (un rettangolo grande come tutte le
   // coordinate dello sprite)"] Il tap sulle torrette (missile/gatling/laser)
@@ -522,9 +540,29 @@ export async function mountMatch(ctx, params = {}) {
         c.curSpr = pickSpr(cur.spr);
         if (cur.spawn) addConstructionSpawn(c.fb, cur.spawn);
       }
-      entry.spr = c.curSpr;
-      entry._f = frameFor(entry.spr);
-      entry.frontSpr = frontSprFor(entry.spr);
+      // [Nuova sequenza, richiesta dall'autore: "sui cantieri delle rovine
+      // prima l'impalcatura viene montata, poi la rovina sparisce, poi
+      // l'impalcatura viene smontata, in tutti i casi"] Prima di questa
+      // correzione `entry.spr` veniva sovrascritto con lo sprite di
+      // cantiere (`c.curSpr`) fin dal primissimo frame — il rudere spariva
+      // di scatto nell'ISTANTE del tap, sostituito da una fondamenta spoglia
+      // ancora prima che l'impalcatura fosse davvero "montata" sopra di lui.
+      // Durante il primo passo (`c.stepIndex === 0`, la stessa finestra
+      // accorciata da `ruspaFirstStepDur` sotto — stesso principio gia' in
+      // uso per un edificio VIVO ruspato, buildings.js/`clearingLot`)
+      // `entry.spr`/`_f` restano quindi quelli del rudere vero (mai toccati
+      // qui): solo `frontSpr` (l'impalcatura in sovraimpressione,
+      // calcolata dallo sprite di cantiere corrente, non da quello del
+      // rudere — altrimenti frontSprFor() non riconoscerebbe un prefisso
+      // "ru1x") compare gia' da subito, sopra il rudere ancora visibile —
+      // "l'impalcatura viene montata". Solo dal SECONDO passo in poi il
+      // "retro" passa alla sagoma vera di cantiere: e' quello il momento in
+      // cui "la rovina sparisce" per davvero, mai prima. L'ultimo passo che
+      // esaurisce l'array (sotto, `else`) resta il momento in cui
+      // l'impalcatura residua sparisce insieme al posto lasciato libero —
+      // "l'impalcatura viene smontata", invariato.
+      if (c.stepIndex > 0) { entry.spr = c.curSpr; entry._f = frameFor(entry.spr); }
+      entry.frontSpr = frontSprFor(c.curSpr);
       c.t += dt;
       const dur = (c.stepIndex === 0 && up.ruspaFirstStepDur != null) ? up.ruspaFirstStepDur : cur.dur;
       if (c.t < dur * TICK) continue;
@@ -865,6 +903,14 @@ export async function mountMatch(ctx, params = {}) {
   // WEAPONS.laser in projectiles.js.
   let beams = [];
   let r12 = createR12(roomName === "match");
+  // [Nuova funzionalita', richiesta dall'autore: "in tutorial partiamo con
+  // 10000 soldi in piu', altrimenti rischiano di non bastare"] Il tutorial fa
+  // costruire ruderi/case/centrale/parco/missile ben prima che le tasse
+  // raccolte bastino da sole: i 5500 di partenza di createR12() (state.js,
+  // uguali su ogni room) a volte non reggono l'intera sequenza guidata.
+  // `monReal` aggiornato insieme (state.js/clampR12, DEBUG_INFINITE_RESOURCES):
+  // resta il valore genuino "usabile" anche se il debug/sandbox e' spento.
+  if (roomName === "tutorial") { r12.mon += 10000; r12.monReal += 10000; }
   let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
   // La ruspa (`puruspa`, `selec===11`, STUDIO.md/OTHER_BUILDINGS sotto): tocco
@@ -2457,6 +2503,59 @@ export async function mountMatch(ctx, params = {}) {
   });
   let textPoolUsed = 0;
   function resetTextPool() { textPoolUsed = 0; }
+  // [Nuova funzionalita', richiesta dall'autore: "sostituisci gli sprite
+  // mfs1/mfs11/mfs2 delle due schermate nere della cutscene iniziale del
+  // tutorial con scritte Montserrat vere, stesso effetto grafico del menu
+  // (title.js/glitchLine — sdoppiamento cromatico ciano/blu, mix-blend-mode:
+  // screen) ma molto piu' intenso: qui restano a schermo solo 1.5s/3.3s
+  // (CUTSCENE_BLACK1_DURATION/BLACK2_DURATION, tutorial.js), contro il
+  // lampo raro (visibile ~4% di un ciclo di 5.4s) del titolo, che in una
+  // finestra cosi' breve sparirebbe quasi sempre senza mai flashare —
+  // `rgbGlitchIntense` (index.html) e' un ciclo molto piu' corto e SEMPRE
+  // visibile invece che un lampo occasionale. Testo, non piu' i due sprite
+  // decompilati ("mfs1"/"mfs11" — Windows/Android, "Mount Fuji Software
+  // presents" — e "mfs2", "NIMBUS"): solo "MOUNT FUJI SOFTWARE" (niente
+  // "presents") per la prima schermata, "NIMBUS"/"REDUX" (le stesse due
+  // righe, stessa gerarchia di dimensione, del titolo del menu principale)
+  // per la seconda.
+  const CUTSCENE_GHOST_LAYERS = [["#00e5ff", "0s"], ["#4d5bff", ".05s"]];
+  function glitchCutsceneLine(text, sizeCss, baseColorCss) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:relative;" + sizeCss + baseColorCss;
+    wrap.textContent = text;
+    for (const [color, delay] of CUTSCENE_GHOST_LAYERS) {
+      const ghost = document.createElement("div");
+      ghost.className = "cutsceneGhost";
+      ghost.textContent = text;
+      ghost.style.cssText = "position:absolute;inset:0;pointer-events:none;" + sizeCss +
+        `color:${color};mix-blend-mode:screen;animation:rgbGlitchIntense .5s infinite;animation-delay:${delay};`;
+      wrap.appendChild(ghost);
+    }
+    return wrap;
+  }
+  const CUTSCENE_TITLE_SIZE = "font-size:clamp(22px,5.4vw,48px);font-weight:800;letter-spacing:0.08em;";
+  const CUTSCENE_SUB_SIZE = "font-size:clamp(11px,1.4vw,15px);font-weight:700;letter-spacing:0.45em;margin-top:2px;";
+  const cutsceneTextWrap = document.createElement("div");
+  cutsceneTextWrap.style.cssText = "position:fixed;left:0;right:0;top:50%;transform:translateY(-50%);" +
+    "text-align:center;pointer-events:none;z-index:7;display:none;" +
+    "font-family:Montserrat,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;";
+  document.body.appendChild(cutsceneTextWrap);
+  // `mode`: null (nascosta) | "mfs1" (prima schermata nera) | "mfs2"
+  // (seconda) — nomi presi dagli sprite che sostituiscono, per coerenza col
+  // resto del file. Ricostruisce i nodi solo al CAMBIO di modalita' (non
+  // ogni frame): la cutscene passa di qui una volta sola per fase.
+  function setCutsceneText(mode) {
+    cutsceneTextWrap.style.display = mode ? "block" : "none";
+    if (cutsceneTextWrap.dataset.mode === (mode ?? "")) return;
+    cutsceneTextWrap.dataset.mode = mode ?? "";
+    cutsceneTextWrap.replaceChildren();
+    if (mode === "mfs1") {
+      cutsceneTextWrap.appendChild(glitchCutsceneLine("MOUNT FUJI SOFTWARE", CUTSCENE_TITLE_SIZE, "color:#fff;text-shadow:0 2px 14px rgba(0,0,0,0.55);"));
+    } else if (mode === "mfs2") {
+      cutsceneTextWrap.appendChild(glitchCutsceneLine("NIMBUS", CUTSCENE_TITLE_SIZE, "color:#fff;text-shadow:0 2px 14px rgba(0,0,0,0.55);"));
+      cutsceneTextWrap.appendChild(glitchCutsceneLine("REDUX", CUTSCENE_SUB_SIZE, "color:rgba(255,255,255,0.8);text-shadow:0 1px 6px rgba(0,0,0,0.55);"));
+    }
+  }
   function hideUnusedText() {
     for (let i = textPoolUsed; i < textPool.length; i++) textPool[i].style.display = "none";
   }
@@ -4532,7 +4631,11 @@ export async function mountMatch(ctx, params = {}) {
     // quel ramo cosmetico: stessa condizione combinata gia' usata per
     // stepRain() sotto.
     if (skyAlive) {
-      stepAtmosphere(atmo, dt, !!(r12.storm || r12.stormeasy));
+      // [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Nuvole veloci
+      // esclusive di `match`/`tutorial` (mai `match_easy` — atmosphere.js,
+      // il commento su `fastClouds` per il dettaglio) invece delle "ni"
+      // lente usate ovunque fino ad ora, indipendentemente dalla room.
+      stepAtmosphere(atmo, dt, !!(r12.storm || r12.stormeasy), roomName !== "match_easy");
       // Mongolfiere (game/src/balloons.js): risorse/spia a intervalli regolari
       // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
       // cantiere che casa/industria si porta dietro (spawnato da placeAt(),
@@ -5451,6 +5554,19 @@ export async function mountMatch(ctx, params = {}) {
     const UI_MARGIN = 8;
     const barFrame = frameFor("icone_oriz");
     const barX = UI_MARGIN, barY = UI_MARGIN;
+    // [Nuova disposizione, richiesta dall'autore: "porta il simbolo
+    // dell'orologio sulla seconda riga insieme a data/felicita'"] `icone_oriz`
+    // cuoce un quinto pittogramma (l'orologio) accodato a pop/olio/energia/
+    // denaro nella STESSA immagine — misurato a mano sulla texture: il denaro
+    // finisce a x=322 (pixel locali del frame), l'orologio comincia a x=401
+    // su 432 totali. CLOCK_CUT_X=395 separa le due meta' (subFrameLeft/
+    // subFrameRight sopra) lasciando solo un piccolo margine prima
+    // dell'icona, non piu' meta' del vuoto: `barRowFrame` (riga 1, le
+    // quattro icone vere) e `clockFrame` (l'orologio isolato, da
+    // ridisegnare altrove) invece dell'immagine intera.
+    const CLOCK_CUT_X = 395;
+    const barRowFrame = barFrame ? subFrameLeft(barFrame, CLOCK_CUT_X) : null;
+    const clockFrame = barFrame ? subFrameRight(barFrame, CLOCK_CUT_X) : null;
     // [Bug corretto, segnalato dall'autore: "quando i pulsanti della GUI
     // diventano bianchi devono diventare bianchi anche quelli della GUI
     // superiore"] `icone_oriz` e' la stessa famiglia di pittogrammi neri
@@ -5473,15 +5589,28 @@ export async function mountMatch(ctx, params = {}) {
     // `barTextTint` di drawText()): drawHtmlText() imposta `color` diretto
     // sull'elemento, non un tint moltiplicato su una texture.
     const barTextColor = iconsDark ? "#ffffff" : "#000000";
+    // [Bug corretto, segnalato dall'autore: "durante la scena del
+    // bombardamento nascondi anche i simboli delle risorse, non solo i
+    // numeri"] Le icone WebGL della barra (barRowFrame/hapFrame/crysFrame/
+    // clockFrame, qui sotto) restano disegnate durante pausa/menu Buildings
+    // apposta: fanno gia' parte dello stesso canvas che pauseBlur()/
+    // drawBuildMenuOverlay() sfumano/oscurano da soli (vedi il commento su
+    // `hideResourceText` sotto). La cutscene iniziale del tutorial e'
+    // diversa: la sua fase centrale ("battle", game/src/tutorial.js) non
+    // disegna NESSUN velo sopra il mondo — il combattimento vero e' visibile
+    // per intero, senza copertura — quindi le icone restavano lì da sole,
+    // senza piu' i numeri accanto (gia' nascosti da `hideResourceText`).
+    // `hideResourceIcons` copre solo questo caso, non pausa/buildMenuOpen.
+    const hideResourceIcons = !!tutorialState?.cutscene;
     r.setColorize(iconsDark);
-    if (barFrame) r.draw(barFrame, barX, barY, 1, 0xffffff, 1);
+    if (!hideResourceIcons && barRowFrame) r.draw(barRowFrame, barX, barY, 1, 0xffffff, 1);
     r.setColorize(false);
     // [Bug corretto, segnalato dall'autore: "in pausa le scritte della UI
     // non si blurrano"] Questi numeri sono elementi HTML veri (drawHtmlText(),
     // sopra), non pixel del canvas: pauseBlur.blurScreen() (drawPauseOverlay(),
     // sopra) cattura e sfuma solo il canvas gia' disegnato, quindi qualunque
     // testo HTML resterebbe nitido SOPRA il pannello di pausa invece di
-    // sfumarsi con tutto il resto. Le icone WebGL della barra (barFrame/
+    // sfumarsi con tutto il resto. Le icone WebGL della barra (barRowFrame/
     // hapFrame/crysFrame, sopra/sotto) restano invece disegnate anche in
     // pausa: fanno gia' parte del canvas catturato, si sfumano da sole.
     // [Bug corretto, segnalato dall'autore: "durante la scena iniziale si
@@ -5489,8 +5618,8 @@ export async function mountMatch(ctx, params = {}) {
     // Buildings del mobile] Stesso identico problema anche durante la
     // cutscene del tutorial (tutorialState.cutscene, sotto: disegna un
     // tassello pieno-schermo SOPRA il canvas, ma DOPO che questa barra e'
-    // gia' stata accodata — copre `barFrame`/hapFrame/crysFrame perche' sono
-    // gia' nello stesso canvas, ma non questi elementi HTML separati) e
+    // gia' stata accodata — copre `barRowFrame`/hapFrame/crysFrame perche'
+    // sono gia' nello stesso canvas, ma non questi elementi HTML separati) e
     // durante drawBuildMenuOverlay() (buildMenuOpen: oscura/sfuma lo stesso
     // canvas ma non puo' toccare il DOM sopra di lui) — in entrambi i casi i
     // numeri nudi restavano leggibili sopra a un fondale che dovrebbe
@@ -5502,24 +5631,52 @@ export async function mountMatch(ctx, params = {}) {
     if (!hideResourceText) for (const [value, x] of stats) {
       drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
     }
-    // Data (mese + anno, game/src/state.js stepCalendar()) e faccina della
-    // felicita' (subito sotto): [Bug corretto, segnalato dall'autore: "su
-    // iPhone la barra risorse compressa per intero e' diventata troppo
-    // piccola"] Nell'originale (e in un tentativo precedente di questa
-    // porting) stavano sulla STESSA riga di pop/olio/energia/denaro sopra,
-    // a x=448..551 — ben oltre la larghezza vera dell'immagine di sfondo
-    // (`icone_oriz`, ~450px, data/sprites.json), quindi su un telefono
-    // stretto finivano fuori schermo (elementi HTML `position:fixed`,
-    // niente wrap automatico). Rimpicciolire l'INTERO blocco con una scala
-    // uniforme li faceva rientrare, ma rendeva illeggibili anche
-    // pop/olio/energia/denaro, che da soli ci stavano gia' comodi. Qui
-    // invece restano a dimensione piena e si spostano su una SECONDA riga
-    // sotto la barra (stessa fascia verticale gia' usata dai cristalli,
-    // sotto), a destra del loro contatore cosi' da non sovrapporsi.
-    const ROW2_Y = barY + 46;
+    // Data (mese + anno, game/src/state.js stepCalendar()), orologio+ora e
+    // faccina della felicita' (subito sotto): [Bug corretto, segnalato
+    // dall'autore: "su iPhone la barra risorse compressa per intero e'
+    // diventata troppo piccola"] Nell'originale (e in un tentativo precedente
+    // di questa porting) stavano sulla STESSA riga di pop/olio/energia/denaro
+    // sopra, a x=448..551 — ben oltre la larghezza vera dell'immagine di
+    // sfondo (`icone_oriz`, ~450px, data/sprites.json), quindi su un telefono
+    // stretto finivano fuori schermo (elementi HTML `position:fixed`, niente
+    // wrap automatico). Rimpicciolire l'INTERO blocco con una scala uniforme
+    // li faceva rientrare, ma rendeva illeggibili anche pop/olio/energia/
+    // denaro, che da soli ci stavano gia' comodi.
+    // [Nuova disposizione, richiesta dall'autore: "la seconda riga con
+    // data/felicita' solo su mobile — porta li' anche l'orologio — su
+    // desktop invece tutto su una riga sola"] Su mobile (isMobile, dove lo
+    // spazio orizzontale e' quello stretto che ha causato il problema sopra)
+    // restano su una SECONDA riga sotto la barra principale, l'orologio
+    // accanto all'ora invece che cotto dentro `icone_oriz` (CLOCK_CUT_X,
+    // sopra). Su desktop non c'e' nessun vincolo di larghezza analogo (la
+    // barra ha gia' spazio a destra del denaro): si accodano invece sulla
+    // STESSA riga 1, un'unica fila come nell'originale.
+    // [Bug corretto, segnalato dall'autore: "sulla seconda riga deve
+    // esserci l'orologio a sinistra, poi data (mese e anno) uno sopra
+    // l'altro a fianco"] Layout precedente: mese sopra, orologio+anno sotto
+    // — ordine sbagliato (l'orologio andava a sinistra di ENTRAMBE le righe
+    // della data, non solo della seconda). Qui l'orologio e' un'unica icona
+    // a sinistra, centrata verticalmente sulle due righe della data (mese
+    // sopra, anno sotto — `r12.time` e' l'anno di gioco, game/src/state.js)
+    // impilate alla sua destra. Il blocco intero parte comunque da x=90
+    // (non dal margine sinistro vero): stessa distanza di sicurezza di
+    // prima dal contatore cristalli (barX-6..~85, barY+48 in su —
+    // crysFrame/crysText sotto), che altrimenti ci finirebbe sotto.
+    const ROW2_Y = barY + 50;
+    const ROW2B_Y = ROW2_Y + 20;
+    const clockScale = isMobile ? 0.5 : 0.85;
+    const clockPos = isMobile ? { x: barX + 90, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 456, y: barY + 8 };
+    const monthPos = isMobile ? { x: barX + 116, y: ROW2_Y } : { x: barX + 402, y: barY + 19 };
+    const timePos = isMobile ? { x: barX + 116, y: ROW2B_Y } : { x: barX + 484, y: barY + 19 };
+    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 528, y: barY + 5 };
     if (!hideResourceText) {
-      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 90, ROW2_Y, { size: 15, align: "left", color: barTextColor });
-      drawHtmlText(String(Math.round(r12.time)), barX + 82, ROW2_Y + 20, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
+    }
+    r.setColorize(iconsDark);
+    if (!hideResourceIcons && clockFrame) r.draw(clockFrame, clockPos.x, clockPos.y, clockScale, 0xffffff, 1);
+    r.setColorize(false);
+    if (!hideResourceText) {
+      drawHtmlText(String(Math.round(r12.time)), timePos.x, timePos.y, { size: 15, align: "left", color: barTextColor });
     }
     // La "faccina" della felicita' (src/objects/hapware — segnalata
     // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
@@ -5535,12 +5692,12 @@ export async function mountMatch(ctx, params = {}) {
     // Scala **[C]** diretta da hapware/Create|Step.gml: 0.62 fissa (mai
     // moltiplicata per `global.sca`/UI_SCALE in questo motore, stesso
     // trattamento gia' scelto per la barra risorse — STUDIO.md §9, "zero
-    // zoom" sulla UI). Posizione invece NOSTRA (seconda riga, vedi sopra):
-    // l'originale la disegnava sulla stessa riga di pop/olio/energia/denaro,
-    // non ha un equivalente "riga 2" da cui ereditare l'offset.
+    // zoom" sulla UI) su mobile; su desktop (stessa riga di pop/olio/
+    // energia/denaro, vedi sopra) leggermente ridotta per starci in altezza.
     const hapFrame = frameFor(r12.hap >= r12.pop ? "hap3" : "hap1");
+    const hapScale = isMobile ? 0.62 : 0.55;
     r.setColorize(iconsDark);
-    if (hapFrame) r.draw(hapFrame, barX + 160, ROW2_Y - 2, 0.62, 0xffffff, 1);
+    if (!hideResourceIcons && hapFrame) r.draw(hapFrame, hapPos.x, hapPos.y, hapScale, 0xffffff, 1);
     r.setColorize(false);
     // Cristalli (r12.crys: balloons.js, il loot di `monviolo`; platform.js,
     // il gettone lasciato dal monviolo in volo verso il faro) — **[I]**
@@ -5573,7 +5730,7 @@ export async function mountMatch(ctx, params = {}) {
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
       r.setColorize(iconsDark);
-      if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
+      if (!hideResourceIcons && crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
       r.setColorize(false);
       if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
     }
@@ -6209,11 +6366,16 @@ export async function mountMatch(ctx, params = {}) {
     //    larghezza dello sprite).
     //  - "black1"/"black2": **[C]** `blacker1|blacker2/DrawGUI.gml` —
     //    schermo nero pieno (`draw_rectangle(0,0,5000,5000,0)`, qui un
-    //    rettangolo grande quanto il canvas basta) con la scritta "Mount
-    //    Fuji Software" sopra (`mfs1`/`mfs11` — Windows/Android, qui
-    //    isMobile — per "black1"; `mfs2`, un secondo logo/scritta piu'
-    //    piccolo, per "black2"), centrata come nel decompilato
-    //    (`view_wview[0]/2, view_hview[0]/2`).
+    //    rettangolo grande quanto il canvas basta). [Nuova funzionalita',
+    //    richiesta dall'autore] La scritta sopra non e' piu' lo sprite
+    //    decompilato ("mfs1"/"mfs11" — Windows/Android, "Mount Fuji
+    //    Software presents" — o "mfs2", "NIMBUS"): `setCutsceneText()`
+    //    (sopra) mostra testo HTML Montserrat vero, stesso sdoppiamento
+    //    cromatico ciano/blu del titolo del menu ma molto piu' intenso
+    //    (visibile per tutta la breve durata della fase, non un lampo raro
+    //    — vedi il commento li'), "MOUNT FUJI SOFTWARE" (niente "presents")
+    //    per "black1", "NIMBUS"/"REDUX" (le stesse due righe del menu
+    //    principale) per "black2".
     //  - "battle": NESSUN overlay qui — il mondo, gia' disegnato PRIMA di
     //    questo blocco nello stesso frame, resta interamente visibile: e'
     //    la scena di combattimento vera e propria (bombar/air/dirig,
@@ -6223,6 +6385,7 @@ export async function mountMatch(ctx, params = {}) {
       const cw = canvas.clientWidth, ch = canvas.clientHeight;
       const phase = tutorialState.cutscene.phase;
       if (phase === "planes") {
+        setCutsceneText(null);
         r.setAmbient(1, 1, 1);
         r.setProjection(screenProjection(cw, ch));
         const bgFrame = frameFor("tuto_sfondo", 0, true);
@@ -6263,11 +6426,13 @@ export async function mountMatch(ctx, params = {}) {
         r.setAmbient(1, 1, 1);
         r.setProjection(screenProjection(cw, ch));
         r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 1);
-        const sprName = phase === "black1" ? (isMobile ? "mfs11" : "mfs1") : "mfs2";
-        const f = frameFor(sprName);
-        if (f) r.draw(f, cw / 2, ch / 2, 1, 0xffffff, 1);
         r.flush();
+        setCutsceneText(phase === "black1" ? "mfs1" : "mfs2");
+      } else {
+        setCutsceneText(null);   // "battle": nessun velo, testo nascosto
       }
+    } else {
+      setCutsceneText(null);
     }
 
     // Icona "salvataggio in corso" (saveIconT/showSaveIcon(), sopra) —
@@ -6358,6 +6523,7 @@ export async function mountMatch(ctx, params = {}) {
       // lui toglierli, altrimenti rientrare in questa stessa room piu'
       // volte nella sessione (SPA, game/src/app.js) li accumulerebbe.
       for (const el of textPool) el.remove();
+      cutsceneTextWrap.remove();
     },
   };
 }

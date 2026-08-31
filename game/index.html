@@ -149,9 +149,27 @@
     95% { opacity: .55; transform: translate(-2px, -1px); }
     96% { opacity: 0;   transform: translate(0, 0); }
   }
+  /* Stessa tecnica di rgbGlitch sopra (sdoppiamento cromatico ciano/blu,
+     mix-blend-mode:screen), ma un ciclo molto piu' corto e SEMPRE visibile
+     (mai opacity 0) invece di un lampo raro — game/src/main.js la usa per
+     le due schermate nere della cutscene iniziale del tutorial ("MOUNT
+     FUJI SOFTWARE"/"NIMBUS REDUX", sostituiscono gli sprite mfs1/mfs11/
+     mfs2), a schermo per soli 1.5-3.3s: il ciclo di 5.4s di rgbGlitch
+     (visibile solo per un 4% del tempo) sparirebbe quasi sempre in una
+     finestra cosi' breve. */
+  @keyframes rgbGlitchIntense {
+    0%   { opacity: .85; transform: translate(-5px, 1px); }
+    15%  { opacity: .5;  transform: translate(4px, -2px); }
+    30%  { opacity: .9;  transform: translate(-3px, 2px); }
+    45%  { opacity: .4;  transform: translate(5px, 0); }
+    60%  { opacity: .8;  transform: translate(-4px, -1px); }
+    75%  { opacity: .55; transform: translate(3px, 2px); }
+    90%, 100% { opacity: .85; transform: translate(-5px, 1px); }
+  }
   @media (prefers-reduced-motion: reduce) {
     .logoWrap::before, .logoWrap img, .logoWrap .ghost { animation: none; }
     .logoWrap .ghost { display: none; }
+    .cutsceneGhost { animation: none !important; opacity: .7 !important; transform: none !important; }
   }
   /* Scritta "loading" sotto il logo — piccola, bianca su nero, nello stesso
      stile della UI vera del gioco (font.js: un sans grottesco/geometrico,
