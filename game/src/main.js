@@ -1951,6 +1951,13 @@ export async function mountMatch(ctx, params = {}) {
     applyLoadedData(result.data);
     picked = null;
     message = "game loaded from file"; messageT = 3;
+    // Valore di ritorno (`true`/`undefined`): il chiamante dal menu di pausa
+    // lo ignora (fuoco e dimentica, come sempre), ma la schermata di game
+    // over (input.onTap, sotto) ne ha bisogno per sapere QUANDO chiudersi —
+    // niente da fare finche' la Promise non si risolve, e solo se il
+    // caricamento e' andato davvero a buon fine (non su un dialog annullato
+    // o un file non valido, gia' usciti sopra con un `return` senza valore).
+    return true;
   }
   seedChies();
   seedTutorialBuildings();
@@ -2947,41 +2954,51 @@ export async function mountMatch(ctx, params = {}) {
    * il canvas gia' disegnato (`pauseBlur.blurScreen()`) e ci disegna sopra.
    * Chiamata FUORI dal batch GUI appena chiuso, stessa ragione li' spiegata.
    *
-   * Sconfitta: un'introduzione (buio crescente su `introDur` secondi, sotto
-   * — per "oil" anche il mondo catturato che scivola verso il basso,
-   * un solo `draw()` traslato invece di una vera fisica di caduta: nessun
-   * equivalente da imitare, STUDIO.md, e' tutto "nostro") prima del pannello
-   * vero e proprio — `outcomeButtons` resta vuoto (quindi onTap non risponde
-   * a nessun tocco, sotto) finche' l'introduzione non e' finita. Vittoria:
-   * nessuna introduzione, lo stesso sfumato/oscuramento leggero del menu di
-   * pausa — la partita continua sotto, non e' una fine.
+   * Sconfitta "chies" (la chiesa distrutta): crossfade verso il nero su
+   * 1.2s, invariato. Sconfitta "oil" (l'olio esaurito): [Bug corretto,
+   * richiesto dall'autore: "uno screenshot che trasla e' un po' triste"]
+   * NON cattura piu' una schermata e la trasla — il mondo vero sta gia'
+   * cadendo da solo (`crashFallY`/`oilCrash`, sopra: applicato dentro
+   * `frameList()` piu' sopra, PRIMA che questa funzione giri nello stesso
+   * frame), quindi qui non c'e' nulla da disegnare finche' `OIL_CRASH_INTRO_DUR`
+   * non e' passato — il mondo gia' disegnato (con la citta' che sprofonda e
+   * il cielo che continua, `skyAlive` sopra) resta visibile cosi' com'e',
+   * senza sovrapposizioni. `outcomeButtons` resta vuoto in entrambi i casi
+   * finche' l'introduzione non e' finita — nessun tocco fa niente prima di
+   * allora, il pannello va guardato fino in fondo. Vittoria: nessuna
+   * introduzione, lo stesso sfumato/oscuramento leggero del menu di pausa —
+   * la partita continua sotto, non e' una fine.
    */
   function drawOutcomeOverlay() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const defeat = outcome.kind === "defeat";
+    const oilCrash = defeat && outcome.reason === "oil";
+    if (oilCrash && outcome.t < OIL_CRASH_INTRO_DUR) {
+      outcomeButtons = [];
+      return;
+    }
     const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
     // v0/v1 scambiati: copyTexImage2D cattura dal framebuffer di default,
     // origine in basso a sinistra — stesso motivo di drawPauseOverlay() sopra.
     const worldFrame = { tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 };
 
-    const defeat = outcome.kind === "defeat";
     let showPanel = true;
-    if (defeat) {
-      const introDur = outcome.reason === "oil" ? 3 : 1.2;
+    if (oilCrash) {
+      // La citta' e' gia' ben oltre il bordo (OIL_CRASH_INTRO_DUR sopra):
+      // resta solo il cielo (nuvole ancora vive, `skyAlive` sopra) — stesso
+      // "vetro smerigliato" del ramo vittoria sotto (blur leggero + velo
+      // scuro), non il nero pieno di "chies": quello e' la fine della citta'
+      // stessa, questo e' solo cio' che resta sopra di lei.
+      r.draw(worldFrame, 0, 0, 1, 0xffffff, 1);
+      r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+    } else if (defeat) {
+      const introDur = 1.2;
       const k = Math.min(1, outcome.t / introDur);
-      const ease = k * k;   // accelera, non scivola a velocita' costante — "cade"
-      // Base OPACA nera prima di tutto: sia il "buco" lasciato in alto dal
-      // mondo traslato verso il basso (reason "oil") sia il crossfade
-      // (reason "chies") devono rivelare nero, non il frame precedente
-      // ancora nel framebuffer.
+      const ease = k * k;
+      // Base OPACA nera prima di tutto: il crossfade deve rivelare nero, non
+      // il frame precedente ancora nel framebuffer.
       r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 1);
-      if (outcome.reason === "oil") {
-        // A `ease===1` l'immagine e' spinta un'intera altezza schermo sotto
-        // il bordo: niente resta visibile, senza bisogno di sfumarla anche
-        // in trasparenza.
-        r.draw(worldFrame, 0, ease * ch, 1, 0xffffff, 1);
-      } else {
-        r.draw(worldFrame, 0, 0, 1, 0xffffff, 1 - ease);
-      }
+      r.draw(worldFrame, 0, 0, 1, 0xffffff, 1 - ease);
       showPanel = k >= 1;
     } else {
       r.draw(worldFrame, 0, 0, 1, 0xffffff, 1);
@@ -2997,7 +3014,12 @@ export async function mountMatch(ctx, params = {}) {
         ? "The City center, the city's historic building, has been destroyed."
         : "The oil has run out: the rotors have stopped and the platform has crashed.";
       const rows = defeat
-        ? [{ label: "Load game", action: "load" }, { label: "Back to menu", action: "title" }]
+        ? [
+          { label: "Load last save", action: "load" },
+          { label: "Load from file", action: "loadFile" },
+          { label: "Restart level", action: "resetGame" },
+          { label: "Back to menu", action: "title" },
+        ]
         : [{ label: "Keep playing", action: "continue" }];
 
       const textScale = 1.1;
@@ -3372,6 +3394,41 @@ export async function mountMatch(ctx, params = {}) {
   let outcome = null;
   let victoryShown = false;
   let outcomeButtons = [];   // { x, y, w, h, action }, solo quando il pannello e' visibile
+  // Crollo vero della piattaforma (`outcome.reason === "oil"`, sotto) — [C]
+  // r12/Step.gml: appena `oil` tocca 0, un'enorme lista di `with (X) {
+  // action_kill_object(); }` (finestre accese/luci di ogni edificio, auto
+  // `hondaN`, pedoni `soldN`) sparisce all'istante, poi `with (notte_target)
+  // { action_set_gravity(270, 0.04); }` (quasi tutta la citta') e `with
+  // (casca_target) { action_set_gravity(270, 0.04); }` (la piattaforma
+  // stessa, `r120`/`r22`/`r220`/`mudr21`, game/src/platform.js) iniziano a
+  // cadere per davvero — un'accelerazione (270 = verso il basso, GameMaker
+  // y cresce in giu'), non una velocita' fissa: parte piano e accelera.
+  // Nessuna delle due famiglie include mai nuvole/uccelli/mongolfiere/
+  // minacce (STUDIO.md): il cielo non cade mai insieme alla citta'.
+  // Sostituisce la vecchia resa "screenshot che scivola giu'" (un solo
+  // `draw()` traslato, mai un equivalente vero) — richiesto dall'autore:
+  // "uno screenshot che trasla e' un po' triste". `crashVSpeed`/`crashFallY`
+  // sono un SOLO scalare per frame (non un `vspeed` per entita' come
+  // nell'originale): applicato in blocco a ogni voce non-`_sky` del render
+  // (vedi il commento sopra `frameList`, piu' sotto) invece di muovere
+  // davvero `buildings`/`staticWorld` — piu' economico, stesso risultato
+  // visivo dato che tutto cio' che cade lo fa in blocco, alla stessa
+  // velocita'. Resettati a 0 solo quando si esce dalla sconfitta senza
+  // rimontare la room (doLoad()/doLoadFromFile() dal pannello di game over,
+  // sotto) — un `navigate()` vero (Restart/Back to menu) rimonta comunque da
+  // zero, quindi non ha bisogno di un reset esplicito.
+  const CRASH_GRAVITY = 0.04;   // [C] r12/Step.gml: action_set_gravity(270, 0.04) — px/tick^2
+  let crashVSpeed = 0;
+  let crashFallY = 0;
+  // [I] Quanto aspettare (drawOutcomeOverlay() sotto) prima di mostrare il
+  // pannello GAME OVER: nessun timer fisso nel decompilato (li' non esiste
+  // proprio questa schermata, STUDIO.md — "puramente nostra"), quindi
+  // ricavato dalla fisica sopra invece di un numero indovinato: con
+  // CRASH_GRAVITY=0.04, a 6s (360 tick) l'offset e' gia' ~0.02*360^2=2592px
+  // (v(t)=g*t, y(t)=g*t^2/2 in unita' di tick) — piu' di qualunque altezza
+  // di viewport reale anche allo zoom piu' lontano, quindi la citta' e' di
+  // sicuro ben oltre il bordo prima che il pannello compaia.
+  const OIL_CRASH_INTRO_DUR = 6;
 
   // [C] placeholder/Mouse_LeftReleased.gml: `r12.selec` e' il vero selettore
   // di modalita' piazzamento nell'originale (1 = casa, 2 = industria, ...).
@@ -3647,12 +3704,29 @@ export async function mountMatch(ctx, params = {}) {
       // Sconfitta: `outcomeButtons` resta vuoto finche' l'introduzione
       // (buio/caduta, drawOutcomeOverlay()) non e' finita — nessun tocco fa
       // niente prima di allora, il pannello va guardato fino in fondo.
+      // [Nuova funzionalita', richiesta dall'autore: "dopo il game over
+      // avrebbe senso dare due opzioni [in piu']: carica da file o
+      // ricomincia da capo"] Da "Load game"/"Back to menu" a quattro
+      // percorsi distinti — "Load last save" (invariato, l'autosave in
+      // localStorage), "Load from file" (doLoadFromFile(), come dal menu di
+      // pausa — async, chiude la schermata SOLO a caricamento riuscito),
+      // "Restart level" (doResetGame(), lo stesso "Reset game" del menu di
+      // pausa — nessuna conferma qui: le altre tre opzioni sono gia' li'
+      // sotto per chi ha toccato per sbaglio, a differenza del menu di
+      // pausa dove "Reset game" e' l'unica via e quindi merita un passo in
+      // piu'), "Back to menu" (invariato).
       const hit = outcomeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       if (hit?.action === "load") {
         const ok = doLoad();
-        if (ok) { picked = null; outcome = null; }
+        if (ok) { picked = null; outcome = null; crashVSpeed = 0; crashFallY = 0; }
         message = ok ? "game loaded" : "no save found";
         messageT = 3;
+      } else if (hit?.action === "loadFile") {
+        doLoadFromFile().then((ok) => {
+          if (ok) { outcome = null; crashVSpeed = 0; crashFallY = 0; }
+        });
+      } else if (hit?.action === "resetGame") {
+        doResetGame();
       } else if (hit?.action === "title") {
         navigate("menu");
       }
@@ -4424,6 +4498,58 @@ export async function mountMatch(ctx, params = {}) {
     // (drawPauseOverlay()/drawOutcomeOverlay() in fondo al file) puo' restare
     // un post-processo puro invece di dover duplicare la logica di disegno.
     const frozen = paused || outcome?.kind === "defeat";
+    // Crollo per olio esaurito (`outcome`/`crashFallY` sopra) — [C] r12/Step.gml
+    // non fa cadere MAI nuvole/mongolfiere (STUDIO.md, "notte_target"/
+    // "casca_target" non le includono): `skyAlive` le tiene vive anche
+    // mentre il resto e' `frozen`, cosi' il cielo continua a scorrere sopra
+    // la citta' che cade invece di congelarsi con lei. Il combattimento
+    // (minacce/bombe/torrette) NON e' incluso apposta — richiesto
+    // dall'autore: "non avrebbe senso proseguire il combattimento con un
+    // game over" (rischierebbe anche un secondo `outcome`, motivo "chies",
+    // se una bomba uccidesse la chiesa proprio mentre la prima sconfitta e'
+    // gia' in corso) — resta congelato come ogni sconfitta.
+    const oilCrash = outcome?.kind === "defeat" && outcome.reason === "oil";
+    const skyAlive = !frozen || oilCrash;
+    if (oilCrash) {
+      // Stessa integrazione a tick della fisica GameMaker (TICK sopra):
+      // `dt/TICK` e' quanti tick vale questo frame (1 a 60fps, la cadenza
+      // nominale del motore), cosi' `crashVSpeed`/`crashFallY` accumulano
+      // esattamente come l'originale (vspeed += gravity ad ogni tick, poi
+      // y += vspeed) invece di una formula continua indipendente che
+      // andrebbe ritarata a mano.
+      const ticks = dt / TICK;
+      crashVSpeed += CRASH_GRAVITY * ticks;
+      crashFallY += crashVSpeed * ticks;
+    }
+    // Nuvole/uccelli (game/src/atmosphere.js) e mongolfiere (game/src/
+    // balloons.js) — `skyAlive` sopra: le stesse chiamate di sempre, solo
+    // non piu' innestate dentro `if (!frozen)` sotto (che le fermerebbe
+    // anche durante il crollo per olio esaurito, l'unico caso in cui devono
+    // restare vive). [Bug corretto, segnalato dall'autore: "durante il
+    // temporale comparivano una marea di nuvole in piu'"] `!!r12.storm` da
+    // solo lasciava fuori `stormeasy` (match_easy) — ma `nidark_slow`
+    // (game/src/atmosphere.js) e' l'oggetto ORIGINALE dedicato proprio a
+    // quel ramo cosmetico: stessa condizione combinata gia' usata per
+    // stepRain() sotto.
+    if (skyAlive) {
+      stepAtmosphere(atmo, dt, !!(r12.storm || r12.stormeasy));
+      // Mongolfiere (game/src/balloons.js): risorse/spia a intervalli regolari
+      // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
+      // cantiere che casa/industria si porta dietro (spawnato da placeAt(),
+      // solo avanzato qui).
+      stepBalloonSpawner(r12, balloons, dt, buildings);
+      // onStruck: [C] Alarm_5.gml crea "esplo" prima di uccidersi per
+      // fulmine — vedi il commento in stepBalloons() (balloons.js).
+      // onStruck (balloons.js): "esplo" + il lampo del fulmine vero e proprio
+      // (game/src/lightning.js — stessa scelta gia' fatta per gli edifici,
+      // stepStormDamage() sotto), entrambi creati dal decompilato prima che
+      // la mongolfiera si autodistrugga.
+      stepBalloons(balloons, loot, dt, r12, (x, y) => {
+        explosions.push(spawnExplosion(x, y));
+        lightning.push(spawnLightning(x, y));
+      });
+      stepLoot(loot, dt);
+    }
     if (!frozen) {
       stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
       // Ciclo di impalcature dei ruderi sotto ruspa (stepRuinClearing()
@@ -4517,30 +4643,7 @@ export async function mountMatch(ctx, params = {}) {
       stepLights(decorEntities, dt, night, r12);
       stepTransientDecor(dt);
       stepSemaphores(semaphores, dt);
-      // [Bug corretto, segnalato dall'autore: "durante il temporale
-      // comparivano una marea di nuvole in piu'"] `!!r12.storm` da solo
-      // lasciava fuori `stormeasy` (match_easy) — ma `nidark_slow`
-      // (game/src/atmosphere.js) e' l'oggetto ORIGINALE dedicato proprio a
-      // quel ramo cosmetico: stessa condizione combinata gia' usata per
-      // stepRain() sopra.
-      stepAtmosphere(atmo, dt, !!(r12.storm || r12.stormeasy));
       stepPedestrians(pedestrians, dt);
-      // Mongolfiere (game/src/balloons.js): risorse/spia a intervalli regolari
-      // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
-      // cantiere che casa/industria si porta dietro (spawnato da placeAt(),
-      // solo avanzato qui).
-      stepBalloonSpawner(r12, balloons, dt, buildings);
-      // onStruck: [C] Alarm_5.gml crea "esplo" prima di uccidersi per
-      // fulmine — vedi il commento in stepBalloons() (balloons.js).
-      // onStruck (balloons.js): "esplo" + il lampo del fulmine vero e proprio
-      // (game/src/lightning.js — stessa scelta gia' fatta per gli edifici,
-      // stepStormDamage() sopra), entrambi creati dal decompilato prima che
-      // la mongolfiera si autodistrugga.
-      stepBalloons(balloons, loot, dt, r12, (x, y) => {
-        explosions.push(spawnExplosion(x, y));
-        lightning.push(spawnLightning(x, y));
-      });
-      stepLoot(loot, dt);
       // I pulsanti blu delle monete (game/src/coins.js): casa1|2|3/Alarm_4.gml,
       // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
       stepCoinSpawner(buildings, coins, dt, r12);
@@ -4896,8 +4999,14 @@ export async function mountMatch(ctx, params = {}) {
         dynamic.push({ obj: "decor", x: g.x, y: g.y, depth: -5, _f: frameFor("base", glowFrame(s)), _scale: 2, _selfLit: true });
       }
     }
-    for (const c of atmo.clouds) dynamic.push({ obj: "cloud", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr) });
-    for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
+    // `_sky: true` (qui e su ogni altra voce dichiaratamente in volo piu'
+    // sotto — mongolfiere/minacce/proiettili/fumo aereo): esclude la voce
+    // dallo scivolamento verso il basso del crollo per olio esaurito
+    // (`oilCrash`/`crashFallY`, frameList() sotto) — [C] r12/Step.gml,
+    // "notte_target"/"casca_target" (la citta'/la piattaforma) non
+    // includono mai nulla di questo.
+    for (const c of atmo.clouds) dynamic.push({ obj: "cloud", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr), _sky: true });
+    for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr), _sky: true });
     // Pedoni (game/src/pedestrians.js): x/y/depth gia' avanzati da
     // stepPedestrians() sopra.
     for (const p of pedestrians) dynamic.push({ obj: "pedestrian", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
@@ -4907,8 +5016,8 @@ export async function mountMatch(ctx, params = {}) {
     // cadere (obj: "loot", vedi picking sotto) + il pacco di cantiere di
     // casa/industria (obj: "balloon" invece — non cliccabile, sta solo
     // portando materiali a un cantiere, non e' un bersaglio).
-    for (const b of balloons) dynamic.push({ obj: "flyingBalloon", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
-    for (const l of loot) dynamic.push({ obj: "loot", ref: l, x: l.x, y: l.y, depth: l.depth, _f: frameFor(l.spr) });
+    for (const b of balloons) dynamic.push({ obj: "flyingBalloon", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr), _sky: true });
+    for (const l of loot) dynamic.push({ obj: "loot", ref: l, x: l.x, y: l.y, depth: l.depth, _f: frameFor(l.spr), _sky: true });
     // Le monete (game/src/coins.js): "soldfade" anima per davvero (20 frame,
     // stesso schema delle svolte delle auto — frameFor legge il frame vero
     // invece di restare fermo al primo), "soldico" e' statica (un solo frame).
@@ -4958,7 +5067,7 @@ export async function mountMatch(ctx, params = {}) {
     // "di sfondo", STUDIO.md "le minacce vere") e' la stessa `scale` gia'
     // supportata dal renderer per la GUI, qui riusata per la prima volta nel
     // mondo.
-    for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale });
+    for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale, _sky: true });
     // [Bug corretto, segnalato dall'autore: "la depth delle bombe sganciate
     // dai nemici spesso e' troppo bassa e sembra che le bombe volino dietro
     // gli edifici"] **[C]** `bomba1/Create.gml`: `depth = -y - 400`, non
@@ -4973,32 +5082,32 @@ export async function mountMatch(ctx, params = {}) {
     // quasi sempre MINORE della y di un edificio vicino — quindi per quasi
     // tutta la caduta appariva gia' "dietro" l'edificio invece che sopra di
     // lui, l'esatto difetto segnalato.
-    for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y - 400, _f: frameFor(bm.spr) });
+    for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y - 400, _f: frameFor(bm.spr), _sky: true });
     // Pezzi di fusoliera del bombardiere abbattuto (game/src/threats.js,
     // spawnDebris): puramente cosmetici come le bombe, stessa regola di depth.
-    for (const d of debris) dynamic.push({ obj: "decor", x: d.x, y: d.y, depth: -d.y, _f: frameFor(d.spr) });
+    for (const d of debris) dynamic.push({ obj: "decor", x: d.x, y: d.y, depth: -d.y, _f: frameFor(d.spr), _sky: true });
     // Esplosioni (game/src/threats.js): "fica" ha 60 frame veri, uno stop-motion
     // da animare con ex.t (EXPLOSION_FRAME_COUNT) invece del solo frame 0 statico.
     for (const ex of explosions) {
       const frameIdx = Math.min(EXPLOSION_FRAME_COUNT - 1, Math.floor(ex.t / TICK));
-      dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr, frameIdx), _scale: ex.scale });
+      dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr, frameIdx), _scale: ex.scale, _sky: true });
     }
     // Il fuoco vero (game/src/projectiles.js): i razzi del lanciarazzi e i
     // traccianti del gatling. `p.angle` (solo il gatling, projectiles.js/
     // spawnProjectile()) ruota lo sprite come "image_angle = direction" —
     // vedi `_angle` nel loop del layer mondo sopra.
-    for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr), _angle: p.angle });
+    for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr), _angle: p.angle, _sky: true });
     // Fumo di scia (game/src/projectiles.js, spawnSmoko): depth -9000 fisso
     // come le monete blu ([C] smoko/_object.json), ma senza `_selfLit` — un
     // residuo di sparo, non un simbolo dell'interfaccia, si scurisce di
     // notte come qualunque altro decoro.
-    for (const p of trails) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr), _alpha: fadeAlpha(p.t, SMOKO_LIFE) });
+    for (const p of trails) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr), _alpha: fadeAlpha(p.t, SMOKO_LIFE), _sky: true });
     // Scia di fumo degli aerei (game/src/threats.js, spawnAerSmoke): stessa
     // animazione a 70 frame vera di smoke.js (cc2/cc3), ferma sul posto e in
     // crescita (_scale) — a differenza della scia dei proiettili sopra.
     for (const p of aerSmoke) {
       const frameIdx = Math.min(AER_SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
-      dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, AER_SMOKE_LIFE) });
+      dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, AER_SMOKE_LIFE), _sky: true });
     }
     // Fuochi d'artificio sopra chies a Gennaio (game/src/fireworks.js):
     // scintille colorate — nessuno sprite dedicato, `_tint` sceglie il
@@ -5032,8 +5141,35 @@ export async function mountMatch(ctx, params = {}) {
     // edificio di fascia alta o di livello 2+ resterebbe invisibile per
     // sempre invece di comparire (pop-in) appena la sua pagina arriva.
     for (const it of staticWorld) if (!it._f) it._f = frameFor(it.spr);
-    frameList = staticWorld.filter((it) => !(it.obj === "placeholder" && it.consumed))
-      .concat(dynamic).sort(sortWorld);
+    let frameListNext = staticWorld.filter((it) => !(it.obj === "placeholder" && it.consumed)).concat(dynamic);
+    // Crollo per olio esaurito (`oilCrash`/`crashFallY`, sopra) — [C] r12/
+    // Step.gml: prima il kill istantaneo (`_selfLit` — finestre accese,
+    // segnale di potenziamento, bancomat, popup ruspa, semafori, monete: la
+    // stessa famiglia "oilzero_target" del decompilato — oltre ad auto/
+    // pedoni, `honda*`/`sold*` nel decompilato, mai un `_selfLit` ma
+    // comunque nella lista di kill), poi la caduta vera per tutto cio' che
+    // resta e non e' `_sky` (nuvole/mongolfiere/minacce/proiettili/fumo
+    // aereo, marcati sopra — "notte_target"/"casca_target" non li includono
+    // mai). Un solo passaggio invece di muovere davvero ogni entita': `y`/
+    // `depth` spostati in blocco alla stessa velocita' per tutti, coerente
+    // con l'originale (un'unica gravita' per l'intera citta', non fisiche
+    // indipendenti). `depth === 0` (effDepth() sopra: lo traduce da solo in
+    // `-y` ogni volta, la maggior parte degli edifici durante il cantiere lo
+    // lascia proprio a 0 per questo) va lasciato invariato — la `y` gia'
+    // aggiornata basta, effDepth() la rilegge da sola; solo un `depth` GIA'
+    // esplicito (`-b.y`/`-4000`/...) va spostato a mano della stessa
+    // quantita', altrimenti perderebbe la caduta che effDepth() non gli
+    // ricalcolerebbe piu'.
+    if (oilCrash) {
+      frameListNext = frameListNext
+        .filter((it) => !it._selfLit && it.obj !== "car" && it.obj !== "pedestrian")
+        .map((it) => {
+          if (it._sky) return it;
+          const y = it.y + crashFallY;
+          return it.depth === 0 ? { ...it, y } : { ...it, y, depth: it.depth - crashFallY };
+        });
+    }
+    frameList = frameListNext.sort(sortWorld);
 
     // [C] src/objects/placeholder/Create.gml + Mouse_MouseEnter/Leave.gml: il
     // placeholder nasce con sprite "empty" (invisibile) e diventa "phold" (il
