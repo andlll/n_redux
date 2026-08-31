@@ -475,11 +475,28 @@ export async function mountTitle(ctx) {
   // una manciata di frame — lo stesso "sfarfallio" di trasmissione, non
   // testo che cambia. Le keyframe sono gia' globali in index.html (non
   // scope-ate a `.logoWrap`), riusate qui senza duplicarle.
+  // [Bug corretto, segnalato dall'autore: "su desktop la scritta NIMBUS
+  // REDUX e' troppo attaccata ai bottoni sotto"] Il blocco titolo era
+  // dimensionato in `vw` (larghezza viewport) ma posizionato con un `top` in
+  // `vh` (altezza viewport), mentre i tre bottoni sotto (`BUTTONS`, sopra —
+  // sprite di mondo disegnati da camUI) si spostano in verticale SOLO in
+  // funzione dell'altezza: `resize()` sopra fissa lo zoom a `1086/viewH`,
+  // quindi la Y schermo di ogni bottone finisce proporzionale a `viewH` e
+  // basta, MAI a `viewW` (verificato dai dati di scena, `standma` — il primo
+  // bottone — a y=275 mondo, bordo superiore a screenY ~18.1% di viewH per
+  // qualunque aspect ratio). Su un monitor largo e basso la vecchia
+  // dimensione in `vw` faceva CRESCERE il testo senza che il `top` (in vh)
+  // lo compensasse, riducendo lo spazio libero fino a farlo toccare — non
+  // solo un margine stretto per caso, un disaccoppiamento strutturale fra le
+  // due unita'. Ora top/font-size sono TUTTI in `vh`, agganciati alla stessa
+  // unita' che governa davvero la posizione dei bottoni: lo stesso margine
+  // (in proporzione all'altezza) resta garantito a qualunque risoluzione o
+  // rapporto d'aspetto, non solo quella misurata a mano.
   const titleWrap = document.createElement("div");
-  titleWrap.style.cssText = "position:fixed;left:0;right:0;top:max(28px,6vh);text-align:center;" +
+  titleWrap.style.cssText = "position:fixed;left:0;right:0;top:max(16px,3.2vh);text-align:center;" +
     "pointer-events:none;z-index:4;font-family:Montserrat,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;";
-  const NIMBUS_SIZE = "font-size:clamp(34px,7vw,64px);font-weight:800;letter-spacing:0.1em;";
-  const REDUX_SIZE = "font-size:clamp(12px,1.6vw,16px);font-weight:700;letter-spacing:0.5em;margin-top:2px;";
+  const NIMBUS_SIZE = "font-size:clamp(26px,5.2vh,56px);font-weight:800;letter-spacing:0.1em;";
+  const REDUX_SIZE = "font-size:clamp(9px,1.15vh,14px);font-weight:700;letter-spacing:0.5em;margin-top:2px;";
   // Stessi colori/ritardo del secondo strato (`.ghost.blue`, index.html) —
   // il ritardo di 0,06s fra ciano e blu e' quello che da' l'aspetto di uno
   // sdoppiamento vero invece di un semplice lampo bicolore in sincrono.

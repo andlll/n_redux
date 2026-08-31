@@ -2588,6 +2588,22 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       // `up.revealAtEnd` non passano mai di qui con un `pendingDecor` da
       // applicare (il loro applyLevelFinish() sopra gira gia' senza
       // `deferDecor`, `onDecor` e' gia' scattato).
+      // [Bug corretto, segnalato dall'autore: "il cantiere del parco finisce
+      // sotto gli altri edifici, deve avere la stessa depth degli altri
+      // cantieri"] `def.fixedDepth` (oggi solo `parco`, BUILDING_TYPES sopra)
+      // ora si applica solo qui, alla vera fine del cantiere (placeAt(),
+      // main.js, piazza l'edificio a depth 0 come ogni altro): prima di
+      // adesso il parco si ordina per -y come qualunque cantiere in corso,
+      // passando dietro a tutto solo una volta diventato davvero la
+      // scenografia piatta che `fixedDepth` intende tenere in fondo. PRIMA
+      // di applicare `c.pendingDecor` (sotto): lo scatter di alberi/lampioni
+      // del parco (spawnParcoScatter(), main.js) chiama addDecor() che
+      // legge `building.depth` per il proprio depth (`baseDepth`, il
+      // commento su addDecor() in main.js) — se restasse 0 (dinamico) un
+      // istante di piu' il decoro nascerebbe ancorato a `-y` mentre il
+      // parco sotto e' gia' `fixedDepth`, due depth diversi per lo stesso
+      // pezzo di scenografia.
+      if (def.fixedDepth != null) b.depth = def.fixedDepth;
       if (c.pendingDecor !== undefined) { onDecor?.(b, c.pendingDecor); c.pendingDecor = undefined; }
       b.construction = null;
       b.frontSpr = null;

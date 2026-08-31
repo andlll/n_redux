@@ -973,6 +973,18 @@ export async function mountMatch(ctx, params = {}) {
   // "usa e getta" di questo motore) invece di un altro contatore dt-based.
   let buildMenuTagType = null;
   let buildMenuTagUntil = 0;
+  // [Bug corretto, richiesto dall'autore: "quando clicco un edificio ancora
+  // bloccato lo sprite 'level N to unlock' deve comparire mezzo secondo e
+  // sparire in dissolvenza"] Stato dedicato, separato da buildMenuTagType/
+  // Until sopra: quello resta il timer "linger" dell'hover dal vivo (pieno,
+  // sparizione di scatto quando scade — corretto per un dito che scorre e
+  // si solleva), un TAP secco su un bottone gia' bloccato (onTap, sotto)
+  // arma invece questi due — LOCKED_TAP_SHOW_MS pieno seguito da
+  // LOCKED_TAP_FADE_MS di dissolvenza (drawBuildMenuOverlay(), sotto).
+  let lockedTapTagType = null;
+  let lockedTapTagAt = 0;
+  const LOCKED_TAP_SHOW_MS = 500;
+  const LOCKED_TAP_FADE_MS = 400;
 
   // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
   // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
@@ -1408,11 +1420,17 @@ export async function mountMatch(ctx, params = {}) {
     // sempre sopra il terreno), non un depth di mondo da ereditare. Un
     // edificio vero e' un oggetto "di mondo" come chies o gli alberi: deve
     // ordinarsi per la propria y (vedi effDepth() sopra), non restare per
-    // sempre incollato davanti a tutto il resto della mappa. `def.fixedDepth`
-    // (parco, buildings.js — [I] segnalato dall'autore) e' l'eccezione: bassa
-    // scenografia piatta, non un edificio solido, resta sempre "in fondo"
-    // invece di competere per -y con cio' che le passa sopra.
-    const b = placeBuilding(type, anchorX, anchorY, def.fixedDepth ?? 0);
+    // sempre incollato davanti a tutto il resto della mappa.
+    // [Bug corretto, segnalato dall'autore: "il cantiere del parco finisce
+    // ancora sotto gli altri edifici, deve avere la stessa depth degli altri
+    // cantieri"] `def.fixedDepth` (parco, buildings.js) NON va applicato qui:
+    // resta 0 (dinamico, -y come ogni altro cantiere in corso) finche' il
+    // cantiere e' in corso, cosi' il parco in costruzione si ordina per -y
+    // come qualunque altro — applyLevelFinish()/stepConstructions()
+    // (buildings.js) passa a `def.fixedDepth` solo alla vera fine del
+    // cantiere, quando il parco diventa davvero la scenografia piatta che
+    // deve restare sempre "in fondo".
+    const b = placeBuilding(type, anchorX, anchorY, 0);
     // [Bug corretto] `b.tiles`: i lotti REALMENTE consumati da questo
     // edificio (l'intero `cluster` sopra, tocco incluso) salvati sull'
     // istanza stessa — demolishMultiTile()/doLoad() sotto li usano per
@@ -2172,14 +2190,31 @@ export async function mountMatch(ctx, params = {}) {
     while (u > PHASES[i].dur) { u -= PHASES[i].dur; i = (i + 1) % PHASES.length; }
     return { i, u };
   }
+  // [Bug corretto, segnalato dall'autore: "il tint si applica correttamente
+  // al cambio di fase ma poi torna indietro a bianco: deve restare quel
+  // tint finche' non scatta la fase successiva"] Prima interpolava SEMPRE
+  // dalla tinta della fase corrente (`a.rgb`) verso quella della fase
+  // SUCCESSIVA (`b.rgb`) per l'intera durata di ogni fase — corretto per le
+  // fasi "day" (che nell'originale SONO i sotto-eventi di transizione,
+  // AURA_OVERLAY sopra: `ambtr1`/`amb00`, mai fissi), ma sbagliato per
+  // "dawn"/"night": derivavano subito verso il bianco del giorno successivo
+  // per l'intera propria durata invece di restare ferme sulla propria tinta
+  // com'e' invece per l'overlay (`amb0`/`amb2`, "fisso" — vedi i commenti su
+  // AURA_OVERLAY). Ora solo le fasi "day" interpolano (fra la tinta della
+  // fase PRECEDENTE e quella SUCCESSIVA, le uniche due mai diverse da bianco
+  // in questo ciclo), mentre "dawn"/"night" restituiscono la propria `rgb`
+  // ferma per tutta la durata.
   function ambientAt(t) {
     const { i, u } = phaseIndexAt(t);
-    const a = PHASES[i], b = PHASES[(i + 1) % PHASES.length];
-    const k = Math.min(1, u / a.dur);
+    const cur = PHASES[i];
+    if (cur.name !== "day") return { rgb: cur.rgb, label: cur.name };
+    const prev = PHASES[(i - 1 + PHASES.length) % PHASES.length];
+    const next = PHASES[(i + 1) % PHASES.length];
+    const k = Math.min(1, u / cur.dur);
     const s = k * k * (3 - 2 * k);                    // smoothstep
     return {
-      rgb: a.rgb.map((v, j) => v + (b.rgb[j] - v) * s),
-      label: k < 0.75 ? a.name : a.name + " → " + b.name,
+      rgb: prev.rgb.map((v, j) => v + (next.rgb[j] - v) * s),
+      label: s < 0.75 ? prev.name : prev.name + " → " + next.name,
     };
   }
   // [Decisione dell'autore: "il temporale vero creava un sistema
@@ -3019,8 +3054,7 @@ export async function mountMatch(ctx, params = {}) {
     // `input.hover` segue anche un dito che scorre senza sollevarsi
     // (Input._move(), input.js): un "pan" sopra un bottone lo rivela in
     // diretta, aggiornando anche `buildMenuTagType`/`Until` cosi' che
-    // sollevare il dito subito dopo lasci il cartellino ancora un attimo
-    // (stesso timer che un tap secco arma da solo, input.onTap sopra).
+    // sollevare il dito subito dopo lasci il cartellino ancora un attimo.
     // Nessun controllo su `hoverPointerType`: questo overlay esiste solo su
     // mobile (isMobile, buildMenuOpen sopra), il touch e' l'unico caso reale.
     const hoveredTagBtn = input.hover && buildMenuButtons.find((b) => b.type
@@ -3029,16 +3063,37 @@ export async function mountMatch(ctx, params = {}) {
     if (hoveredTagBtn) { buildMenuTagType = hoveredTagBtn.type; buildMenuTagUntil = performance.now() + 2500; }
     const tagBtn = hoveredTagBtn
       ?? (buildMenuTagType && performance.now() < buildMenuTagUntil ? buildMenuButtons.find((b) => b.type === buildMenuTagType) : null);
+    function drawMenuTag(btn, spr, alpha) {
+      const tagFrame = frameFor(spr);
+      if (!tagFrame) return;
+      // Clampato dentro lo schermo (min/max sotto): un bottone sul bordo
+      // sinistro/destro della griglia spingerebbe altrimenti il cartellino
+      // (piu' largo di una singola cella) oltre il bordo del canvas.
+      const tx = Math.min(Math.max(btn.x + btn.w / 2 - (tagFrame.w * COST_TAG_SCALE) / 2, 4), cw - tagFrame.w * COST_TAG_SCALE - 4);
+      const ty = Math.max(btn.y - 8, 4);
+      r.draw(tagFrame, tx, ty, COST_TAG_SCALE, 0xffffff, alpha);
+    }
     if (tagBtn) {
       const locked = buildingLocked(tagBtn.type);
-      const tagFrame = frameFor(locked ? unlockTagSprite(tagBtn.type) : costTagSprite(tagBtn.type, null));
-      if (tagFrame) {
-        // Clampato dentro lo schermo (min/max sotto): un bottone sul bordo
-        // sinistro/destro della griglia spingerebbe altrimenti il cartellino
-        // (piu' largo di una singola cella) oltre il bordo del canvas.
-        const tx = Math.min(Math.max(tagBtn.x + tagBtn.w / 2 - (tagFrame.w * COST_TAG_SCALE) / 2, 4), cw - tagFrame.w * COST_TAG_SCALE - 4);
-        const ty = Math.max(tagBtn.y - 8, 4);
-        r.draw(tagFrame, tx, ty, COST_TAG_SCALE, 0xffffff, 1);
+      drawMenuTag(tagBtn, locked ? unlockTagSprite(tagBtn.type) : costTagSprite(tagBtn.type, null), 1);
+    }
+    // [Bug corretto, richiesto dall'autore: "quando clicco un edificio
+    // ancora bloccato lo sprite 'level N to unlock' deve comparire mezzo
+    // secondo e sparire in dissolvenza"] Stato dedicato (lockedTapTagType/
+    // At, sopra), separato dal cartellino hover appena sopra: un tap secco
+    // su un bottone bloccato lo arma con un timestamp assoluto invece del
+    // "linger" di `buildMenuTagType`/`Until` (pensato per un dito che scorre
+    // e si solleva, non per questo caso) — pieno per LOCKED_TAP_SHOW_MS,
+    // poi dissolto in LOCKED_TAP_FADE_MS invece di sparire di scatto.
+    if (lockedTapTagType) {
+      const elapsed = performance.now() - lockedTapTagAt;
+      const total = LOCKED_TAP_SHOW_MS + LOCKED_TAP_FADE_MS;
+      const btn = elapsed < total && buildMenuButtons.find((b) => b.type === lockedTapTagType);
+      if (btn) {
+        const alpha = elapsed < LOCKED_TAP_SHOW_MS ? 1 : 1 - (elapsed - LOCKED_TAP_SHOW_MS) / LOCKED_TAP_FADE_MS;
+        drawMenuTag(btn, unlockTagSprite(btn.type), alpha);
+      } else {
+        lockedTapTagType = null;
       }
     }
     const backBtn = buildMenuButtons[buildMenuButtons.length - 1];
@@ -3963,13 +4018,14 @@ export async function mountMatch(ctx, params = {}) {
       // messaggio testuale di striscio — troppo poco tempo per leggerlo e
       // nessuno sprite, a differenza del popup vero del decompilato
       // (level2*/leve3tounlo*, unlockTagSprite() sopra). Ora resta APERTO e
-      // arma `buildMenuTagType`/`buildMenuTagUntil` (sopra): drawBuildMenuOverlay()
-      // lo disegna sopra il bottone stesso finche' il timer non scade (o
-      // finche' un dito non ci "passa sopra" di nuovo, live, via input.hover
-      // — vedi il commento li').
+      // arma `lockedTapTagType`/`lockedTapTagAt` (sopra): drawBuildMenuOverlay()
+      // lo disegna sopra il bottone stesso mezzo secondo pieno, poi lo
+      // dissolve (LOCKED_TAP_SHOW_MS/LOCKED_TAP_FADE_MS, sopra) — o finche'
+      // un dito non ci "passa sopra" di nuovo, live, via input.hover, che
+      // resta sul timer/comportamento separato di buildMenuTagType/Until.
       if (hit?.type && buildingLocked(hit.type)) {
-        buildMenuTagType = hit.type;
-        buildMenuTagUntil = performance.now() + 2500;
+        lockedTapTagType = hit.type;
+        lockedTapTagAt = performance.now();
         return;
       }
       if (hit?.type) {
@@ -4936,17 +4992,14 @@ export async function mountMatch(ctx, params = {}) {
       // l'ordine con cui e' stato costruito, STUDIO.md sopra su sortWorld).
       // [Bug corretto, segnalato dall'autore: "le impalcature del parco non
       // devono avere la sua depth, altrimenti se c'e' un edificio sopra
-      // finiscono sotto"] `depth: b.depth` sarebbe stato corretto per ogni
-      // altro tipo (b.depth resta 0 durante il cantiere, ed effDepth() sopra
-      // traduce 0 in -y da solo) ma `parco` e' l'unico con un `fixedDepth`
-      // diverso da zero GIA' dal piazzamento (buildings.js, BUILDING_TYPES.
-      // parco — pensato per tenere INDIETRO la scenografia piatta finita, non
-      // la sua impalcatura durante il cantiere): l'impalcatura ereditava
-      // quello stesso -5 fisso, finendo sempre dietro anche a un edificio
-      // vicino piu' in alto sullo schermo che dovrebbe invece passarle
-      // dietro. L'impalcatura e' un decoro di cantiere come quella di
-      // qualunque altro edificio — sempre -y diretto, mai il `fixedDepth` del
-      // tipo sotto di lei.
+      // finiscono sotto"] `depth: -b.y` esplicito invece di `depth: b.depth`:
+      // l'impalcatura e' un decoro di cantiere come quella di qualunque altro
+      // edificio, sempre -y diretto, mai il `fixedDepth` del tipo sotto di
+      // lei — anche ora che `b.depth` stesso resta 0 durante il cantiere del
+      // parco (def.fixedDepth si applica solo alla vera fine, stepConstructions()
+      // in buildings.js: vedi il commento li'), i due finiscono per
+      // coincidere, ma solo perche' quel fix a monte lo garantisce, non per
+      // costruzione di questa riga — resta esplicito apposta.
       if (b.frontSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.frontSpr) });
       // Impalcatura/gru rotanti del grattacielo (game/src/scaffold.js): decoro
       // puro, si scurisce di notte come ogni altro (nessun `_selfLit`, vedi
@@ -5666,9 +5719,23 @@ export async function mountMatch(ctx, params = {}) {
     const ROW2B_Y = ROW2_Y + 20;
     const clockScale = isMobile ? 0.5 : 0.85;
     const clockPos = isMobile ? { x: barX + 90, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 456, y: barY + 8 };
-    const monthPos = isMobile ? { x: barX + 116, y: ROW2_Y } : { x: barX + 402, y: barY + 19 };
-    const timePos = isMobile ? { x: barX + 116, y: ROW2B_Y } : { x: barX + 484, y: barY + 19 };
-    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 528, y: barY + 5 };
+    // [Bug corretto, segnalato dall'autore: "le icone a destra sono
+    // disallineate — prima l'orologio (allineato con le altre icone), poi
+    // mese e anno incolonnati, poi la faccina (allineata con le altre
+    // icone)"] Su desktop mese e anno finivano appaiati sulla STESSA riga
+    // (`barY+19` per entrambi) invece che impilati, e mese partiva PRIMA
+    // dell'orologio (x=402 contro i 456 dell'orologio, che quindi compariva
+    // in mezzo alla data invece che davanti a lei) — l'ordine giusto (vedi
+    // sopra, gia' corretto per la seconda riga mobile) non era mai stato
+    // applicato alla riga unica desktop. DATE_COL_X sta dopo l'orologio
+    // (che a `clockScale` finisce verso x=487); mese e anno condividono
+    // adesso la stessa colonna, mese sopra (`barY+3`) e anno sotto
+    // (`barY+21`, stesso passo di riga ~18px della coppia mobile ROW2/
+    // ROW2B) invece che fianco a fianco.
+    const DATE_COL_X = barX + 500;
+    const monthPos = isMobile ? { x: barX + 116, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 3 };
+    const timePos = isMobile ? { x: barX + 116, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 21 };
+    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 552, y: barY + 5 };
     if (!hideResourceText) {
       drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
     }
@@ -5727,12 +5794,23 @@ export async function mountMatch(ctx, params = {}) {
     // nuovo se torna a zero (es. spesa tutta sui fari, platform.js): nessuno
     // stato "mai raccolta" da tracciare a parte, l'icona segue semplicemente
     // se il giocatore ne possiede almeno una in questo istante.
+    // [Bug corretto, richiesto dall'autore: "su desktop c'e' spazio,
+    // spostiamo il contatore gemme a destra della faccina, sempre allineato
+    // con le altre risorse"] Su mobile resta sotto (`barX-6, barY+48` — la
+    // riga scorre gia' stretta con mese/anno/faccina impilati, nessun altro
+    // posto dove metterlo); su desktop invece la riga unica di pop/olio/
+    // energia/denaro/orologio/data/faccina (sopra) ha gia' spazio libero a
+    // destra della faccina — il contatore la segue sulla STESSA riga invece
+    // di finire isolato sotto, come ogni altra risorsa qui.
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
+      const crysPos = isMobile ? { x: barX - 6, y: barY + 48 } : { x: barX + 600, y: barY + 10 };
+      const crysScale = isMobile ? 0.9 : 0.75;
+      const crysTextPos = isMobile ? { x: barX + 34, y: barY + 77 } : { x: barX + 636, y: barY + 19 };
       r.setColorize(iconsDark);
-      if (!hideResourceIcons && crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
+      if (!hideResourceIcons && crysFrame) r.draw(crysFrame, crysPos.x, crysPos.y, crysScale, 0xffffff, 1);
       r.setColorize(false);
-      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
+      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), crysTextPos.x, crysTextPos.y, { size: 15, align: "left", color: barTextColor });
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
