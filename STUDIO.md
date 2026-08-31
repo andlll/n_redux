@@ -3801,3 +3801,147 @@ paragrafo 8.
   committato) seguito da `npm run build`, poi menu -> avvio
   `match_easy` in Chromium headless — stesso identico comportamento,
   zero errori (a parte il consueto 404 di `/favicon.ico`, ininfluente).
+
+- **Nota di manutenzione**: questo file non e' stato aggiornato di pari
+  passo col codice per una sessantina di commit dopo la voce sopra (bundle
+  JS) — nel frattempo sono arrivati un game over fisico vero (sostituisce
+  l'effetto "screenshot che scivola" descritto altrove in questo
+  documento), un sistema ponti/navi/fari completo (`game/src/bridges.js`,
+  mai citato qui), la cache texture per-room (`game/src/assets.js`,
+  chiude un "non ancora fatto" che non era stato più segnato), l'intera
+  cutscene del tutorial (`blacker1/12/2`, dichiarata sopra "deviazione
+  concordata, non riprodotta" — invece portata per intero), la rimozione
+  del sottomenu "vista", il redesign a griglia del selettore edifici
+  mobile, autosave, modalita' sandbox, traduzione inglese dell'interfaccia.
+  Prima di fidarsi di una voce di questo file per una feature UI/gameplay
+  già "vecchia", conviene controllare il codice vero — questo file resta
+  affidabile per la ricostruzione del decompilato (le parti **[C]**), che
+  non cambia col tempo, meno per "cosa fa oggi il motore".
+
+- **Le ultime variabili "non chiare" di §4/§6 (`noemi`, `dara`, `hap`,
+  `wewe`, `upp`, `hc`, e i globali `figx`/`figy`), più `autocore` (§4,
+  gruppo "Tecnologie") — risolte leggendo `r12`/`hyposet(_start)`/
+  `iconic_box` per bene.** `hap`/`wewe`/`upp` erano gia' state chiuse
+  altrove in questo stesso file (rispettivamente: felicita' tracciata per
+  quasi ogni edificio, "peso della piattaforma volante" non
+  "inquinamento", 0 confermato da `hapware/Create.gml`) — restavano
+  davvero aperte solo queste cinque:
+  - **`noemi`** (r12, contatore 0..4): **[C]** `r12/KeyPress_N|O|E|M|I.gml`
+    — non e' un campo di gioco, e' il rilevatore di un CHEAT CODE da
+    tastiera. Le lettere N-O-E-M-I premute in sequenza fanno avanzare il
+    contatore di uno scatto ciascuna; un tasto sbagliato (o una lettera
+    fuori sequenza) lo azzera (`action_if_variable(noemi, N, 0)` per la
+    lettera N-esima, altrimenti `noemi=0`). Le singole lettere sono ANCHE
+    scorciatoie di debug indipendenti dalla sequenza: O/E/I cambiano
+    `r12.selec` (l'attrezzo selezionato) a valori "segreti" 63/2/62. A
+    sequenza completa (`KeyPress_I`, `noemi==4`) distrugge i due fari
+    (`faro1`/`faro2` — lo stesso sistema di `game/src/platform.js`) e
+    piazza in un colpo solo un secondo set di pezzi piattaforma/ponte
+    (`r22`, `r32`, `mudr21/31/32/33/34`, `moto2`/`moto2a`/`moto12`,
+    `bridge_des`/`bridge_des2`/`bridge_sin` — lo stesso sistema di
+    `game/src/bridges.js`, non ancora citato altrove in questo file
+    — `robbobaseobj`): un cheat per saltare a una piattaforma già
+    sviluppata durante i test dell'autore originale, non un evento
+    raggiungibile giocando normalmente. **[Decisione]**: non va portato —
+    nessuna tastiera nel nostro input touch-first (§7), ed e' comunque
+    debug tooling dell'autore originale, non contenuto per il giocatore.
+  - **`dara`** (r12, flag 0/1): **[C]** `r12/Create.gml` (`dara=0`) +
+    `r12/Step.gml` (gated `match`/non-`storm`) — la guardia "one-shot" che
+    impedisce al trigger "olio esaurito → crollo" di scattare più di una
+    volta (mette `dara=1`, `ele=-100`, distrugge auto/pedoni/decoro con
+    `with (...) action_kill_object()`, prima della vera sequenza di crollo
+    fisico più sotto nello stesso `Step.gml`, `oilzero_target`/
+    `notte_target`/`casca_target` — lo stesso trio già citato altrove in
+    questo file). **RISOLTO nel motore attuale, nessun lavoro da fare**:
+    `!outcome` (`main.js`, il controllo prima di
+    `outcome = { kind: "defeat", reason: "oil", ... }`) fa esattamente lo
+    stesso lavoro — l'esistenza di `outcome` è già la guardia one-shot,
+    `dara` non ha bisogno di un campo dedicato in `state.js`.
+  - **`hc`** (globale, 0/1): **[C]** `iconic_box/Mouse_MouseEnter|
+    Leave.gml` — il flag "il mouse sta sopra la barra risorse" (hover),
+    letto da `repre`/`hapware`/`crysmenu`/`crysrepre` per scegliere fra lo
+    sprite normale e la variante `_hc` (evidenziata) — la stessa
+    `icone_orizz_hc` già citata altrove in questo file come "stato hover,
+    non riprodotto". **RISOLTO come non-applicabile**: nessun concetto di
+    hover in un input touch-first, stessa decisione già presa lì.
+  - **`figx`/`figy`** (globali): **[C]** `hyposet(_start)/Create.gml` —
+    `display_get_width()`/`display_get_height()`, la risoluzione FISICA
+    del monitor (non la finestra di gioco), letta una sola volta
+    all'avvio e usata solo per `window_set_size()` su desktop/Android
+    (bootstrap della finestra nativa, `os_type==4`/`os_type==0`).
+    **RISOLTO come non-applicabile**: un port web non ha una finestra
+    nativa da ridimensionare — `resize()` (già in uso in `main.js`/
+    `title.js`) legge `canvas.clientWidth/clientHeight` dal browser,
+    l'equivalente diretto.
+  - **`autocore`** (r12, flag 0/1): **[C]** `r12/Alarm_4.gml` — specchio
+    di "lo spawner di `air` sta creando un nemico in questo tick"
+    (`ondan>0`, lo stesso contatore ondata già in uso in
+    `game/src/threats.js`), scritto ad ogni tick ma **mai letto da
+    nessun'altra parte, verificato su tutto `src/objects/`**: codice morto
+    già nel gioco originale, non solo nel nostro port. `state.js` lo
+    dichiara comunque per fedeltà del campo (`autocore: 0`) ma non ha
+    alcun comportamento visibile a cui collegarlo: non e' un gap, è già
+    completo così com'è.
+
+- **`nifast` — lo spawner di nuvole veloci di `match`, letto per bene:
+  pronto per essere collegato ad `atmosphere.js` in una sessione futura.**
+  Confronto riga per riga fra `ni`/`nidark`/`nidark_slow`/`nifast` (le
+  quattro famiglie di nuvole del decompilato — `game/src/atmosphere.js`
+  ne implementa già due, `ni` chiare e `nidark`/`nidark_slow` scure da
+  tempesta, quest'ultime per inferenza **[I]** perché all'epoca il GML
+  vero non era ancora estratto — lo È adesso, `src/objects/nidark(_slow)/
+  *.gml` esiste: da riverificare in una sessione dedicata alle nuvole,
+  non fatto qui) chiarisce cosa manca davvero per l'ultima, `nifast`.
+  **[C]** `r12/Alarm_0.gml` (lo stesso alarm che già crea `birb`/
+  `birbcluster`/`ni`/`nidark`/`nidark_slow`, ogni 140 tick): quando NON
+  c'è temporale (`storm==0 && stormeasy==0`), un ramo sceglie fra due
+  famiglie di nuvole diurne con la stessa variabile 736 già nota altrove
+  in questo file per distinguere `match`/`match_easy` (1 su `match_easy`,
+  0 su `match`) — confermato qui incrociando le coordinate: le 4
+  posizioni del ramo vero su 736==1, (-350,38)/(-450,526)/(470,982)/
+  (-210,1132), sono ESATTAMENTE `CLOUD_SPAWNS` di `atmosphere.js`
+  (commentate lì "ramo match_easy"); il ramo opposto — 4 posizioni
+  DIVERSE, (940,-305)/(1735,-298)/(2200,82)/(2450,700) — è `nifast`, mai
+  portato, esclusivo di `match`. **Nota per l'implementazione**: oggi
+  `stepAtmosphere()`/`spawnClouds()` non ricevono nessuna informazione
+  sulla room — chiamate identiche da `main.js` (match/match_easy/
+  tutorial) e da `title.js` (lo sfondo del menu, che raffigura proprio
+  `match`) — quindi il motore attuale fa nascere clouds "ni" ovunque,
+  `match` incluso: non solo `nifast` manca, lo spawn delle nuvole chiare
+  non e' ancora room-aware affatto. Da tenere a mente: **[C]**
+  `r12/Step.gml` (nota altrove in questo file sul nudge di `honda3`)
+  tratta `tutorial` come "stesso ramo di `match`" (736==0) per altri
+  effetti — quindi la room giusta per `nifast` e' probabilmente
+  "chiunque non sia `match_easy`" (`scene.name !== "match_easy"`), non
+  solo `scene.name === "match"` — da verificare quando si implementa,
+  non assunto per certo qui.
+  `nifast/Create.gml`, letto riga per riga: **[C]**
+    1. 50% di autodistruggersi ISTANTANEAMENTE (`action_if_dice(2)`,
+       prima ancora di configurare sprite/moto) — meta' delle 4 posizioni
+       non produce una nuvola in un dato ciclo di spawn.
+    2. Sprite `n2` (stesso sprite di `ni`, nessun art dedicato), animato
+       (`action_sprite_set(n2, 0, 1)`, `image_speed=1`).
+    3. Moto a direzione 30° (la stessa diagonale di ogni nuvola/minaccia
+       del gioco) ma velocità **negativa**, `irandom_range(-8, -14)` —
+       GameMaker interpreta un `action_set_motion` con velocità negativa
+       come la direzione OPPOSTA alla stessa magnitudine: viaggia quindi
+       a 210°, diagonale INVERSA rispetto a `ni` (velocità sempre
+       positiva, 4 o 7) — da qui il nome "fast" (8-14 contro 4-7) e la
+       direzione contraria.
+    4. Un salto di posizione RELATIVO immediato (`action_set_relative(1)`
+       + `action_move_to`, +100..300 x, ±100 y) applicato UNA SOLA VOLTA
+       al momento dello spawn, prima che la moto abbia effetto — la
+       nuvola appare quindi leggermente spostata dal punto nominale
+       sopra, mai esattamente su di esso.
+    5. 50% di cambiare sprite a `n3` (la stessa variante a dado 50/50 di
+       `ni`).
+    6. Autodistruzione dopo 1200 tick (20s, `Alarm_0`) — identica a `ni`.
+  Nessuna logica mancante o poco chiara: `nifast` è letteralmente `ni` con
+  velocità negativa/più alta, un salto di posizione in più, e la stessa
+  soglia di sopravvivenza 50% (solo valutata all'inizio invece che alla
+  fine — stesso risultato). **Resta un `[da fare]` puro, nessuna incognita
+  residua**: passare un flag di room a `stepAtmosphere()`/`spawnClouds()`
+  (`main.js` e `title.js`, entrambi i chiamanti), aggiungere
+  `NIFAST_SPAWNS`/una variante di `spawnClouds()` con velocità negativa
+  8-14 e il salto di posizione relativo, e condizionare la scelta
+  `ni` vs `nifast` sulla room invece che spawnare sempre `ni`.
