@@ -176,11 +176,17 @@ export function load(sceneName) {
 // modificare a mano, un JSON malformato o mancante ricade semplicemente sui
 // default.
 const AUTOSAVE_SETTINGS_KEY = "nimbus-autosave";
-// Salva SOLO in situazioni non critiche finche' il giocatore non lo chiede
-// esplicitamente — stesso spirito del blocco gia' in vigore per Salva/Salva
-// su file (main.js, criticalSaveReason()), qui di default anche per
-// l'automatico.
-const DEFAULT_AUTOSAVE_SETTINGS = { enabled: false, intervalMin: 5, duringAttacks: false, duringLowOil: false };
+// [Nuova funzionalita', richiesta dall'autore: "attiviamola di default con
+// intervallo di 5 minuti"] `enabled` era `false`: l'autosave era un opt-in
+// che il giocatore doveva scoprire e accendere da solo in "Saving options"
+// — ora e' ON da subito per ogni partita nuova (chi ha gia' un proprio
+// `nimbus-autosave` in localStorage non e' toccato, loadAutosaveSettings()
+// sotto legge sempre il valore salvato quando c'e' gia'). `intervalMin`
+// era gia' 5, invariato. `duringAttacks`/`duringLowOil` restano `false`:
+// quella cautela (mai salvare in una situazione critica finche' non lo
+// chiede esplicitamente, stesso spirito di criticalSaveReason() in main.js)
+// non cambia solo perche' l'autosave stesso e' ora sempre attivo.
+const DEFAULT_AUTOSAVE_SETTINGS = { enabled: true, intervalMin: 5, duringAttacks: false, duringLowOil: false };
 
 export function loadAutosaveSettings() {
   try {

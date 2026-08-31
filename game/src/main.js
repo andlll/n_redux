@@ -2513,10 +2513,13 @@ export async function mountMatch(ctx, params = {}) {
    * Menu di pausa (`paused`, sopra): cattura il canvas gia' disegnato per
    * questo frame (il mondo, congelato — la simulazione non e' avanzata) e lo
    * sfuma con `PauseBlur.blurScreen()` (game/src/gl.js), poi ci disegna sopra
-   * un oscuramento leggero + un pannello con titolo e i bottoni (Riprendi/
-   * Salva/Carica in localStorage, riusando `doSave()`/`doLoad()` gia'
-   * esistenti per S/L da tastiera; Salva/Carica su FILE, doSaveToFile()/
-   * doLoadFromFile() — vedi il commento su `fileHandle` piu' sopra).
+   * un oscuramento leggero + un pannello con titolo e i bottoni (Riprendi;
+   * Salva/Carica su FILE, doSaveToFile()/doLoadFromFile() — vedi il commento
+   * su `fileHandle` piu' sopra; Reset game; Saving options — l'autosave e'
+   * ON di default ora, save.js/DEFAULT_AUTOSAVE_SETTINGS, quindi niente piu'
+   * quicksave/quickload manuali in localStorage qui: sarebbero stati solo un
+   * doppione, `doSave()`/`doLoad()` restano comunque per l'autosalvataggio
+   * vero/il debug hook `window.__nimbus`).
    * Nessun equivalente nel decompilato (STUDIO.md, `paused` sopra): puramente
    * nostro.
    *
@@ -2542,15 +2545,24 @@ export async function mountMatch(ctx, params = {}) {
     // un mondo comunque colorato/luminoso.
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
-    // "Save game"/"Load game": quicksave rapido in localStorage. "Save to
-    // file"/"Load from file": il salvataggio vero e portabile (save.js/
-    // saveToFile()/loadFromFile()) — vedi il commento su `fileHandle` sopra
-    // per come i due si incontrano. "Saving options" apre il sotto-pannello
-    // dell'autosalvataggio (drawSavingOptionsOverlay(), pauseSubmenu sopra).
+    // [Bug corretto, richiesto dall'autore: "l'autosave e' ora attivo di
+    // default (save.js, DEFAULT_AUTOSAVE_SETTINGS), rimuoviamo i due
+    // pulsanti di quicksave/quickload manuali dal menu di pausa"] "Save
+    // game"/"Load game" (localStorage, doSave()/doLoad() sotto) restavano
+    // solo un doppione una volta che il salvataggio automatico copre gia' il
+    // caso — chi vuole ancora un salvataggio ESPLICITO, portabile, ha
+    // comunque "Save to file"/"Load from file" (save.js/saveToFile()/
+    // loadFromFile() — vedi il commento su `fileHandle` sopra per come i due
+    // percorsi si incontrano). `doSave()`/`doLoad()` restano invariate: le
+    // usa ancora stepAutosave() (sotto) per l'autosalvataggio vero, e
+    // doLoad() resta anche il tasto "Load game" della schermata di
+    // sconfitta (drawOutcomeOverlay() piu' sotto — quella non e' stata
+    // toccata, "carica l'ultimo autosave dopo essere morti" resta un
+    // percorso a se', non un doppione di questo menu). "Saving options"
+    // apre il sotto-pannello dell'autosalvataggio (drawSavingOptionsOverlay(),
+    // pauseSubmenu sopra) per chi vuole spegnerlo/regolarlo.
     const rows = [
       { label: "Resume", action: "resume" },
-      { label: "Save game", action: "save" },
-      { label: "Load game", action: "load" },
       { label: "Save to file", action: "saveFile" },
       { label: "Load from file", action: "loadFile" },
       { label: "Saving options", action: "savingOptions" },
@@ -3707,12 +3719,6 @@ export async function mountMatch(ctx, params = {}) {
       if (hit?.action === "resume") {
         paused = false;
         pauseSubmenu = null;
-      } else if (hit?.action === "save") {
-        doSave();   // messaggio (incluso il blocco su situazione critica) gestito dentro
-      } else if (hit?.action === "load") {
-        const ok = doLoad();
-        if (ok) picked = null;
-        message = ok ? "game loaded" : "no save found"; messageT = 3;
       } else if (hit?.action === "saveFile") {
         doSaveToFile();   // async, messaggio gestito dentro (fuoco e dimentica)
       } else if (hit?.action === "loadFile") {
@@ -6130,9 +6136,11 @@ export async function mountMatch(ctx, params = {}) {
 
     // Icona "salvataggio in corso" (saveIconT/showSaveIcon(), sopra) —
     // ultimo layer disegnato, sopra ANCHE al menu di pausa/fine partita (non
-    // solo al mondo): un salvataggio manuale premuto da dentro il menu di
-    // pausa stesso (bottone "Save game") deve restare visibile, non
-    // sparire sotto lo sfumato/pannello appena disegnato sopra di lui.
+    // solo al mondo): stepAutosave() (sopra) gira SEMPRE, anche a
+    // simulazione ferma (`paused`, come `outcome.t` poco sopra) — un
+    // autosalvataggio che scatta proprio mentre il menu di pausa e' aperto
+    // deve restare visibile, non sparire sotto lo sfumato/pannello appena
+    // disegnato sopra di lui.
     // Angolo in alto a destra, lontano dalla barra risorse (in alto a
     // sinistra, gia' stretta su schermi piccoli — STUDIO.md, il denaro si
     // taglia gia' al bordo su alcuni telefoni) cosi' non la sovrappone mai.
