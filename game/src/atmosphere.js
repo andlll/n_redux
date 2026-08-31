@@ -55,6 +55,43 @@ function spawnClouds(atmo) {
   }
 }
 
+// [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Le nuvole veloci
+// esclusive di `match` (mai `match_easy`) — **[C]** `nifast/Create.gml`,
+// riletto riga per riga a confronto con `ni` sopra (STUDIO.md ha il diff
+// completo):
+//  1. STESSE 4 posizioni fisse di spawn di `r12/Alarm_0.gml` (il ramo
+//     opposto a `CLOUD_SPAWNS`, mai le stesse coordinate).
+//  2. Meta' delle nuvole si autodistrugge all'istante come `ni` (stesso
+//     `dice(2)`), ma valutato PRIMA di piazzare sprite/moto invece che
+//     dopo — nessuna differenza visibile, stesso identico risultato.
+//  3. Velocita' NEGATIVA, 8-14 (contro 4 o 7 di `ni`): GameMaker applica
+//     una `action_set_motion` a velocita' negativa nella direzione
+//     OPPOSTA alla stessa magnitudine — qui la stessa diagonale di
+//     `COS30`/`SIN30` (DIR sopra) ma capovolta, un semplice `spd`
+//     negativo essendo `drift()` gia' lineare in `spd`. Da qui il nome
+//     "fast" (8-14 contro 4-7) e la direzione contraria.
+//  4. Uno scarto di posizione RELATIVO applicato una sola volta allo
+//     spawn (+100..300 x, ±100 y) prima che la moto abbia effetto — MAI
+//     esattamente sul punto nominale sopra.
+//  5. Sprite: SEMPRE `n2` all'inizio (mai `n1`, a differenza di `ni` che
+//     lo mantiene come sprite di default meta' delle volte —
+//     data/sprites.json/`_object.json`: "n1" e' il default dell'oggetto,
+//     mai assegnato esplicitamente qui), poi 50% di passare a `n3`.
+const NIFAST_SPAWNS = [
+  { x: 940, y: -305 }, { x: 1735, y: -298 }, { x: 2200, y: 82 }, { x: 2450, y: 700 },
+];
+function spawnFastClouds(atmo) {
+  for (const p of NIFAST_SPAWNS) {
+    if (dice(2)) continue;   // [C] nifast/Create.gml
+    atmo.clouds.push({
+      x: p.x + 100 + Math.random() * 200, y: p.y + Math.random() * 200 - 100, t: 0,   // [C] il salto relativo allo spawn
+      spd: -(8 + Math.random() * 6),                                           // [C] irandom_range(-8, -14)
+      depth: 20,   // [C] nifast/Create.gml: "depth = -3990; depth = 20;" — la prima e' sempre sovrascritta, mai -3990 per davvero
+      spr: dice(2) ? "n3" : "n2",
+    });
+  }
+}
+
 // [Bug corretto, segnalato dall'autore: "durante il temporale comparivano
 // una marea di nuvole in più"] **[C]** `nidark`/`nidark_slow` (src/objects,
 // letti da `r12` nei rami storm/stormeasy — STUDIO.md §1 "ni significa
@@ -115,12 +152,23 @@ export function createAtmosphere() {
  * Alarm_0.gml non fa nascere le nuvole chiare quando sta piovendo — le
  * "nidark" scure della tempesta le sostituiscono (spawnDarkClouds() sopra),
  * a un ritmo piu' fitto (DARK_CLOUD_CHECK_PERIOD, sopra); gli uccelli invece
- * non dipendono dal meteo, volano comunque. */
-export function stepAtmosphere(atmo, dt, raining) {
+ * non dipendono dal meteo, volano comunque.
+ * `fastClouds` [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"]: **[C]**
+ * r12/Alarm_0.gml sceglie fra `ni`/`nifast` con la stessa variabile 736 gia'
+ * nota altrove (STUDIO.md) per distinguere `match`/`match_easy` — falso
+ * (`ni`, CLOUD_SPAWNS sopra) solo su `match_easy`. `main.js`/`title.js`
+ * (sotto) passano `scene.name !== "match_easy"`: **[I]** include anche
+ * `tutorial`, che nel decompilato condivide lo stesso ramo di `match` per
+ * altri effetti identici (STUDIO.md, il nudge di `honda3`) — mai verificato
+ * pero' un `r12/Alarm_0.gml` PROPRIO di `tutorial` (nessun estratto
+ * disponibile, STUDIO.md), un'inferenza per analogia, non una lettura
+ * diretta. `title.js` la passa sempre `true`: lo sfondo del menu raffigura
+ * `match`, mai `match_easy`. */
+export function stepAtmosphere(atmo, dt, raining, fastClouds = false) {
   atmo.t += dt;
   while (atmo.t >= CHECK_PERIOD) {
     atmo.t -= CHECK_PERIOD;
-    if (!raining) spawnClouds(atmo);
+    if (!raining) { if (fastClouds) spawnFastClouds(atmo); else spawnClouds(atmo); }
     spawnBirds(atmo);
   }
   if (raining) {

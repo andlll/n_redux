@@ -3939,9 +3939,21 @@ paragrafo 8.
   Nessuna logica mancante o poco chiara: `nifast` è letteralmente `ni` con
   velocità negativa/più alta, un salto di posizione in più, e la stessa
   soglia di sopravvivenza 50% (solo valutata all'inizio invece che alla
-  fine — stesso risultato). **Resta un `[da fare]` puro, nessuna incognita
-  residua**: passare un flag di room a `stepAtmosphere()`/`spawnClouds()`
-  (`main.js` e `title.js`, entrambi i chiamanti), aggiungere
-  `NIFAST_SPAWNS`/una variante di `spawnClouds()` con velocità negativa
-  8-14 e il salto di posizione relativo, e condizionare la scelta
-  `ni` vs `nifast` sulla room invece che spawnare sempre `ni`.
+  fine — stesso risultato).
+
+  **Portato nella stessa sessione** (non serviva più aspettare): `atmosphere.js`
+  ha ora `NIFAST_SPAWNS`/`spawnFastClouds()` (stessa forma di
+  `CLOUD_SPAWNS`/`spawnClouds()`, velocità negativa 8-14 e il salto di
+  posizione relativo), `stepAtmosphere()` prende un quarto argomento
+  `fastClouds` che sceglie fra le due, `main.js` lo passa come
+  `roomName !== "match_easy"` e `title.js` (lo sfondo del menu, sempre
+  `match`) sempre `true`. **[Bug corretto durante la verifica]**: il primo
+  tentativo di `spawnFastClouds()` dimenticava `t: 0` sul cloud pushato —
+  `stepAtmosphere()` filtra a fine frame con `c.t < CLOUD_LIFE`, e
+  `undefined < numero` è sempre falso, quindi ogni nuvola veloce spariva
+  nello stesso frame in cui nasceva (zero nuvole su 200 tentativi in un
+  test isolato, prima di trovarlo). Verificato dal vivo (non solo il
+  codice): `match_easy` produce solo `spd` positivi (4 o 7, invariato),
+  `tutorial` solo `spd` negativi (-8..-14, `depth:20`, sprite `n2`/`n3`
+  soli) — confermato via `window.__nimbus.atmo` in Chromium headless,
+  zero errori console sul menu.

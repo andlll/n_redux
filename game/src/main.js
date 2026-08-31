@@ -4631,7 +4631,11 @@ export async function mountMatch(ctx, params = {}) {
     // quel ramo cosmetico: stessa condizione combinata gia' usata per
     // stepRain() sotto.
     if (skyAlive) {
-      stepAtmosphere(atmo, dt, !!(r12.storm || r12.stormeasy));
+      // [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Nuvole veloci
+      // esclusive di `match`/`tutorial` (mai `match_easy` — atmosphere.js,
+      // il commento su `fastClouds` per il dettaglio) invece delle "ni"
+      // lente usate ovunque fino ad ora, indipendentemente dalla room.
+      stepAtmosphere(atmo, dt, !!(r12.storm || r12.stormeasy), roomName !== "match_easy");
       // Mongolfiere (game/src/balloons.js): risorse/spia a intervalli regolari
       // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
       // cantiere che casa/industria si porta dietro (spawnato da placeAt(),

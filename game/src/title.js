@@ -343,7 +343,11 @@ export async function mountTitle(ctx) {
     }
     if (messageT > 0) messageT -= dt;
 
-    stepAtmosphere(atmo, dt, false);
+    // [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Lo sfondo
+    // sfumato di questo menu e' il mare dell'inizio del tutorial (STUDIO.md
+    // §9, "sfondo menu a mare") — stessa famiglia di `match`/`tutorial`, mai
+    // `match_easy`: nuvole veloci, non quelle lente.
+    stepAtmosphere(atmo, dt, false, true);
 
     // camWorld.x/y VANNO risolti prima di updateThreats() sotto: gli riposiziona
     // i nuovi arrivi appena fuori dal bordo sinistro vero di QUESTO frame
