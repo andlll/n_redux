@@ -134,17 +134,13 @@ const SCREEN_MODULES = {
 // Quali room-atlas (assets.js, ~800 MB di texture GPU l'una) servono davvero
 // alla schermata che sta per montare — usata per liberare tutte le altre
 // PRIMA di montarla (vedi la chiamata a evictUnneededRoomAtlases() sotto).
-// "title" carica sia il proprio atlas (i bottoni) sia quello di `match` per
-// lo sfondo sfumato dietro al menu (title.js) — tenerli entrambi e' voluto,
-// e' gia' quello che succede oggi restando fermi sul menu. La risoluzione
-// di `roomParam` -> nome room ripete quella in main.js/mountMatch(): deve
-// restare identica, altrimenti si evincerebbe/terrebbe l'atlas sbagliato.
+// "title" carica il proprio atlas — bottoni/banner PIU' il layer dinamico
+// dietro al menu (mare/aerei/nuvole, tools/23_atlas.py/TITLE_DYNAMIC_SPRITES,
+// title.js) — mai l'atlas di `match` (56 pagine, non serve piu' nessuna
+// citta' dietro al menu). La risoluzione di `roomParam` -> nome room ripete
+// quella in main.js/mountMatch(): deve restare identica, altrimenti si
+// evincerebbe/terrebbe l'atlas sbagliato.
 function neededRoomsFor(screen, params) {
-  // [Bug corretto] `title.js` non carica piu' l'intero atlas di `match` per
-  // lo sfondo del menu (tools/29_title_bg.py, una sola immagine statica
-  // cotta invece — vedi il commento li' e su title.js): tenerlo "needed"
-  // qui impediva a evictUnneededRoomAtlases() di liberarlo mai tornando al
-  // menu dopo una partita, ~800 MB di VRAM tenuti in vita senza motivo.
   if (screen === "menu") return ["title"];
   const roomParam = params.room;
   return [roomParam === "match" || roomParam === "tutorial" ? roomParam : "match_easy"];

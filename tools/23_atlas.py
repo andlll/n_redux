@@ -661,31 +661,25 @@ EXTRA_SPRITES = sorted({s for group in GAMEPLAY_SPRITES.values() for s in group}
 # bottoni.
 GAMEPLAY_ROOMS = {"match", "match_easy", "tutorial"}
 
-# [Decisione dell'autore: "citta' statica ma oggetti volanti e bombardamento
-# funzionanti"] game/src/title.js non carica piu' l'intero atlas di `match`
-# (56 pagine, ~800 MB decompressi — tools/29_title_bg.py ricompone invece la
-# citta'/piattaforma FERMA in un'unica immagine da 264 KB) ma continua a
-# animare sopra di lei auto/aerei-bombardieri-zeppelin/nuvole-uccelli/bombe-
-# esplosioni-detriti-fumo/semafori/turbine — lo stesso layer "dynamic" di
-# prima, mai statico. Serve quindi un atlas dedicato (piccolo, non l'intero
-# GAMEPLAY_SPRITES) solo per QUESTI sprite: gli stessi gruppi gia' curati per
-# match/match_easy (cars/cars2/threats/atmosphere/semaphores/platform — il
-# tier core/deferred di sotto li tratta esattamente come per quelle room,
-# cars2/threats restano "deferred" li' per lo stesso motivo, un bonus per la
-# title screen: il primissimo frame non li aspetta) piu' le 16 "finestre
-# accese" delle case/ville gia' finite (TITLE_LIT_LOTS_GLOW, stessa lista di
-# `LIT_LOTS` in title.js — SOLO la variante "l" col bagliore, l'edificio
-# base e' ormai dentro l'immagine cotta): se `LIT_LOTS` cambia la', va
-# aggiornata anche qui, stesso principio doppio-mantenimento gia' dichiarato
-# per tools/29_title_bg.py.
-TITLE_LIT_LOTS_GLOW = [
-    "vil6l", "c211l", "vil7l", "c111l", "vil8l", "c112l", "vil1l", "c121l",
-    "vil9l", "c131l", "vil4l", "c141l", "vil10l", "c151l", "vil5l", "c122l",
-]
+# [Decisione dell'autore: "sostituisci la citta' dietro al menu con la scena
+# di mare dell'inizio del tutorial, sempre sfumata, con tilt a destra/
+# sinistra (tanto e' una texture seamless); tieni il passaggio di aerei/
+# nuvole ma senza bombardamenti"] game/src/title.js non disegna piu' la
+# citta'/piattaforma ferma di `match` (ne' la vecchia immagine cotta offline
+# da tools/29_title_bg.py, rimosso insieme a lei) — lo sfondo e' invece "tuto_sfondo",
+# LO STESSO tassello di mare a tappeto usato dalla cutscene iniziale del
+# tutorial (game/src/tutorial.js/main.js, fase "planes"): gia' seamless e
+# gia' pensato per essere ripetuto su tutta la canvas, non serve nessuna
+# pre-composizione offline. Sopra di lui resta solo il traffico aereo
+# "di sfondo" (`air`, THREAT_TYPES in game/src/threats.js: non bombarda mai,
+# a differenza di `bombar`/`dirig` che invece SI — esclusi qui apposta,
+# "senza bombardamenti" richiesto dall'autore) + nuvole/uccelli
+# (atmosphere.js). Auto/semafori/turbine/finestre accese erano tutti decoro
+# della citta' rimossa: senza una citta' sotto non hanno piu' senso, quindi
+# via anche i rispettivi gruppi (cars/cars2/semaphores/platform) e
+# TITLE_LIT_LOTS_GLOW.
 TITLE_DYNAMIC_SPRITES = sorted(set(
-    GAMEPLAY_SPRITES["cars"] + GAMEPLAY_SPRITES["cars2"] + GAMEPLAY_SPRITES["threats"]
-    + GAMEPLAY_SPRITES["atmosphere"] + GAMEPLAY_SPRITES["semaphores"] + GAMEPLAY_SPRITES["platform"]
-    + TITLE_LIT_LOTS_GLOW
+    GAMEPLAY_SPRITES["threats"] + GAMEPLAY_SPRITES["atmosphere"] + ["tuto_sfondo"]
 ))
 
 # ------------------------------------------------------- core vs deferred

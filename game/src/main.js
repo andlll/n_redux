@@ -303,6 +303,24 @@ export async function mountMatch(ctx, params = {}) {
   function frameCountFor(sprName) {
     return atlas.sprites[sprName]?.length ?? 1;
   }
+  // Ritaglia un sotto-rettangolo di un frame gia' letto da frameFor() —
+  // stessa tecnica di subFrameRight() in title.js (il marchio mtFUJI
+  // ritagliato da `logigogi`), qui in due varianti: usata sotto per separare
+  // l'icona dell'orologio, cotta insieme alle altre quattro nella stessa
+  // immagine `icone_oriz` (barra risorse), dal resto della barra.
+  // subFrameLeft: tiene [0, pxWidth), stesso ox/oy dell'originale (l'angolo
+  // in alto a sinistra non si sposta, e' il lato destro che si accorcia).
+  function subFrameLeft(f, pxWidth) {
+    const frac = pxWidth / f.w;
+    return { tex: f.tex, u0: f.u0, v0: f.v0, v1: f.v1, u1: f.u0 + (f.u1 - f.u0) * frac, w: pxWidth, h: f.h, ox: f.ox, oy: f.oy };
+  }
+  // subFrameRight: tiene [pxFromLeft, f.w), origine azzerata (ox=0/oy=0) —
+  // un ritaglio non ha piu' l'ancoraggio del frame originale, il chiamante
+  // lo posiziona dal proprio angolo in alto a sinistra.
+  function subFrameRight(f, pxFromLeft) {
+    const frac = pxFromLeft / f.w;
+    return { tex: f.tex, v0: f.v0, v1: f.v1, u0: f.u0 + (f.u1 - f.u0) * frac, u1: f.u1, w: f.w - pxFromLeft, h: f.h, ox: 0, oy: 0 };
+  }
   // [Bug corretto, segnalato dall'autore: "l'area di tap delle strutture di
   // difesa deve coprire tutto l'oggetto (un rettangolo grande come tutte le
   // coordinate dello sprite)"] Il tap sulle torrette (missile/gatling/laser)
@@ -865,6 +883,14 @@ export async function mountMatch(ctx, params = {}) {
   // WEAPONS.laser in projectiles.js.
   let beams = [];
   let r12 = createR12(roomName === "match");
+  // [Nuova funzionalita', richiesta dall'autore: "in tutorial partiamo con
+  // 10000 soldi in piu', altrimenti rischiano di non bastare"] Il tutorial fa
+  // costruire ruderi/case/centrale/parco/missile ben prima che le tasse
+  // raccolte bastino da sole: i 5500 di partenza di createR12() (state.js,
+  // uguali su ogni room) a volte non reggono l'intera sequenza guidata.
+  // `monReal` aggiornato insieme (state.js/clampR12, DEBUG_INFINITE_RESOURCES):
+  // resta il valore genuino "usabile" anche se il debug/sandbox e' spento.
+  if (roomName === "tutorial") { r12.mon += 10000; r12.monReal += 10000; }
   let selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
   // La ruspa (`puruspa`, `selec===11`, STUDIO.md/OTHER_BUILDINGS sotto): tocco
@@ -5451,6 +5477,19 @@ export async function mountMatch(ctx, params = {}) {
     const UI_MARGIN = 8;
     const barFrame = frameFor("icone_oriz");
     const barX = UI_MARGIN, barY = UI_MARGIN;
+    // [Nuova disposizione, richiesta dall'autore: "porta il simbolo
+    // dell'orologio sulla seconda riga insieme a data/felicita'"] `icone_oriz`
+    // cuoce un quinto pittogramma (l'orologio) accodato a pop/olio/energia/
+    // denaro nella STESSA immagine — misurato a mano sulla texture: il denaro
+    // finisce a x=322 (pixel locali del frame), l'orologio comincia a x=401
+    // su 432 totali. CLOCK_CUT_X=395 separa le due meta' (subFrameLeft/
+    // subFrameRight sopra) lasciando solo un piccolo margine prima
+    // dell'icona, non piu' meta' del vuoto: `barRowFrame` (riga 1, le
+    // quattro icone vere) e `clockFrame` (l'orologio isolato, da
+    // ridisegnare altrove) invece dell'immagine intera.
+    const CLOCK_CUT_X = 395;
+    const barRowFrame = barFrame ? subFrameLeft(barFrame, CLOCK_CUT_X) : null;
+    const clockFrame = barFrame ? subFrameRight(barFrame, CLOCK_CUT_X) : null;
     // [Bug corretto, segnalato dall'autore: "quando i pulsanti della GUI
     // diventano bianchi devono diventare bianchi anche quelli della GUI
     // superiore"] `icone_oriz` e' la stessa famiglia di pittogrammi neri
@@ -5473,15 +5512,28 @@ export async function mountMatch(ctx, params = {}) {
     // `barTextTint` di drawText()): drawHtmlText() imposta `color` diretto
     // sull'elemento, non un tint moltiplicato su una texture.
     const barTextColor = iconsDark ? "#ffffff" : "#000000";
+    // [Bug corretto, segnalato dall'autore: "durante la scena del
+    // bombardamento nascondi anche i simboli delle risorse, non solo i
+    // numeri"] Le icone WebGL della barra (barRowFrame/hapFrame/crysFrame/
+    // clockFrame, qui sotto) restano disegnate durante pausa/menu Buildings
+    // apposta: fanno gia' parte dello stesso canvas che pauseBlur()/
+    // drawBuildMenuOverlay() sfumano/oscurano da soli (vedi il commento su
+    // `hideResourceText` sotto). La cutscene iniziale del tutorial e'
+    // diversa: la sua fase centrale ("battle", game/src/tutorial.js) non
+    // disegna NESSUN velo sopra il mondo — il combattimento vero e' visibile
+    // per intero, senza copertura — quindi le icone restavano lì da sole,
+    // senza piu' i numeri accanto (gia' nascosti da `hideResourceText`).
+    // `hideResourceIcons` copre solo questo caso, non pausa/buildMenuOpen.
+    const hideResourceIcons = !!tutorialState?.cutscene;
     r.setColorize(iconsDark);
-    if (barFrame) r.draw(barFrame, barX, barY, 1, 0xffffff, 1);
+    if (!hideResourceIcons && barRowFrame) r.draw(barRowFrame, barX, barY, 1, 0xffffff, 1);
     r.setColorize(false);
     // [Bug corretto, segnalato dall'autore: "in pausa le scritte della UI
     // non si blurrano"] Questi numeri sono elementi HTML veri (drawHtmlText(),
     // sopra), non pixel del canvas: pauseBlur.blurScreen() (drawPauseOverlay(),
     // sopra) cattura e sfuma solo il canvas gia' disegnato, quindi qualunque
     // testo HTML resterebbe nitido SOPRA il pannello di pausa invece di
-    // sfumarsi con tutto il resto. Le icone WebGL della barra (barFrame/
+    // sfumarsi con tutto il resto. Le icone WebGL della barra (barRowFrame/
     // hapFrame/crysFrame, sopra/sotto) restano invece disegnate anche in
     // pausa: fanno gia' parte del canvas catturato, si sfumano da sole.
     // [Bug corretto, segnalato dall'autore: "durante la scena iniziale si
@@ -5489,8 +5541,8 @@ export async function mountMatch(ctx, params = {}) {
     // Buildings del mobile] Stesso identico problema anche durante la
     // cutscene del tutorial (tutorialState.cutscene, sotto: disegna un
     // tassello pieno-schermo SOPRA il canvas, ma DOPO che questa barra e'
-    // gia' stata accodata — copre `barFrame`/hapFrame/crysFrame perche' sono
-    // gia' nello stesso canvas, ma non questi elementi HTML separati) e
+    // gia' stata accodata — copre `barRowFrame`/hapFrame/crysFrame perche'
+    // sono gia' nello stesso canvas, ma non questi elementi HTML separati) e
     // durante drawBuildMenuOverlay() (buildMenuOpen: oscura/sfuma lo stesso
     // canvas ma non puo' toccare il DOM sopra di lui) — in entrambi i casi i
     // numeri nudi restavano leggibili sopra a un fondale che dovrebbe
@@ -5502,24 +5554,52 @@ export async function mountMatch(ctx, params = {}) {
     if (!hideResourceText) for (const [value, x] of stats) {
       drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
     }
-    // Data (mese + anno, game/src/state.js stepCalendar()) e faccina della
-    // felicita' (subito sotto): [Bug corretto, segnalato dall'autore: "su
-    // iPhone la barra risorse compressa per intero e' diventata troppo
-    // piccola"] Nell'originale (e in un tentativo precedente di questa
-    // porting) stavano sulla STESSA riga di pop/olio/energia/denaro sopra,
-    // a x=448..551 — ben oltre la larghezza vera dell'immagine di sfondo
-    // (`icone_oriz`, ~450px, data/sprites.json), quindi su un telefono
-    // stretto finivano fuori schermo (elementi HTML `position:fixed`,
-    // niente wrap automatico). Rimpicciolire l'INTERO blocco con una scala
-    // uniforme li faceva rientrare, ma rendeva illeggibili anche
-    // pop/olio/energia/denaro, che da soli ci stavano gia' comodi. Qui
-    // invece restano a dimensione piena e si spostano su una SECONDA riga
-    // sotto la barra (stessa fascia verticale gia' usata dai cristalli,
-    // sotto), a destra del loro contatore cosi' da non sovrapporsi.
-    const ROW2_Y = barY + 46;
+    // Data (mese + anno, game/src/state.js stepCalendar()), orologio+ora e
+    // faccina della felicita' (subito sotto): [Bug corretto, segnalato
+    // dall'autore: "su iPhone la barra risorse compressa per intero e'
+    // diventata troppo piccola"] Nell'originale (e in un tentativo precedente
+    // di questa porting) stavano sulla STESSA riga di pop/olio/energia/denaro
+    // sopra, a x=448..551 — ben oltre la larghezza vera dell'immagine di
+    // sfondo (`icone_oriz`, ~450px, data/sprites.json), quindi su un telefono
+    // stretto finivano fuori schermo (elementi HTML `position:fixed`, niente
+    // wrap automatico). Rimpicciolire l'INTERO blocco con una scala uniforme
+    // li faceva rientrare, ma rendeva illeggibili anche pop/olio/energia/
+    // denaro, che da soli ci stavano gia' comodi.
+    // [Nuova disposizione, richiesta dall'autore: "la seconda riga con
+    // data/felicita' solo su mobile — porta li' anche l'orologio — su
+    // desktop invece tutto su una riga sola"] Su mobile (isMobile, dove lo
+    // spazio orizzontale e' quello stretto che ha causato il problema sopra)
+    // restano su una SECONDA riga sotto la barra principale, l'orologio
+    // accanto all'ora invece che cotto dentro `icone_oriz` (CLOCK_CUT_X,
+    // sopra). Su desktop non c'e' nessun vincolo di larghezza analogo (la
+    // barra ha gia' spazio a destra del denaro): si accodano invece sulla
+    // STESSA riga 1, un'unica fila come nell'originale.
+    // [Bug corretto durante la verifica visiva: "su mobile riga 2 si
+    // accavallava con l'olio e coi cristalli"] Il vecchio layout impilava
+    // mese/ora una sotto l'altra a x=90/82 (quasi la stessa colonna) e la
+    // faccina restava a ROW2_Y-2 — abbastanza in alto da toccare il numero
+    // dell'olio (barY+19, riga 1) non appena la si allarga per fare posto
+    // all'orologio. Qui mese e orologio+ora condividono la STESSA colonna
+    // (x=90, una sotto l'altra) cosi' l'orologio non finisce sopra al
+    // contatore cristalli (barX-6..~85, barY+48 in su — crysFrame/crysText
+    // sotto), e la faccina si sposta piu' a destra/in basso (x=190,
+    // centrata piu' giu') per non toccare ne' l'olio sopra ne' mese/ora a
+    // sinistra.
+    const ROW2_Y = barY + 50;
+    const ROW2B_Y = ROW2_Y + 22;
+    const monthPos = isMobile ? { x: barX + 90, y: ROW2_Y } : { x: barX + 402, y: barY + 19 };
+    const clockScale = isMobile ? 0.5 : 0.85;
+    const clockPos = isMobile ? { x: barX + 90, y: ROW2B_Y - 9 } : { x: barX + 456, y: barY + 8 };
+    const timePos = isMobile ? { x: barX + 114, y: ROW2B_Y } : { x: barX + 484, y: barY + 19 };
+    const hapPos = isMobile ? { x: barX + 190, y: ROW2_Y + 11 } : { x: barX + 528, y: barY + 5 };
     if (!hideResourceText) {
-      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 90, ROW2_Y, { size: 15, align: "left", color: barTextColor });
-      drawHtmlText(String(Math.round(r12.time)), barX + 82, ROW2_Y + 20, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
+    }
+    r.setColorize(iconsDark);
+    if (!hideResourceIcons && clockFrame) r.draw(clockFrame, clockPos.x, clockPos.y, clockScale, 0xffffff, 1);
+    r.setColorize(false);
+    if (!hideResourceText) {
+      drawHtmlText(String(Math.round(r12.time)), timePos.x, timePos.y, { size: 15, align: "left", color: barTextColor });
     }
     // La "faccina" della felicita' (src/objects/hapware — segnalata
     // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
@@ -5535,12 +5615,12 @@ export async function mountMatch(ctx, params = {}) {
     // Scala **[C]** diretta da hapware/Create|Step.gml: 0.62 fissa (mai
     // moltiplicata per `global.sca`/UI_SCALE in questo motore, stesso
     // trattamento gia' scelto per la barra risorse — STUDIO.md §9, "zero
-    // zoom" sulla UI). Posizione invece NOSTRA (seconda riga, vedi sopra):
-    // l'originale la disegnava sulla stessa riga di pop/olio/energia/denaro,
-    // non ha un equivalente "riga 2" da cui ereditare l'offset.
+    // zoom" sulla UI) su mobile; su desktop (stessa riga di pop/olio/
+    // energia/denaro, vedi sopra) leggermente ridotta per starci in altezza.
     const hapFrame = frameFor(r12.hap >= r12.pop ? "hap3" : "hap1");
+    const hapScale = isMobile ? 0.62 : 0.55;
     r.setColorize(iconsDark);
-    if (hapFrame) r.draw(hapFrame, barX + 160, ROW2_Y - 2, 0.62, 0xffffff, 1);
+    if (!hideResourceIcons && hapFrame) r.draw(hapFrame, hapPos.x, hapPos.y, hapScale, 0xffffff, 1);
     r.setColorize(false);
     // Cristalli (r12.crys: balloons.js, il loot di `monviolo`; platform.js,
     // il gettone lasciato dal monviolo in volo verso il faro) — **[I]**
@@ -5573,7 +5653,7 @@ export async function mountMatch(ctx, params = {}) {
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
       r.setColorize(iconsDark);
-      if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
+      if (!hideResourceIcons && crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
       r.setColorize(false);
       if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
     }

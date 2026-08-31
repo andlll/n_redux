@@ -52,12 +52,6 @@ jobs:
           python3 tools/26_logo.py mount_logo
           python3 tools/24_blit.py mount_logo
 
-      # game/assets/title_city.webp: senza questo passo game/src/title.js
-      # (loadTexture su questo file) non monta affatto il menu principale —
-      # vedi il commento in cima a title.js e la nota in README.md.
-      - name: Rigenera lo sfondo statico della title screen
-        run: python3 tools/29_title_bg.py
-
       # Bundle JS minificato (STUDIO.md, "da PNG a WebP" + il seguito su JS):
       # index.html carica ./dist/app.js, mai versionato (come game/assets/
       # sopra) — senza questo passo il sito pubblicato avrebbe un <script>
