@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -27,7 +27,7 @@ import {
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
-import { save, load, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
+import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
 import { loadFont, drawText, measureText, fitTextScale } from "./font.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
@@ -445,52 +445,102 @@ export async function mountMatch(ctx, params = {}) {
   // rovine non sparivano di colpo"] `ruin1|2|3/Mouse_LeftPressed.gml` non
   // sgombera il rudere all'istante: paga E POI crea `impacasa1r`/`impacasa2r`/
   // `impacasa3r` (STUDIO.md sopra) — lo stesso oggetto, con la stessa identica
-  // catena `Alarm_0..4`, che `tryRuspaRebuild()` (buildings.js) gia' riusa per
-  // ruspare un edificio VIVO: ~30+340+30 tic (~6.7s, action_set_alarm alla
-  // mano) di impalcatura generica per taglia (`ir11`/`ir12` per un rudere di
-  // taglia 1, `ir21`/`ir22` per la 2, `ir31`/`ir32` per la 3 — le stesse
-  // BUILDING_TYPES.casa/industria.construct.steps di un cantiere vero, non
-  // sprite dedicati ai ruderi) prima di sparire (`action_kill_object()`,
-  // l'ultimo Alarm della catena). La decisione dell'autore sopra
-  // (`clearedPlaceholder()`: un lotto libero, non un nuovo edificio) resta
-  // invariata — qui si aggiunge solo la CODA visiva che mancava fra il tap e
-  // lo sgombero vero, non si cambia il risultato finale.
-  const RUIN_CLEAR_TICKS = 30;
-  const RUIN_CLEAR_STEPS = (level) => [
-    { spr: `ir${level}2`, dur: RUIN_CLEAR_TICKS },
-    { spr: `ir${level}1`, dur: 340 },
-    { spr: `ir${level}2`, dur: RUIN_CLEAR_TICKS },
-  ];
+  // catena `Alarm_0..N`, che `tryRuspaRebuild()` (buildings.js) gia' riusa per
+  // ruspare un edificio VIVO: quindi gli STESSI `BUILDING_TYPES.casa.construct/
+  // upgrades[0]/upgrades[1].steps` gia' verificati per quel percorso (diff
+  // riga per riga contro `impacasa{1,2,3}r/f`: stessi sprite `irNN`, stesse
+  // durate, stesso spawn di topper/gru ai tic giusti).
+  //
+  // [Bug corretto, segnalato dall'autore: "le impalcature di demolizione sono
+  // rotte, non compare il pezzo davanti ne' il top"] Una prima versione di
+  // questa coda approssimava la catena a soli 3 passi inventati (sempre lo
+  // stesso sprite del solo lato "r", `ir_1`/`ir_2`) — senza ne' l'impalcatura
+  // "f" in sovraimpressione (`frontSprFor()`, buildings.js) ne' il topper
+  // (`spawn` sui passi veri): nessuno dei due esiste su un rudere con quella
+  // approssimazione. Qui si riusano invece gli step array VERI (sopra),
+  // quindi front track e topper (e le 4 gru della taglia 3,
+  // `addConstructionSpawn()` sotto) tornano gratis, identici a quelli di un
+  // vero cantiere/ruspata su un edificio vivo — `ruspaFirstStepDur` (solo
+  // sulla taglia 1: le taglie 2/3 hanno gia' un primo passo da 30 tic anche
+  // nel cantiere normale, nessun accorciamento da applicare) resta l'unica
+  // differenza dal percorso di `tryRuspaRebuild()`.
+  //
+  // A differenza di un cantiere/upgrade vero pero' un rudere in demolizione
+  // non deve MAI rivelare una casa finita a meta' sequenza — l'originale
+  // stesso non lo fa: ne' `impacasa2r` ne' `impacasa3r` creano mai
+  // un'istanza "casaN", solo il ciclo di sprite fino ad `action_kill_
+  // object()`. Per questo qui non si riusa `stepConstructions()` di
+  // buildings.js (che chiamerebbe `applyLevelFinish()` a `revealAtStep`): si
+  // rilegge `up.steps` a mano, un passo alla volta, fino in fondo all'array.
+  //
+  // [I] Sempre `BUILDING_TYPES.casa`, MAI il tipo originale del rudere:
+  // fedele all'originale, non un'approssimazione nostra — `ruin1/2/3` sono
+  // gli stessi TRE oggetti condivisi da industria/casa/club/villa per
+  // "taglia" (1/2/3, vedi il commento su `ru11..ru34` in
+  // BUILDING_TYPES.industria/casa piu' sopra: "stesso pool... non un rudere
+  // per tipo"), e tutti e tre creano solo `impacasa{1,2,3}r`, mai un
+  // `impaind*`/`impaclub*` dedicato. Resta un gap dichiarato (non nuovo qui,
+  // gia' presente in `ruinRebuildCost()`, buildings.js, che tratta allo
+  // stesso modo ogni livello oltre il 3): i ruderi "taglia 4" di
+  // media/palazzo (`ru41`/`ru41d`, un oggetto ruin4s/ruin4d PROPRIO, mai
+  // riletto) e quelli fuori scala (solare/eolico/monum, ognuno un pool a se')
+  // finiscono comunque qui con gli sprite ir1x/if1x di taglia 1 invece dei
+  // propri — nessuna regressione (stessa approssimazione della versione
+  // precedente di questa funzione), solo non ancora la stessa fedelta' del
+  // percorso taglia 1-3 appena corretto.
+  function ruinClearUp(level) {
+    const def = BUILDING_TYPES.casa;
+    return level <= 1 ? def.construct : def.upgrades[Math.min(level, 3) - 2];
+  }
+  let nextRuinClearId = 1;
   /** Avanza il ciclo di impalcature di ogni rudere in `list` (`ruins` o
-   * `ruinLots`, stessa forma {x,y,level,spr,_f,clearing}) di `dt` secondi —
-   * chiamata ogni frame come stepConstructions() sotto, stesso principio.
-   * `clearing` nasce con `stepIndex: -1` (sotto, al tap): qui al primo
-   * avanzamento utile monta subito il primo sprite invece di aspettare che
-   * scada anche il suo `dur`, cosi' l'impalcatura compare nello stesso frame
-   * del pagamento invece che un frame dopo. A fine catena chiama `onDone`
-   * (main.js, sotto: `clearedPlaceholder()`) e rimuove la voce da `list`. */
+   * `ruinLots`, stessa forma {x,y,level,spr,frontSpr,_f,clearing}) di `dt`
+   * secondi — chiamata ogni frame come stepConstructions() sotto, stesso
+   * principio. `clearing` nasce `{ stepIndex: 0, t: 0 }` (sotto, al tap):
+   * `c.curSpr === undefined` (stesso trucco di stepConstructions()) monta
+   * subito il primo sprite/spawn invece di aspettare che scada anche il suo
+   * `dur`, cosi' l'impalcatura compare nello stesso frame del pagamento
+   * invece che un frame dopo. A fine catena chiama `onDone` (main.js, sotto:
+   * `clearedPlaceholder()`), ripulisce il decoro transitorio (topper/gru,
+   * `c.fb` sotto) e rimuove la voce da `list`.
+   */
   function stepRuinClearing(list, dt, onDone) {
     for (let i = list.length - 1; i >= 0; i--) {
       const entry = list[i];
       const c = entry.clearing;
       if (!c) continue;
-      const steps = RUIN_CLEAR_STEPS(entry.level ?? 1);
-      if (c.stepIndex === -1) {
-        c.stepIndex = 0;
-        entry.spr = steps[0].spr;
-        entry._f = frameFor(entry.spr);
+      const up = ruinClearUp(entry.level ?? 1);
+      // Oggetto "edificio" fittizio, solo per riusare addConstructionSpawn()/
+      // removeTransientDecor()/stepCranes() (main.js/cranes.js) cosi' come
+      // sono invece di duplicarli per un rudere: id proprio (decorEntities
+      // li filtra per buildingId), `depth: 0` (addDecor() lo traduce in -y da
+      // solo, stessa convenzione di ogni edificio vero), `construction: true`
+      // (stepCranes() avanza solo le gru di un "edificio" in cantiere).
+      if (!c.fb) c.fb = { id: `ruinClear${nextRuinClearId++}`, x: entry.x, y: entry.y, depth: 0, type: "casa", construction: true };
+      let cur = up.steps[c.stepIndex];
+      if (c.curSpr === undefined) {
+        c.curSpr = pickSpr(cur.spr);
+        if (cur.spawn) addConstructionSpawn(c.fb, cur.spawn);
       }
+      entry.spr = c.curSpr;
+      entry._f = frameFor(entry.spr);
+      entry.frontSpr = frontSprFor(entry.spr);
       c.t += dt;
-      while (c.t >= steps[c.stepIndex].dur * TICK) {
-        c.t -= steps[c.stepIndex].dur * TICK;
-        c.stepIndex++;
-        if (c.stepIndex >= steps.length) {
-          onDone(entry);
-          list.splice(i, 1);
-          break;
-        }
-        entry.spr = steps[c.stepIndex].spr;
+      const dur = (c.stepIndex === 0 && up.ruspaFirstStepDur != null) ? up.ruspaFirstStepDur : cur.dur;
+      if (c.t < dur * TICK) continue;
+      c.t = 0;
+      c.stepIndex++;
+      if (c.stepIndex < up.steps.length) {
+        cur = up.steps[c.stepIndex];
+        c.curSpr = pickSpr(cur.spr);
+        if (cur.spawn) addConstructionSpawn(c.fb, cur.spawn);
+        entry.spr = c.curSpr;
         entry._f = frameFor(entry.spr);
+        entry.frontSpr = frontSprFor(entry.spr);
+      } else {
+        removeTransientDecor(c.fb);
+        onDone(entry);
+        list.splice(i, 1);
       }
     }
   }
@@ -864,6 +914,19 @@ export async function mountMatch(ctx, params = {}) {
   // sono lo stesso genere di array di `uiButtons`/`bankButtons`.
   let buildMenuOpen = false;
   let buildMenuButtons = [];   // { x, y, w, h, type?, spr? } — niente `type` = "Back"
+  // Cartellino prezzo/"Level N to unlock" della griglia mobile
+  // (drawBuildMenuOverlay(), sotto) — l'equivalente touch dell'hover mouse
+  // della riga scorrevole desktop (uiButtons piu' sotto). `input.hover`
+  // segue anche un dito che scorre SENZA sollevarsi (Input._move(), input.js
+  // — aggiornato ad ogni pointermove, touch incluso, non solo mouse), quindi
+  // "fa pan sopra" un bottone lo rivela gia' in diretta; un tap secco pero'
+  // solleva subito il dito (Input._up(): niente hover per il touch a
+  // contatto perso) — `buildMenuTagType`/`buildMenuTagUntil` tengono vivo il
+  // cartellino ancora un attimo dopo, armati dal tap stesso (onTap, sotto)
+  // con un timestamp assoluto (`performance.now()`, come il resto dei timer
+  // "usa e getta" di questo motore) invece di un altro contatore dt-based.
+  let buildMenuTagType = null;
+  let buildMenuTagUntil = 0;
 
   // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
   // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
@@ -1826,6 +1889,18 @@ export async function mountMatch(ctx, params = {}) {
     if (!data) return false;
     return applyLoadedData(data);
   }
+  // "Reset game" (menu di pausa, drawConfirmResetOverlay() piu' sotto):
+  // ripristina il livello da zero come una partita mai iniziata — cancella
+  // il quicksave localStorage di questa scena (altrimenti "Load game"/il
+  // prossimo autoload dal menu principale riporterebbe indietro lo stato
+  // appena cancellato) e rimonta la stessa room passando per `navigate()`
+  // invece di ricostruire lo stato a mano qui: e' la stessa strada che
+  // porta gia' a uno stato pulito quando si entra la prima volta da
+  // title.js, niente logica di reset duplicata.
+  function doResetGame() {
+    localStorage.removeItem(saveSlotFor(scene.name));
+    navigate("match", { room: roomParam });
+  }
   // Async (save.js/saveToFile() apre un dialog nativo): il chiamante (input.
   // onTap sotto) non aspetta la Promise, aggiorna `message` da dentro questa
   // funzione stessa quando la scrittura finisce — coerente con ogni altro
@@ -1876,6 +1951,13 @@ export async function mountMatch(ctx, params = {}) {
     applyLoadedData(result.data);
     picked = null;
     message = "game loaded from file"; messageT = 3;
+    // Valore di ritorno (`true`/`undefined`): il chiamante dal menu di pausa
+    // lo ignora (fuoco e dimentica, come sempre), ma la schermata di game
+    // over (input.onTap, sotto) ne ha bisogno per sapere QUANDO chiudersi —
+    // niente da fare finche' la Promise non si risolve, e solo se il
+    // caricamento e' andato davvero a buon fine (non su un dialog annullato
+    // o un file non valido, gia' usciti sopra con un `return` senza valore).
+    return true;
   }
   seedChies();
   seedTutorialBuildings();
@@ -2438,10 +2520,13 @@ export async function mountMatch(ctx, params = {}) {
    * Menu di pausa (`paused`, sopra): cattura il canvas gia' disegnato per
    * questo frame (il mondo, congelato — la simulazione non e' avanzata) e lo
    * sfuma con `PauseBlur.blurScreen()` (game/src/gl.js), poi ci disegna sopra
-   * un oscuramento leggero + un pannello con titolo e i bottoni (Riprendi/
-   * Salva/Carica in localStorage, riusando `doSave()`/`doLoad()` gia'
-   * esistenti per S/L da tastiera; Salva/Carica su FILE, doSaveToFile()/
-   * doLoadFromFile() — vedi il commento su `fileHandle` piu' sopra).
+   * un oscuramento leggero + un pannello con titolo e i bottoni (Riprendi;
+   * Salva/Carica su FILE, doSaveToFile()/doLoadFromFile() — vedi il commento
+   * su `fileHandle` piu' sopra; Reset game; Saving options — l'autosave e'
+   * ON di default ora, save.js/DEFAULT_AUTOSAVE_SETTINGS, quindi niente piu'
+   * quicksave/quickload manuali in localStorage qui: sarebbero stati solo un
+   * doppione, `doSave()`/`doLoad()` restano comunque per l'autosalvataggio
+   * vero/il debug hook `window.__nimbus`).
    * Nessun equivalente nel decompilato (STUDIO.md, `paused` sopra): puramente
    * nostro.
    *
@@ -2467,18 +2552,28 @@ export async function mountMatch(ctx, params = {}) {
     // un mondo comunque colorato/luminoso.
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
-    // "Save game"/"Load game": quicksave rapido in localStorage. "Save to
-    // file"/"Load from file": il salvataggio vero e portabile (save.js/
-    // saveToFile()/loadFromFile()) — vedi il commento su `fileHandle` sopra
-    // per come i due si incontrano. "Saving options" apre il sotto-pannello
-    // dell'autosalvataggio (drawSavingOptionsOverlay(), pauseSubmenu sopra).
+    // [Bug corretto, richiesto dall'autore: "l'autosave e' ora attivo di
+    // default (save.js, DEFAULT_AUTOSAVE_SETTINGS), rimuoviamo i due
+    // pulsanti di quicksave/quickload manuali dal menu di pausa"] "Save
+    // game"/"Load game" (localStorage, doSave()/doLoad() sotto) restavano
+    // solo un doppione una volta che il salvataggio automatico copre gia' il
+    // caso — chi vuole ancora un salvataggio ESPLICITO, portabile, ha
+    // comunque "Save to file"/"Load from file" (save.js/saveToFile()/
+    // loadFromFile() — vedi il commento su `fileHandle` sopra per come i due
+    // percorsi si incontrano). `doSave()`/`doLoad()` restano invariate: le
+    // usa ancora stepAutosave() (sotto) per l'autosalvataggio vero, e
+    // doLoad() resta anche il tasto "Load game" della schermata di
+    // sconfitta (drawOutcomeOverlay() piu' sotto — quella non e' stata
+    // toccata, "carica l'ultimo autosave dopo essere morti" resta un
+    // percorso a se', non un doppione di questo menu). "Saving options"
+    // apre il sotto-pannello dell'autosalvataggio (drawSavingOptionsOverlay(),
+    // pauseSubmenu sopra) per chi vuole spegnerlo/regolarlo.
     const rows = [
       { label: "Resume", action: "resume" },
-      { label: "Save game", action: "save" },
-      { label: "Load game", action: "load" },
       { label: "Save to file", action: "saveFile" },
       { label: "Load from file", action: "loadFile" },
       { label: "Saving options", action: "savingOptions" },
+      { label: "Reset game", action: "resetGame" },
       { label: "Back to menu", action: "title" },
     ];
     const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
@@ -2552,6 +2647,50 @@ export async function mountMatch(ctx, params = {}) {
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
       drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
+      pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+      by += btnH + btnGap;
+    }
+    r.flush();
+  }
+
+  /**
+   * Sotto-pannello di conferma per "Reset game" (pauseSubmenu === "confirmReset",
+   * aperto dalla voce omonima di drawPauseOverlay()) — stessa struttura
+   * pannello/bottoni/blur delle altre due, con un avviso al posto delle
+   * righe di stato: doResetGame() (sopra) cancella il quicksave della scena
+   * e rimonta la room da zero, irreversibile, quindi serve un tap in piu'
+   * su "Reset game" invece di scattare subito dal pannello principale.
+   */
+  function drawConfirmResetOverlay() {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
+    r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+
+    const rows = [
+      { label: "Cancel", action: "cancelReset" },
+      { label: "Reset game", action: "confirmReset" },
+    ];
+    const panelW = Math.min(360, cw - 40);
+    const warnH = 70;
+    const panelH = 96 + warnH + rows.length * 60 + 20;
+    const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+    r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
+
+    const title = "RESET GAME";
+    drawHtmlText(title, px + panelW / 2, py + 34, { size: 24 });
+    drawHtmlText(
+      "This will restart the level from scratch. This action cannot be undone.",
+      px + 30, py + 60, { size: 14, maxWidth: panelW - 60, wrap: true },
+    );
+
+    pauseMenuButtons = [];
+    const btnW = panelW - 60, btnH = 46, btnGap = 14;
+    let by = py + 96 + warnH;
+    for (const row of rows) {
+      const bx = px + (panelW - btnW) / 2;
+      r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
+      drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
       pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
@@ -2775,6 +2914,34 @@ export async function mountMatch(ctx, params = {}) {
       r.draw(f, iconX, iconY, scale, isSelected ? (icon?.tint ?? 0xffffff) : 0xffffff, locked ? LOCKED_BUTTON_ALPHA : 1);
       r.setColorize(false);
     }
+    // Cartellino prezzo/"Level N to unlock" (unlockTagSprite()/
+    // costTagSprite(), sopra) — l'equivalente touch dell'hover mouse della
+    // riga scorrevole desktop (drawUiRow() piu' sotto, stesso schema).
+    // `input.hover` segue anche un dito che scorre senza sollevarsi
+    // (Input._move(), input.js): un "pan" sopra un bottone lo rivela in
+    // diretta, aggiornando anche `buildMenuTagType`/`Until` cosi' che
+    // sollevare il dito subito dopo lasci il cartellino ancora un attimo
+    // (stesso timer che un tap secco arma da solo, input.onTap sopra).
+    // Nessun controllo su `hoverPointerType`: questo overlay esiste solo su
+    // mobile (isMobile, buildMenuOpen sopra), il touch e' l'unico caso reale.
+    const hoveredTagBtn = input.hover && buildMenuButtons.find((b) => b.type
+      && input.hover.x >= b.x && input.hover.x <= b.x + b.w
+      && input.hover.y >= b.y && input.hover.y <= b.y + b.h);
+    if (hoveredTagBtn) { buildMenuTagType = hoveredTagBtn.type; buildMenuTagUntil = performance.now() + 2500; }
+    const tagBtn = hoveredTagBtn
+      ?? (buildMenuTagType && performance.now() < buildMenuTagUntil ? buildMenuButtons.find((b) => b.type === buildMenuTagType) : null);
+    if (tagBtn) {
+      const locked = buildingLocked(tagBtn.type);
+      const tagFrame = frameFor(locked ? unlockTagSprite(tagBtn.type) : costTagSprite(tagBtn.type, null));
+      if (tagFrame) {
+        // Clampato dentro lo schermo (min/max sotto): un bottone sul bordo
+        // sinistro/destro della griglia spingerebbe altrimenti il cartellino
+        // (piu' largo di una singola cella) oltre il bordo del canvas.
+        const tx = Math.min(Math.max(tagBtn.x + tagBtn.w / 2 - (tagFrame.w * COST_TAG_SCALE) / 2, 4), cw - tagFrame.w * COST_TAG_SCALE - 4);
+        const ty = Math.max(tagBtn.y - 8, 4);
+        r.draw(tagFrame, tx, ty, COST_TAG_SCALE, 0xffffff, 1);
+      }
+    }
     const backBtn = buildMenuButtons[buildMenuButtons.length - 1];
     r.draw(pauseButtonFrame(backBtn.w, backBtn.h), backBtn.x, backBtn.y, 1, BUTTON_TINT, BUTTON_ALPHA);
     drawHtmlText("Back", backBtn.x + backBtn.w / 2, backBtn.y + backBtn.h / 2, { size: 17, maxWidth: backBtn.w - 20 });
@@ -2787,41 +2954,51 @@ export async function mountMatch(ctx, params = {}) {
    * il canvas gia' disegnato (`pauseBlur.blurScreen()`) e ci disegna sopra.
    * Chiamata FUORI dal batch GUI appena chiuso, stessa ragione li' spiegata.
    *
-   * Sconfitta: un'introduzione (buio crescente su `introDur` secondi, sotto
-   * — per "oil" anche il mondo catturato che scivola verso il basso,
-   * un solo `draw()` traslato invece di una vera fisica di caduta: nessun
-   * equivalente da imitare, STUDIO.md, e' tutto "nostro") prima del pannello
-   * vero e proprio — `outcomeButtons` resta vuoto (quindi onTap non risponde
-   * a nessun tocco, sotto) finche' l'introduzione non e' finita. Vittoria:
-   * nessuna introduzione, lo stesso sfumato/oscuramento leggero del menu di
-   * pausa — la partita continua sotto, non e' una fine.
+   * Sconfitta "chies" (la chiesa distrutta): crossfade verso il nero su
+   * 1.2s, invariato. Sconfitta "oil" (l'olio esaurito): [Bug corretto,
+   * richiesto dall'autore: "uno screenshot che trasla e' un po' triste"]
+   * NON cattura piu' una schermata e la trasla — il mondo vero sta gia'
+   * cadendo da solo (`crashFallY`/`oilCrash`, sopra: applicato dentro
+   * `frameList()` piu' sopra, PRIMA che questa funzione giri nello stesso
+   * frame), quindi qui non c'e' nulla da disegnare finche' `OIL_CRASH_INTRO_DUR`
+   * non e' passato — il mondo gia' disegnato (con la citta' che sprofonda e
+   * il cielo che continua, `skyAlive` sopra) resta visibile cosi' com'e',
+   * senza sovrapposizioni. `outcomeButtons` resta vuoto in entrambi i casi
+   * finche' l'introduzione non e' finita — nessun tocco fa niente prima di
+   * allora, il pannello va guardato fino in fondo. Vittoria: nessuna
+   * introduzione, lo stesso sfumato/oscuramento leggero del menu di pausa —
+   * la partita continua sotto, non e' una fine.
    */
   function drawOutcomeOverlay() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const defeat = outcome.kind === "defeat";
+    const oilCrash = defeat && outcome.reason === "oil";
+    if (oilCrash && outcome.t < OIL_CRASH_INTRO_DUR) {
+      outcomeButtons = [];
+      return;
+    }
     const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
     // v0/v1 scambiati: copyTexImage2D cattura dal framebuffer di default,
     // origine in basso a sinistra — stesso motivo di drawPauseOverlay() sopra.
     const worldFrame = { tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 };
 
-    const defeat = outcome.kind === "defeat";
     let showPanel = true;
-    if (defeat) {
-      const introDur = outcome.reason === "oil" ? 3 : 1.2;
+    if (oilCrash) {
+      // La citta' e' gia' ben oltre il bordo (OIL_CRASH_INTRO_DUR sopra):
+      // resta solo il cielo (nuvole ancora vive, `skyAlive` sopra) — stesso
+      // "vetro smerigliato" del ramo vittoria sotto (blur leggero + velo
+      // scuro), non il nero pieno di "chies": quello e' la fine della citta'
+      // stessa, questo e' solo cio' che resta sopra di lei.
+      r.draw(worldFrame, 0, 0, 1, 0xffffff, 1);
+      r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+    } else if (defeat) {
+      const introDur = 1.2;
       const k = Math.min(1, outcome.t / introDur);
-      const ease = k * k;   // accelera, non scivola a velocita' costante — "cade"
-      // Base OPACA nera prima di tutto: sia il "buco" lasciato in alto dal
-      // mondo traslato verso il basso (reason "oil") sia il crossfade
-      // (reason "chies") devono rivelare nero, non il frame precedente
-      // ancora nel framebuffer.
+      const ease = k * k;
+      // Base OPACA nera prima di tutto: il crossfade deve rivelare nero, non
+      // il frame precedente ancora nel framebuffer.
       r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 1);
-      if (outcome.reason === "oil") {
-        // A `ease===1` l'immagine e' spinta un'intera altezza schermo sotto
-        // il bordo: niente resta visibile, senza bisogno di sfumarla anche
-        // in trasparenza.
-        r.draw(worldFrame, 0, ease * ch, 1, 0xffffff, 1);
-      } else {
-        r.draw(worldFrame, 0, 0, 1, 0xffffff, 1 - ease);
-      }
+      r.draw(worldFrame, 0, 0, 1, 0xffffff, 1 - ease);
       showPanel = k >= 1;
     } else {
       r.draw(worldFrame, 0, 0, 1, 0xffffff, 1);
@@ -2834,10 +3011,15 @@ export async function mountMatch(ctx, params = {}) {
       const subtitle = !defeat
         ? "You've completed the Skyscraper. The game continues."
         : outcome.reason === "chies"
-        ? "The Church, the city's historic building, has been destroyed."
+        ? "The City center, the city's historic building, has been destroyed."
         : "The oil has run out: the rotors have stopped and the platform has crashed.";
       const rows = defeat
-        ? [{ label: "Load game", action: "load" }, { label: "Back to menu", action: "title" }]
+        ? [
+          { label: "Load last save", action: "load" },
+          { label: "Load from file", action: "loadFile" },
+          { label: "Restart level", action: "resetGame" },
+          { label: "Back to menu", action: "title" },
+        ]
         : [{ label: "Keep playing", action: "continue" }];
 
       const textScale = 1.1;
@@ -3212,6 +3394,41 @@ export async function mountMatch(ctx, params = {}) {
   let outcome = null;
   let victoryShown = false;
   let outcomeButtons = [];   // { x, y, w, h, action }, solo quando il pannello e' visibile
+  // Crollo vero della piattaforma (`outcome.reason === "oil"`, sotto) — [C]
+  // r12/Step.gml: appena `oil` tocca 0, un'enorme lista di `with (X) {
+  // action_kill_object(); }` (finestre accese/luci di ogni edificio, auto
+  // `hondaN`, pedoni `soldN`) sparisce all'istante, poi `with (notte_target)
+  // { action_set_gravity(270, 0.04); }` (quasi tutta la citta') e `with
+  // (casca_target) { action_set_gravity(270, 0.04); }` (la piattaforma
+  // stessa, `r120`/`r22`/`r220`/`mudr21`, game/src/platform.js) iniziano a
+  // cadere per davvero — un'accelerazione (270 = verso il basso, GameMaker
+  // y cresce in giu'), non una velocita' fissa: parte piano e accelera.
+  // Nessuna delle due famiglie include mai nuvole/uccelli/mongolfiere/
+  // minacce (STUDIO.md): il cielo non cade mai insieme alla citta'.
+  // Sostituisce la vecchia resa "screenshot che scivola giu'" (un solo
+  // `draw()` traslato, mai un equivalente vero) — richiesto dall'autore:
+  // "uno screenshot che trasla e' un po' triste". `crashVSpeed`/`crashFallY`
+  // sono un SOLO scalare per frame (non un `vspeed` per entita' come
+  // nell'originale): applicato in blocco a ogni voce non-`_sky` del render
+  // (vedi il commento sopra `frameList`, piu' sotto) invece di muovere
+  // davvero `buildings`/`staticWorld` — piu' economico, stesso risultato
+  // visivo dato che tutto cio' che cade lo fa in blocco, alla stessa
+  // velocita'. Resettati a 0 solo quando si esce dalla sconfitta senza
+  // rimontare la room (doLoad()/doLoadFromFile() dal pannello di game over,
+  // sotto) — un `navigate()` vero (Restart/Back to menu) rimonta comunque da
+  // zero, quindi non ha bisogno di un reset esplicito.
+  const CRASH_GRAVITY = 0.04;   // [C] r12/Step.gml: action_set_gravity(270, 0.04) — px/tick^2
+  let crashVSpeed = 0;
+  let crashFallY = 0;
+  // [I] Quanto aspettare (drawOutcomeOverlay() sotto) prima di mostrare il
+  // pannello GAME OVER: nessun timer fisso nel decompilato (li' non esiste
+  // proprio questa schermata, STUDIO.md — "puramente nostra"), quindi
+  // ricavato dalla fisica sopra invece di un numero indovinato: con
+  // CRASH_GRAVITY=0.04, a 6s (360 tick) l'offset e' gia' ~0.02*360^2=2592px
+  // (v(t)=g*t, y(t)=g*t^2/2 in unita' di tick) — piu' di qualunque altezza
+  // di viewport reale anche allo zoom piu' lontano, quindi la citta' e' di
+  // sicuro ben oltre il bordo prima che il pannello compaia.
+  const OIL_CRASH_INTRO_DUR = 6;
 
   // [C] placeholder/Mouse_LeftReleased.gml: `r12.selec` e' il vero selettore
   // di modalita' piazzamento nell'originale (1 = casa, 2 = industria, ...).
@@ -3302,6 +3519,25 @@ export async function mountMatch(ctx, params = {}) {
   for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
   const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
   const CHIES_UNLOCK_BY_TYPE = Object.fromEntries(OTHER_BUILDINGS.filter((b) => b.chiesUnlock).map((b) => [b.type, b.chiesUnlock]));
+  /** Lo sprite del cartellino "Level N to unlock" per un bottone edificio
+   * ancora bloccato (`buildingLocked()`, sotto) — **[C]** `pu6|pudj|
+   * pugatling|pusolare/Mouse_MouseEnter.gml` (chiesUnlock:2) creano
+   * `level2club|gatling|palazz|sol`, tutti lo stesso sprite reale
+   * "unlocklvl2"; `pu4prov|pu5prov|puvillone|pumediat/Mouse_MouseEnter.gml`
+   * (chiesUnlock:3) creano `leve3tounlo4|5|villa`/`level3tounlomedia`,
+   * tutti "unlocklvl3" — un solo banner generico per soglia, non uno per
+   * edificio (verificato: ogni oggetto sopra referenzia lo stesso sprite,
+   * mai uno dedicato). Stesso posto/occasione del cartellino prezzo vero
+   * (`costTagSprite()`, buildings.js) quando il bottone e' gia' sbloccato —
+   * vedi il commento su come i due si alternano piu' sotto (drawUiRow()/
+   * drawBuildMenuOverlay()). `null` per `parco` (`pu7`, sotto un flag
+   * diverso da `chies` — `unlocinque`, mai portato qui, STUDIO.md: nessun
+   * gate nel nostro port) o qualunque tipo senza `chiesUnlock`.
+   */
+  function unlockTagSprite(type) {
+    const need = CHIES_UNLOCK_BY_TYPE[type];
+    return need === 2 ? "unlocklvl2" : need === 3 ? "unlocklvl3" : null;
+  }
   /** [C] vedi il commento su `chiesUnlock` sopra: `true` finche' `chies`
    * (l'unica istanza, STUDIO.md §5.3) non ha raggiunto il livello richiesto —
    * `>=`, non `==2`/`==3` come il decompilato (`unlosei`/`unlos`/`unlocinque`
@@ -3468,12 +3704,29 @@ export async function mountMatch(ctx, params = {}) {
       // Sconfitta: `outcomeButtons` resta vuoto finche' l'introduzione
       // (buio/caduta, drawOutcomeOverlay()) non e' finita — nessun tocco fa
       // niente prima di allora, il pannello va guardato fino in fondo.
+      // [Nuova funzionalita', richiesta dall'autore: "dopo il game over
+      // avrebbe senso dare due opzioni [in piu']: carica da file o
+      // ricomincia da capo"] Da "Load game"/"Back to menu" a quattro
+      // percorsi distinti — "Load last save" (invariato, l'autosave in
+      // localStorage), "Load from file" (doLoadFromFile(), come dal menu di
+      // pausa — async, chiude la schermata SOLO a caricamento riuscito),
+      // "Restart level" (doResetGame(), lo stesso "Reset game" del menu di
+      // pausa — nessuna conferma qui: le altre tre opzioni sono gia' li'
+      // sotto per chi ha toccato per sbaglio, a differenza del menu di
+      // pausa dove "Reset game" e' l'unica via e quindi merita un passo in
+      // piu'), "Back to menu" (invariato).
       const hit = outcomeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       if (hit?.action === "load") {
         const ok = doLoad();
-        if (ok) { picked = null; outcome = null; }
+        if (ok) { picked = null; outcome = null; crashVSpeed = 0; crashFallY = 0; }
         message = ok ? "game loaded" : "no save found";
         messageT = 3;
+      } else if (hit?.action === "loadFile") {
+        doLoadFromFile().then((ok) => {
+          if (ok) { outcome = null; crashVSpeed = 0; crashFallY = 0; }
+        });
+      } else if (hit?.action === "resetGame") {
+        doResetGame();
       } else if (hit?.action === "title") {
         navigate("menu");
       }
@@ -3523,21 +3776,31 @@ export async function mountMatch(ctx, params = {}) {
         }
         return;
       }
+      // "Reset game" (pauseSubmenu === "confirmReset", drawConfirmResetOverlay()
+      // sopra): stesso `pauseMenuButtons` dei pannelli sopra, azioni proprie —
+      // un tap su "Reset game" qui e' la CONFERMA vera (irreversibile,
+      // doResetGame() cancella il quicksave e rimonta la room da zero), non
+      // il tap che apre il pannello (quello e' "resetGame" sul principale,
+      // sotto, che si limita ad aprire questo sotto-pannello).
+      if (pauseSubmenu === "confirmReset") {
+        if (hit?.action === "confirmReset") {
+          doResetGame();
+        } else if (hit?.action === "cancelReset") {
+          pauseSubmenu = null;
+        }
+        return;
+      }
       if (hit?.action === "resume") {
         paused = false;
         pauseSubmenu = null;
-      } else if (hit?.action === "save") {
-        doSave();   // messaggio (incluso il blocco su situazione critica) gestito dentro
-      } else if (hit?.action === "load") {
-        const ok = doLoad();
-        if (ok) picked = null;
-        message = ok ? "game loaded" : "no save found"; messageT = 3;
       } else if (hit?.action === "saveFile") {
         doSaveToFile();   // async, messaggio gestito dentro (fuoco e dimentica)
       } else if (hit?.action === "loadFile") {
         doLoadFromFile();   // async, idem
       } else if (hit?.action === "savingOptions") {
         pauseSubmenu = "saving";
+      } else if (hit?.action === "resetGame") {
+        pauseSubmenu = "confirmReset";   // un tap solo non basta: prima la conferma (irreversibile)
       } else if (hit?.action === "title") {
         navigate("menu");
       }
@@ -3594,13 +3857,23 @@ export async function mountMatch(ctx, params = {}) {
       // [C] pu6|pudj|pugatling|pusolare|puvillone|pumediat/Mouse_LeftPressed.gml:
       // il ramo che scrive `r12.selec` e' innestato dentro `if (unlosei==1)`
       // — un tocco su un bottone ancora bloccato (buildingLocked(), sopra)
-      // non fa NIENTE nel decompilato, non solo "non seleziona": stesso
-      // qui, un messaggio al posto del silenzio totale dell'originale
-      // (coerente con ogni altro tocco a vuoto di questo motore, sotto).
+      // non fa NIENTE nel decompilato, non solo "non seleziona". [Bug
+      // corretto, richiesto dall'autore: "su mobile deve comparire 'level 2
+      // to unlock' quando si seleziona un edificio non sbloccato"] Prima un
+      // tap su un bottone bloccato chiudeva subito l'overlay con solo un
+      // messaggio testuale di striscio — troppo poco tempo per leggerlo e
+      // nessuno sprite, a differenza del popup vero del decompilato
+      // (level2*/leve3tounlo*, unlockTagSprite() sopra). Ora resta APERTO e
+      // arma `buildMenuTagType`/`buildMenuTagUntil` (sopra): drawBuildMenuOverlay()
+      // lo disegna sopra il bottone stesso finche' il timer non scade (o
+      // finche' un dito non ci "passa sopra" di nuovo, live, via input.hover
+      // — vedi il commento li').
       if (hit?.type && buildingLocked(hit.type)) {
-        message = `${BUILDING_LABEL[hit.type] ?? hit.type}: requires the church at level ${CHIES_UNLOCK_BY_TYPE[hit.type]}`;
-        messageT = 3;
-      } else if (hit?.type) {
+        buildMenuTagType = hit.type;
+        buildMenuTagUntil = performance.now() + 2500;
+        return;
+      }
+      if (hit?.type) {
         selectedType = hit.type;
         r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
       }
@@ -3646,8 +3919,11 @@ export async function mountMatch(ctx, params = {}) {
         else if (btn.kind === "building") {                              // casa/industria/...
           // Stesso gate della griglia mobile qui sopra, per lo stesso
           // bottone visto nella riga scorrevole desktop (buildingLocked()).
+          // Il cartellino vero (unlockTagSprite(), sopra) e' gia' visibile
+          // all'hover su questa riga (drawUiRow() sotto): il messaggio resta
+          // solo come rinforzo testuale del click stesso.
           if (buildingLocked(btn.type)) {
-            message = `${BUILDING_LABEL[btn.type] ?? btn.type}: requires the church at level ${CHIES_UNLOCK_BY_TYPE[btn.type]}`;
+            message = `${BUILDING_LABEL[btn.type] ?? btn.type}: level ${CHIES_UNLOCK_BY_TYPE[btn.type]} to unlock`;
             messageT = 3;
           } else {
             selectedType = btn.type;
@@ -3801,17 +4077,17 @@ export async function mountMatch(ctx, params = {}) {
     // occupato da una nuova costruzione. [Bug corretto, segnalato
     // dall'autore: "le rovine non sparivano di colpo"] Il pagamento resta
     // immediato ma non sgombera piu' subito: monta `clearing` (avanzato da
-    // stepRuinClearing() sopra, ogni frame) cosi' l'impalcatura generica
-    // della sua taglia compare per ~6.7s (fedele a `ruin1|2|3/
-    // Mouse_LeftPressed.gml`, vedi il commento su RUIN_CLEAR_STEPS) prima
-    // che il lotto si liberi per davvero. `!lot.clearing` blocca un secondo
-    // tap (e quindi un secondo pagamento) mentre il ciclo e' gia' in corso.
+    // stepRuinClearing() sopra, ogni frame) cosi' l'impalcatura vera della
+    // sua taglia (front track + topper/gru inclusi, vedi il commento su
+    // ruinClearUp()/stepRuinClearing() sopra) compare prima che il lotto si
+    // liberi per davvero. `!lot.clearing` blocca un secondo tap (e quindi un
+    // secondo pagamento) mentre il ciclo e' gia' in corso.
     if (picked.obj === "ruinLot") {
       const lot = picked.ref;
       message = ""; messageT = 0;
       if (!lot.clearing && r12.selec === 11 && canAfford(r12, { mon: lot.cost })) {
         r12.mon -= lot.cost;
-        lot.clearing = { stepIndex: -1, t: 0 };
+        lot.clearing = { stepIndex: 0, t: 0 };
       }
       picked = null;
       return;
@@ -3824,7 +4100,7 @@ export async function mountMatch(ctx, params = {}) {
       message = ""; messageT = 0;
       if (!ru.clearing && r12.selec === 11 && canAfford(r12, { mon: ru.cost })) {
         r12.mon -= ru.cost;
-        ru.clearing = { stepIndex: -1, t: 0 };
+        ru.clearing = { stepIndex: 0, t: 0 };
       }
       picked = null;
       return;
@@ -4222,6 +4498,58 @@ export async function mountMatch(ctx, params = {}) {
     // (drawPauseOverlay()/drawOutcomeOverlay() in fondo al file) puo' restare
     // un post-processo puro invece di dover duplicare la logica di disegno.
     const frozen = paused || outcome?.kind === "defeat";
+    // Crollo per olio esaurito (`outcome`/`crashFallY` sopra) — [C] r12/Step.gml
+    // non fa cadere MAI nuvole/mongolfiere (STUDIO.md, "notte_target"/
+    // "casca_target" non le includono): `skyAlive` le tiene vive anche
+    // mentre il resto e' `frozen`, cosi' il cielo continua a scorrere sopra
+    // la citta' che cade invece di congelarsi con lei. Il combattimento
+    // (minacce/bombe/torrette) NON e' incluso apposta — richiesto
+    // dall'autore: "non avrebbe senso proseguire il combattimento con un
+    // game over" (rischierebbe anche un secondo `outcome`, motivo "chies",
+    // se una bomba uccidesse la chiesa proprio mentre la prima sconfitta e'
+    // gia' in corso) — resta congelato come ogni sconfitta.
+    const oilCrash = outcome?.kind === "defeat" && outcome.reason === "oil";
+    const skyAlive = !frozen || oilCrash;
+    if (oilCrash) {
+      // Stessa integrazione a tick della fisica GameMaker (TICK sopra):
+      // `dt/TICK` e' quanti tick vale questo frame (1 a 60fps, la cadenza
+      // nominale del motore), cosi' `crashVSpeed`/`crashFallY` accumulano
+      // esattamente come l'originale (vspeed += gravity ad ogni tick, poi
+      // y += vspeed) invece di una formula continua indipendente che
+      // andrebbe ritarata a mano.
+      const ticks = dt / TICK;
+      crashVSpeed += CRASH_GRAVITY * ticks;
+      crashFallY += crashVSpeed * ticks;
+    }
+    // Nuvole/uccelli (game/src/atmosphere.js) e mongolfiere (game/src/
+    // balloons.js) — `skyAlive` sopra: le stesse chiamate di sempre, solo
+    // non piu' innestate dentro `if (!frozen)` sotto (che le fermerebbe
+    // anche durante il crollo per olio esaurito, l'unico caso in cui devono
+    // restare vive). [Bug corretto, segnalato dall'autore: "durante il
+    // temporale comparivano una marea di nuvole in piu'"] `!!r12.storm` da
+    // solo lasciava fuori `stormeasy` (match_easy) — ma `nidark_slow`
+    // (game/src/atmosphere.js) e' l'oggetto ORIGINALE dedicato proprio a
+    // quel ramo cosmetico: stessa condizione combinata gia' usata per
+    // stepRain() sotto.
+    if (skyAlive) {
+      stepAtmosphere(atmo, dt, !!(r12.storm || r12.stormeasy));
+      // Mongolfiere (game/src/balloons.js): risorse/spia a intervalli regolari
+      // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
+      // cantiere che casa/industria si porta dietro (spawnato da placeAt(),
+      // solo avanzato qui).
+      stepBalloonSpawner(r12, balloons, dt, buildings);
+      // onStruck: [C] Alarm_5.gml crea "esplo" prima di uccidersi per
+      // fulmine — vedi il commento in stepBalloons() (balloons.js).
+      // onStruck (balloons.js): "esplo" + il lampo del fulmine vero e proprio
+      // (game/src/lightning.js — stessa scelta gia' fatta per gli edifici,
+      // stepStormDamage() sotto), entrambi creati dal decompilato prima che
+      // la mongolfiera si autodistrugga.
+      stepBalloons(balloons, loot, dt, r12, (x, y) => {
+        explosions.push(spawnExplosion(x, y));
+        lightning.push(spawnLightning(x, y));
+      });
+      stepLoot(loot, dt);
+    }
     if (!frozen) {
       stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
       // Ciclo di impalcature dei ruderi sotto ruspa (stepRuinClearing()
@@ -4248,8 +4576,13 @@ export async function mountMatch(ctx, params = {}) {
       stepGrattacieloScaffold(buildings, dt);
       // Le gru di cantiere (game/src/cranes.js) — stesso principio dello
       // scaffolding del grattacielo sopra: un timer tutto loro, indipendente
-      // dal resto del cantiere.
-      stepCranes(buildings, dt);
+      // dal resto del cantiere. `ruinClearingFakes`: le gru della taglia 3
+      // di un rudere in demolizione (stepRuinClearing()/ruinClearUp() sopra,
+      // `c.fb` — un "edificio" fittizio, mai in `buildings`) — stepCranes()
+      // stesso, non una copia: legge solo `.construction`/`._cranes`, che
+      // `c.fb` porta gia'.
+      const ruinClearingFakes = [...ruins, ...ruinLots].map((e) => e.clearing?.fb).filter(Boolean);
+      stepCranes([...buildings, ...ruinClearingFakes], dt);
       stepProduction(buildings, dt, r12);
       stepSolarProduction(buildings, dt, r12, night, dawn);
       stepWindProduction(buildings, dt, r12);
@@ -4310,30 +4643,7 @@ export async function mountMatch(ctx, params = {}) {
       stepLights(decorEntities, dt, night, r12);
       stepTransientDecor(dt);
       stepSemaphores(semaphores, dt);
-      // [Bug corretto, segnalato dall'autore: "durante il temporale
-      // comparivano una marea di nuvole in piu'"] `!!r12.storm` da solo
-      // lasciava fuori `stormeasy` (match_easy) — ma `nidark_slow`
-      // (game/src/atmosphere.js) e' l'oggetto ORIGINALE dedicato proprio a
-      // quel ramo cosmetico: stessa condizione combinata gia' usata per
-      // stepRain() sopra.
-      stepAtmosphere(atmo, dt, !!(r12.storm || r12.stormeasy));
       stepPedestrians(pedestrians, dt);
-      // Mongolfiere (game/src/balloons.js): risorse/spia a intervalli regolari
-      // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
-      // cantiere che casa/industria si porta dietro (spawnato da placeAt(),
-      // solo avanzato qui).
-      stepBalloonSpawner(r12, balloons, dt, buildings);
-      // onStruck: [C] Alarm_5.gml crea "esplo" prima di uccidersi per
-      // fulmine — vedi il commento in stepBalloons() (balloons.js).
-      // onStruck (balloons.js): "esplo" + il lampo del fulmine vero e proprio
-      // (game/src/lightning.js — stessa scelta gia' fatta per gli edifici,
-      // stepStormDamage() sopra), entrambi creati dal decompilato prima che
-      // la mongolfiera si autodistrugga.
-      stepBalloons(balloons, loot, dt, r12, (x, y) => {
-        explosions.push(spawnExplosion(x, y));
-        lightning.push(spawnLightning(x, y));
-      });
-      stepLoot(loot, dt);
       // I pulsanti blu delle monete (game/src/coins.js): casa1|2|3/Alarm_4.gml,
       // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
       stepCoinSpawner(buildings, coins, dt, r12);
@@ -4612,6 +4922,12 @@ export async function mountMatch(ctx, params = {}) {
         obj: "ruin", ref: ru, x: ru.x, y: ru.y, depth: ru.depth, _f: ru._f,
         ...(hovered ? { _tint: 0xff0000, _selfLit: true } : {}),
       });
+      // Impalcatura in sovraimpressione + topper/gru del rudere sotto ruspa
+      // (stepRuinClearing()/ruinClearUp() sopra) — stesso schema di
+      // `b.frontSpr`/scaffoldParts()/craneParts() sui `buildings` veri poco
+      // sopra, qui su `ru.frontSpr`/`ru.clearing.fb`.
+      if (ru.frontSpr) dynamic.push({ obj: "scaffold", x: ru.x, y: ru.y, depth: -ru.y, _f: frameFor(ru.frontSpr) });
+      if (ru.clearing?.fb) for (const p of craneParts(ru.clearing.fb)) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, p.frame) });
     }
     // Tutorial (game/src/tutorial.js): lotti-rudere (ruin1/ruin2, un
     // meccanismo dedicato — mai le stesse istanze di `ruins` sopra). La
@@ -4631,6 +4947,10 @@ export async function mountMatch(ctx, params = {}) {
           obj: "ruinLot", ref: lot, x: lot.x, y: lot.y, depth: lot.depth, _f: lot._f,
           ...(hovered ? { _tint: 0xff0000, _selfLit: true } : {}),
         });
+        // Impalcatura in sovraimpressione + topper/gru del lotto-rudere sotto
+        // ruspa — stesso schema di `ru.frontSpr`/craneParts() sopra su `ruins`.
+        if (lot.frontSpr) dynamic.push({ obj: "scaffold", x: lot.x, y: lot.y, depth: -lot.y, _f: frameFor(lot.frontSpr) });
+        if (lot.clearing?.fb) for (const p of craneParts(lot.clearing.fb)) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, p.frame) });
       }
     }
     // Auto decorative (game/src/cars.js): x/y/sprite/frame gia' avanzati da
@@ -4679,8 +4999,14 @@ export async function mountMatch(ctx, params = {}) {
         dynamic.push({ obj: "decor", x: g.x, y: g.y, depth: -5, _f: frameFor("base", glowFrame(s)), _scale: 2, _selfLit: true });
       }
     }
-    for (const c of atmo.clouds) dynamic.push({ obj: "cloud", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr) });
-    for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
+    // `_sky: true` (qui e su ogni altra voce dichiaratamente in volo piu'
+    // sotto — mongolfiere/minacce/proiettili/fumo aereo): esclude la voce
+    // dallo scivolamento verso il basso del crollo per olio esaurito
+    // (`oilCrash`/`crashFallY`, frameList() sotto) — [C] r12/Step.gml,
+    // "notte_target"/"casca_target" (la citta'/la piattaforma) non
+    // includono mai nulla di questo.
+    for (const c of atmo.clouds) dynamic.push({ obj: "cloud", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr), _sky: true });
+    for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr), _sky: true });
     // Pedoni (game/src/pedestrians.js): x/y/depth gia' avanzati da
     // stepPedestrians() sopra.
     for (const p of pedestrians) dynamic.push({ obj: "pedestrian", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
@@ -4690,8 +5016,8 @@ export async function mountMatch(ctx, params = {}) {
     // cadere (obj: "loot", vedi picking sotto) + il pacco di cantiere di
     // casa/industria (obj: "balloon" invece — non cliccabile, sta solo
     // portando materiali a un cantiere, non e' un bersaglio).
-    for (const b of balloons) dynamic.push({ obj: "flyingBalloon", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr) });
-    for (const l of loot) dynamic.push({ obj: "loot", ref: l, x: l.x, y: l.y, depth: l.depth, _f: frameFor(l.spr) });
+    for (const b of balloons) dynamic.push({ obj: "flyingBalloon", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr), _sky: true });
+    for (const l of loot) dynamic.push({ obj: "loot", ref: l, x: l.x, y: l.y, depth: l.depth, _f: frameFor(l.spr), _sky: true });
     // Le monete (game/src/coins.js): "soldfade" anima per davvero (20 frame,
     // stesso schema delle svolte delle auto — frameFor legge il frame vero
     // invece di restare fermo al primo), "soldico" e' statica (un solo frame).
@@ -4741,7 +5067,7 @@ export async function mountMatch(ctx, params = {}) {
     // "di sfondo", STUDIO.md "le minacce vere") e' la stessa `scale` gia'
     // supportata dal renderer per la GUI, qui riusata per la prima volta nel
     // mondo.
-    for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale });
+    for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale, _sky: true });
     // [Bug corretto, segnalato dall'autore: "la depth delle bombe sganciate
     // dai nemici spesso e' troppo bassa e sembra che le bombe volino dietro
     // gli edifici"] **[C]** `bomba1/Create.gml`: `depth = -y - 400`, non
@@ -4756,32 +5082,32 @@ export async function mountMatch(ctx, params = {}) {
     // quasi sempre MINORE della y di un edificio vicino — quindi per quasi
     // tutta la caduta appariva gia' "dietro" l'edificio invece che sopra di
     // lui, l'esatto difetto segnalato.
-    for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y - 400, _f: frameFor(bm.spr) });
+    for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y - 400, _f: frameFor(bm.spr), _sky: true });
     // Pezzi di fusoliera del bombardiere abbattuto (game/src/threats.js,
     // spawnDebris): puramente cosmetici come le bombe, stessa regola di depth.
-    for (const d of debris) dynamic.push({ obj: "decor", x: d.x, y: d.y, depth: -d.y, _f: frameFor(d.spr) });
+    for (const d of debris) dynamic.push({ obj: "decor", x: d.x, y: d.y, depth: -d.y, _f: frameFor(d.spr), _sky: true });
     // Esplosioni (game/src/threats.js): "fica" ha 60 frame veri, uno stop-motion
     // da animare con ex.t (EXPLOSION_FRAME_COUNT) invece del solo frame 0 statico.
     for (const ex of explosions) {
       const frameIdx = Math.min(EXPLOSION_FRAME_COUNT - 1, Math.floor(ex.t / TICK));
-      dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr, frameIdx), _scale: ex.scale });
+      dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr, frameIdx), _scale: ex.scale, _sky: true });
     }
     // Il fuoco vero (game/src/projectiles.js): i razzi del lanciarazzi e i
     // traccianti del gatling. `p.angle` (solo il gatling, projectiles.js/
     // spawnProjectile()) ruota lo sprite come "image_angle = direction" —
     // vedi `_angle` nel loop del layer mondo sopra.
-    for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr), _angle: p.angle });
+    for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr), _angle: p.angle, _sky: true });
     // Fumo di scia (game/src/projectiles.js, spawnSmoko): depth -9000 fisso
     // come le monete blu ([C] smoko/_object.json), ma senza `_selfLit` — un
     // residuo di sparo, non un simbolo dell'interfaccia, si scurisce di
     // notte come qualunque altro decoro.
-    for (const p of trails) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr), _alpha: fadeAlpha(p.t, SMOKO_LIFE) });
+    for (const p of trails) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr), _alpha: fadeAlpha(p.t, SMOKO_LIFE), _sky: true });
     // Scia di fumo degli aerei (game/src/threats.js, spawnAerSmoke): stessa
     // animazione a 70 frame vera di smoke.js (cc2/cc3), ferma sul posto e in
     // crescita (_scale) — a differenza della scia dei proiettili sopra.
     for (const p of aerSmoke) {
       const frameIdx = Math.min(AER_SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
-      dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, AER_SMOKE_LIFE) });
+      dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, AER_SMOKE_LIFE), _sky: true });
     }
     // Fuochi d'artificio sopra chies a Gennaio (game/src/fireworks.js):
     // scintille colorate — nessuno sprite dedicato, `_tint` sceglie il
@@ -4815,8 +5141,35 @@ export async function mountMatch(ctx, params = {}) {
     // edificio di fascia alta o di livello 2+ resterebbe invisibile per
     // sempre invece di comparire (pop-in) appena la sua pagina arriva.
     for (const it of staticWorld) if (!it._f) it._f = frameFor(it.spr);
-    frameList = staticWorld.filter((it) => !(it.obj === "placeholder" && it.consumed))
-      .concat(dynamic).sort(sortWorld);
+    let frameListNext = staticWorld.filter((it) => !(it.obj === "placeholder" && it.consumed)).concat(dynamic);
+    // Crollo per olio esaurito (`oilCrash`/`crashFallY`, sopra) — [C] r12/
+    // Step.gml: prima il kill istantaneo (`_selfLit` — finestre accese,
+    // segnale di potenziamento, bancomat, popup ruspa, semafori, monete: la
+    // stessa famiglia "oilzero_target" del decompilato — oltre ad auto/
+    // pedoni, `honda*`/`sold*` nel decompilato, mai un `_selfLit` ma
+    // comunque nella lista di kill), poi la caduta vera per tutto cio' che
+    // resta e non e' `_sky` (nuvole/mongolfiere/minacce/proiettili/fumo
+    // aereo, marcati sopra — "notte_target"/"casca_target" non li includono
+    // mai). Un solo passaggio invece di muovere davvero ogni entita': `y`/
+    // `depth` spostati in blocco alla stessa velocita' per tutti, coerente
+    // con l'originale (un'unica gravita' per l'intera citta', non fisiche
+    // indipendenti). `depth === 0` (effDepth() sopra: lo traduce da solo in
+    // `-y` ogni volta, la maggior parte degli edifici durante il cantiere lo
+    // lascia proprio a 0 per questo) va lasciato invariato — la `y` gia'
+    // aggiornata basta, effDepth() la rilegge da sola; solo un `depth` GIA'
+    // esplicito (`-b.y`/`-4000`/...) va spostato a mano della stessa
+    // quantita', altrimenti perderebbe la caduta che effDepth() non gli
+    // ricalcolerebbe piu'.
+    if (oilCrash) {
+      frameListNext = frameListNext
+        .filter((it) => !it._selfLit && it.obj !== "car" && it.obj !== "pedestrian")
+        .map((it) => {
+          if (it._sky) return it;
+          const y = it.y + crashFallY;
+          return it.depth === 0 ? { ...it, y } : { ...it, y, depth: it.depth - crashFallY };
+        });
+    }
+    frameList = frameListNext.sort(sortWorld);
 
     // [C] src/objects/placeholder/Create.gml + Mouse_MouseEnter/Leave.gml: il
     // placeholder nasce con sprite "empty" (invisibile) e diventa "phold" (il
@@ -5098,26 +5451,6 @@ export async function mountMatch(ctx, params = {}) {
     const UI_MARGIN = 8;
     const barFrame = frameFor("icone_oriz");
     const barX = UI_MARGIN, barY = UI_MARGIN;
-    // [Nuovo, segnalato dall'autore: "su telefono la barra risorse in alto
-    // e' spesso illeggibile perche' lo schermo e' troppo stretto"] La barra
-    // e' un blocco di coordinate fisse tarato per una schermata larga
-    // ~570px (l'ultimo elemento, la faccina della felicita' sotto, arriva a
-    // x=520+50*0.62): su un telefono in verticale (~360-414px tipici)
-    // sfora oltre il bordo destro invece di andare a capo da solo (sono
-    // elementi HTML `position:fixed` a x/y assoluti, non un layout che
-    // wrappa, index.html) — mese/anno e faccina/cristalli restano fuori
-    // schermo. Comprimere l'intero blocco in scala (invece di spostare gli
-    // elementi di coda su una seconda riga) evita di dover inventare un
-    // layout a due righe e le collisioni con banner/tutorial che assumono
-    // gia' la barra su una riga sola (STUDIO.md), mantenendo intatto
-    // l'allineamento icona/numero gia' "cotto" dentro icone_oriz: e'
-    // un'unica scala uniforme, applicata identica a immagine, offset e
-    // font-size di ogni pezzo qui sotto. Il floor (0.5) e' solo una rete di
-    // sicurezza per larghezze degeneri (es. un resize a meta' frame), non
-    // un limite pensato per restare leggibile: nella pratica nessun
-    // telefono e' cosi' stretto da raggiungerlo.
-    const BAR_NATURAL_WIDTH = 520 + 50 * 0.62;
-    const barScale = Math.min(1, Math.max(0.5, (canvas.clientWidth - UI_MARGIN * 2) / BAR_NATURAL_WIDTH));
     // [Bug corretto, segnalato dall'autore: "quando i pulsanti della GUI
     // diventano bianchi devono diventare bianchi anche quelli della GUI
     // superiore"] `icone_oriz` e' la stessa famiglia di pittogrammi neri
@@ -5141,7 +5474,7 @@ export async function mountMatch(ctx, params = {}) {
     // sull'elemento, non un tint moltiplicato su una texture.
     const barTextColor = iconsDark ? "#ffffff" : "#000000";
     r.setColorize(iconsDark);
-    if (barFrame) r.draw(barFrame, barX, barY, barScale, 0xffffff, 1);
+    if (barFrame) r.draw(barFrame, barX, barY, 1, 0xffffff, 1);
     r.setColorize(false);
     // [Bug corretto, segnalato dall'autore: "in pausa le scritte della UI
     // non si blurrano"] Questi numeri sono elementi HTML veri (drawHtmlText(),
@@ -5164,25 +5497,29 @@ export async function mountMatch(ctx, params = {}) {
     // nasconderli. `hideResourceText` raccoglie tutti i casi in cui il resto
     // della barra risorse e' gia' coperto/oscurato da qualcos'altro.
     const hideResourceText = paused || buildMenuOpen || !!tutorialState?.cutscene;
-    const barFontSize = 15 * barScale;
     const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                    [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
     if (!hideResourceText) for (const [value, x] of stats) {
-      drawHtmlText(String(value), barX + x * barScale, barY + 19 * barScale, { size: barFontSize, align: "left", color: barTextColor });
+      drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
     }
-    // Data (mese + anno, game/src/state.js stepCalendar()) — [C] repre/
-    // DrawGUI.gml: il mese e' testo ("Jan".."Dec", da `repre.mon` — non
-    // r12, vedi state.js) a x=456/y=20+upp (stessa riga dell'icona, quindi
-    // qui `barY+0`), l'anno e' `r12.time` disegnato appena sotto a x=448/
-    // y=40+upp (`barY+20`) — stessi offset del decompilato, ribasati su
-    // `barY` come gia' fatto sopra per pop/olio/energia/denaro (offset - 20,
-    // la y a cui l'originale disegnava l'icona stessa; +9 in piu' qui sotto,
-    // stesso motivo di `barY+19` sopra: drawHtmlText() centra verticalmente
-    // sull'ancora invece di partire dal bordo superiore del glifo come
-    // drawText()).
+    // Data (mese + anno, game/src/state.js stepCalendar()) e faccina della
+    // felicita' (subito sotto): [Bug corretto, segnalato dall'autore: "su
+    // iPhone la barra risorse compressa per intero e' diventata troppo
+    // piccola"] Nell'originale (e in un tentativo precedente di questa
+    // porting) stavano sulla STESSA riga di pop/olio/energia/denaro sopra,
+    // a x=448..551 — ben oltre la larghezza vera dell'immagine di sfondo
+    // (`icone_oriz`, ~450px, data/sprites.json), quindi su un telefono
+    // stretto finivano fuori schermo (elementi HTML `position:fixed`,
+    // niente wrap automatico). Rimpicciolire l'INTERO blocco con una scala
+    // uniforme li faceva rientrare, ma rendeva illeggibili anche
+    // pop/olio/energia/denaro, che da soli ci stavano gia' comodi. Qui
+    // invece restano a dimensione piena e si spostano su una SECONDA riga
+    // sotto la barra (stessa fascia verticale gia' usata dai cristalli,
+    // sotto), a destra del loro contatore cosi' da non sovrapporsi.
+    const ROW2_Y = barY + 46;
     if (!hideResourceText) {
-      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 456 * barScale, barY + 9 * barScale, { size: barFontSize, align: "left", color: barTextColor });
-      drawHtmlText(String(Math.round(r12.time)), barX + 448 * barScale, barY + 29 * barScale, { size: barFontSize, align: "left", color: barTextColor });
+      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", barX + 90, ROW2_Y, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(String(Math.round(r12.time)), barX + 82, ROW2_Y + 20, { size: 15, align: "left", color: barTextColor });
     }
     // La "faccina" della felicita' (src/objects/hapware — segnalata
     // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
@@ -5195,15 +5532,15 @@ export async function mountMatch(ctx, params = {}) {
     // (coins.js, stepCoinSpawner: "hap<pop" salta la generazione), quindi
     // "gli edifici non generano piu' soldi" e "la faccina diventa triste"
     // sono gia' la STESSA condizione, solo la seconda meta' (l'icona) mancava.
-    // Posizione/scala **[C]** dirette da hapware/Create|Step.gml: scala 0.62
-    // fissa (mai moltiplicata per `global.sca`/UI_SCALE in questo motore,
-    // stesso trattamento gia' scelto per la barra risorse — STUDIO.md §9,
-    // "zero zoom" sulla UI), offset (520, 42) in coordinate GML ribasate su
-    // `barY` come pop/olio/energia/denaro/data sopra (barY corrisponde a
-    // GML y=20, quindi 42-20=22).
+    // Scala **[C]** diretta da hapware/Create|Step.gml: 0.62 fissa (mai
+    // moltiplicata per `global.sca`/UI_SCALE in questo motore, stesso
+    // trattamento gia' scelto per la barra risorse — STUDIO.md §9, "zero
+    // zoom" sulla UI). Posizione invece NOSTRA (seconda riga, vedi sopra):
+    // l'originale la disegnava sulla stessa riga di pop/olio/energia/denaro,
+    // non ha un equivalente "riga 2" da cui ereditare l'offset.
     const hapFrame = frameFor(r12.hap >= r12.pop ? "hap3" : "hap1");
     r.setColorize(iconsDark);
-    if (hapFrame) r.draw(hapFrame, barX + 520 * barScale, barY + 22 * barScale, 0.62 * barScale, 0xffffff, 1);
+    if (hapFrame) r.draw(hapFrame, barX + 160, ROW2_Y - 2, 0.62, 0xffffff, 1);
     r.setColorize(false);
     // Cristalli (r12.crys: balloons.js, il loot di `monviolo`; platform.js,
     // il gettone lasciato dal monviolo in volo verso il faro) — **[I]**
@@ -5236,9 +5573,9 @@ export async function mountMatch(ctx, params = {}) {
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
       r.setColorize(iconsDark);
-      if (crysFrame) r.draw(crysFrame, barX - 6 * barScale, barY + 48 * barScale, 0.9 * barScale, 0xffffff, 1);
+      if (crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
       r.setColorize(false);
-      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), barX + 34 * barScale, barY + 77 * barScale, { size: barFontSize, align: "left", color: barTextColor });
+      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
@@ -5417,7 +5754,14 @@ export async function mountMatch(ctx, params = {}) {
     // sempre visibile anche a finestra chiusa, stesso sprite/tint gia'
     // usati dentro l'overlay (findBuildingIcon(), sopra) — non uno stato
     // duplicato da tenere sincronizzato a parte.
-    if (isMobile && selectedType) {
+    // [Bug corretto, richiesto dall'autore: "quando la ruspa e' selezionata
+    // non mostrare il mini indicatore sopra il pulsante costruzioni"] La
+    // ruspa (`selectedType === "ruspa"`) e' uno STRUMENTO (demolizione/
+    // riparazione), non un edificio piazzabile come quelli della griglia
+    // "Buildings menu" che questo badge riassume — mostrarci sopra la sua
+    // icona (rossa, "ru") suggerirebbe che il prossimo tap costruisce una
+    // ruspa, non che sta per demolire/riparare qualcosa.
+    if (isMobile && selectedType && selectedType !== "ruspa") {
       const menuBtn = uiButtons.find((btn) => btn.kind === "menu" && btn.menoo === 1);
       const icon = menuBtn && findBuildingIcon(selectedType);
       const iconFrame = icon && frameFor(icon.spr);
@@ -5446,16 +5790,20 @@ export async function mountMatch(ctx, params = {}) {
       ? { x0: 0, y0: rowTop, x1: canvas.clientWidth, y1: canvas.clientHeight }
       : null;
 
-    // Linguetta di prezzo sui bottoni edificio al passaggio del mouse — [C]
-    // pu1..pumediat/Mouse_MouseEnter.gml, vedi costTagSprite() in
-    // buildings.js. Solo mouse (come la raccolta monete/il segnale di
-    // potenziamento sotto): il touch non ha un vero hover senza contatto,
-    // e qui coprirebbe comunque il bottone col dito.
+    // Linguetta di prezzo (o "Level N to unlock", bottone ancora bloccato —
+    // vedi il commento su unlockTagSprite() sopra) sui bottoni edificio al
+    // passaggio del mouse — [C] pu1..pumediat/Mouse_MouseEnter.gml. Solo
+    // mouse (come la raccolta monete/il segnale di potenziamento sotto): il
+    // touch non ha un vero hover senza contatto, e qui coprirebbe comunque
+    // il bottone col dito — questa riga scorrevole esiste solo su desktop
+    // (isMobile la nasconde sempre dietro drawBuildMenuOverlay() invece,
+    // vedi il commento li' per il suo equivalente touch).
     if (input.hover && input.hoverPointerType === "mouse") {
       const hb = uiButtons.find((btn) => btn.kind === "building"
         && input.hover.x >= btn.x && input.hover.x <= btn.x + btn.w
         && input.hover.y >= btn.y && input.hover.y <= btn.y + btn.h);
-      const tagFrame = hb && frameFor(costTagSprite(hb.type, null));
+      const locked = hb && buildingLocked(hb.type);
+      const tagFrame = hb && frameFor(locked ? unlockTagSprite(hb.type) : costTagSprite(hb.type, null));
       if (tagFrame) {
         r.draw(tagFrame, hb.x + hb.w / 2 - (tagFrame.w * COST_TAG_SCALE) / 2, hb.y - 8, COST_TAG_SCALE, 0xffffff, 1);
       }
@@ -5838,7 +6186,11 @@ export async function mountMatch(ctx, params = {}) {
     // (che gia' intercetta `outcome` prima del bottone di pausa): i due non
     // vanno mai disegnati insieme.
     if (outcome) drawOutcomeOverlay();
-    else if (paused) { if (pauseSubmenu === "saving") drawSavingOptionsOverlay(); else drawPauseOverlay(); }
+    else if (paused) {
+      if (pauseSubmenu === "saving") drawSavingOptionsOverlay();
+      else if (pauseSubmenu === "confirmReset") drawConfirmResetOverlay();
+      else drawPauseOverlay();
+    }
     else if (buildingInfoPanel) drawBuildingInfoPanel();
     else if (buildMenuOpen) drawBuildMenuOverlay();
 
@@ -5920,9 +6272,11 @@ export async function mountMatch(ctx, params = {}) {
 
     // Icona "salvataggio in corso" (saveIconT/showSaveIcon(), sopra) —
     // ultimo layer disegnato, sopra ANCHE al menu di pausa/fine partita (non
-    // solo al mondo): un salvataggio manuale premuto da dentro il menu di
-    // pausa stesso (bottone "Save game") deve restare visibile, non
-    // sparire sotto lo sfumato/pannello appena disegnato sopra di lui.
+    // solo al mondo): stepAutosave() (sopra) gira SEMPRE, anche a
+    // simulazione ferma (`paused`, come `outcome.t` poco sopra) — un
+    // autosalvataggio che scatta proprio mentre il menu di pausa e' aperto
+    // deve restare visibile, non sparire sotto lo sfumato/pannello appena
+    // disegnato sopra di lui.
     // Angolo in alto a destra, lontano dalla barra risorse (in alto a
     // sinistra, gia' stretta su schermi piccoli — STUDIO.md, il denaro si
     // taglia gia' al bordo su alcuni telefoni) cosi' non la sovrappone mai.

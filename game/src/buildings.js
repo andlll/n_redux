@@ -22,7 +22,14 @@ const COIN_FIRST_DELAY = 600 * TICK;
 
 export const BUILDING_TYPES = {
   chies: {
-    label: "Church",
+    // [Nuova funzionalita', richiesta dall'autore: "rinominiamola in qualcosa
+    // di meno controverso/religiosamente connesso"] Solo l'etichetta
+    // user-facing cambia — `chies` (la chiave interna, STUDIO.md) e ogni
+    // sprite/nome risorsa del decompilato restano quelli originali, mai
+    // rinominati: cambiarli in giro per il codice non porterebbe nessun
+    // beneficio all'utente e rischierebbe di disallineare i commenti [C] dal
+    // vero nome degli oggetti GameMaker che documentano.
+    label: "City center",
     placeCost: { mon: 5000 },                    // [I] sotto la dote iniziale (5500): la ruota reale apriva a 6000
     baseSprite: "crc", baseLife: 1000,             // [C] chies/Create.gml
     baseDecor: ["crcl"],                           // [C] chies/Create.gml: action_create_object(cddvd, 0, 0)
@@ -1840,7 +1847,10 @@ export const BUILDING_TYPES = {
 
 let nextId = 1;
 
-function pickSpr(spr) {
+// Esportata: stepRuinClearing() (main.js) la riusa per rigiocare a mano gli
+// stessi `up.steps` di un cantiere vero sui ruderi sotto ruspa — vedi il
+// commento li' sopra.
+export function pickSpr(spr) {
   return Array.isArray(spr) ? spr[(Math.random() * spr.length) | 0] : spr;
 }
 
@@ -1876,7 +1886,9 @@ function pickVariant(variants) {
  * non un errore di lettura (STUDIO.md, commento sopra ai `steps` di
  * palazzoRd.upgrades[0]).
  */
-function frontSprFor(spr) {
+// Esportata: stepRuinClearing() (main.js) la riusa per la stessa impalcatura
+// "f" in sovraimpressione, sui ruderi sotto ruspa — vedi il commento li'.
+export function frontSprFor(spr) {
   if (spr.startsWith("ir")) return "if" + spr.slice(2);
   if (spr.startsWith("sr")) return "sf" + spr.slice(2);
   if (spr.startsWith("rd")) return "fd" + spr.slice(2);
@@ -2185,7 +2197,7 @@ export function tryStartUpgrade(b, r12, buildings) {
       return `need population ${p.needed} (now ${p.done.toFixed(0)})`;
     }
     if (up.requiresChiesLevel != null && maxChiesLevel(buildings) < up.requiresChiesLevel) {
-      return `requires the church at level ${up.requiresChiesLevel}`;
+      return `requires the city center at level ${up.requiresChiesLevel}`;
     }
   }
   if (!canAfford(r12, up.cost)) {
