@@ -5612,7 +5612,14 @@ export async function mountMatch(ctx, params = {}) {
     // sempre visibile anche a finestra chiusa, stesso sprite/tint gia'
     // usati dentro l'overlay (findBuildingIcon(), sopra) — non uno stato
     // duplicato da tenere sincronizzato a parte.
-    if (isMobile && selectedType) {
+    // [Bug corretto, richiesto dall'autore: "quando la ruspa e' selezionata
+    // non mostrare il mini indicatore sopra il pulsante costruzioni"] La
+    // ruspa (`selectedType === "ruspa"`) e' uno STRUMENTO (demolizione/
+    // riparazione), non un edificio piazzabile come quelli della griglia
+    // "Buildings menu" che questo badge riassume — mostrarci sopra la sua
+    // icona (rossa, "ru") suggerirebbe che il prossimo tap costruisce una
+    // ruspa, non che sta per demolire/riparare qualcosa.
+    if (isMobile && selectedType && selectedType !== "ruspa") {
       const menuBtn = uiButtons.find((btn) => btn.kind === "menu" && btn.menoo === 1);
       const icon = menuBtn && findBuildingIcon(selectedType);
       const iconFrame = icon && frameFor(icon.spr);
