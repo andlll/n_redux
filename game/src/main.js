@@ -914,6 +914,19 @@ export async function mountMatch(ctx, params = {}) {
   // sono lo stesso genere di array di `uiButtons`/`bankButtons`.
   let buildMenuOpen = false;
   let buildMenuButtons = [];   // { x, y, w, h, type?, spr? } — niente `type` = "Back"
+  // Cartellino prezzo/"Level N to unlock" della griglia mobile
+  // (drawBuildMenuOverlay(), sotto) — l'equivalente touch dell'hover mouse
+  // della riga scorrevole desktop (uiButtons piu' sotto). `input.hover`
+  // segue anche un dito che scorre SENZA sollevarsi (Input._move(), input.js
+  // — aggiornato ad ogni pointermove, touch incluso, non solo mouse), quindi
+  // "fa pan sopra" un bottone lo rivela gia' in diretta; un tap secco pero'
+  // solleva subito il dito (Input._up(): niente hover per il touch a
+  // contatto perso) — `buildMenuTagType`/`buildMenuTagUntil` tengono vivo il
+  // cartellino ancora un attimo dopo, armati dal tap stesso (onTap, sotto)
+  // con un timestamp assoluto (`performance.now()`, come il resto dei timer
+  // "usa e getta" di questo motore) invece di un altro contatore dt-based.
+  let buildMenuTagType = null;
+  let buildMenuTagUntil = 0;
 
   // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
   // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
@@ -2882,6 +2895,34 @@ export async function mountMatch(ctx, params = {}) {
       r.draw(f, iconX, iconY, scale, isSelected ? (icon?.tint ?? 0xffffff) : 0xffffff, locked ? LOCKED_BUTTON_ALPHA : 1);
       r.setColorize(false);
     }
+    // Cartellino prezzo/"Level N to unlock" (unlockTagSprite()/
+    // costTagSprite(), sopra) — l'equivalente touch dell'hover mouse della
+    // riga scorrevole desktop (drawUiRow() piu' sotto, stesso schema).
+    // `input.hover` segue anche un dito che scorre senza sollevarsi
+    // (Input._move(), input.js): un "pan" sopra un bottone lo rivela in
+    // diretta, aggiornando anche `buildMenuTagType`/`Until` cosi' che
+    // sollevare il dito subito dopo lasci il cartellino ancora un attimo
+    // (stesso timer che un tap secco arma da solo, input.onTap sopra).
+    // Nessun controllo su `hoverPointerType`: questo overlay esiste solo su
+    // mobile (isMobile, buildMenuOpen sopra), il touch e' l'unico caso reale.
+    const hoveredTagBtn = input.hover && buildMenuButtons.find((b) => b.type
+      && input.hover.x >= b.x && input.hover.x <= b.x + b.w
+      && input.hover.y >= b.y && input.hover.y <= b.y + b.h);
+    if (hoveredTagBtn) { buildMenuTagType = hoveredTagBtn.type; buildMenuTagUntil = performance.now() + 2500; }
+    const tagBtn = hoveredTagBtn
+      ?? (buildMenuTagType && performance.now() < buildMenuTagUntil ? buildMenuButtons.find((b) => b.type === buildMenuTagType) : null);
+    if (tagBtn) {
+      const locked = buildingLocked(tagBtn.type);
+      const tagFrame = frameFor(locked ? unlockTagSprite(tagBtn.type) : costTagSprite(tagBtn.type, null));
+      if (tagFrame) {
+        // Clampato dentro lo schermo (min/max sotto): un bottone sul bordo
+        // sinistro/destro della griglia spingerebbe altrimenti il cartellino
+        // (piu' largo di una singola cella) oltre il bordo del canvas.
+        const tx = Math.min(Math.max(tagBtn.x + tagBtn.w / 2 - (tagFrame.w * COST_TAG_SCALE) / 2, 4), cw - tagFrame.w * COST_TAG_SCALE - 4);
+        const ty = Math.max(tagBtn.y - 8, 4);
+        r.draw(tagFrame, tx, ty, COST_TAG_SCALE, 0xffffff, 1);
+      }
+    }
     const backBtn = buildMenuButtons[buildMenuButtons.length - 1];
     r.draw(pauseButtonFrame(backBtn.w, backBtn.h), backBtn.x, backBtn.y, 1, BUTTON_TINT, BUTTON_ALPHA);
     drawHtmlText("Back", backBtn.x + backBtn.w / 2, backBtn.y + backBtn.h / 2, { size: 17, maxWidth: backBtn.w - 20 });
@@ -2941,7 +2982,7 @@ export async function mountMatch(ctx, params = {}) {
       const subtitle = !defeat
         ? "You've completed the Skyscraper. The game continues."
         : outcome.reason === "chies"
-        ? "The Church, the city's historic building, has been destroyed."
+        ? "The City center, the city's historic building, has been destroyed."
         : "The oil has run out: the rotors have stopped and the platform has crashed.";
       const rows = defeat
         ? [{ label: "Load game", action: "load" }, { label: "Back to menu", action: "title" }]
@@ -3409,6 +3450,25 @@ export async function mountMatch(ctx, params = {}) {
   for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
   const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
   const CHIES_UNLOCK_BY_TYPE = Object.fromEntries(OTHER_BUILDINGS.filter((b) => b.chiesUnlock).map((b) => [b.type, b.chiesUnlock]));
+  /** Lo sprite del cartellino "Level N to unlock" per un bottone edificio
+   * ancora bloccato (`buildingLocked()`, sotto) — **[C]** `pu6|pudj|
+   * pugatling|pusolare/Mouse_MouseEnter.gml` (chiesUnlock:2) creano
+   * `level2club|gatling|palazz|sol`, tutti lo stesso sprite reale
+   * "unlocklvl2"; `pu4prov|pu5prov|puvillone|pumediat/Mouse_MouseEnter.gml`
+   * (chiesUnlock:3) creano `leve3tounlo4|5|villa`/`level3tounlomedia`,
+   * tutti "unlocklvl3" — un solo banner generico per soglia, non uno per
+   * edificio (verificato: ogni oggetto sopra referenzia lo stesso sprite,
+   * mai uno dedicato). Stesso posto/occasione del cartellino prezzo vero
+   * (`costTagSprite()`, buildings.js) quando il bottone e' gia' sbloccato —
+   * vedi il commento su come i due si alternano piu' sotto (drawUiRow()/
+   * drawBuildMenuOverlay()). `null` per `parco` (`pu7`, sotto un flag
+   * diverso da `chies` — `unlocinque`, mai portato qui, STUDIO.md: nessun
+   * gate nel nostro port) o qualunque tipo senza `chiesUnlock`.
+   */
+  function unlockTagSprite(type) {
+    const need = CHIES_UNLOCK_BY_TYPE[type];
+    return need === 2 ? "unlocklvl2" : need === 3 ? "unlocklvl3" : null;
+  }
   /** [C] vedi il commento su `chiesUnlock` sopra: `true` finche' `chies`
    * (l'unica istanza, STUDIO.md §5.3) non ha raggiunto il livello richiesto —
    * `>=`, non `==2`/`==3` come il decompilato (`unlosei`/`unlos`/`unlocinque`
@@ -3717,13 +3777,23 @@ export async function mountMatch(ctx, params = {}) {
       // [C] pu6|pudj|pugatling|pusolare|puvillone|pumediat/Mouse_LeftPressed.gml:
       // il ramo che scrive `r12.selec` e' innestato dentro `if (unlosei==1)`
       // — un tocco su un bottone ancora bloccato (buildingLocked(), sopra)
-      // non fa NIENTE nel decompilato, non solo "non seleziona": stesso
-      // qui, un messaggio al posto del silenzio totale dell'originale
-      // (coerente con ogni altro tocco a vuoto di questo motore, sotto).
+      // non fa NIENTE nel decompilato, non solo "non seleziona". [Bug
+      // corretto, richiesto dall'autore: "su mobile deve comparire 'level 2
+      // to unlock' quando si seleziona un edificio non sbloccato"] Prima un
+      // tap su un bottone bloccato chiudeva subito l'overlay con solo un
+      // messaggio testuale di striscio — troppo poco tempo per leggerlo e
+      // nessuno sprite, a differenza del popup vero del decompilato
+      // (level2*/leve3tounlo*, unlockTagSprite() sopra). Ora resta APERTO e
+      // arma `buildMenuTagType`/`buildMenuTagUntil` (sopra): drawBuildMenuOverlay()
+      // lo disegna sopra il bottone stesso finche' il timer non scade (o
+      // finche' un dito non ci "passa sopra" di nuovo, live, via input.hover
+      // — vedi il commento li').
       if (hit?.type && buildingLocked(hit.type)) {
-        message = `${BUILDING_LABEL[hit.type] ?? hit.type}: requires the church at level ${CHIES_UNLOCK_BY_TYPE[hit.type]}`;
-        messageT = 3;
-      } else if (hit?.type) {
+        buildMenuTagType = hit.type;
+        buildMenuTagUntil = performance.now() + 2500;
+        return;
+      }
+      if (hit?.type) {
         selectedType = hit.type;
         r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
       }
@@ -3769,8 +3839,11 @@ export async function mountMatch(ctx, params = {}) {
         else if (btn.kind === "building") {                              // casa/industria/...
           // Stesso gate della griglia mobile qui sopra, per lo stesso
           // bottone visto nella riga scorrevole desktop (buildingLocked()).
+          // Il cartellino vero (unlockTagSprite(), sopra) e' gia' visibile
+          // all'hover su questa riga (drawUiRow() sotto): il messaggio resta
+          // solo come rinforzo testuale del click stesso.
           if (buildingLocked(btn.type)) {
-            message = `${BUILDING_LABEL[btn.type] ?? btn.type}: requires the church at level ${CHIES_UNLOCK_BY_TYPE[btn.type]}`;
+            message = `${BUILDING_LABEL[btn.type] ?? btn.type}: level ${CHIES_UNLOCK_BY_TYPE[btn.type]} to unlock`;
             messageT = 3;
           } else {
             selectedType = btn.type;
@@ -5568,16 +5641,20 @@ export async function mountMatch(ctx, params = {}) {
       ? { x0: 0, y0: rowTop, x1: canvas.clientWidth, y1: canvas.clientHeight }
       : null;
 
-    // Linguetta di prezzo sui bottoni edificio al passaggio del mouse — [C]
-    // pu1..pumediat/Mouse_MouseEnter.gml, vedi costTagSprite() in
-    // buildings.js. Solo mouse (come la raccolta monete/il segnale di
-    // potenziamento sotto): il touch non ha un vero hover senza contatto,
-    // e qui coprirebbe comunque il bottone col dito.
+    // Linguetta di prezzo (o "Level N to unlock", bottone ancora bloccato —
+    // vedi il commento su unlockTagSprite() sopra) sui bottoni edificio al
+    // passaggio del mouse — [C] pu1..pumediat/Mouse_MouseEnter.gml. Solo
+    // mouse (come la raccolta monete/il segnale di potenziamento sotto): il
+    // touch non ha un vero hover senza contatto, e qui coprirebbe comunque
+    // il bottone col dito — questa riga scorrevole esiste solo su desktop
+    // (isMobile la nasconde sempre dietro drawBuildMenuOverlay() invece,
+    // vedi il commento li' per il suo equivalente touch).
     if (input.hover && input.hoverPointerType === "mouse") {
       const hb = uiButtons.find((btn) => btn.kind === "building"
         && input.hover.x >= btn.x && input.hover.x <= btn.x + btn.w
         && input.hover.y >= btn.y && input.hover.y <= btn.y + btn.h);
-      const tagFrame = hb && frameFor(costTagSprite(hb.type, null));
+      const locked = hb && buildingLocked(hb.type);
+      const tagFrame = hb && frameFor(locked ? unlockTagSprite(hb.type) : costTagSprite(hb.type, null));
       if (tagFrame) {
         r.draw(tagFrame, hb.x + hb.w / 2 - (tagFrame.w * COST_TAG_SCALE) / 2, hb.y - 8, COST_TAG_SCALE, 0xffffff, 1);
       }

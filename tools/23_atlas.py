@@ -280,6 +280,15 @@ GAMEPLAY_SPRITES = {
         "c100", "c500", "c1000", "c2000", "c3500", "c5000", "c6000", "c7500",
         "c10000", "c20000", "c35000", "c50000", "c100000", "c200000", "c12aa", "c23aa",
         "cfree",   # [C] ccfree/Create.gml: l'unico edificio davvero gratis (banca) ha il proprio cartellino dedicato
+        # Banner "Level N to unlock" all'hover/tap su un bottone edificio
+        # ancora bloccato sotto il livello chiesa (STUDIO.md, `chiesUnlock` —
+        # game/src/main.js, unlockTagSprite()): [C] pu6|pudj|pugatling|
+        # pusolare/Mouse_MouseEnter.gml creano level2club|gatling|palazz|sol,
+        # tutti questo stesso sprite reale ("unlocklvl2"); pu4prov|pu5prov|
+        # puvillone|pumediat/Mouse_MouseEnter.gml creano leve3tounlo4|5|villa/
+        # level3tounlomedia, tutti "unlocklvl3" — un solo banner per soglia,
+        # mai uno dedicato per edificio.
+        "unlocklvl2", "unlocklvl3",
         # Popup si'/no della ruspa (STUDIO.md, "demolizione/riparazione" —
         # game/src/buildings.js tryRuspaRebuild()/ruspaDemolish, main.js
         # ruspaPending): "demoback" (annulla, src/objects/demobachia) e
