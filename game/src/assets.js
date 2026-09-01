@@ -108,6 +108,14 @@ export function loadRoomAtlas(gl, roomName, { onProgress } = {}) {
     entry = {
       cancelled, progress, listeners,
       pageTex: null,   // popolato non appena l'atlas.json e' arrivato — vedi evictRoomAtlas()
+      // [Bug corretto, richiesto dall'autore: "il gioco lagga da morire su
+      // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed
+      // eviction"] `startedGroups`: quali scaglioni oltre "core" sono gia'
+      // stati avviati (o non esistono per questa room) — vedi
+      // loadDeferredGroup() sotto, che lo consulta per restare idempotente
+      // (chiamata ad ogni frame da game/src/main.js, deve fare il vero
+      // download una volta sola).
+      startedGroups: new Set(),
     };
     entry.promise = (async () => {
       const atlas = await fetch(`./data/${roomName}.atlas.json`).then((x) => x.json());
@@ -120,31 +128,31 @@ export function loadRoomAtlas(gl, roomName, { onProgress } = {}) {
       // sempre visibile contro potenziamenti/combattimento/la catena
       // fari->piattaforma, vedi tools/27_sprite_tiers.mjs) dice quante
       // pagine iniziali aspettare qui prima di poter disegnare il primo
-      // frame — le altre si scaricano in background, PARTONO qui ma non
-      // vengono aspettate, e riempiono lo stesso array `pageTex` condiviso
-      // mano a mano che arrivano. Una room non ancora rigenerata con la
-      // pipeline aggiornata (`corePages` assente, es. build vecchie
-      // rimaste in cache) si comporta come prima: tutte le pagine core,
-      // nessuna in background.
+      // frame. Una room non ancora rigenerata con la pipeline aggiornata
+      // (`corePages` assente, es. build vecchie rimaste in cache) si
+      // comporta come prima: tutte le pagine core, nessuna deferred.
       const coreCount = atlas.corePages ?? atlas.pages.length;
       const pageTex = new Array(atlas.pages.length).fill(null);
       entry.pageTex = pageTex;
+      entry.atlas = atlas;
       progress.total = coreCount;
       const coreIndices = Array.from({ length: coreCount }, (_, i) => i);
       await loadPagesLimited(gl, atlas.pages, pageTex, coreIndices, {
         rethrow: true, cancelled, onPage: () => { progress.loaded++; notify(); },
       });
       if (cancelled.value) return null;
-      // Pagine deferred: NON aspettate — un fallimento qui non deve far
-      // ripetere il download delle pagine core gia' andate a buon fine
-      // (a differenza del catch sotto, che scarta l'intera cache SOLO se
-      // una pagina CORE fallisce). frameFor() (main.js/title.js) tratta
-      // gia' `pageTex[f.p] === null` come "non ancora pronto" — lo sprite
-      // semplicemente non si disegna per i pochi frame in cui la sua
-      // pagina e' ancora per strada, poi compare da solo.
-      const deferredIndices = Array.from(
-        { length: Math.max(0, atlas.pages.length - coreCount) }, (_, i) => coreCount + i);
-      loadPagesLimited(gl, atlas.pages, pageTex, deferredIndices, { rethrow: false, cancelled });
+      // [Bug corretto, richiesto dall'autore: "il gioco lagga da morire su
+      // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed
+      // eviction"] Le pagine "combat"/"advanced" (tools/27_sprite_tiers.mjs)
+      // NON partono piu' qui in automatico — prima scaricavano SEMPRE tutto
+      // lo scaglione "deferred" (fino a ~600+ MB di VRAM decompressa per
+      // match_easy) pochi istanti dopo le pagine core, indipendentemente dal
+      // fatto che il giocatore arrivasse mai a toccare quel contenuto (mai
+      // un vero combattimento, mai un edificio oltre la dote iniziale).
+      // loadDeferredGroup() sotto le avvia una alla volta SOLO quando lo
+      // stato di gioco vero si avvicina alla soglia (game/src/main.js) — una
+      // partita breve/pacifica su match_easy puo' restare per l'intera
+      // sessione alle sole pagine core.
       return { atlas, pageTex };
     })();
     // [Bug corretto, segnalato dall'autore: "problemi col caricamento del
@@ -168,6 +176,44 @@ export function loadRoomAtlas(gl, roomName, { onProgress } = {}) {
     entry.promise.finally(() => entry.listeners.delete(onProgress));
   }
   return entry.promise;
+}
+
+/**
+ * [Nuova funzionalita', richiesta dall'autore: "il gioco lagga da morire su
+ * alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed eviction"]
+ * Avvia il download delle pagine dello scaglione `group` ("combat" o
+ * "advanced", tools/27_sprite_tiers.mjs/23_atlas.py) — chiamata da
+ * game/src/main.js ogni frame quando lo stato di gioco vero si avvicina
+ * alla soglia di quello scaglione (non prima), invece che incondizionata
+ * subito dopo le pagine core come nella versione precedente. Idempotente
+ * (`entry.startedGroups`): richiamarla ad ogni frame finche' la condizione
+ * resta vera e' economico quanto lasciarla perdere, non fa ripartire un
+ * download gia' in corso o gia' finito. Silenziosa se la room non e'
+ * ancora (o non e' piu', dopo evictRoomAtlas()) in cache, o se l'atlas non
+ * e' ancora arrivato: il chiamante la richiama comunque ad ogni frame,
+ * quindi un tentativo perso qui viene ritentato da solo al frame dopo.
+ * `atlas.combatPages` assente (room senza questo scaglione, es. build
+ * vecchie): `group === "combat"` diventa silenziosamente un no-op (count
+ * 0), `"advanced"` finisce per coprire l'intero resto dell'atlas — stesso
+ * comportamento "tutto cio' che non e' core" della vecchia versione unica.
+ */
+export function loadDeferredGroup(gl, roomName, group) {
+  const entry = cache.get(roomName);
+  if (!entry?.atlas || !entry.pageTex || entry.startedGroups.has(group)) return;
+  entry.startedGroups.add(group);
+  const { atlas, pageTex, cancelled } = entry;
+  const coreCount = atlas.corePages ?? atlas.pages.length;
+  const combatCount = atlas.combatPages ?? 0;
+  const [start, end] = group === "combat" ? [coreCount, coreCount + combatCount]
+    : group === "advanced" ? [coreCount + combatCount, atlas.pages.length]
+    : [0, 0];
+  if (end <= start) return;
+  const indices = Array.from({ length: end - start }, (_, i) => start + i);
+  // Non aspettata (stesso principio della vecchia `deferredIndices`,
+  // rimossa sopra): un fallimento qui non deve toccare le pagine core gia'
+  // andate a buon fine, e frameFor() gia' tratta `pageTex[i] === null` come
+  // "non ancora pronto".
+  loadPagesLimited(gl, atlas.pages, pageTex, indices, { rethrow: false, cancelled });
 }
 
 // [Bug corretto, segnalato dall'autore: "su iPhone tutorial/match facile

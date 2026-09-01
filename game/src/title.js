@@ -44,7 +44,7 @@
 import { solidFrame } from "./gl.js";
 import { loadFromFile } from "./save.js";
 import { Camera, screenProjection } from "./camera.js";
-import { loadRoomAtlas } from "./assets.js";
+import { loadRoomAtlas, loadDeferredGroup } from "./assets.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
 import {
   stepThreatSpawner, stepThreats, stepExplosions, EXPLOSION_FRAME_COUNT,
@@ -67,6 +67,20 @@ export async function mountTitle(ctx) {
   const { atlas, pageTex } = await loadRoomAtlas(gl, "title", {
     onProgress: (loaded, total) => reportProgress("title", loaded, total, "loading interface"),
   });
+  // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
+  // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed
+  // eviction"] loadRoomAtlas() (assets.js) non avvia piu' da sola le
+  // pagine oltre `corePages` — game/src/main.js le richiama solo quando lo
+  // stato di gioco vero si avvicina alla soglia "combat"/"advanced"
+  // (tools/27_sprite_tiers.mjs), ma questa room non ha ne' l'uno ne'
+  // l'altro concetto: le sue poche pagine deferred (lo sfondo dinamico
+  // dietro il menu, TITLE_DYNAMIC_SPRITES in tools/23_atlas.py) devono
+  // arrivare comunque, subito, come sempre — senza questa chiamata
+  // esplicita resterebbero orfane per l'intera visita al menu. `"advanced"`
+  // copre da sola l'intero resto dell'atlas quando `combatPages` e'
+  // assente (questa room non lo genera): nessun bisogno di chiamare anche
+  // `"combat"`.
+  loadDeferredGroup(gl, "title", "advanced");
   function frameFor(sprName, frameIdx = 0, inset = false) {
     const frames = atlas.sprites[sprName];
     if (!frames || !frames.length) return null;

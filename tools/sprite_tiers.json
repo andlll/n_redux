@@ -11,17 +11,23 @@
     "platform",
     "tutorial"
   ],
-  "deferredGroups": [
-    "cars2",
-    "bridges",
+  "combatGroups": [
     "threats",
     "projectiles",
-    "platform2",
     "lightning"
+  ],
+  "advancedGroups": [
+    "cars2",
+    "bridges",
+    "platform2"
   ],
   "balloonCore": [
     "monv",
     "monv_bar",
+    "mong",
+    "mong_bar",
+    "monss",
+    "monss_bar",
     "mon_bild",
     "mon_bild_empty",
     "mon_bild_box",
@@ -29,16 +35,21 @@
     "mon_bbild_empty",
     "mon_bbild_box"
   ],
+  "balloonCombat": [
+    "monr",
+    "reconspr",
+    "ainco"
+  ],
   "buildingsDeferred": [
-    "Banca",
-    "Grattacielo",
+    "Bank",
+    "Building",
+    "Gatling Gun",
     "Laser",
-    "Mitragliatrice",
-    "Monumento",
-    "Museo",
-    "Pala eolica",
-    "Palazzo",
+    "Monument",
+    "Museum",
+    "Skyscraper",
     "Villa",
+    "Wind Turbine",
     "banca_img",
     "banca_lx",
     "c211",
@@ -268,8 +279,6 @@
     "i31a2",
     "i31a3",
     "i31l1l",
-    "im2f",
-    "im4f",
     "impvent1",
     "impvent2",
     "impvent3",
@@ -398,8 +407,6 @@
     "sr84",
     "topld",
     "topls",
-    "tops5d",
-    "tops5s",
     "vil1",
     "vil10",
     "vil10l",

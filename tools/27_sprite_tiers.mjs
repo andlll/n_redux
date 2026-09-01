@@ -91,22 +91,56 @@ for (const s of RUIN_POOL_SPRITES) { buildingsCore.add(s); buildingsDeferred.del
 // l'unico gruppo diviso sprite-per-sprite (sopra), perche' e' l'unico che
 // mescola livello 1 e livelli avanzati nella stessa lista piatta.
 const CORE_GROUPS = ["gui", "trees", "cars", "semaphores", "atmosphere", "pedestrians", "coins", "smoke", "platform", "tutorial"];
-// "lightning": un colpo di fulmine richiede una tempesta (rara, r12.storm —
-// game/src/state.js) E un edificio/torretta/mongolfiera gia' in gioco che
-// venga colpito — mai nel primissimo frame, stesso principio di
-// "threats"/"projectiles" (il combattimento vero arriva sempre dopo).
-const DEFERRED_GROUPS = ["cars2", "bridges", "threats", "projectiles", "platform2", "lightning"];
-// balloons: SOLO monvo (l'unica risorsa "sempre creata, nessun dado" —
-// game/src/balloons.js) piu' il pacco di cantiere (creato ad OGNI
-// edificio piazzato, dal primo della tutorial in poi) sono core; le altre
-// risorse sono tutte a dado/soglia (chies.level>=2) e la spia sblocca solo
-// dopo ~8 minuti di partita (r12/Alarm... in game/src/balloons.js).
-const BALLOON_CORE = new Set(["monv", "monv_bar", "mon_bild", "mon_bild_empty", "mon_bild_box", "mon_bbild", "mon_bbild_empty", "mon_bbild_box"]);
+// [Nuova funzionalita', richiesta dall'autore: "il gioco lagga da morire su
+// alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed eviction"]
+// Il singolo scaglione "deferred" (tutto cio' che non e' core, ~36 pagine/
+// ~600+ MB per match_easy — misurato) partiva TUTTO insieme in background
+// appena finite le pagine core, indipendentemente dal fatto che il
+// giocatore arrivi mai a toccare quel contenuto: una partita breve/pacifica
+// (niente combattimento, niente potenziamenti) teneva comunque in VRAM
+// l'intero scaglione per tutta la sessione. Diviso in due scaglioni
+// separati, ognuno con un trigger di caricamento vero legato allo stato di
+// gioco (game/src/assets.js/loadDeferredGroup(), game/src/main.js) invece
+// di "sempre, subito":
+//  - "combat": minacce vere/proiettili/fulmini — non possono comparire
+//    prima che r12.spy si sblocchi (~8 minuti, game/src/balloons.js
+//    SPY_UNLOCK_T) o che un vero temporale sia in corso (fulmini).
+//  - "advanced": traffico periodico (cars2, ~60s/tipo — game/src/cars.js
+//    CARMAKER_SCHEDULE), ponti levatoi, la catena fari->piattaforma
+//    (platform2, chies.level>=2) + tutti gli edifici "avanzati"
+//    (buildingsDeferred sotto: potenziamenti di casa/industria, ogni
+//    edificio con `chiesUnlock`/le tre stelle) — nessuno di questi puo'
+//    comparire prima che il giocatore superi la dote iniziale o chies
+//    livello 1, esattamente la stessa soglia gia' usata per calcolare
+//    `buildingsDeferred` sopra.
+const COMBAT_GROUPS = ["threats", "projectiles", "lightning"];
+const ADVANCED_GROUPS = ["cars2", "bridges", "platform2"];
+// balloons: SOLO monvo/mongo/monbo (le tre risorse "a dado senza soglia" —
+// game/src/balloons.js, `dice(N)` senza nessun gate di livello: possono
+// comparire dal primissimo controllo di spawn, 5s di gioco) piu' il pacco
+// di cantiere (creato ad OGNI edificio piazzato, dal primo della tutorial
+// in poi) sono core. Le altre sono tutte dietro una soglia vera —
+// monviolo/monvo_giga richiedono chies.level>=2 (STESSA soglia di
+// "advanced" sopra, [C] balloons.js), monspi/recogn si sbloccano solo con
+// r12.spy (STESSA soglia di "combat" sopra, la spia e' l'innesco delle
+// minacce vere) — quindi restano deferred, ripartite fra i due nuovi
+// scaglioni invece che un terzo gruppo a parte: nessun nuovo trigger da
+// inventare, i due che servono gia' per combat/advanced le coprono.
+const BALLOON_CORE = new Set([
+  "monv", "monv_bar", "mong", "mong_bar", "monss", "monss_bar",
+  "mon_bild", "mon_bild_empty", "mon_bild_box", "mon_bbild", "mon_bbild_empty", "mon_bbild_box",
+]);
+// monspi, recogn ("ainco" = il banner "ATTACK INCOMING" che la spia riuscita
+// fa comparire, [C] STESSA soglia — non puo' mostrarsi prima che r12.spy
+// esista) — tutti e tre dietro r12.spy, il trigger "combat".
+const BALLOON_COMBAT = new Set(["monr", "reconspr", "ainco"]);
 
 const manifest = {
   coreGroups: CORE_GROUPS,
-  deferredGroups: DEFERRED_GROUPS,
+  combatGroups: COMBAT_GROUPS,
+  advancedGroups: ADVANCED_GROUPS,
   balloonCore: [...BALLOON_CORE],
+  balloonCombat: [...BALLOON_COMBAT],
   buildingsDeferred: [...buildingsDeferred].sort(),
 };
 

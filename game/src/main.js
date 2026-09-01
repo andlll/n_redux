@@ -1,6 +1,6 @@
 import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
-import { loadRoomAtlas } from "./assets.js";
+import { loadRoomAtlas, loadDeferredGroup } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
@@ -237,6 +237,20 @@ export async function mountMatch(ctx, params = {}) {
   const { atlas, pageTex } = await loadRoomAtlas(gl, roomName, {
     onProgress: (loaded, total) => reportProgress(roomName, loaded, total, "loading city"),
   });
+  // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
+  // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed eviction"]
+  // Il tier "combat" (sotto, dentro `if (skyAlive)`) si avvia normalmente
+  // solo quando `r12.spy`/una minaccia vera si avvicina — ma la cutscene
+  // iniziale del tutorial (tutorial.js, spawnBattle()) crea `bombar`/`air`/
+  // `dirig` VERI gia' dopo pochi secondi, per script, MAI passando da
+  // quei contatori (r12.spy/onda/bombn/diron restano a zero per l'intera
+  // cutscene — e' tutta roba scriptata, non l'economia normale delle
+  // mongolfiere spia): il trigger normale non scatterebbe mai in tempo.
+  // Qui il tutorial fa eccezione, come faceva "deferred" incondizionato
+  // prima di questo cambio — le sue pagine "combat" partono subito, non
+  // c'e' niente da guadagnare a ritardarle in una room che le usa comunque
+  // nei primi secondi.
+  if (roomName === "tutorial") loadDeferredGroup(gl, roomName, "combat");
   // `frameIdx` (default 0): quasi tutti gli sprite del motore sono statici,
   // una sola posa (STUDIO.md, "nessun sistema di image_speed") — ma alcuni
   // (le svolte delle auto, game/src/cars.js) sono davvero multi-frame
@@ -250,19 +264,24 @@ export async function mountMatch(ctx, params = {}) {
   // inizializzata lancerebbe un ReferenceError ("temporal dead zone"), non
   // silenziosamente NaN.
   const TICK = 1 / 60;              // room_speed dell'originale, stessa unita' di buildings.js
-  // [I] Caricamento a due tempi (tools/23_atlas.py `corePages` + game/src/
-  // assets.js): le pagine "deferred" (potenziamenti, combattimento, la
-  // catena fari->piattaforma) arrivano in background DOPO che la partita
-  // e' gia' disegnata — `pageTex[f.p]` puo' quindi essere ancora `null`
-  // per uno sprite tecnicamente presente nell'atlas ma non ancora
-  // scaricato. Trattato esattamente come uno sprite mancante (`return
-  // null`, lo stesso ramo di "frames non trovati" sotto): main.js non
-  // disegna nulla per quel frame invece di far crashare l'intero
-  // rendering leggendo `.tex` di un `pageTex[f.p]` ancora null — chi lo
-  // richiama ogni frame (la stragrande maggioranza dei chiamanti, vedi
-  // `dynamic.push({..., _f: frameFor(...)})` piu' sotto) lo ritenta da
-  // solo al frame successivo, quindi lo sprite compare da solo (pop-in)
-  // appena la sua pagina finisce di arrivare — nessuno stato da pulire.
+  // [I] Caricamento in tre scaglioni (tools/23_atlas.py `corePages`/
+  // `combatPages` + game/src/assets.js): core arriva prima del primo
+  // fotogramma, "combat" (minacce vere/proiettili/fulmini) e "advanced"
+  // (potenziamenti, traffico periodico, la catena fari->piattaforma, ogni
+  // edificio oltre la dote iniziale) arrivano in background SOLO quando lo
+  // stato di gioco vero si avvicina alla soglia di ciascuno (vedi il
+  // trigger piu' sotto, dentro `if (skyAlive)`) — mai incondizionati subito
+  // dopo core. `pageTex[f.p]` puo' quindi restare `null` per uno sprite
+  // tecnicamente presente nell'atlas ma non ancora scaricato, a volte per
+  // buona parte di una partita che non tocca mai quel contenuto. Trattato
+  // esattamente come uno sprite mancante (`return null`, lo stesso ramo di
+  // "frames non trovati" sotto): main.js non disegna nulla per quel frame
+  // invece di far crashare l'intero rendering leggendo `.tex` di un
+  // `pageTex[f.p]` ancora null — chi lo richiama ogni frame (la
+  // stragrande maggioranza dei chiamanti, vedi `dynamic.push({...,
+  // _f: frameFor(...)})` piu' sotto) lo ritenta da solo al frame
+  // successivo, quindi lo sprite compare da solo (pop-in) appena la sua
+  // pagina finisce di arrivare — nessuno stato da pulire.
   // I pochi chiamanti che invece CACHANO `_f` una volta sola
   // (`staticWorld`, sotto) vengono guariti esplicitamente, vedi
   // healMissingArt()/il ciclo di frame piu' in basso.
@@ -4771,6 +4790,40 @@ export async function mountMatch(ctx, params = {}) {
     // quel ramo cosmetico: stessa condizione combinata gia' usata per
     // stepRain() sotto.
     if (skyAlive) {
+      // [Bug corretto, richiesto dall'autore: "il gioco lagga da morire su
+      // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed
+      // eviction"] Avvia gli scaglioni "combat"/"advanced" (tools/
+      // 27_sprite_tiers.mjs, game/src/assets.js/loadDeferredGroup()) solo
+      // quando lo stato di gioco vero si avvicina alla soglia — non piu'
+      // incondizionato subito dopo le pagine core. `loadDeferredGroup()` e'
+      // gia' idempotente (assets.js), richiamarla ogni frame finche' la
+      // condizione resta vera costa solo un controllo su un Set.
+      // "combat": qualunque minaccia vera possa comparire da un istante
+      // all'altro — r12.spy (spia sbloccata, l'innesco di onda/bombn/diron —
+      // game/src/balloons.js) o un vero temporale (fulmini) gia' in corso,
+      // oppure un'ondata gia' avviata (i tre contatori "attivi" restano >0
+      // finche' l'ondata non si esaurisce, game/src/threats.js).
+      // Due `if` INDIPENDENTI, apposta non un `if`/`else if`: `r12.spy`
+      // resta vero per il resto della partita una volta sbloccato (~8
+      // minuti, nessun `action_set_alarm` che lo riarma — game/src/
+      // balloons.js), quindi con un `else if` il ramo "advanced" non
+      // verrebbe piu' controllato affatto dopo quel momento se non era gia'
+      // scattato prima — un edificio sbloccato DOPO che la spia e' gia'
+      // attiva non avrebbe mai avviato il proprio scaglione.
+      if (r12.spy || r12.storm || r12.stormeasy
+        || (r12.ondan ?? 0) > 0 || (r12.bombn ?? 0) > 0 || (r12.diron ?? 0) > 0) {
+        loadDeferredGroup(gl, roomName, "combat");
+      }
+      // "advanced": chies a livello 2 (la soglia PIU' BASSA fra tutti i
+      // `chiesUnlock` — main.js sopra, OTHER_BUILDINGS: chi richiede
+      // livello 3 diventa raggiungibile solo DOPO essere passato per il 2,
+      // quindi lo stesso trigger li copre entrambi in anticipo) o un
+      // potenziamento di un edificio gia' sbloccato (casa/industria, gli
+      // unici due gate a soglia di popolazione invece che a livello chiesa
+      // — upgradeUnlocked(), buildings.js).
+      if (buildings.some((b) => (b.type === "chies" && b.level >= 2) || upgradeUnlocked(b, r12, buildings))) {
+        loadDeferredGroup(gl, roomName, "advanced");
+      }
       // [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Nuvole veloci
       // esclusive di `match`/`tutorial` (mai `match_easy` — atmosphere.js,
       // il commento su `fastClouds` per il dettaglio) invece delle "ni"
