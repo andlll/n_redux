@@ -28,7 +28,6 @@ import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
-import { loadFont, drawText, measureText, fitTextScale } from "./font.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN,
@@ -422,26 +421,23 @@ export async function mountMatch(ctx, params = {}) {
 
   for (const it of staticWorld) it._f = frameFor(it.spr);
 
-  // Font bitmap reale della barra risorse (tools/25_font.py). [C]
-  // src/objects/repre/DrawGUI.gml: action_font(gotham_mini, 0) — un font
-  // dedicato, non lo stesso usato altrove rimpicciolito (era l'ipotesi
-  // iniziale, sbagliata: "gotham_mid" non e' piu' usato in questo file da
-  // quando il bottone di test di chies e' sparito, STUDIO.md §9).
-  const fontMini = await loadFont(gl, "gotham_mini");
+  // [Bug corretto, richiesto dall'autore: "applichiamo lo stesso stile
+  // Montserrat bianco su nero dei titoli di apertura del tutorial alla
+  // schermata di sconfitta" — drawOutcomeOverlay() piu' sotto] Il font
+  // bitmap "gotham_mini" (tools/25_font.py — [C] src/objects/repre/
+  // DrawGUI.gml: action_font(gotham_mini, 0), un tempo la barra risorse,
+  // poi solo il pannello di sconfitta dopo la migrazione a Montserrat qui
+  // sotto) non ha piu' nessun chiamante in questo file: rimosso insieme
+  // all'import di `loadFont`/`drawText`/`measureText`/`fitTextScale`
+  // (font.js) e a `wrapText()` (usata solo da lui), diventati morti con
+  // lui. Il balloon di testo del tutorial e i tre pannelli (pausa/
+  // vittoria/sconfitta) usano tutti Montserrat vero (index.html/game/fonts/
+  // — vedi drawHtmlText() sotto): nitido a QUALUNQUE dimensione, non un
+  // compromesso fra atlas bitmap diversi.
   // [C] repre/DrawGUI.gml: dodici `action_draw_text` letterali, uno per ogni
   // valore di `repre.mon` (il mese, 1..12 — state.js, r12.month) — mai una
   // tabella nel decompilato, ricostruita qui come tale.
   const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  // Il balloon di testo del tutorial e il menu di pausa/"saving options" NON
-  // usano piu' un font bitmap dedicato (erano "gotham_mobile"/"gotham" —
-  // entrambi rimasti comunque un po' "sgranati" a scale grandi, segnalato
-  // di nuovo dall'autore dopo il fix precedente su "gotham"): quei pannelli
-  // sono interamente nostri, nessun `action_font` del decompilato da
-  // rispettare (a differenza di `fontMini` sopra, l'unico rimasto bitmap —
-  // la barra risorse SI ha un font originale da riprodurre). Testo HTML
-  // vero invece (Montserrat, index.html/game/fonts/ — vedi drawHtmlText()
-  // sotto): nitido a QUALUNQUE dimensione, non un compromesso migliore fra
-  // due atlas bitmap.
 
   // -------------------------------------------------------- piazzabili e edifici
   // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
@@ -2579,8 +2575,15 @@ export async function mountMatch(ctx, params = {}) {
   // font bitmap — vedi il commento li') non congela la partita ("la
   // vittoria non blocca niente"), quindi puo' capitare nello STESSO frame
   // della barra risorse: titolo + messaggio + un bottone ("Keep playing") = 3
-  // in piu', 13 nel caso peggiore, +1 di margine.
-  const TEXT_POOL_SIZE = 14;
+  // in piu'. Il pannello di SCONFITTA (stesso file, ramo `defeat`: ora
+  // anche lui Montserrat vero, "testo nudo su nero" invece del pannello col
+  // font bitmap) e' il vero worst case: titolo + messaggio + le 4 righe del
+  // menu di game over = 6 — `outcome` non e' incluso in `hideResourceText`
+  // (sotto), e l'olio puo' esaurirsi anche nel tutorial (roomName ===
+  // "tutorial", piu' sotto), quindi barra risorse (7) + balloon tutorial
+  // (1) + i 2 banner + il pannello di sconfitta (6) possono capitare tutti
+  // nello stesso frame = 16, +1 di margine.
+  const TEXT_POOL_SIZE = 17;
   const textPool = Array.from({ length: TEXT_POOL_SIZE }, () => {
     const el = document.createElement("div");
     el.className = "gameText";
@@ -3179,6 +3182,19 @@ export async function mountMatch(ctx, params = {}) {
     r.flush();
   }
 
+  /** Rettangolo bordato (solo contorno, interno trasparente) — quattro
+   * strisce sottili (`solidFrame`, come ogni altro rettangolo pieno del
+   * motore) invece di un riempimento vero: usato dai bottoni "testo nudo su
+   * nero" della schermata di sconfitta sotto, dove il nero di fondo deve
+   * restare visibile anche dentro il bottone (nessun pannello dietro, a
+   * differenza di pausePanelFrame()/pauseButtonFrame() sopra). */
+  function drawOutlineRect(x, y, w, h, thickness, tint, alpha) {
+    r.draw(solidFrame(white, w, thickness), x, y, 1, tint, alpha);
+    r.draw(solidFrame(white, w, thickness), x, y + h - thickness, 1, tint, alpha);
+    r.draw(solidFrame(white, thickness, h), x, y, 1, tint, alpha);
+    r.draw(solidFrame(white, thickness, h), x + w - thickness, y, 1, tint, alpha);
+  }
+
   /**
    * `outcome` (sopra) — stesso post-processo di drawPauseOverlay(): cattura
    * il canvas gia' disegnato (`pauseBlur.blurScreen()`) e ci disegna sopra.
@@ -3237,11 +3253,21 @@ export async function mountMatch(ctx, params = {}) {
 
     outcomeButtons = [];
     if (showPanel && defeat) {
-      // Sconfitta: pannello scuro/allarmante col font bitmap "gotham" — resta
-      // com'era, la tavolozza rossa e il tono secco si addicono a una vera
-      // fine di partita, diverso di proposito dal "vetro smerigliato"
-      // chiaro degli altri pannelli (nessuna richiesta dall'autore di
-      // toccarlo).
+      // [Bug corretto, richiesto dall'autore: "applichiamo lo stesso stile
+      // Montserrat bianco su nero dei titoli di apertura del tutorial
+      // (glitchCutsceneLine()/cutsceneTextWrap, sopra), niente piu' pannello
+      // scuro col vecchio font bitmap 'gotham'"] Testo Montserrat vero
+      // DIRETTAMENTE sul nero pieno — il fondo e' gia' nero qui (il
+      // crossfade sopra e' finito, `showPanel` diventa vero solo a `k>=1`):
+      // nessun pannello/box dietro, a differenza degli altri due stati
+      // (pausa/vittoria, "vetro smerigliato" chiaro) — la sconfitta e' una
+      // vera fine, deve leggersi come tale. **[I]** Niente pero' l'effetto
+      // glitch ciano/blu delle due schermate del tutorial (troppo "vivace"
+      // per un momento di sconfitta, non richiesto): resta il solo bianco
+      // pieno. I bottoni sono rettangoli bordati (`drawOutlineRect()`
+      // sopra, contorno bianco/interno trasparente) invece di un riempimento
+      // — stesso principio "testo nudo su nero", il nero di fondo resta
+      // visibile anche dentro il bottone.
       const title = "GAME OVER";
       const subtitle = outcome.reason === "chies"
         ? "The City center, the city's historic building, has been destroyed."
@@ -3253,32 +3279,26 @@ export async function mountMatch(ctx, params = {}) {
         { label: "Back to menu", action: "title" },
       ];
 
-      const textScale = 1.1;
-      const panelW = Math.min(360, cw - 40);
-      const lines = wrapText(fontMini, subtitle, textScale, panelW - 60);
-      const lineH = 22;
-      const titleScale = 2.2;
-      const panelH = 32 + 17 * titleScale + 14 + lines.length * lineH + 14 + rows.length * 60;
-      const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
-      r.draw(solidFrame(white, panelW, panelH), px, py, 1, 0x20242c, 0.97);
+      const contentW = Math.min(360, cw - 40);
+      const subH = 76;
+      const btnW = contentW - 60, btnH = 46, btnGap = 14;
+      const titleH = 46, gap1 = 20, gap2 = 26;
+      const btnsH = rows.length * btnH + (rows.length - 1) * btnGap;
+      const contentH = titleH + gap1 + subH + gap2 + btnsH;
+      const px = (cw - contentW) / 2;
+      let ty = (ch - contentH) / 2;
 
-      drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 20,
-        titleScale, 0xff6a5a, 1);
+      drawHtmlText(title, cw / 2, ty + titleH / 2, { size: 34, color: "#ffffff" });
+      ty += titleH + gap1;
+      drawHtmlText(subtitle, px + 30, ty, { size: 14, maxWidth: contentW - 60, wrap: true, color: "#ffffff" });
+      ty += subH + gap2;
 
-      let ty = py + 20 + 17 * titleScale + 14;
-      for (const line of lines) {
-        drawText(r, fontMini, line, px + (panelW - measureText(fontMini, line, textScale)) / 2, ty, textScale, 0xdcdfe6, 1);
-        ty += lineH;
-      }
-
-      const btnW = panelW - 60, btnH = 46, btnGap = 14;
-      let by = ty + 14;
       for (const row of rows) {
-        const bx = px + (panelW - btnW) / 2;
-        r.draw(solidFrame(white, btnW, btnH), bx, by, 1, 0x3a4152, 0.95);
-        drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, 0xffffff, 1);
-        outcomeButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
-        by += btnH + btnGap;
+        const bx = px + (contentW - btnW) / 2;
+        drawOutlineRect(bx, ty, btnW, btnH, 2, 0xffffff, 0.85);
+        drawHtmlText(row.label, bx + btnW / 2, ty + btnH / 2, { size: 17, maxWidth: btnW - 20, color: "#ffffff" });
+        outcomeButtons.push({ x: bx, y: ty, w: btnW, h: btnH, action: row.action });
+        ty += btnH + btnGap;
       }
     } else if (showPanel) {
       // [Bug corretto, richiesto dall'autore: "la schermata di congratulazioni
@@ -3366,27 +3386,6 @@ export async function mountMatch(ctx, params = {}) {
       y: cy + (p.x * sin + p.y * cos) * scale,
     }));
     r.drawQuad(frame, corners[0], corners[1], corners[2], corners[3], tint, alpha);
-  }
-
-  /** A capo semplice per parola, sul font bitmap `font` — [C]
-   * tutorial_square/DrawGUI.gml usa `draw_text_ext_colour` (a capo
-   * automatico nativo di GameMaker); qui measureText() (font.js) misura
-   * ogni riga candidata finche' non supera `maxWidth`. */
-  function wrapText(font, str, scale, maxWidth) {
-    const words = str.split(" ");
-    const lines = [];
-    let cur = "";
-    for (const w of words) {
-      const test = cur ? cur + " " + w : w;
-      if (cur && measureText(font, test, scale) > maxWidth) {
-        lines.push(cur);
-        cur = w;
-      } else {
-        cur = test;
-      }
-    }
-    if (cur) lines.push(cur);
-    return lines;
   }
 
   // Cache del rettangolo arrotondato del balloon (game/src/gl.js,
