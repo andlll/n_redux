@@ -197,17 +197,19 @@ const WEAPONS = {
   // quattro angoli calcolati a mano) disegna un fascio vero da bocca a
   // fondo raggio, vedi spawnBeam()/stepBeams() sotto e drawBeams() in
   // main.js. [I] Sostituito con un colpo secco e istantaneo (hitscan):
-  // tutte le minacce vere entro `aim.fireRange` vengono danneggiate in un
-  // colpo solo (vedi fireFrom sotto — [C] fedele nello spirito, non alla
-  // lettera: `laserone`/`laserone_retro` non uccidono mai se stessi contro
-  // `bombar`, quindi tecnicamente trafiggono solo lui e non air/dirig, che
-  // invece lo fermano — una distinzione che richiederebbe una vera
-  // geometria di collisione lungo il fascio, non solo un raggio dal
-  // cannone: qui semplificata a "colpisce tutto cio' che e' in portata"),
-  // con un lampo alla bocca del cannone e un'esplosione su ciascun
-  // bersaglio effettivamente distrutto — non garantito al primo colpo, il
-  // danno per tipo (DAMAGE.laser sopra) non sempre basta da solo (air si',
-  // bombar/dirig no).
+  // tutte le minacce vere che il fascio tocca lungo tutta la sua lunghezza
+  // (un vero raycast, non piu' limitato ad `aim.fireRange` — segnalato
+  // dall'autore, vedi il commento su `hitsBeam()` in fireFrom() sotto)
+  // vengono danneggiate in un colpo solo (vedi fireFrom sotto — [C] fedele
+  // nello spirito, non alla lettera: `laserone`/`laserone_retro` non
+  // uccidono mai se stessi contro `bombar`, quindi tecnicamente trafiggono
+  // solo lui e non air/dirig, che invece lo fermano — una distinzione che
+  // richiederebbe una vera geometria di collisione lungo il fascio, non
+  // solo un raggio dal cannone: qui semplificata a "colpisce tutto cio' che
+  // il fascio attraversa"), con un lampo alla bocca del cannone e
+  // un'esplosione su ciascun bersaglio effettivamente distrutto — non
+  // garantito al primo colpo, il danno per tipo (DAMAGE.laser sopra) non
+  // sempre basta da solo (air si', bombar/dirig no).
   laser: {
     kind: "beam", muzzle: LASER_MUZZLE,
     cooldown: 85 * TICK,                  // [C] launching=2, action_set_alarm(85, 1) -> Alarm_1 rimette launching = 0
@@ -251,9 +253,13 @@ export function spawnSmoko(x, y) {
 // laser.cooldown sopra), un fascio che durasse quanto quella sarebbe piu'
 // invasivo di quanto serva solo per "vedere che ha sparato".
 export const BEAM_LIFE = 20 * TICK;
-// [I] Lunghezza del fascio DISEGNATO (fireFrom() sotto) — non della portata
-// vera del colpo (BUILDING_TYPES.laser.aim.fireRange, buildings.js, mai
-// toccata). Piu' lunga della diagonale della mappa piu' grande (`match`,
+// [I] Lunghezza del fascio DISEGNATO (fireFrom() sotto) — e, da quando il
+// danno vero e' stato esteso a tutta la sua lunghezza (segnalato
+// dall'autore: "un raycast infinito lungo tutta la semiretta", vedi
+// `hitsBeam()` in fireFrom()), anche il taglio del vero hit-test: non piu'
+// solo `BUILDING_TYPES.laser.aim.fireRange` (quello resta il gate "a
+// bruciapelo" che decide SE il colpo parte, stepTurretFire sotto). Piu'
+// lunga della diagonale della mappa piu' grande (`match`,
 // game/data/match.scene.json: 3900x2090, diagonale ~4424px) cosi' il fascio
 // esce sempre dallo schermo/dalla mappa in ogni direzione invece di finire
 // a meta' del vuoto — l'effetto "raggio senza fine" richiesto dall'autore,
@@ -330,55 +336,50 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beam
     const mx = b.x + off.dx, my = b.y + off.dy;
     payAmmo(weapon, r12);
     explosions.push(spawnExplosion(mx, my, MUZZLE_FLASH_SCALE));
-    const fireRange = BUILDING_TYPES[b.type].aim.fireRange;
     // [Bug corretto, segnalato dall'autore: "il laser mi sembra impreciso,
     // il fascio deve colpire l'oggetto che punta"] **[I]** Il danno era un
-    // cerchio di raggio `fireRange` intorno al CENTRO della torretta,
-    // indipendente dalla direzione di mira: poteva colpire una minaccia
-    // fuori dal fascio disegnato (dietro/di lato, dentro il cerchio ma mai
-    // toccata dal quad del fascio) e mancarne una proprio sul percorso del
-    // fascio ma appena oltre il cerchio. La stessa correzione gia' fatta
-    // sotto per missile/gatling (`fireAngle` ricalcolato dalla bocca vera,
-    // non da `b.aimAngle` letto cosi' com'e' — vedi buildings.js/
-    // stepTurretAim, "l'offset del cannone e' ~100-350px, differenza
-    // notabile quando il bersaglio e' vicino") non era mai stata applicata
-    // qui: il fascio partiva dalla bocca ma continuava lungo l'angolo
-    // calcolato dal CENTRO dell'edificio, non da dove parte davvero.
-    // **[I]** direzione ricalcolata dalla bocca verso `b.aimTarget` (lo
-    // stesso bersaglio che la torretta sta visibilmente inseguendo), poi
-    // danno per hit-test vero contro il fascio (proiezione lungo il raggio
-    // + distanza perpendicolare dalla sua linea, non piu' un cerchio):
-    // colpisce cio' che il fascio attraversa DAVVERO, non tutto cio' che
-    // capita entro `fireRange` in qualunque direzione.
+    // cerchio intorno al CENTRO della torretta, indipendente dalla
+    // direzione di mira: poteva colpire una minaccia fuori dal fascio
+    // disegnato (dietro/di lato, dentro il cerchio ma mai toccata dal quad
+    // del fascio) e mancarne una proprio sul percorso del fascio ma appena
+    // oltre il cerchio. La stessa correzione gia' fatta sotto per
+    // missile/gatling (`fireAngle` ricalcolato dalla bocca vera, non da
+    // `b.aimAngle` letto cosi' com'e' — vedi buildings.js/stepTurretAim,
+    // "l'offset del cannone e' ~100-350px, differenza notabile quando il
+    // bersaglio e' vicino") non era mai stata applicata qui: il fascio
+    // partiva dalla bocca ma continuava lungo l'angolo calcolato dal
+    // CENTRO dell'edificio, non da dove parte davvero. **[I]** direzione
+    // ricalcolata dalla bocca verso `b.aimTarget` (lo stesso bersaglio che
+    // la torretta sta visibilmente inseguendo), poi danno per hit-test
+    // vero contro il fascio (proiezione lungo il raggio + distanza
+    // perpendicolare dalla sua linea, non piu' un cerchio): colpisce cio'
+    // che il fascio attraversa DAVVERO, non tutto cio' che capita in
+    // qualunque direzione.
     //
-    // [Bug corretto, segnalato dall'autore: "il cannone laser non funziona
-    // quasi mai, la direzione del fascio e' giusta ma gli oggetti che
-    // colpisce non vengono mai distrutti"] `b.aimTarget` (buildings.js/
-    // stepTurretAim) e' la minaccia piu' vicina entro `aim.range` — per il
-    // laser 1200, QUATTRO VOLTE `fireRange` (300, "a bruciapelo" — vedi il
-    // commento su BUILDING_TYPES.laser.aim): il cannone punta e ruota verso
-    // di lei molto prima di poterla davvero colpire. `stepTurretFire()
-    // (sotto) fa comunque partire il colpo appena UNA QUALSIASI minaccia
-    // vera entra in `fireRange`, ma il fascio restava puntato su
-    // `b.aimTarget` — se quella minaccia inseguita e' oltre `fireRange`
-    // (il caso comune, dato il rapporto 4:1) il fascio partiva nella
-    // direzione visivamente corretta ma il suo stesso hit-test la
-    // scartava subito (`along > fireRange` sotto), mentre nessun'altra
-    // minaccia si trovava per caso sulla stessa linea: un colpo quasi
-    // sempre a vuoto. **[I]** Bersaglio del fascio ricalcolato qui come la
-    // minaccia vera piu' vicina REALMENTE entro `fireRange` (quella che ha
-    // fatto scattare il colpo), non piu' `b.aimTarget` cosi' com'e' — se ce
-    // n'e' una il fascio la centra e la danneggia per davvero, coerente col
-    // raggio "a bruciapelo" del laser. Nessuna minaccia vera in `fireRange`
-    // (fuoco manuale su una mongolfiera lontana, unico altro chiamante —
-    // vedi fireTurretManual sotto): resta `b.aimTarget` com'era, stesso
-    // "colpo a vuoto" gia' documentato li'.
-    let nearestInRange = null, nearestD2 = fireRange * fireRange;
-    for (const th of threats) {
-      const d2 = (th.x - mx) ** 2 + (th.y - my) ** 2;
-      if (d2 < nearestD2) { nearestD2 = d2; nearestInRange = th; }
-    }
-    const target = nearestInRange ?? b.aimTarget;
+    // [Bug corretto, segnalato dall'autore, in due passate: "il cannone
+    // laser non funziona quasi mai, la direzione del fascio e' giusta ma
+    // gli oggetti che colpisce non vengono mai distrutti", poi precisato
+    // "deve colpire TUTTI gli oggetti volanti che tocca, anche se sta
+    // puntando solo quello piu' vicino: un raycast infinito lungo tutta la
+    // semiretta, per la durata del fascio"] L'hit-test (`hitsBeam` sotto)
+    // restava tagliato a `aim.fireRange` (300px, "a bruciapelo" —
+    // BUILDING_TYPES.laser.aim), MOLTO piu' corto sia di `aim.range`
+    // (1200px, quanto lontano il cannone insegue davvero un bersaglio) sia
+    // del fascio DISEGNATO (`BEAM_VISUAL_LENGTH`, 6000px — gia' "infinito",
+    // vedi il commento sotto): il fascio partiva nella direzione
+    // visivamente corretta ma smetteva di far danno molto prima di
+    // raggiungere il bersaglio inseguito, quasi sempre oltre i 300px —
+    // colpo quasi sempre a vuoto. **[I]** Il taglio in `hitsBeam` e' ora
+    // `BEAM_VISUAL_LENGTH`, non piu' `aim.fireRange`: coerente col fascio
+    // disegnato (gia' lungo quanto la mappa in ogni direzione, un vero
+    // "raycast infinito" lungo tutta la semiretta dalla bocca in poi),
+    // colpisce OGNI minaccia/mongolfiera vera che il raggio tocca — non
+    // solo il bersaglio inseguito, ne' solo cio' che e' vicino al cannone.
+    // `aim.fireRange` resta il gate che decide SE il colpo parte
+    // (stepTurretFire sotto, "a bruciapelo": serve comunque una minaccia
+    // vicina per far scattare il cannone), non piu' quanto lontano il
+    // colpo, una volta partito, faccia davvero danno.
+    const target = b.aimTarget;
     const beamAngle = target
       ? (Math.atan2(-(target.y - my), target.x - mx) * 180) / Math.PI
       : b.aimAngle;
@@ -387,13 +388,12 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beam
     // Effetto visivo (spawnBeam sopra): [Bug corretto, richiesto dall'autore:
     // "vorrei che il fascio laser fosse lungo infinito e non una distanza
     // fissa"] **[I]** il fascio DISEGNATO si estende per `BEAM_VISUAL_LENGTH`
-    // (sotto), non per `fireRange` — il danno vero resta comunque limitato a
-    // `fireRange` (il ciclo su `threats`/`balloons` sotto): fermare il
-    // fascio disegnato esattamente al bordo della portata rendeva visibile
-    // "il punto in cui il colpo smette di funzionare", un dettaglio di
-    // bilanciamento che l'autore non voleva vedere. `beams` e' opzionale
-    // (`?.`) solo per non spezzare eventuali test/chiamate dirette a
-    // fireFrom() che non lo passano.
+    // — lo stesso raggio ora usato anche per il danno vero (`hitsBeam`
+    // sotto): fermare il danno prima della fine del fascio disegnato
+    // rendeva visibile "il punto in cui il colpo smette di funzionare", lo
+    // stesso dettaglio di bilanciamento gia' scartato per il fascio stesso.
+    // `beams` e' opzionale (`?.`) solo per non spezzare eventuali test/
+    // chiamate dirette a fireFrom() che non lo passano.
     if (beams) {
       beams.push(spawnBeam(mx, my, mx + dirX * BEAM_VISUAL_LENGTH, my + dirY * BEAM_VISUAL_LENGTH));
     }
@@ -407,7 +407,7 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beam
     const hitsBeam = (tx, ty) => {
       const dx = tx - mx, dy = ty - my;
       const along = dx * dirX + dy * dirY;
-      if (along < 0 || along > fireRange) return false;
+      if (along < 0 || along > BEAM_VISUAL_LENGTH) return false;
       const perp = dy * dirX - dx * dirY;
       return Math.abs(perp) <= BEAM_HIT_HALF_WIDTH;
     };
@@ -503,9 +503,12 @@ export function stepTurretFire(buildings, threats, dt, projectiles, explosions, 
  * colpendo una minaccia vera solo se la trovano per strada — [C] fedele,
  * nessuno dei tre oggetti-colpo controlla mai `nemici_target` al proprio
  * Create): per il laser (hitscan, fireFrom sopra) questo vuol dire che
- * distrugge una minaccia vera solo se ce n'e' gia' una entro `aim.fireRange`
- * in quel preciso istante, altrimenti il colpo parte comunque (lampo +
- * costo + ricarica) senza colpire nulla. Il "veicolo inseguito" (`b.
+ * distrugge ogni minaccia vera che il fascio tocca lungo tutta la sua
+ * lunghezza (non piu' solo quelle entro `aim.fireRange` — vedi `hitsBeam()`
+ * in fireFrom() sopra), puntato verso `b.aimTarget`: se quel bersaglio
+ * inseguito non e' allineato con nient'altro il colpo parte comunque
+ * (lampo + costo + ricarica) e puo' comunque mancare tutto, ma non piu'
+ * per un taglio di portata artificiale. Il "veicolo inseguito" (`b.
  * aimTarget`) e' una minaccia vera quando ce n'e' una in portata,
  * altrimenti — **[Bug corretto, richiesto dall'autore]** — la mongolfiera
  * piu' vicina, se ce n'e' una (stepTurretAim, buildings.js: le minacce vere
