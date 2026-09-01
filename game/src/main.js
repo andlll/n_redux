@@ -2696,7 +2696,7 @@ export async function mountMatch(ctx, params = {}) {
     el.style.top = `${y}px`;
     el.style.color = color ?? TEXT_TINT;
     if (wrap) {
-      el.style.textAlign = align === "center" ? "center" : "left";
+      el.style.textAlign = align === "center" ? "center" : align === "justify" ? "justify" : "left";
       el.style.whiteSpace = "normal";
       el.style.overflow = "visible";
       el.style.textOverflow = "clip";
@@ -3324,19 +3324,30 @@ export async function mountMatch(ctx, params = {}) {
       // non e' una fine, non deve sembrarne una. Messaggio riscritto: non
       // piu' il generico "You've completed the Skyscraper. The game
       // continues.", ma un riferimento concreto a COSA si e' costruito.
+      // [Bug corretto, richiesto dall'autore: "specifichiamo anche che da
+      // ora in poi i nemici non ci attaccheranno piu'"] Il messaggio ora
+      // annuncia esplicitamente la tregua che stepThreatSpawner rispetta
+      // davvero da qui in poi (vedi `victoryShown` piu' sotto, dove smette
+      // di far nascere nuove minacce), non solo "il gioco continua" senza
+      // dire come cambia. Testo giustificato (`align: "justify"`,
+      // drawHtmlText() sopra) invece del solito "left" di ogni altro
+      // messaggio con wrap: l'unico paragrafo di piu' di due righe fra i
+      // pannelli HTML, un blocco di testo piu' ordinato da leggere con
+      // entrambi i margini dritti.
       const title = "CONGRATULATIONS!";
       const subtitle = "The Skyscraper stands complete, the tallest building this " +
-        "city has ever raised. Keep building — there's no limit from here.";
+        "city has ever raised. From now on, enemies will no longer attack the " +
+        "city — keep building, there's no limit from here.";
       const rows = [{ label: "Keep playing", action: "continue" }];
 
       const panelW = Math.min(360, cw - 40);
-      const subH = 100;
+      const subH = 130;
       const panelH = 96 + subH + rows.length * 60 + 20;
       const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
       r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
       drawHtmlText(title, px + panelW / 2, py + 34, { size: 26 });
-      drawHtmlText(subtitle, px + 30, py + 60, { size: 14, maxWidth: panelW - 60, wrap: true });
+      drawHtmlText(subtitle, px + 30, py + 60, { size: 14, maxWidth: panelW - 60, wrap: true, align: "justify" });
 
       const btnW = panelW - 60, btnH = 46, btnGap = 14;
       let by = py + 96 + subH;
@@ -5144,7 +5155,16 @@ export async function mountMatch(ctx, params = {}) {
       // e sparisce da solo. `!!platformState`: solo su una room con una
       // piattaforma vera gli `air` possono nascere "di sfondo" (dietro di
       // lei, threats.js/spawnThreat()) — decisione dell'autore.
-      stepThreatSpawner(r12, threats, dt, !!platformState);
+      // [Bug corretto, richiesto dall'autore: "specifichiamo che da ora in
+      // poi i nemici non ci attaccheranno piu'" nel messaggio di vittoria
+      // (drawOutcomeOverlay() sopra) — la schermata di vittoria deve dire
+      // il vero, non promettere una tregua che poi non arriva] Una volta
+      // completato il grattacielo (`victoryShown`, sopra: mai piu' falso
+      // per il resto della partita) il regista smette di far nascere nuove
+      // minacce vere: quelle gia' in volo in quel momento restano fino a
+      // che non se ne vanno da sole (`stepThreats()` sotto, invariato),
+      // niente sparizione di scatto a meta' volo.
+      if (!victoryShown) stepThreatSpawner(r12, threats, dt, !!platformState);
       stepThreats(threats, bombs, explosions, dt, r12, aerSmoke, debris);
       stepAerSmoke(aerSmoke, dt);
       stepDebris(debris, explosions, dt);
