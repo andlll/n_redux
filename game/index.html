@@ -10,6 +10,22 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>NIMBUS</title>
+<!-- Favicon: mai stata applicata prima d'ora (STUDIO.md, "il consueto 404
+     di /favicon.ico" — notato ma mai risolto). Il caccia rosso ("figros",
+     data/sprites.json, tex 65 — la minaccia aerea "air" di threats.js,
+     PIRO_AIR_SPRITE/pickAirSpr) ritagliato dalla texture originale
+     (assets/textures/page_065.png) invece di un'icona disegnata da zero:
+     e' gia' il simbolo piu' riconoscibile del gioco (il primo nemico che si
+     incontra). .ico multi-risoluzione (16/32/48) per compatibilita' con
+     browser piu' vecchi, PNG 32px per quelli moderni (rel="icon" con
+     type esplicito, come da spec, cosi' un browser che capisce entrambi
+     preferisce il PNG piu' nitido invece del solo .ico); apple-touch-icon
+     180x180 con sfondo pieno (il blu navy #0b1020 dello sfondo della
+     pagina, sopra) invece di trasparente — iOS non gestisce bene la
+     trasparenza sulle icone aggiunte alla home. -->
+<link rel="icon" href="./favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="./favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <style>
   html, body { margin: 0; height: 100%; background: #0b1020; overflow: hidden;
                touch-action: none; overscroll-behavior: none; }

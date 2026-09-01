@@ -124,6 +124,12 @@ export const ALERT_DURATION = 4;               // [C] aincom/Create.gml: action_
 
 const SPAWN_PERIOD = 300 * TICK;               // [C] r12/Alarm_1.gml: action_set_alarm(300, 1)
 const SPY_UNLOCK_T = 29000 * TICK;             // [C] r12/Create.gml: action_set_alarm(29000, 8) -> spy = 1
+// [Nuova funzionalita', richiesta dall'autore: "per evitare che due
+// mongolfiere/aerei spia (rossi) passino troppo vicini fra loro, dopo il
+// passaggio di una mettiamo un cooldown di due minuti prima di riattivare
+// il dado"] Puramente nostro, nessun equivalente nel decompilato — vedi
+// `r12.spyCooldownT` in stepBalloonSpawner() sotto.
+const SPY_COOLDOWN = 120;
 
 function maxChiesLevel(buildings) {
   let lvl = 0;
@@ -213,6 +219,18 @@ export function stepBalloonSpawner(r12, balloons, dt, buildings) {
   // sempre da quel momento in poi.
   if (!r12.spyUnlockFired && r12.spyT >= SPY_UNLOCK_T) { r12.spy = 1; r12.spyUnlockFired = true; }   // [C]
 
+  // [Nuova funzionalita', richiesta dall'autore] Cooldown reale (`dt`, non
+  // tick di spawn — decade ad OGNI frame, indipendente dal ciclo di 300
+  // tick sotto) fra un monspi/recogn e il successivo: azzerato a
+  // SPY_COOLDOWN ogni volta che uno dei due nasce davvero (sotto), il dado
+  // della spia (`spyDice`, sotto) resta spento finche' non e' tornato a
+  // zero. Prima di questo, il dado 1/4 girava ogni 300 tick (5s)
+  // indipendentemente da quanto a lungo un monspi/recogn precedente fosse
+  // ancora in volo (vita 550-750 tick, 9-12.5s): potevano nascere due spie
+  // ravvicinate nel tempo e quindi vicine nello spazio (stessa diagonale
+  // fissa, stessa x di nascita) — segnalato dall'autore.
+  r12.spyCooldownT = Math.max(0, (r12.spyCooldownT ?? 0) - dt);
+
   // ondan decade e fa nascere le minacce vere in game/src/threats.js
   // (stepThreatSpawner) — non qui: decadere e "far nascere un air" sono
   // la stessa cosa nel decompilato (r12/Alarm_4.gml), leggerlo/scriverlo
@@ -234,7 +252,10 @@ export function stepBalloonSpawner(r12, balloons, dt, buildings) {
       if (dice(18)) balloons.push(spawnBalloon("monviolo"));       // [C] (gate 160 semplificato, vedi sopra)
       if (dice(15)) balloons.push(spawnBalloon("monvo_giga"));     // [C]
     }
-    if (r12.spy) {
+    // `r12.spyCooldownT` (sopra): il dado della spia non gira nemmeno finche'
+    // il cooldown non e' sceso a zero, qualunque sia l'esito che avrebbe
+    // avuto — vedi il commento su di lui, sopra.
+    if (r12.spy && r12.spyCooldownT <= 0) {
       const rare = r12.hap >= r12.pop;   // [C] operatore 4, non ==: vedi il commento sopra
       // [Bug corretto, richiesto dall'autore: "smorza un po' la frequenza
       // degli aerei/palloni spia"] 17/2 originali (**[C]**) — [I] entrambi
@@ -245,8 +266,12 @@ export function stepBalloonSpawner(r12, balloons, dt, buildings) {
       // [C] r12/Alarm_1.gml: monspi (mongolfiera spia) mentre chies non e'
       // ancora al livello massimo, recogn (aereo da ricognizione, sopra)
       // una volta che lo e' — mai insieme, stesso dado in entrambi i rami.
-      if (chiesLevel < 3) { if (dice(spyDice)) balloons.push(spawnBalloon("monspi")); }
-      else if (dice(spyDice)) balloons.push(spawnBalloon("recogn"));
+      // Ogni spawn vero riarma `r12.spyCooldownT` a SPY_COOLDOWN (sopra).
+      if (chiesLevel < 3) {
+        if (dice(spyDice)) { balloons.push(spawnBalloon("monspi")); r12.spyCooldownT = SPY_COOLDOWN; }
+      } else if (dice(spyDice)) {
+        balloons.push(spawnBalloon("recogn")); r12.spyCooldownT = SPY_COOLDOWN;
+      }
     }
   }
 }

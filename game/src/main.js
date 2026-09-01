@@ -1,4 +1,4 @@
-import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
+import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
@@ -28,7 +28,6 @@ import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
-import { loadFont, drawText, measureText, fitTextScale } from "./font.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN,
@@ -422,26 +421,23 @@ export async function mountMatch(ctx, params = {}) {
 
   for (const it of staticWorld) it._f = frameFor(it.spr);
 
-  // Font bitmap reale della barra risorse (tools/25_font.py). [C]
-  // src/objects/repre/DrawGUI.gml: action_font(gotham_mini, 0) — un font
-  // dedicato, non lo stesso usato altrove rimpicciolito (era l'ipotesi
-  // iniziale, sbagliata: "gotham_mid" non e' piu' usato in questo file da
-  // quando il bottone di test di chies e' sparito, STUDIO.md §9).
-  const fontMini = await loadFont(gl, "gotham_mini");
+  // [Bug corretto, richiesto dall'autore: "applichiamo lo stesso stile
+  // Montserrat bianco su nero dei titoli di apertura del tutorial alla
+  // schermata di sconfitta" — drawOutcomeOverlay() piu' sotto] Il font
+  // bitmap "gotham_mini" (tools/25_font.py — [C] src/objects/repre/
+  // DrawGUI.gml: action_font(gotham_mini, 0), un tempo la barra risorse,
+  // poi solo il pannello di sconfitta dopo la migrazione a Montserrat qui
+  // sotto) non ha piu' nessun chiamante in questo file: rimosso insieme
+  // all'import di `loadFont`/`drawText`/`measureText`/`fitTextScale`
+  // (font.js) e a `wrapText()` (usata solo da lui), diventati morti con
+  // lui. Il balloon di testo del tutorial e i tre pannelli (pausa/
+  // vittoria/sconfitta) usano tutti Montserrat vero (index.html/game/fonts/
+  // — vedi drawHtmlText() sotto): nitido a QUALUNQUE dimensione, non un
+  // compromesso fra atlas bitmap diversi.
   // [C] repre/DrawGUI.gml: dodici `action_draw_text` letterali, uno per ogni
   // valore di `repre.mon` (il mese, 1..12 — state.js, r12.month) — mai una
   // tabella nel decompilato, ricostruita qui come tale.
   const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  // Il balloon di testo del tutorial e il menu di pausa/"saving options" NON
-  // usano piu' un font bitmap dedicato (erano "gotham_mobile"/"gotham" —
-  // entrambi rimasti comunque un po' "sgranati" a scale grandi, segnalato
-  // di nuovo dall'autore dopo il fix precedente su "gotham"): quei pannelli
-  // sono interamente nostri, nessun `action_font` del decompilato da
-  // rispettare (a differenza di `fontMini` sopra, l'unico rimasto bitmap —
-  // la barra risorse SI ha un font originale da riprodurre). Testo HTML
-  // vero invece (Montserrat, index.html/game/fonts/ — vedi drawHtmlText()
-  // sotto): nitido a QUALUNQUE dimensione, non un compromesso migliore fra
-  // due atlas bitmap.
 
   // -------------------------------------------------------- piazzabili e edifici
   // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
@@ -2574,8 +2570,20 @@ export async function mountMatch(ctx, params = {}) {
   // pausa (`&& !paused` li salta apposta durante il menu — stesso motivo di
   // drawHtmlText() sopra, testo HTML non sfumato dal blur) e possono capitare
   // TUTTI nello stesso frame: 4 risorse + mese + anno + cristalli (7) +
-  // balloon tutorial (1) + i 2 banner = 10, +1 di margine.
-  const TEXT_POOL_SIZE = 11;
+  // balloon tutorial (1) + i 2 banner = 10. Il pannello di vittoria
+  // (drawOutcomeOverlay() sotto, ora anche lui Montserrat vero invece del
+  // font bitmap — vedi il commento li') non congela la partita ("la
+  // vittoria non blocca niente"), quindi puo' capitare nello STESSO frame
+  // della barra risorse: titolo + messaggio + un bottone ("Keep playing") = 3
+  // in piu'. Il pannello di SCONFITTA (stesso file, ramo `defeat`: ora
+  // anche lui Montserrat vero, "testo nudo su nero" invece del pannello col
+  // font bitmap) e' il vero worst case: titolo + messaggio + le 4 righe del
+  // menu di game over = 6 — `outcome` non e' incluso in `hideResourceText`
+  // (sotto), e l'olio puo' esaurirsi anche nel tutorial (roomName ===
+  // "tutorial", piu' sotto), quindi barra risorse (7) + balloon tutorial
+  // (1) + i 2 banner + il pannello di sconfitta (6) possono capitare tutti
+  // nello stesso frame = 16, +1 di margine.
+  const TEXT_POOL_SIZE = 17;
   const textPool = Array.from({ length: TEXT_POOL_SIZE }, () => {
     const el = document.createElement("div");
     el.className = "gameText";
@@ -2668,7 +2676,18 @@ export async function mountMatch(ctx, params = {}) {
   // la stessa soglia gia' usata da `setColorize()` per le icone — vedi il
   // commento li'), a differenza del testo sempre scuro-su-chiaro degli
   // altri pannelli.
-  function drawHtmlText(text, x, y, { size = 16, maxWidth, wrap = false, align = "center", color } = {}) {
+  // [Bug corretto, richiesto dall'autore: "centriamo i due testi lunghi
+  // (i messaggi 'oil'/'chies' della schermata di sconfitta)"] `align` non ha
+  // piu' un default fisso a "center": undefined distingue "il chiamante non
+  // l'ha passato" da "center" esplicito, cosi' i due rami sotto possono
+  // avere un default DIVERSO l'uno dall'altro senza toccarsi a vicenda — il
+  // ramo `wrap` restava sempre "left" qualunque cosa arrivasse (il balloon
+  // del tutorial/drawConfirmResetOverlay()/il pannello di vittoria, nessuno
+  // dei quali passa `align`, continuano quindi invariati), il ramo non-wrap
+  // restava sempre "center" salvo `align:"left"` esplicito (barra risorse) —
+  // ora il primo rispetta `align:"center"` quando richiesto esplicitamente
+  // (i due messaggi di sconfitta sotto), il secondo resta identico a prima.
+  function drawHtmlText(text, x, y, { size = 16, maxWidth, wrap = false, align, color } = {}) {
     const el = textPool[textPoolUsed++];
     el.textContent = text;
     el.style.display = "block";
@@ -2677,7 +2696,7 @@ export async function mountMatch(ctx, params = {}) {
     el.style.top = `${y}px`;
     el.style.color = color ?? TEXT_TINT;
     if (wrap) {
-      el.style.textAlign = "left";
+      el.style.textAlign = align === "center" ? "center" : "left";
       el.style.whiteSpace = "normal";
       el.style.overflow = "visible";
       el.style.textOverflow = "clip";
@@ -3174,6 +3193,21 @@ export async function mountMatch(ctx, params = {}) {
     r.flush();
   }
 
+  /** Rettangolo bordato (solo contorno, interno trasparente) — usato dai
+   * bottoni "testo nudo su nero" della schermata di sconfitta sotto, dove il
+   * nero di fondo deve restare visibile anche dentro il bottone (nessun
+   * pannello dietro, a differenza di pausePanelFrame()/pauseButtonFrame()
+   * sotto). [Bug corretto, richiesto dall'autore: "il colore bianco solo
+   * contorno va bene, ma facciamo gli angoli arrotondati come il menu di
+   * pausa"] Angoli arrotondati come pauseButtonFrame() sotto (stesso raggio,
+   * 14) invece delle quattro strisce dritte di prima — `outlineButtonFrame`
+   * (sotto, insieme a pausePanelFrame/pauseButtonFrame: stessa cache per
+   * dimensione, stesso motivo li' spiegato) genera il contorno vero via
+   * makeRoundedRectStrokeTexture() (gl.js), non piu' un quad pieno. */
+  function drawOutlineRect(x, y, w, h, tint, alpha) {
+    r.draw(outlineButtonFrame(w, h), x, y, 1, tint, alpha);
+  }
+
   /**
    * `outcome` (sopra) — stesso post-processo di drawPauseOverlay(): cattura
    * il canvas gia' disegnato (`pauseBlur.blurScreen()`) e ci disegna sopra.
@@ -3231,46 +3265,85 @@ export async function mountMatch(ctx, params = {}) {
     }
 
     outcomeButtons = [];
-    if (showPanel) {
-      const title = defeat ? "GAME OVER" : "CONGRATULATIONS!";
-      const subtitle = !defeat
-        ? "You've completed the Skyscraper. The game continues."
-        : outcome.reason === "chies"
+    if (showPanel && defeat) {
+      // [Bug corretto, richiesto dall'autore: "applichiamo lo stesso stile
+      // Montserrat bianco su nero dei titoli di apertura del tutorial
+      // (glitchCutsceneLine()/cutsceneTextWrap, sopra), niente piu' pannello
+      // scuro col vecchio font bitmap 'gotham'"] Testo Montserrat vero
+      // DIRETTAMENTE sul nero pieno — il fondo e' gia' nero qui (il
+      // crossfade sopra e' finito, `showPanel` diventa vero solo a `k>=1`):
+      // nessun pannello/box dietro, a differenza degli altri due stati
+      // (pausa/vittoria, "vetro smerigliato" chiaro) — la sconfitta e' una
+      // vera fine, deve leggersi come tale. **[I]** Niente pero' l'effetto
+      // glitch ciano/blu delle due schermate del tutorial (troppo "vivace"
+      // per un momento di sconfitta, non richiesto): resta il solo bianco
+      // pieno. I bottoni sono rettangoli bordati (`drawOutlineRect()`
+      // sopra, contorno bianco/interno trasparente) invece di un riempimento
+      // — stesso principio "testo nudo su nero", il nero di fondo resta
+      // visibile anche dentro il bottone.
+      const title = "GAME OVER";
+      const subtitle = outcome.reason === "chies"
         ? "The City center, the city's historic building, has been destroyed."
         : "The oil has run out: the rotors have stopped and the platform has crashed.";
-      const rows = defeat
-        ? [
-          { label: "Load last save", action: "load" },
-          { label: "Load from file", action: "loadFile" },
-          { label: "Restart level", action: "resetGame" },
-          { label: "Back to menu", action: "title" },
-        ]
-        : [{ label: "Keep playing", action: "continue" }];
+      const rows = [
+        { label: "Load last save", action: "load" },
+        { label: "Load from file", action: "loadFile" },
+        { label: "Restart level", action: "resetGame" },
+        { label: "Back to menu", action: "title" },
+      ];
 
-      const textScale = 1.1;
-      const panelW = Math.min(360, cw - 40);
-      const lines = wrapText(fontMini, subtitle, textScale, panelW - 60);
-      const lineH = 22;
-      const titleScale = 2.2;
-      const panelH = 32 + 17 * titleScale + 14 + lines.length * lineH + 14 + rows.length * 60;
-      const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
-      r.draw(solidFrame(white, panelW, panelH), px, py, 1, 0x20242c, 0.97);
+      const contentW = Math.min(360, cw - 40);
+      const subH = 76;
+      const btnW = contentW - 60, btnH = 46, btnGap = 14;
+      const titleH = 46, gap1 = 20, gap2 = 26;
+      const btnsH = rows.length * btnH + (rows.length - 1) * btnGap;
+      const contentH = titleH + gap1 + subH + gap2 + btnsH;
+      const px = (cw - contentW) / 2;
+      let ty = (ch - contentH) / 2;
 
-      drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 20,
-        titleScale, defeat ? 0xff6a5a : 0x8ef58e, 1);
+      drawHtmlText(title, cw / 2, ty + titleH / 2, { size: 34, color: "#ffffff" });
+      ty += titleH + gap1;
+      drawHtmlText(subtitle, px + 30, ty, { size: 14, maxWidth: contentW - 60, wrap: true, align: "center", color: "#ffffff" });
+      ty += subH + gap2;
 
-      let ty = py + 20 + 17 * titleScale + 14;
-      for (const line of lines) {
-        drawText(r, fontMini, line, px + (panelW - measureText(fontMini, line, textScale)) / 2, ty, textScale, 0xdcdfe6, 1);
-        ty += lineH;
+      for (const row of rows) {
+        const bx = px + (contentW - btnW) / 2;
+        drawOutlineRect(bx, ty, btnW, btnH, 0xffffff, 0.85);
+        drawHtmlText(row.label, bx + btnW / 2, ty + btnH / 2, { size: 17, maxWidth: btnW - 20, color: "#ffffff" });
+        outcomeButtons.push({ x: bx, y: ty, w: btnW, h: btnH, action: row.action });
+        ty += btnH + btnGap;
       }
+    } else if (showPanel) {
+      // [Bug corretto, richiesto dall'autore: "la schermata di congratulazioni
+      // e' brutta, rifacciamola con lo stesso stile del menu di pausa (font,
+      // roundrect bianco ecc), cambiamo anche il messaggio che e' molto
+      // generico"] Vittoria: stesso "vetro smerigliato" (pausePanelFrame()/
+      // PANEL_TINT/PANEL_ALPHA) e Montserrat vero (drawHtmlText()) del menu
+      // di pausa/drawConfirmResetOverlay(), non piu' il pannello scuro col
+      // font bitmap condiviso (fino a qui) con la sconfitta — la vittoria
+      // non e' una fine, non deve sembrarne una. Messaggio riscritto: non
+      // piu' il generico "You've completed the Skyscraper. The game
+      // continues.", ma un riferimento concreto a COSA si e' costruito.
+      const title = "CONGRATULATIONS!";
+      const subtitle = "The Skyscraper stands complete, the tallest building this " +
+        "city has ever raised. Keep building — there's no limit from here.";
+      const rows = [{ label: "Keep playing", action: "continue" }];
+
+      const panelW = Math.min(360, cw - 40);
+      const subH = 100;
+      const panelH = 96 + subH + rows.length * 60 + 20;
+      const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+      r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
+
+      drawHtmlText(title, px + panelW / 2, py + 34, { size: 26 });
+      drawHtmlText(subtitle, px + 30, py + 60, { size: 14, maxWidth: panelW - 60, wrap: true });
 
       const btnW = panelW - 60, btnH = 46, btnGap = 14;
-      let by = ty + 14;
+      let by = py + 96 + subH;
       for (const row of rows) {
         const bx = px + (panelW - btnW) / 2;
-        r.draw(solidFrame(white, btnW, btnH), bx, by, 1, 0x3a4152, 0.95);
-        drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, 0xffffff, 1);
+        r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
+        drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
         outcomeButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
         by += btnH + btnGap;
       }
@@ -3328,27 +3401,6 @@ export async function mountMatch(ctx, params = {}) {
     r.drawQuad(frame, corners[0], corners[1], corners[2], corners[3], tint, alpha);
   }
 
-  /** A capo semplice per parola, sul font bitmap `font` — [C]
-   * tutorial_square/DrawGUI.gml usa `draw_text_ext_colour` (a capo
-   * automatico nativo di GameMaker); qui measureText() (font.js) misura
-   * ogni riga candidata finche' non supera `maxWidth`. */
-  function wrapText(font, str, scale, maxWidth) {
-    const words = str.split(" ");
-    const lines = [];
-    let cur = "";
-    for (const w of words) {
-      const test = cur ? cur + " " + w : w;
-      if (cur && measureText(font, test, scale) > maxWidth) {
-        lines.push(cur);
-        cur = w;
-      } else {
-        cur = test;
-      }
-    }
-    if (cur) lines.push(cur);
-    return lines;
-  }
-
   // Cache del rettangolo arrotondato del balloon (game/src/gl.js,
   // makeRoundedRectTexture()): l'altezza cambia solo quando cambia il
   // numero di righe a capo (nuova fase) o la larghezza schermo (resize),
@@ -3389,6 +3441,28 @@ export async function mountMatch(ctx, params = {}) {
   }
   const pausePanelFrame = makeRoundRectCache(20);
   const pauseButtonFrame = makeRoundRectCache(14);
+
+  /** Come makeRoundRectCache() sopra, ma per un contorno invece di un
+   * riempimento (makeRoundedRectStrokeTexture(), gl.js) — usata da
+   * drawOutlineRect() sopra per i bottoni "testo nudo su nero" della
+   * schermata di sconfitta: stesso raggio (14) di pauseButtonFrame(), stesso
+   * motivo di cache per dimensione. `thickness` (2px, l'unico chiamante) e'
+   * parte della chiave della forma quanto `radius`: entrambi fissi qui,
+   * un'unica cache basta (a differenza di pausePanelFrame/pauseButtonFrame,
+   * due raggi diversi sullo STESSO chiamante nello stesso frame). */
+  function makeRoundRectStrokeCache(radius, thickness) {
+    let tex = null, key = "";
+    return (w, h) => {
+      const k = Math.round(w) + "x" + Math.round(h);
+      if (k !== key) {
+        if (tex) gl.deleteTexture(tex);
+        tex = makeRoundedRectStrokeTexture(gl, Math.round(w), Math.round(h), radius, thickness);
+        key = k;
+      }
+      return solidFrame(tex, w, h);
+    };
+  }
+  const outlineButtonFrame = makeRoundRectStrokeCache(14, 2);
 
   /** Test punto-in-rombo, centrato sul bounding box di un frame: i placeholder
    * sono disegnati come sprite romboidali ("phold", il rombo viola —
@@ -4896,7 +4970,20 @@ export async function mountMatch(ctx, params = {}) {
       // il temporale vero di `match` (r12.storm) sia sotto quello cosmetico
       // di `match_easy` (r12.stormeasy): stepRain() la fa cadere o la
       // svuota di scatto a seconda di quale (se uno) e' attivo ORA.
-      stepRain(weatherState, dt, !!(r12.storm || r12.stormeasy), scene.width, scene.height);
+      // [Bug corretto, segnalato dall'autore: "le gocce non coprono tutto lo
+      // screen size"] Bordi della camera (`cam.x/y ± cam.worldW/worldH / 2`
+      // — lo stesso calcolo di `l/t/rr/bb` usato piu' sotto per il culling
+      // di frameList()), non piu' `scene.width/height`: la scena intera
+      // puo' essere molto piu' grande dell'area davvero inquadrata in
+      // questo istante (camera libera, game/src/camera.js), quindi una
+      // striscia di emissione legata alla scena lasciava quasi sempre lo
+      // schermo vero poco o per niente coperto — vedi il commento in cima a
+      // weather.js.
+      {
+        const rvw = cam.worldW, rvh = cam.worldH;
+        const rl = cam.x - rvw / 2, rt = cam.y - rvh / 2;
+        stepRain(weatherState, dt, !!(r12.storm || r12.stormeasy), rl, rl + rvw, rt, rt + rvh);
+      }
       // Fuochi d'artificio sopra chies (game/src/fireworks.js) — sempre
       // "in ascolto", scoppiano davvero solo a Gennaio (r12.month === 1,
       // state.js/stepCalendar()).
@@ -5855,7 +5942,17 @@ export async function mountMatch(ctx, params = {}) {
     const ROW2_Y = barY + 50;
     const ROW2B_Y = ROW2_Y + 20;
     const clockScale = isMobile ? 0.5 : 0.85;
-    const clockPos = isMobile ? { x: barX + 90, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 456, y: barY + 8 };
+    // [Bug corretto, segnalato dall'autore: "su desktop c'e' troppo gap fra
+    // il denaro e orologio/data/faccina, avviciniamoli"] Tutto il blocco
+    // orologio/data/faccina/cristalli (clockPos/DATE_COL_X/hapPos/crysPos/
+    // crysTextPos, sotto) e' spostato 30px piu' a sinistra rispetto a prima
+    // (era x+456/500/552/600/636) — stessa spaziatura RELATIVA fra un
+    // elemento e il successivo, solo il blocco intero piu' vicino al denaro
+    // (`stats` sopra, l'ultimo finisce a barX+340). Anche col valore piu'
+    // lungo plausibile (`r12.mon` — misurato: un numero a 9 cifre e' largo
+    // ~75px in Montserrat 15px grassetto, finisce quindi verso x=415)
+    // l'orologio (ora a x+426) resta comunque staccato, ~11px di margine.
+    const clockPos = isMobile ? { x: barX + 90, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 426, y: barY + 8 };
     // [Bug corretto, segnalato dall'autore: "le icone a destra sono
     // disallineate — prima l'orologio (allineato con le altre icone), poi
     // mese e anno incolonnati, poi la faccina (allineata con le altre
@@ -5865,8 +5962,8 @@ export async function mountMatch(ctx, params = {}) {
     // in mezzo alla data invece che davanti a lei) — l'ordine giusto (vedi
     // sopra, gia' corretto per la seconda riga mobile) non era mai stato
     // applicato alla riga unica desktop. DATE_COL_X sta dopo l'orologio
-    // (che a `clockScale` finisce verso x=487); mese e anno condividono
-    // adesso la stessa colonna.
+    // (che a `clockScale` finisce verso x=457, spostato con lui); mese e
+    // anno condividono adesso la stessa colonna.
     // [Bug corretto, segnalato dall'autore: "la faccina e' allineata col
     // mese invece che con le altre icone, e l'orologio deve cadere esatto a
     // meta' fra mese e anno"] `drawHtmlText(..., align:"left")` centra
@@ -5880,14 +5977,14 @@ export async function mountMatch(ctx, params = {}) {
     // Mese/anno ora si impilano CENTRATI su quel riferimento (`barY+14`/
     // `barY+32`, stesso passo ~18px di prima ma ricentrato: la loro media
     // torna a combaciare con l'orologio, non piu' `barY+12` come prima).
-    const DATE_COL_X = barX + 500;
+    const DATE_COL_X = barX + 470;
     const monthPos = isMobile ? { x: barX + 116, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
     const timePos = isMobile ? { x: barX + 116, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
     // `hap1`/`hap3` (data/sprites.json): ox=oy=23=w/2=h/2 esatto, quindi il
     // loro centro visivo coincide SEMPRE con `hapPos.y` stesso qualunque sia
     // la scala — bastava allinearlo allo stesso `barY+23` di sopra (prima
     // era `barY+5`, quasi al livello del solo mese).
-    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 552, y: barY + 23 };
+    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
     if (!hideResourceText) {
       drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
     }
@@ -5963,9 +6060,9 @@ export async function mountMatch(ctx, params = {}) {
     // deve stare 27px PIU' IN ALTO, non piu' in basso come prima.
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
-      const crysPos = isMobile ? { x: barX - 6, y: barY + 48 } : { x: barX + 600, y: barY - 4 };
+      const crysPos = isMobile ? { x: barX - 6, y: barY + 48 } : { x: barX + 570, y: barY - 4 };
       const crysScale = isMobile ? 0.9 : 0.75;
-      const crysTextPos = isMobile ? { x: barX + 34, y: barY + 77 } : { x: barX + 636, y: barY + 19 };
+      const crysTextPos = isMobile ? { x: barX + 34, y: barY + 77 } : { x: barX + 606, y: barY + 19 };
       r.setColorize(iconsDark);
       if (!hideResourceIcons && crysFrame) r.draw(crysFrame, crysPos.x, crysPos.y, crysScale, 0xffffff, 1);
       r.setColorize(false);

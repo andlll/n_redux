@@ -306,6 +306,20 @@ export function makeCircleTexture(gl, size = 64) {
   return t;
 }
 
+/** Copertura antialiasata (0..1) di un rettangolo arrotondato (`ox,oy,w,h`,
+ * raggio `r`) nel punto `(px,py)` — la stessa formula "distanza dal punto
+ * piu' vicino sul rettangolo arretrato di `r`" di makeRoundedRectTexture()
+ * sotto, isolata in una funzione cosi' makeRoundedRectStrokeTexture() (sotto)
+ * puo' richiamarla due volte (bordo esterno/interno) senza duplicarla. */
+function roundedRectCoverage(px, py, ox, oy, w, h, r) {
+  if (w <= 0 || h <= 0) return 0;
+  const rr = Math.min(r, w / 2, h / 2);
+  const cx = Math.min(Math.max(px, ox + rr), ox + w - rr);
+  const cy = Math.min(Math.max(py, oy + rr), oy + h - rr);
+  const d = Math.hypot(px - cx, py - cy);
+  return Math.max(0, Math.min(1, rr - d + 0.5));
+}
+
 /** Rettangolo bianco con angoli arrotondati, raggio `radius` — [C]
  * tutorial_square/DrawGUI.gml: `draw_roundrect_colour_ext(...)` per il
  * balloon di testo del tutorial (game/src/main.js), l'unico posto nel
@@ -314,19 +328,49 @@ export function makeCircleTexture(gl, size = 64) {
  * makeCircleTexture(): per ogni pixel, distanza dal punto piu' vicino sul
  * rettangolo "arretrato" di `radius` da ogni bordo (clampato agli angoli,
  * piatto su bordi/centro) — dentro il raggio = pieno, fuori = trasparente,
- * un pixel di sfumatura in mezzo contro l'aliasing. L'alpha del box (0.7
- * nel decompilato) resta un parametro di `Renderer.draw()`, non qui: la
- * texture e' sempre bianca piena/trasparente, riusabile a qualunque
- * opacita' serva al chiamante. */
+ * un pixel di sfumatura in mezzo contro l'aliasing (roundedRectCoverage()
+ * sopra). L'alpha del box (0.7 nel decompilato) resta un parametro di
+ * `Renderer.draw()`, non qui: la texture e' sempre bianca piena/trasparente,
+ * riusabile a qualunque opacita' serva al chiamante. */
 export function makeRoundedRectTexture(gl, w, h, radius) {
   const data = new Uint8Array(w * h * 4);
-  const r = Math.min(radius, w / 2, h / 2);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const cx = Math.min(Math.max(x + 0.5, r), w - r);
-      const cy = Math.min(Math.max(y + 0.5, r), h - r);
-      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
-      const a = Math.max(0, Math.min(1, r - d + 0.5));
+      const a = roundedRectCoverage(x + 0.5, y + 0.5, 0, 0, w, h, radius);
+      const o = (y * w + x) * 4;
+      data[o] = 255; data[o + 1] = 255; data[o + 2] = 255; data[o + 3] = Math.round(a * 255);
+    }
+  }
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+
+/** Come makeRoundedRectTexture() sopra, ma solo il CONTORNO (spessore
+ * `thickness`, interno trasparente) — [Nuova funzionalita', richiesta
+ * dall'autore: "per il pulsante solo contorno della schermata di sconfitta
+ * (main.js, drawOutlineRect()) facciamo gli angoli arrotondati come il menu
+ * di pausa"]. Copertura = quella del rettangolo ESTERNO (raggio `radius`)
+ * meno quella del rettangolo INTERNO, arretrato di `thickness` su ogni lato
+ * con raggio ridotto della stessa quantita' (mai sotto zero — un contorno
+ * abbastanza spesso da "mangiarsi" il raggio disponibile resta comunque un
+ * anello valido, coi lati dritti che diventano dritti anche dentro).
+ * `roundedRectCoverage()` sopra gestisce gia' da sola un rettangolo interno
+ * degenere (w/h <= 0, contorno piu' spesso della meta' del lato corto):
+ * ritorna 0 ovunque, il contorno diventa la forma piena. */
+export function makeRoundedRectStrokeTexture(gl, w, h, radius, thickness) {
+  const data = new Uint8Array(w * h * 4);
+  const innerR = Math.max(0, radius - thickness);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const outer = roundedRectCoverage(x + 0.5, y + 0.5, 0, 0, w, h, radius);
+      const inner = roundedRectCoverage(x + 0.5, y + 0.5, thickness, thickness, w - 2 * thickness, h - 2 * thickness, innerR);
+      const a = Math.max(0, Math.min(1, outer - inner));
       const o = (y * w + x) * 4;
       data[o] = 255; data[o + 1] = 255; data[o + 2] = 255; data[o + 3] = Math.round(a * 255);
     }
