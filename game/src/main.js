@@ -5942,7 +5942,17 @@ export async function mountMatch(ctx, params = {}) {
     const ROW2_Y = barY + 50;
     const ROW2B_Y = ROW2_Y + 20;
     const clockScale = isMobile ? 0.5 : 0.85;
-    const clockPos = isMobile ? { x: barX + 90, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 456, y: barY + 8 };
+    // [Bug corretto, segnalato dall'autore: "su desktop c'e' troppo gap fra
+    // il denaro e orologio/data/faccina, avviciniamoli"] Tutto il blocco
+    // orologio/data/faccina/cristalli (clockPos/DATE_COL_X/hapPos/crysPos/
+    // crysTextPos, sotto) e' spostato 30px piu' a sinistra rispetto a prima
+    // (era x+456/500/552/600/636) — stessa spaziatura RELATIVA fra un
+    // elemento e il successivo, solo il blocco intero piu' vicino al denaro
+    // (`stats` sopra, l'ultimo finisce a barX+340). Anche col valore piu'
+    // lungo plausibile (`r12.mon` — misurato: un numero a 9 cifre e' largo
+    // ~75px in Montserrat 15px grassetto, finisce quindi verso x=415)
+    // l'orologio (ora a x+426) resta comunque staccato, ~11px di margine.
+    const clockPos = isMobile ? { x: barX + 90, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 426, y: barY + 8 };
     // [Bug corretto, segnalato dall'autore: "le icone a destra sono
     // disallineate — prima l'orologio (allineato con le altre icone), poi
     // mese e anno incolonnati, poi la faccina (allineata con le altre
@@ -5952,8 +5962,8 @@ export async function mountMatch(ctx, params = {}) {
     // in mezzo alla data invece che davanti a lei) — l'ordine giusto (vedi
     // sopra, gia' corretto per la seconda riga mobile) non era mai stato
     // applicato alla riga unica desktop. DATE_COL_X sta dopo l'orologio
-    // (che a `clockScale` finisce verso x=487); mese e anno condividono
-    // adesso la stessa colonna.
+    // (che a `clockScale` finisce verso x=457, spostato con lui); mese e
+    // anno condividono adesso la stessa colonna.
     // [Bug corretto, segnalato dall'autore: "la faccina e' allineata col
     // mese invece che con le altre icone, e l'orologio deve cadere esatto a
     // meta' fra mese e anno"] `drawHtmlText(..., align:"left")` centra
@@ -5967,14 +5977,14 @@ export async function mountMatch(ctx, params = {}) {
     // Mese/anno ora si impilano CENTRATI su quel riferimento (`barY+14`/
     // `barY+32`, stesso passo ~18px di prima ma ricentrato: la loro media
     // torna a combaciare con l'orologio, non piu' `barY+12` come prima).
-    const DATE_COL_X = barX + 500;
+    const DATE_COL_X = barX + 470;
     const monthPos = isMobile ? { x: barX + 116, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
     const timePos = isMobile ? { x: barX + 116, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
     // `hap1`/`hap3` (data/sprites.json): ox=oy=23=w/2=h/2 esatto, quindi il
     // loro centro visivo coincide SEMPRE con `hapPos.y` stesso qualunque sia
     // la scala — bastava allinearlo allo stesso `barY+23` di sopra (prima
     // era `barY+5`, quasi al livello del solo mese).
-    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 552, y: barY + 23 };
+    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
     if (!hideResourceText) {
       drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
     }
@@ -6050,9 +6060,9 @@ export async function mountMatch(ctx, params = {}) {
     // deve stare 27px PIU' IN ALTO, non piu' in basso come prima.
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
-      const crysPos = isMobile ? { x: barX - 6, y: barY + 48 } : { x: barX + 600, y: barY - 4 };
+      const crysPos = isMobile ? { x: barX - 6, y: barY + 48 } : { x: barX + 570, y: barY - 4 };
       const crysScale = isMobile ? 0.9 : 0.75;
-      const crysTextPos = isMobile ? { x: barX + 34, y: barY + 77 } : { x: barX + 636, y: barY + 19 };
+      const crysTextPos = isMobile ? { x: barX + 34, y: barY + 77 } : { x: barX + 606, y: barY + 19 };
       r.setColorize(iconsDark);
       if (!hideResourceIcons && crysFrame) r.draw(crysFrame, crysPos.x, crysPos.y, crysScale, 0xffffff, 1);
       r.setColorize(false);
