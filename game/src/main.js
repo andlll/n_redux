@@ -4936,7 +4936,20 @@ export async function mountMatch(ctx, params = {}) {
       // il temporale vero di `match` (r12.storm) sia sotto quello cosmetico
       // di `match_easy` (r12.stormeasy): stepRain() la fa cadere o la
       // svuota di scatto a seconda di quale (se uno) e' attivo ORA.
-      stepRain(weatherState, dt, !!(r12.storm || r12.stormeasy), scene.width, scene.height);
+      // [Bug corretto, segnalato dall'autore: "le gocce non coprono tutto lo
+      // screen size"] Bordi della camera (`cam.x/y ± cam.worldW/worldH / 2`
+      // — lo stesso calcolo di `l/t/rr/bb` usato piu' sotto per il culling
+      // di frameList()), non piu' `scene.width/height`: la scena intera
+      // puo' essere molto piu' grande dell'area davvero inquadrata in
+      // questo istante (camera libera, game/src/camera.js), quindi una
+      // striscia di emissione legata alla scena lasciava quasi sempre lo
+      // schermo vero poco o per niente coperto — vedi il commento in cima a
+      // weather.js.
+      {
+        const rvw = cam.worldW, rvh = cam.worldH;
+        const rl = cam.x - rvw / 2, rt = cam.y - rvh / 2;
+        stepRain(weatherState, dt, !!(r12.storm || r12.stormeasy), rl, rl + rvw, rt, rt + rvh);
+      }
       // Fuochi d'artificio sopra chies (game/src/fireworks.js) — sempre
       // "in ascolto", scoppiano davvero solo a Gennaio (r12.month === 1,
       // state.js/stepCalendar()).
