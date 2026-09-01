@@ -1,7 +1,7 @@
 import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup } from "./assets.js";
-import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
+import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
@@ -960,6 +960,26 @@ export async function mountMatch(ctx, params = {}) {
   // letti da input.onTap sotto.
   let bankPanelOpen = false;
   let bankButtons = [];   // { x, y, w, h, index }
+
+  // [Nuova funzionalita', richiesta dall'autore: "nel gioco originale c'era
+  // un tasto floating su chies, sbloccato al livello 2, che permetteva di
+  // scambiare risorse"] **[C]** tradebuttoner/tradoscrino/get1..4 (state.js
+  // TRADES/canTrade/applyTrade) — stesso modale in spazio schermo di
+  // `bankPanelOpen` sopra (`tradoscrino/Step.gml` si ricentra sulla view
+  // ad ogni Step, identico a `loanoscrino`), stesso schema di
+  // `bankButtons`. `tradeCooldownT` (locale, non su r12: al massimo pochi
+  // secondi, nessun bisogno di sopravvivere a un salvataggio) e' il
+  // "cooldown" del bottone dopo uno scambio — [C]
+  // `tradebuttoner/Mouse_LeftPressed.gml` nasconde il bottone (alpha 0)
+  // all'apertura del pannello, `get1..4/Mouse_LeftPressed.gml` armano
+  // `tradebuttoner/Alarm_2.gml` (400 tick) a ogni scambio riuscito: qui
+  // basta un timer che scende verso 0, il bottone (world icon "tradeIcon"
+  // piu' sotto) resta nascosto finche' non e' scaduto O il pannello e'
+  // ancora aperto.
+  let tradePanelOpen = false;
+  let tradeButtons = [];   // { x, y, w, h, index }
+  let tradeCooldownT = 0;
+  const TRADE_COOLDOWN = 400 * TICK;   // [C] tradebuttoner/Alarm_2.gml, armato da get1..4
 
   // Pannello informativo di un edificio (drawBuildingInfoPanel() piu' sotto)
   // — [Nuova funzionalita', richiesta dall'autore: "quando la mano e'
@@ -4186,6 +4206,35 @@ export async function mountMatch(ctx, params = {}) {
       messageT = 3;
       return;
     }
+    // Il pannello scambi (tradePanelOpen sopra) — stesso trattamento modale
+    // di bankPanelOpen appena sopra, con una differenza voluta: un tocco su
+    // uno dei 4 bottoni esegue lo scambio ma NON chiude il pannello ([C]
+    // get1..4/Mouse_LeftPressed.gml non uccidono mai `tradoscrino`, solo
+    // `backotrade`/uscire dal tap lo fa — qui "un tocco fuori" lo sostituisce,
+    // stesso principio gia' scelto per bankPanelOpen) — cosi' si possono
+    // incatenare piu' scambi senza riaprire il pannello ogni volta.
+    if (tradePanelOpen) {
+      const hit = tradeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+      if (hit) {
+        const t = TRADES[hit.index];
+        if (canTrade(r12, hit.index)) {
+          applyTrade(r12, hit.index);
+          message = `traded ${t.giveAmount} ${t.give} for ${t.takeAmount} ${t.take}`;
+          // [C] get1..4/Mouse_LeftPressed.gml: armano tradebuttoner/Alarm_2.gml
+          // (400 tick) solo su uno scambio RIUSCITO — il bottone del mondo
+          // resta comunque nascosto finche' il pannello e' aperto (vedi il
+          // commento su tradeCooldownT sopra), questo timer conta da quando
+          // si chiude.
+          tradeCooldownT = TRADE_COOLDOWN;
+        } else {
+          message = `need ${t.giveAmount} ${t.give} (have ${(r12[t.give] ?? 0).toFixed(0)})`;
+        }
+        messageT = 3;
+      } else {
+        tradePanelOpen = false;
+      }
+      return;
+    }
     // Pannello informativo di un edificio (buildingInfoPanel, sopra) — stesso
     // trattamento modale di bankPanelOpen appena sopra: un tocco QUALUNQUE
     // lo chiude (non solo il bottone dedicato, disegnato per scoperta/
@@ -4343,7 +4392,7 @@ export async function mountMatch(ctx, params = {}) {
     for (const it of frameList) {
       if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
         && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo"
-        && it.obj !== "bankIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
+        && it.obj !== "bankIcon" && it.obj !== "tradeIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
         && it.obj !== "faroDockerSignal" && it.obj !== "faro3Button" && it.obj !== "faro3WaveSignal"
         && it.obj !== "faro3DockerSignal" && it.obj !== "cargoShip" && it.obj !== "ruinLot"
         && it.obj !== "ruin") continue;
@@ -4631,6 +4680,14 @@ export async function mountMatch(ctx, params = {}) {
         bankPanelOpen = true;
       }
       messageT = 3;
+      picked = null;
+    } else if (picked.obj === "tradeIcon") {
+      // [C] tradebuttoner/Mouse_LeftPressed.gml: apre il pannello scambi e
+      // azzera lo strumento armato (`r12.selec=0`, "la mano") — un tocco
+      // sul bottone del mondo non deve anche piazzare cio' che era
+      // eventualmente selezionato prima.
+      r12.selec = 0;
+      tradePanelOpen = true;
       picked = null;
     } else if (picked.obj === "faroButton") {
       // [C] upfaro1/Mouse_LeftPressed.gml (game/src/platform.js): -2000 mon,
@@ -5210,6 +5267,11 @@ export async function mountMatch(ctx, params = {}) {
       stepDebris(debris, explosions, dt);
       stepBombs(bombs, explosions, buildings, dt, r12);
       stepExplosions(explosions, dt);
+      // Cooldown del bottone scambi (tradeCooldownT, tradeIcon piu' sotto) —
+      // [C] tradebuttoner/Alarm_2.gml: un timer locale come bankPanelOpen,
+      // non su r12 (al massimo pochi secondi, nessun bisogno di
+      // sopravvivere a un salvataggio).
+      if (tradeCooldownT > 0) tradeCooldownT = Math.max(0, tradeCooldownT - dt);
       // Unico controllo per tutte le fonti di danno di questo frame (fulmini,
       // STUDIO.md "le tempeste diventano reali" + bombe appena sganciate sopra).
       for (const b of buildings) {
@@ -5315,6 +5377,20 @@ export async function mountMatch(ctx, params = {}) {
       // bankbuttoner/_object.json.
       if (b.type === "banca" && !b.construction) {
         dynamic.push({ obj: "bankIcon", ref: b, x: b.x - 50, y: b.y - 40, depth: -9100, _f: frameFor("bancobutt"), _selfLit: true });
+      }
+      // L'iconcina scambi (obj: "tradeIcon") — [C] chies/Step.gml:
+      // `action_if_variable(level, 2, 0)` seguito da un guardiano "un solo
+      // esemplare" (`action_if_number(131, 0, 0)`, 131 = object index di
+      // `tradebuttoner` — verificato nell'asm, un vero
+      // `instance_number(tradebuttoner)==0`): compare accanto a `chies` non
+      // appena raggiunge livello 2, mai piu' rimossa (nessun Destroy nel
+      // decompilato oltre alla morte di chies stessa, gia' gestita sopra —
+      // `chies` e' sempre un solo esemplare per partita, STUDIO.md). Nascosta
+      // (niente push, non solo alpha 0) mentre il pannello e' gia' aperto o
+      // durante il cooldown dopo l'ultimo scambio (tradeCooldownT sopra) —
+      // esattamente i due casi in cui l'originale spegne il proprio sprite.
+      if (b.type === "chies" && b.level >= 2 && !tradePanelOpen && tradeCooldownT <= 0) {
+        dynamic.push({ obj: "tradeIcon", ref: b, x: b.x - 60, y: b.y + 30, depth: -9100, _f: frameFor("tradobutt"), _selfLit: true });
       }
       // Popup si'/no della ruspa (ruspaPending, armato da input.onTap sotto)
       // — [C] demobasia/Create.gml: demobachia (annulla, sprite "demoback")
@@ -6708,6 +6784,34 @@ export async function mountMatch(ctx, params = {}) {
         const bx = cx, by = cy + offsets[i] * bankScale;
         r.draw(f, bx, by, bankScale, 0xffffff, 1);
         bankButtons.push({ x: bx - (f.w * bankScale) / 2, y: by - (f.h * bankScale) / 2, w: f.w * bankScale, h: f.h * bankScale, index: i });
+      }
+    }
+    // Il pannello scambi (tradePanelOpen, state.js TRADES) — stesso schema
+    // di bankPanelOpen appena sopra: "tradescr" (540x1086, la stessa taglia
+    // di "loanscr") ha origine al centro (data/sprites.json) e un solo
+    // titolo disegnato dentro ("TRADE RESOURCES", verificato pixel per
+    // pixel sulla texture vera — assets/textures/page_021.png, il frame di
+    // "tradescr": finisce a y=335 nello stesso sistema di coordinate di
+    // "loanscr" sopra), nessuna seconda riga di testo sotto: l'intera area
+    // fra il titolo e il fondo del pannello resta libera per i 4 bottoni,
+    // niente bias da calcolare come per "loanscr". Offset dei bottoni
+    // (-134/0/122/245) letti diretti da get1..4/Step.gml (`action_move_to
+    // (tradoscrino.x, tradoscrino.y + N * global.sca)`), non re-inventati:
+    // gia' abbastanza distanziati (loro stessi 88px di altezza, margini
+    // reali fra i 12 e i 46px) da non sovrapporsi.
+    tradeButtons = [];
+    if (tradePanelOpen) {
+      const tradeScale = Math.min(canvas.clientWidth / 540, canvas.clientHeight / 1086) * 0.85;
+      const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
+      const panelFrame = frameFor("tradescr");
+      if (panelFrame) r.draw(panelFrame, cx, cy, tradeScale, 0xffffff, 1);
+      const offsets = [-134, 0, 122, 245];
+      for (let i = 0; i < TRADES.length; i++) {
+        const f = frameFor(`get1${i + 1}`);
+        if (!f) continue;
+        const bx = cx, by = cy + offsets[i] * tradeScale;
+        r.draw(f, bx, by, tradeScale, 0xffffff, 1);
+        tradeButtons.push({ x: bx - (f.w * tradeScale) / 2, y: by - (f.h * tradeScale) / 2, w: f.w * tradeScale, h: f.h * tradeScale, index: i });
       }
     }
     // Bottone di pausa — sempre presente (l'unico modo di entrare/uscire dal
