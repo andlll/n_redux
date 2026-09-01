@@ -994,18 +994,20 @@ export async function mountMatch(ctx, params = {}) {
   // dissolvenza (drawBuildMenuOverlay(), sotto).
   // [Nuova funzionalita', richiesta dall'autore: "su mobile come fa
   // l'utente a vedere il prezzo di un edificio? facciamolo in dissolvenza
-  // come 'level N to unlock'"] Un bottone gia' SBLOCCATO selezionava
-  // (r12.selec) e chiudeva l'overlay al primo tocco (sotto), senza lasciare
-  // mai il tempo di leggere il cartellino prezzo — l'unico modo per vederlo
-  // era un dito fermo sopra SENZA sollevarlo (`input.hover`, il vero hover
-  // desktop qui sotto), un gesto che un tap normale non fa mai. Ora vale lo
-  // stesso schema del bottone bloccato per QUALUNQUE bottone: il primo tap
-  // arma `gridTapTagType`/`At` e mostra il cartellino (prezzo, o "Level N to
-  // unlock" se ancora bloccato) senza selezionare — un secondo tap sullo
-  // STESSO bottone, mentre il cartellino e' ancora visibile, conferma la
-  // selezione (locked non arriva mai li', selezionare un bottone bloccato
-  // resta impossibile come prima). Il nome non e' piu' "locked": lo stesso
-  // stato copre ora entrambi i casi.
+  // come 'level N to unlock', ma confermiamo la scelta al primo tap e
+  // facciamo apparire il cartellino insieme — un secondo tap per
+  // confermare diventa poco chiaro"] Un bottone gia' SBLOCCATO selezionava
+  // (r12.selec) e chiudeva l'overlay al primo tocco (sotto) senza lasciare
+  // mai il tempo di leggere il cartellino prezzo — l'unico altro modo per
+  // vederlo era un dito fermo sopra SENZA sollevarlo (`input.hover`, il
+  // vero hover desktop qui sotto), un gesto che un tap normale non fa mai.
+  // La selezione resta immediata al primo tap (invariata) — solo la
+  // CHIUSURA dell'overlay si ritarda: il tap arma anche `gridTapTagType`/
+  // `At`, drawBuildMenuOverlay() mostra il cartellino sopra il bottone
+  // appena scelto, e chiude l'overlay DA SOLA quando il cartellino e'
+  // finito di dissolversi (mai su un bottone ancora bloccato: quello non
+  // seleziona mai, vedi il commento li'). Il nome non e' piu' "locked": lo
+  // stesso stato copre ora entrambi i casi (prezzo o "Level N to unlock").
   let gridTapTagType = null;
   let gridTapTagAt = 0;
   const GRID_TAP_SHOW_MS = 500;
@@ -3123,6 +3125,15 @@ export async function mountMatch(ctx, params = {}) {
         const locked = buildingLocked(btn.type);
         drawMenuTag(btn, locked ? unlockTagSprite(btn.type) : costTagSprite(btn.type, null), alpha);
       } else {
+        // Il cartellino e' svanito del tutto: se era quello di un bottone
+        // GIA' selezionato al tap (input.onTap sopra: un bloccato non
+        // seleziona mai, quindi non arriva mai qui), la sua unica ragione
+        // di restare a schermo era mostrare il prezzo — l'overlay si chiude
+        // da sola, lo stesso "tap seleziona e chiude" di sempre, solo
+        // ritardato quel tanto che serve a leggere il prezzo. Un bottone
+        // ancora bloccato invece resta aperto: non ha mai selezionato
+        // nulla, non c'e' alcuna scelta da cui "tornare al mondo".
+        if (!buildingLocked(gridTapTagType)) buildMenuOpen = false;
         gridTapTagType = null;
       }
     }
@@ -4045,41 +4056,35 @@ export async function mountMatch(ctx, params = {}) {
       // [Bug corretto/Nuova funzionalita', richiesto dall'autore: "su mobile
       // deve comparire 'level 2 to unlock' quando si seleziona un edificio
       // non sbloccato" + "su mobile come fa l'utente a vedere il prezzo di
-      // un edificio? facciamolo in dissolvenza come 'level N to unlock'"]
-      // Prima un tap su un bottone SBLOCCATO selezionava e chiudeva
-      // l'overlay all'istante, senza mai lasciare il tempo di leggere il
-      // cartellino prezzo (visibile solo trascinando il dito sopra SENZA
-      // sollevarlo, `input.hover` — un gesto diverso da un tap normale); un
-      // tap su un bottone bloccato chiudeva l'overlay con solo un messaggio
-      // testuale di striscio, nessuno sprite. Ora il PRIMO tap su
-      // qualunque bottone (bloccato o no) non seleziona/chiude piu' nulla:
-      // arma `gridTapTagType`/`gridTapTagAt` (sopra), drawBuildMenuOverlay()
-      // disegna sopra il bottone il cartellino giusto (prezzo, o "Level N
-      // to unlock" se bloccato) mezzo secondo pieno poi lo dissolve
-      // (GRID_TAP_SHOW_MS/GRID_TAP_FADE_MS) — o finche' un dito non ci
-      // "passa sopra" di nuovo, live, via input.hover (buildMenuTagType/
-      // Until, timer separato). Un SECONDO tap sullo STESSO bottone MENTRE
-      // il cartellino e' ancora visibile conferma la selezione — un
-      // bottone bloccato non supera mai questo ramo (`!buildingLocked`
-      // sotto), restando impossibile da selezionare come prima.
-      const tagActive = gridTapTagType === hit?.type && performance.now() - gridTapTagAt < GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
-      if (hit?.type && !buildingLocked(hit.type) && tagActive) {
-        selectedType = hit.type;
-        r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
-        gridTapTagType = null;
-        buildMenuOpen = false;
-        return;
-      }
-      // Un bottone edificio (locked o no) al primo tap arma solo il
-      // cartellino e resta aperto (sopra, `return` prima di qui). "Indietro"
-      // (`hit` esiste ma senza `.type`) o un tocco fuori da ogni bottone
-      // (`hit` `undefined`) chiudono l'overlay senza selezionare nulla,
-      // come sempre.
-      if (hit?.type) {
+      // un edificio? facciamolo in dissolvenza come 'level N to unlock',
+      // ma confermiamo la scelta al primo tap e facciamo apparire il
+      // cartellino insieme, altrimenti un secondo tap per confermare
+      // diventa poco chiaro"] Un bottone SBLOCCATO seleziona ancora al
+      // PRIMO tap, come sempre — ma non chiude piu' l'overlay all'istante:
+      // arma anche `gridTapTagType`/`gridTapTagAt` (sopra), cosi'
+      // drawBuildMenuOverlay() disegna il cartellino prezzo sopra il
+      // bottone mezzo secondo pieno poi lo dissolve (GRID_TAP_SHOW_MS/
+      // GRID_TAP_FADE_MS), e chiude l'overlay DA SOLA quando il
+      // cartellino e' del tutto svanito (vedi il commento li'). Un bottone
+      // ancora BLOCCATO non seleziona mai (invariato): arma solo lo stesso
+      // cartellino ("Level N to unlock" invece del prezzo), che pero' non
+      // fa chiudere l'overlay da solo alla fine — resta aperto per un
+      // altro tentativo.
+      if (hit?.type && buildingLocked(hit.type)) {
         gridTapTagType = hit.type;
         gridTapTagAt = performance.now();
         return;
       }
+      if (hit?.type) {
+        selectedType = hit.type;
+        r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
+        gridTapTagType = hit.type;
+        gridTapTagAt = performance.now();
+        return;
+      }
+      // "Indietro" (`hit` esiste ma senza `.type`) o un tocco fuori da ogni
+      // bottone (`hit` `undefined`) chiudono l'overlay senza selezionare
+      // nulla, come sempre.
       buildMenuOpen = false;
       return;
     }
