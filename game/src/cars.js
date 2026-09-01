@@ -754,8 +754,21 @@ export const CAR_TYPES = {
       { at: 329, dir: 30, spd: 3, spr: "r_ad" },
     ],
   },
+  // [Bug corretto, segnalato dall'autore: "questa macchina vola di fianco
+  // al ponte invece di attraversarlo"] Lo spawn di tutta la famiglia
+  // (honda_brr1/11/12, stessa posizione per tutti e tre — sopra) cadeva
+  // ~40px PRIMA del vero impalcato del ponte, ancora dentro il ventaglio
+  // di cavi della torre vicina (verificato ritagliando "bridr1mo" frame
+  // chiuso, data/sprites.json, dalla texture vera): l'auto nasceva gia'
+  // sospesa a mezz'aria accanto al ponte, non sopra di lui, e ci restava
+  // per tutta la sua vita dato che questa famiglia non svolta mai (Alarm_2
+  // del decompilato non e' mai armato — [C] fedele, la retta e' quella
+  // giusta, solo il PUNTO di partenza era spostato). `y` spostato di +42
+  // per cadere sull'impalcato vero, alla stessa quota della corsia
+  // percorsa in senso opposto da honda_brr2/21 (parallela, non piu'
+  // incrociata).
   honda_brr1: {
-    spawn: { x: 2916, y: 1027 },
+    spawn: { x: 2916, y: 1069 },
     life: 427,
     spr: "g_bs",
     initial: { dir: 210, spd: 3 },
@@ -764,7 +777,7 @@ export const CAR_TYPES = {
     ],
   },
   honda_brr11: {
-    spawn: { x: 2916, y: 1027 },
+    spawn: { x: 2916, y: 1069 },  // vedi il commento su honda_brr1 sopra
     life: 427,
     spr: "c_bs",
     initial: { dir: 210, spd: 3 },
@@ -773,7 +786,7 @@ export const CAR_TYPES = {
     ],
   },
   honda_brr12: {
-    spawn: { x: 2916, y: 1027 },
+    spawn: { x: 2916, y: 1069 },  // vedi il commento su honda_brr1 sopra
     life: 427,
     spr: "v_bs",
     initial: { dir: 210, spd: 3 },
