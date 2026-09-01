@@ -44,7 +44,7 @@
 import { solidFrame } from "./gl.js";
 import { loadFromFile } from "./save.js";
 import { Camera, screenProjection } from "./camera.js";
-import { loadRoomAtlas } from "./assets.js";
+import { loadRoomAtlas, loadDeferredGroup } from "./assets.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
 import {
   stepThreatSpawner, stepThreats, stepExplosions, EXPLOSION_FRAME_COUNT,
@@ -67,6 +67,20 @@ export async function mountTitle(ctx) {
   const { atlas, pageTex } = await loadRoomAtlas(gl, "title", {
     onProgress: (loaded, total) => reportProgress("title", loaded, total, "loading interface"),
   });
+  // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
+  // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed
+  // eviction"] loadRoomAtlas() (assets.js) non avvia piu' da sola le
+  // pagine oltre `corePages` — game/src/main.js le richiama solo quando lo
+  // stato di gioco vero si avvicina alla soglia "combat"/"advanced"
+  // (tools/27_sprite_tiers.mjs), ma questa room non ha ne' l'uno ne'
+  // l'altro concetto: le sue poche pagine deferred (lo sfondo dinamico
+  // dietro il menu, TITLE_DYNAMIC_SPRITES in tools/23_atlas.py) devono
+  // arrivare comunque, subito, come sempre — senza questa chiamata
+  // esplicita resterebbero orfane per l'intera visita al menu. `"advanced"`
+  // copre da sola l'intero resto dell'atlas quando `combatPages` e'
+  // assente (questa room non lo genera): nessun bisogno di chiamare anche
+  // `"combat"`.
+  loadDeferredGroup(gl, "title", "advanced");
   function frameFor(sprName, frameIdx = 0, inset = false) {
     const frames = atlas.sprites[sprName];
     if (!frames || !frames.length) return null;
@@ -475,11 +489,28 @@ export async function mountTitle(ctx) {
   // una manciata di frame — lo stesso "sfarfallio" di trasmissione, non
   // testo che cambia. Le keyframe sono gia' globali in index.html (non
   // scope-ate a `.logoWrap`), riusate qui senza duplicarle.
+  // [Bug corretto, segnalato dall'autore: "su desktop la scritta NIMBUS
+  // REDUX e' troppo attaccata ai bottoni sotto"] Il blocco titolo era
+  // dimensionato in `vw` (larghezza viewport) ma posizionato con un `top` in
+  // `vh` (altezza viewport), mentre i tre bottoni sotto (`BUTTONS`, sopra —
+  // sprite di mondo disegnati da camUI) si spostano in verticale SOLO in
+  // funzione dell'altezza: `resize()` sopra fissa lo zoom a `1086/viewH`,
+  // quindi la Y schermo di ogni bottone finisce proporzionale a `viewH` e
+  // basta, MAI a `viewW` (verificato dai dati di scena, `standma` — il primo
+  // bottone — a y=275 mondo, bordo superiore a screenY ~18.1% di viewH per
+  // qualunque aspect ratio). Su un monitor largo e basso la vecchia
+  // dimensione in `vw` faceva CRESCERE il testo senza che il `top` (in vh)
+  // lo compensasse, riducendo lo spazio libero fino a farlo toccare — non
+  // solo un margine stretto per caso, un disaccoppiamento strutturale fra le
+  // due unita'. Ora top/font-size sono TUTTI in `vh`, agganciati alla stessa
+  // unita' che governa davvero la posizione dei bottoni: lo stesso margine
+  // (in proporzione all'altezza) resta garantito a qualunque risoluzione o
+  // rapporto d'aspetto, non solo quella misurata a mano.
   const titleWrap = document.createElement("div");
-  titleWrap.style.cssText = "position:fixed;left:0;right:0;top:max(28px,6vh);text-align:center;" +
+  titleWrap.style.cssText = "position:fixed;left:0;right:0;top:max(16px,3.2vh);text-align:center;" +
     "pointer-events:none;z-index:4;font-family:Montserrat,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;";
-  const NIMBUS_SIZE = "font-size:clamp(34px,7vw,64px);font-weight:800;letter-spacing:0.1em;";
-  const REDUX_SIZE = "font-size:clamp(12px,1.6vw,16px);font-weight:700;letter-spacing:0.5em;margin-top:2px;";
+  const NIMBUS_SIZE = "font-size:clamp(26px,5.2vh,56px);font-weight:800;letter-spacing:0.1em;";
+  const REDUX_SIZE = "font-size:clamp(9px,1.15vh,14px);font-weight:700;letter-spacing:0.5em;margin-top:2px;";
   // Stessi colori/ritardo del secondo strato (`.ghost.blue`, index.html) —
   // il ritardo di 0,06s fra ciano e blu e' quello che da' l'aspetto di uno
   // sdoppiamento vero invece di un semplice lampo bicolore in sincrono.

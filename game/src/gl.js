@@ -57,6 +57,34 @@ export class Renderer {
     this.gl = gl;
     this.canvas = canvas;
 
+    // [Nuova funzionalita', richiesta dall'autore: "alcuni device (es.
+    // Galaxy S23) hanno fps bassissimi (2-5) mentre un device di fascia
+    // media va bene — come facciamo a scoprire perche'?"] Il sintomo
+    // (pochi fps indipendentemente da quanto sia leggera la scena, su un
+    // device oggettivamente PIU' potente di un altro che invece regge)
+    // corrisponde quasi sempre a una sola causa: il browser e' caduto sul
+    // fallback SOFTWARE (SwiftShader/llvmpipe/una libreria Mesa "software
+    // rasterizer", mai la GPU vera) — una blocklist driver di Chrome/ANGLE
+    // per quella specifica combinazione GPU+versione driver, indipendente
+    // dalla potenza reale dell'hardware (un driver piu' NUOVO puo' finire
+    // in blocklist prima di uno piu' vecchio e "rodato"). `gl.getParameter
+    // (gl.RENDERER)` da solo di norma ritorna una stringa generica
+    // mascherata dal browser per fingerprinting ("ANGLE (...)" senza il
+    // vero nome GPU) — l'estensione WEBGL_debug_renderer_info espone la
+    // stringa VERA (UNMASKED_RENDERER_WEBGL), che per un fallback software
+    // contiene sempre uno dei nomi noti sotto. Non disponibile ovunque
+    // (alcuni browser la negano per privacy): degrada a "sconosciuto" (mai
+    // un crash), semplicemente senza poter confermare/escludere il
+    // software rendering per quel caso.
+    const dbgInfo = gl.getExtension("WEBGL_debug_renderer_info");
+    this.rendererString = dbgInfo ? gl.getParameter(dbgInfo.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    this.vendorString = dbgInfo ? gl.getParameter(dbgInfo.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+    const rs = String(this.rendererString ?? "").toLowerCase();
+    this.isSoftwareRendering = ["swiftshader", "llvmpipe", "software rasterizer", "microsoft basic render", "mesa off"]
+      .some((needle) => rs.includes(needle));
+    console.log(`nimbus: WebGL renderer "${this.rendererString}" (vendor "${this.vendorString}")`
+      + (this.isSoftwareRendering ? " — RENDERING SOFTWARE, nessuna GPU vera in uso" : ""));
+
     const prog = gl.createProgram();
     gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
     gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, FRAG));

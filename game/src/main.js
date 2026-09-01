@@ -1,6 +1,6 @@
 import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
-import { loadRoomAtlas } from "./assets.js";
+import { loadRoomAtlas, loadDeferredGroup } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
@@ -237,6 +237,20 @@ export async function mountMatch(ctx, params = {}) {
   const { atlas, pageTex } = await loadRoomAtlas(gl, roomName, {
     onProgress: (loaded, total) => reportProgress(roomName, loaded, total, "loading city"),
   });
+  // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
+  // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed eviction"]
+  // Il tier "combat" (sotto, dentro `if (skyAlive)`) si avvia normalmente
+  // solo quando `r12.spy`/una minaccia vera si avvicina — ma la cutscene
+  // iniziale del tutorial (tutorial.js, spawnBattle()) crea `bombar`/`air`/
+  // `dirig` VERI gia' dopo pochi secondi, per script, MAI passando da
+  // quei contatori (r12.spy/onda/bombn/diron restano a zero per l'intera
+  // cutscene — e' tutta roba scriptata, non l'economia normale delle
+  // mongolfiere spia): il trigger normale non scatterebbe mai in tempo.
+  // Qui il tutorial fa eccezione, come faceva "deferred" incondizionato
+  // prima di questo cambio — le sue pagine "combat" partono subito, non
+  // c'e' niente da guadagnare a ritardarle in una room che le usa comunque
+  // nei primi secondi.
+  if (roomName === "tutorial") loadDeferredGroup(gl, roomName, "combat");
   // `frameIdx` (default 0): quasi tutti gli sprite del motore sono statici,
   // una sola posa (STUDIO.md, "nessun sistema di image_speed") — ma alcuni
   // (le svolte delle auto, game/src/cars.js) sono davvero multi-frame
@@ -250,19 +264,24 @@ export async function mountMatch(ctx, params = {}) {
   // inizializzata lancerebbe un ReferenceError ("temporal dead zone"), non
   // silenziosamente NaN.
   const TICK = 1 / 60;              // room_speed dell'originale, stessa unita' di buildings.js
-  // [I] Caricamento a due tempi (tools/23_atlas.py `corePages` + game/src/
-  // assets.js): le pagine "deferred" (potenziamenti, combattimento, la
-  // catena fari->piattaforma) arrivano in background DOPO che la partita
-  // e' gia' disegnata — `pageTex[f.p]` puo' quindi essere ancora `null`
-  // per uno sprite tecnicamente presente nell'atlas ma non ancora
-  // scaricato. Trattato esattamente come uno sprite mancante (`return
-  // null`, lo stesso ramo di "frames non trovati" sotto): main.js non
-  // disegna nulla per quel frame invece di far crashare l'intero
-  // rendering leggendo `.tex` di un `pageTex[f.p]` ancora null — chi lo
-  // richiama ogni frame (la stragrande maggioranza dei chiamanti, vedi
-  // `dynamic.push({..., _f: frameFor(...)})` piu' sotto) lo ritenta da
-  // solo al frame successivo, quindi lo sprite compare da solo (pop-in)
-  // appena la sua pagina finisce di arrivare — nessuno stato da pulire.
+  // [I] Caricamento in tre scaglioni (tools/23_atlas.py `corePages`/
+  // `combatPages` + game/src/assets.js): core arriva prima del primo
+  // fotogramma, "combat" (minacce vere/proiettili/fulmini) e "advanced"
+  // (potenziamenti, traffico periodico, la catena fari->piattaforma, ogni
+  // edificio oltre la dote iniziale) arrivano in background SOLO quando lo
+  // stato di gioco vero si avvicina alla soglia di ciascuno (vedi il
+  // trigger piu' sotto, dentro `if (skyAlive)`) — mai incondizionati subito
+  // dopo core. `pageTex[f.p]` puo' quindi restare `null` per uno sprite
+  // tecnicamente presente nell'atlas ma non ancora scaricato, a volte per
+  // buona parte di una partita che non tocca mai quel contenuto. Trattato
+  // esattamente come uno sprite mancante (`return null`, lo stesso ramo di
+  // "frames non trovati" sotto): main.js non disegna nulla per quel frame
+  // invece di far crashare l'intero rendering leggendo `.tex` di un
+  // `pageTex[f.p]` ancora null — chi lo richiama ogni frame (la
+  // stragrande maggioranza dei chiamanti, vedi `dynamic.push({...,
+  // _f: frameFor(...)})` piu' sotto) lo ritenta da solo al frame
+  // successivo, quindi lo sprite compare da solo (pop-in) appena la sua
+  // pagina finisce di arrivare — nessuno stato da pulire.
   // I pochi chiamanti che invece CACHANO `_f` una volta sola
   // (`staticWorld`, sotto) vengono guariti esplicitamente, vedi
   // healMissingArt()/il ciclo di frame piu' in basso.
@@ -337,6 +356,16 @@ export async function mountMatch(ctx, params = {}) {
   // "deferred" dell'atlas (assets.js) potrebbero non essere ancora arrivate
   // per qualche nome all'inizio, una cache permanente le lascerebbe fuori
   // per sempre anche dopo che sono arrivate.
+  // [Bug corretto, segnalato dall'autore: "i beta tester lamentano che
+  // spesso anche premendo sulle torrette queste non sparano"] L'unione dei
+  // frame direzionali (sopra) restava comunque la sola sagoma "disegnata"
+  // dello sprite, senza nessun margine per un dito vero — su schermo piccolo
+  // il tap cade spesso appena fuori, specialmente sulle direzioni piu'
+  // strette (il cannone visto quasi di profilo). TURRET_TAP_PAD allarga il
+  // riquadro di TAP (mai il disegno, sempre e solo `turretBox` sopra) di un
+  // margine fisso per lato, indipendente dallo sprite — lo stesso tipo di
+  // "area di tocco piu' grande della grafica" comune su mobile.
+  const TURRET_TAP_PAD = 28;
   function turretHitBox(type) {
     const names = TURRET_SPRITE_NAMES[type];
     if (!names) return null;
@@ -348,6 +377,7 @@ export async function mountMatch(ctx, params = {}) {
       right = Math.max(right, f.w - f.ox); bottom = Math.max(bottom, f.h - f.oy);
     }
     if (left >= right || top >= bottom) return null;
+    left -= TURRET_TAP_PAD; top -= TURRET_TAP_PAD; right += TURRET_TAP_PAD; bottom += TURRET_TAP_PAD;
     return { ox: -left, oy: -top, w: right - left, h: bottom - top };
   }
   /** Frame corrente per uno sprite di CANTIERE con sottoimmagini vere
@@ -973,6 +1003,34 @@ export async function mountMatch(ctx, params = {}) {
   // "usa e getta" di questo motore) invece di un altro contatore dt-based.
   let buildMenuTagType = null;
   let buildMenuTagUntil = 0;
+  // [Bug corretto, richiesto dall'autore: "quando clicco un edificio ancora
+  // bloccato lo sprite 'level N to unlock' deve comparire mezzo secondo e
+  // sparire in dissolvenza"] Stato dedicato, separato da buildMenuTagType/
+  // Until sopra: quello resta il timer "linger" dell'hover dal vivo (pieno,
+  // sparizione di scatto quando scade — corretto per un dito che scorre e
+  // si solleva), un TAP secco su un bottone (onTap, sotto) arma invece
+  // questi due — GRID_TAP_SHOW_MS pieno seguito da GRID_TAP_FADE_MS di
+  // dissolvenza (drawBuildMenuOverlay(), sotto).
+  // [Nuova funzionalita', richiesta dall'autore: "su mobile come fa
+  // l'utente a vedere il prezzo di un edificio? facciamolo in dissolvenza
+  // come 'level N to unlock', ma confermiamo la scelta al primo tap e
+  // facciamo apparire il cartellino insieme — un secondo tap per
+  // confermare diventa poco chiaro"] Un bottone gia' SBLOCCATO selezionava
+  // (r12.selec) e chiudeva l'overlay al primo tocco (sotto) senza lasciare
+  // mai il tempo di leggere il cartellino prezzo — l'unico altro modo per
+  // vederlo era un dito fermo sopra SENZA sollevarlo (`input.hover`, il
+  // vero hover desktop qui sotto), un gesto che un tap normale non fa mai.
+  // La selezione resta immediata al primo tap (invariata) — solo la
+  // CHIUSURA dell'overlay si ritarda: il tap arma anche `gridTapTagType`/
+  // `At`, drawBuildMenuOverlay() mostra il cartellino sopra il bottone
+  // appena scelto, e chiude l'overlay DA SOLA quando il cartellino e'
+  // finito di dissolversi (mai su un bottone ancora bloccato: quello non
+  // seleziona mai, vedi il commento li'). Il nome non e' piu' "locked": lo
+  // stesso stato copre ora entrambi i casi (prezzo o "Level N to unlock").
+  let gridTapTagType = null;
+  let gridTapTagAt = 0;
+  const GRID_TAP_SHOW_MS = 500;
+  const GRID_TAP_FADE_MS = 400;
 
   // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
   // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
@@ -1408,11 +1466,17 @@ export async function mountMatch(ctx, params = {}) {
     // sempre sopra il terreno), non un depth di mondo da ereditare. Un
     // edificio vero e' un oggetto "di mondo" come chies o gli alberi: deve
     // ordinarsi per la propria y (vedi effDepth() sopra), non restare per
-    // sempre incollato davanti a tutto il resto della mappa. `def.fixedDepth`
-    // (parco, buildings.js — [I] segnalato dall'autore) e' l'eccezione: bassa
-    // scenografia piatta, non un edificio solido, resta sempre "in fondo"
-    // invece di competere per -y con cio' che le passa sopra.
-    const b = placeBuilding(type, anchorX, anchorY, def.fixedDepth ?? 0);
+    // sempre incollato davanti a tutto il resto della mappa.
+    // [Bug corretto, segnalato dall'autore: "il cantiere del parco finisce
+    // ancora sotto gli altri edifici, deve avere la stessa depth degli altri
+    // cantieri"] `def.fixedDepth` (parco, buildings.js) NON va applicato qui:
+    // resta 0 (dinamico, -y come ogni altro cantiere in corso) finche' il
+    // cantiere e' in corso, cosi' il parco in costruzione si ordina per -y
+    // come qualunque altro — applyLevelFinish()/stepConstructions()
+    // (buildings.js) passa a `def.fixedDepth` solo alla vera fine del
+    // cantiere, quando il parco diventa davvero la scenografia piatta che
+    // deve restare sempre "in fondo".
+    const b = placeBuilding(type, anchorX, anchorY, 0);
     // [Bug corretto] `b.tiles`: i lotti REALMENTE consumati da questo
     // edificio (l'intero `cluster` sopra, tocco incluso) salvati sull'
     // istanza stessa — demolishMultiTile()/doLoad() sotto li usano per
@@ -2172,14 +2236,31 @@ export async function mountMatch(ctx, params = {}) {
     while (u > PHASES[i].dur) { u -= PHASES[i].dur; i = (i + 1) % PHASES.length; }
     return { i, u };
   }
+  // [Bug corretto, segnalato dall'autore: "il tint si applica correttamente
+  // al cambio di fase ma poi torna indietro a bianco: deve restare quel
+  // tint finche' non scatta la fase successiva"] Prima interpolava SEMPRE
+  // dalla tinta della fase corrente (`a.rgb`) verso quella della fase
+  // SUCCESSIVA (`b.rgb`) per l'intera durata di ogni fase — corretto per le
+  // fasi "day" (che nell'originale SONO i sotto-eventi di transizione,
+  // AURA_OVERLAY sopra: `ambtr1`/`amb00`, mai fissi), ma sbagliato per
+  // "dawn"/"night": derivavano subito verso il bianco del giorno successivo
+  // per l'intera propria durata invece di restare ferme sulla propria tinta
+  // com'e' invece per l'overlay (`amb0`/`amb2`, "fisso" — vedi i commenti su
+  // AURA_OVERLAY). Ora solo le fasi "day" interpolano (fra la tinta della
+  // fase PRECEDENTE e quella SUCCESSIVA, le uniche due mai diverse da bianco
+  // in questo ciclo), mentre "dawn"/"night" restituiscono la propria `rgb`
+  // ferma per tutta la durata.
   function ambientAt(t) {
     const { i, u } = phaseIndexAt(t);
-    const a = PHASES[i], b = PHASES[(i + 1) % PHASES.length];
-    const k = Math.min(1, u / a.dur);
+    const cur = PHASES[i];
+    if (cur.name !== "day") return { rgb: cur.rgb, label: cur.name };
+    const prev = PHASES[(i - 1 + PHASES.length) % PHASES.length];
+    const next = PHASES[(i + 1) % PHASES.length];
+    const k = Math.min(1, u / cur.dur);
     const s = k * k * (3 - 2 * k);                    // smoothstep
     return {
-      rgb: a.rgb.map((v, j) => v + (b.rgb[j] - v) * s),
-      label: k < 0.75 ? a.name : a.name + " → " + b.name,
+      rgb: prev.rgb.map((v, j) => v + (next.rgb[j] - v) * s),
+      label: s < 0.75 ? prev.name : prev.name + " → " + next.name,
     };
   }
   // [Decisione dell'autore: "il temporale vero creava un sistema
@@ -2519,6 +2600,11 @@ export async function mountMatch(ctx, params = {}) {
   // righe, stessa gerarchia di dimensione, del titolo del menu principale)
   // per la seconda.
   const CUTSCENE_GHOST_LAYERS = [["#00e5ff", "0s"], ["#4d5bff", ".05s"]];
+  // [Bug corretto, segnalato dall'autore: "smorza un po' l'effetto delle
+  // scritte 'Mount Fuji presents'/'Nimbus Redux', e' un po' fastidioso"]
+  // Ciclo rallentato da .5s a .7s (index.html/@keyframes rgbGlitchIntense
+  // dimezza gia' opacita' e spostamento di picco): un tremolio piu' lento,
+  // oltre che piu' tenue, invece del solo range compresso.
   function glitchCutsceneLine(text, sizeCss, baseColorCss) {
     const wrap = document.createElement("div");
     wrap.style.cssText = "position:relative;" + sizeCss + baseColorCss;
@@ -2528,7 +2614,7 @@ export async function mountMatch(ctx, params = {}) {
       ghost.className = "cutsceneGhost";
       ghost.textContent = text;
       ghost.style.cssText = "position:absolute;inset:0;pointer-events:none;" + sizeCss +
-        `color:${color};mix-blend-mode:screen;animation:rgbGlitchIntense .5s infinite;animation-delay:${delay};`;
+        `color:${color};mix-blend-mode:screen;animation:rgbGlitchIntense .7s infinite;animation-delay:${delay};`;
       wrap.appendChild(ghost);
     }
     return wrap;
@@ -2636,9 +2722,20 @@ export async function mountMatch(ctx, params = {}) {
    * accodati ma non `flush()`ati) la cattura vedrebbe un frame vecchio o a
    * meta'.
    */
+  /** Vedi il commento su `pauseBlurTex` (sopra, insieme a `paused`): la
+   * cattura+blur e' identica per i tre pannelli di pausa finche' il mondo
+   * sotto resta congelato, quindi viene fatta al piu' una volta per
+   * "sessione" di pausa invece che ad ogni frame di ognuno dei tre. */
+  function getCachedPauseBlur() {
+    if (!pauseBlurTex || pauseBlurW !== canvas.width || pauseBlurH !== canvas.height) {
+      pauseBlurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+      pauseBlurW = canvas.width; pauseBlurH = canvas.height;
+    }
+    return pauseBlurTex;
+  }
   function drawPauseOverlay() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
-    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    const blurTex = getCachedPauseBlur();
     // `v0`/`v1` scambiati rispetto alla convenzione usuale (v0=alto, ogni
     // sprite caricato da loadTexture() ha UNPACK_FLIP_Y_WEBGL=false):
     // `gl.copyTexImage2D` cattura dal framebuffer di default, che ha
@@ -2716,7 +2813,7 @@ export async function mountMatch(ctx, params = {}) {
    */
   function drawSavingOptionsOverlay() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
-    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    const blurTex = getCachedPauseBlur();
     r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
@@ -2762,7 +2859,7 @@ export async function mountMatch(ctx, params = {}) {
    */
   function drawConfirmResetOverlay() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
-    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    const blurTex = getCachedPauseBlur();
     r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
@@ -3019,8 +3116,7 @@ export async function mountMatch(ctx, params = {}) {
     // `input.hover` segue anche un dito che scorre senza sollevarsi
     // (Input._move(), input.js): un "pan" sopra un bottone lo rivela in
     // diretta, aggiornando anche `buildMenuTagType`/`Until` cosi' che
-    // sollevare il dito subito dopo lasci il cartellino ancora un attimo
-    // (stesso timer che un tap secco arma da solo, input.onTap sopra).
+    // sollevare il dito subito dopo lasci il cartellino ancora un attimo.
     // Nessun controllo su `hoverPointerType`: questo overlay esiste solo su
     // mobile (isMobile, buildMenuOpen sopra), il touch e' l'unico caso reale.
     const hoveredTagBtn = input.hover && buildMenuButtons.find((b) => b.type
@@ -3029,16 +3125,46 @@ export async function mountMatch(ctx, params = {}) {
     if (hoveredTagBtn) { buildMenuTagType = hoveredTagBtn.type; buildMenuTagUntil = performance.now() + 2500; }
     const tagBtn = hoveredTagBtn
       ?? (buildMenuTagType && performance.now() < buildMenuTagUntil ? buildMenuButtons.find((b) => b.type === buildMenuTagType) : null);
+    function drawMenuTag(btn, spr, alpha) {
+      const tagFrame = frameFor(spr);
+      if (!tagFrame) return;
+      // Clampato dentro lo schermo (min/max sotto): un bottone sul bordo
+      // sinistro/destro della griglia spingerebbe altrimenti il cartellino
+      // (piu' largo di una singola cella) oltre il bordo del canvas.
+      const tx = Math.min(Math.max(btn.x + btn.w / 2 - (tagFrame.w * COST_TAG_SCALE) / 2, 4), cw - tagFrame.w * COST_TAG_SCALE - 4);
+      const ty = Math.max(btn.y - 8, 4);
+      r.draw(tagFrame, tx, ty, COST_TAG_SCALE, 0xffffff, alpha);
+    }
     if (tagBtn) {
       const locked = buildingLocked(tagBtn.type);
-      const tagFrame = frameFor(locked ? unlockTagSprite(tagBtn.type) : costTagSprite(tagBtn.type, null));
-      if (tagFrame) {
-        // Clampato dentro lo schermo (min/max sotto): un bottone sul bordo
-        // sinistro/destro della griglia spingerebbe altrimenti il cartellino
-        // (piu' largo di una singola cella) oltre il bordo del canvas.
-        const tx = Math.min(Math.max(tagBtn.x + tagBtn.w / 2 - (tagFrame.w * COST_TAG_SCALE) / 2, 4), cw - tagFrame.w * COST_TAG_SCALE - 4);
-        const ty = Math.max(tagBtn.y - 8, 4);
-        r.draw(tagFrame, tx, ty, COST_TAG_SCALE, 0xffffff, 1);
+      drawMenuTag(tagBtn, locked ? unlockTagSprite(tagBtn.type) : costTagSprite(tagBtn.type, null), 1);
+    }
+    // [Bug corretto/Nuova funzionalita', vedi il commento su gridTapTagType/
+    // At sopra] Un tap secco su QUALUNQUE bottone (bloccato o no) lo arma
+    // con un timestamp assoluto invece del "linger" di `buildMenuTagType`/
+    // `Until` (pensato per un dito che scorre e si solleva, non per questo
+    // caso) — pieno per GRID_TAP_SHOW_MS, poi dissolto in GRID_TAP_FADE_MS
+    // invece di sparire di scatto. Stesso sprite scelto dal resto della
+    // funzione (locked ? unlockTagSprite : costTagSprite, sopra).
+    if (gridTapTagType) {
+      const elapsed = performance.now() - gridTapTagAt;
+      const total = GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
+      const btn = elapsed < total && buildMenuButtons.find((b) => b.type === gridTapTagType);
+      if (btn) {
+        const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
+        const locked = buildingLocked(btn.type);
+        drawMenuTag(btn, locked ? unlockTagSprite(btn.type) : costTagSprite(btn.type, null), alpha);
+      } else {
+        // Il cartellino e' svanito del tutto: se era quello di un bottone
+        // GIA' selezionato al tap (input.onTap sopra: un bloccato non
+        // seleziona mai, quindi non arriva mai qui), la sua unica ragione
+        // di restare a schermo era mostrare il prezzo — l'overlay si chiude
+        // da sola, lo stesso "tap seleziona e chiude" di sempre, solo
+        // ritardato quel tanto che serve a leggere il prezzo. Un bottone
+        // ancora bloccato invece resta aperto: non ha mai selezionato
+        // nulla, non c'e' alcuna scelta da cui "tornare al mondo".
+        if (!buildingLocked(gridTapTagType)) buildMenuOpen = false;
+        gridTapTagType = null;
       }
     }
     const backBtn = buildMenuButtons[buildMenuButtons.length - 1];
@@ -3405,6 +3531,26 @@ export async function mountMatch(ctx, params = {}) {
   // investigato" — quello era un acceleratore del grattacielo, non una
   // pausa globale): puramente nostro, richiesto dall'autore.
   let paused = false;
+  // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
+  // alcuni device (es. Galaxy S23) — possiamo ottimizzare lato GPU?"]
+  // Ricatturato: `pauseBlur.blurScreen()` (game/src/gl.js) e' un
+  // `gl.copyTexImage2D` a RISOLUZIONE PIENA del framebuffer + quattro
+  // passate di blur separabile — un post-processo pesante, notoriamente
+  // costoso proprio sulle GPU mobile (tile-based: un readback pieno forza
+  // la risoluzione dell'intero tile buffer). drawPauseOverlay()/
+  // drawSavingOptionsOverlay()/drawConfirmResetOverlay() (sotto) lo
+  // richiamavano ad OGNI frame per tutta la durata della pausa — ma mentre
+  // `paused` e' vero la simulazione e' congelata (skyAlive/`frozen` piu'
+  // sotto: il mondo disegnato sotto lo sfumato e' l'IDENTICO frame,
+  // pixel per pixel, finche' non si esce dalla pausa o non si cambia
+  // sotto-pannello): ricalcolare lo stesso sfocato 60 volte al secondo era
+  // puro spreco, il costo GPU piu' pesante di ogni frame di pausa per
+  // nessun beneficio visivo. `pauseBlurTex` cachea il risultato — vedi
+  // getCachedPauseBlur() sotto — invalidato solo quando si ENTRA in pausa
+  // (mai fra un sotto-pannello e l'altro, che condividono lo stesso mondo
+  // congelato) o se le dimensioni del canvas cambiano nel frattempo
+  // (rotazione schermo mentre in pausa).
+  let pauseBlurTex = null, pauseBlurW = 0, pauseBlurH = 0, wasPaused = false;
   // Gesto di piazzamento a trascinamento in corso (palazzo/museo, buildings.js
   // `def.diagonalPlacement`) — vedi armPlacement()/resolvePlacement() sotto.
   // null quando nessun gesto e' armato (il caso comune, per ogni altro tipo).
@@ -3956,26 +4102,39 @@ export async function mountMatch(ctx, params = {}) {
       // [C] pu6|pudj|pugatling|pusolare|puvillone|pumediat/Mouse_LeftPressed.gml:
       // il ramo che scrive `r12.selec` e' innestato dentro `if (unlosei==1)`
       // — un tocco su un bottone ancora bloccato (buildingLocked(), sopra)
-      // non fa NIENTE nel decompilato, non solo "non seleziona". [Bug
-      // corretto, richiesto dall'autore: "su mobile deve comparire 'level 2
-      // to unlock' quando si seleziona un edificio non sbloccato"] Prima un
-      // tap su un bottone bloccato chiudeva subito l'overlay con solo un
-      // messaggio testuale di striscio — troppo poco tempo per leggerlo e
-      // nessuno sprite, a differenza del popup vero del decompilato
-      // (level2*/leve3tounlo*, unlockTagSprite() sopra). Ora resta APERTO e
-      // arma `buildMenuTagType`/`buildMenuTagUntil` (sopra): drawBuildMenuOverlay()
-      // lo disegna sopra il bottone stesso finche' il timer non scade (o
-      // finche' un dito non ci "passa sopra" di nuovo, live, via input.hover
-      // — vedi il commento li').
+      // non fa NIENTE nel decompilato, non solo "non seleziona".
+      // [Bug corretto/Nuova funzionalita', richiesto dall'autore: "su mobile
+      // deve comparire 'level 2 to unlock' quando si seleziona un edificio
+      // non sbloccato" + "su mobile come fa l'utente a vedere il prezzo di
+      // un edificio? facciamolo in dissolvenza come 'level N to unlock',
+      // ma confermiamo la scelta al primo tap e facciamo apparire il
+      // cartellino insieme, altrimenti un secondo tap per confermare
+      // diventa poco chiaro"] Un bottone SBLOCCATO seleziona ancora al
+      // PRIMO tap, come sempre — ma non chiude piu' l'overlay all'istante:
+      // arma anche `gridTapTagType`/`gridTapTagAt` (sopra), cosi'
+      // drawBuildMenuOverlay() disegna il cartellino prezzo sopra il
+      // bottone mezzo secondo pieno poi lo dissolve (GRID_TAP_SHOW_MS/
+      // GRID_TAP_FADE_MS), e chiude l'overlay DA SOLA quando il
+      // cartellino e' del tutto svanito (vedi il commento li'). Un bottone
+      // ancora BLOCCATO non seleziona mai (invariato): arma solo lo stesso
+      // cartellino ("Level N to unlock" invece del prezzo), che pero' non
+      // fa chiudere l'overlay da solo alla fine — resta aperto per un
+      // altro tentativo.
       if (hit?.type && buildingLocked(hit.type)) {
-        buildMenuTagType = hit.type;
-        buildMenuTagUntil = performance.now() + 2500;
+        gridTapTagType = hit.type;
+        gridTapTagAt = performance.now();
         return;
       }
       if (hit?.type) {
         selectedType = hit.type;
         r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
+        gridTapTagType = hit.type;
+        gridTapTagAt = performance.now();
+        return;
       }
+      // "Indietro" (`hit` esiste ma senza `.type`) o un tocco fuori da ogni
+      // bottone (`hit` `undefined`) chiudono l'overlay senza selezionare
+      // nulla, come sempre.
       buildMenuOpen = false;
       return;
     }
@@ -4631,6 +4790,40 @@ export async function mountMatch(ctx, params = {}) {
     // quel ramo cosmetico: stessa condizione combinata gia' usata per
     // stepRain() sotto.
     if (skyAlive) {
+      // [Bug corretto, richiesto dall'autore: "il gioco lagga da morire su
+      // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed
+      // eviction"] Avvia gli scaglioni "combat"/"advanced" (tools/
+      // 27_sprite_tiers.mjs, game/src/assets.js/loadDeferredGroup()) solo
+      // quando lo stato di gioco vero si avvicina alla soglia — non piu'
+      // incondizionato subito dopo le pagine core. `loadDeferredGroup()` e'
+      // gia' idempotente (assets.js), richiamarla ogni frame finche' la
+      // condizione resta vera costa solo un controllo su un Set.
+      // "combat": qualunque minaccia vera possa comparire da un istante
+      // all'altro — r12.spy (spia sbloccata, l'innesco di onda/bombn/diron —
+      // game/src/balloons.js) o un vero temporale (fulmini) gia' in corso,
+      // oppure un'ondata gia' avviata (i tre contatori "attivi" restano >0
+      // finche' l'ondata non si esaurisce, game/src/threats.js).
+      // Due `if` INDIPENDENTI, apposta non un `if`/`else if`: `r12.spy`
+      // resta vero per il resto della partita una volta sbloccato (~8
+      // minuti, nessun `action_set_alarm` che lo riarma — game/src/
+      // balloons.js), quindi con un `else if` il ramo "advanced" non
+      // verrebbe piu' controllato affatto dopo quel momento se non era gia'
+      // scattato prima — un edificio sbloccato DOPO che la spia e' gia'
+      // attiva non avrebbe mai avviato il proprio scaglione.
+      if (r12.spy || r12.storm || r12.stormeasy
+        || (r12.ondan ?? 0) > 0 || (r12.bombn ?? 0) > 0 || (r12.diron ?? 0) > 0) {
+        loadDeferredGroup(gl, roomName, "combat");
+      }
+      // "advanced": chies a livello 2 (la soglia PIU' BASSA fra tutti i
+      // `chiesUnlock` — main.js sopra, OTHER_BUILDINGS: chi richiede
+      // livello 3 diventa raggiungibile solo DOPO essere passato per il 2,
+      // quindi lo stesso trigger li copre entrambi in anticipo) o un
+      // potenziamento di un edificio gia' sbloccato (casa/industria, gli
+      // unici due gate a soglia di popolazione invece che a livello chiesa
+      // — upgradeUnlocked(), buildings.js).
+      if (buildings.some((b) => (b.type === "chies" && b.level >= 2) || upgradeUnlocked(b, r12, buildings))) {
+        loadDeferredGroup(gl, roomName, "advanced");
+      }
       // [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Nuvole veloci
       // esclusive di `match`/`tutorial` (mai `match_easy` — atmosphere.js,
       // il commento su `fastClouds` per il dettaglio) invece delle "ni"
@@ -4936,17 +5129,14 @@ export async function mountMatch(ctx, params = {}) {
       // l'ordine con cui e' stato costruito, STUDIO.md sopra su sortWorld).
       // [Bug corretto, segnalato dall'autore: "le impalcature del parco non
       // devono avere la sua depth, altrimenti se c'e' un edificio sopra
-      // finiscono sotto"] `depth: b.depth` sarebbe stato corretto per ogni
-      // altro tipo (b.depth resta 0 durante il cantiere, ed effDepth() sopra
-      // traduce 0 in -y da solo) ma `parco` e' l'unico con un `fixedDepth`
-      // diverso da zero GIA' dal piazzamento (buildings.js, BUILDING_TYPES.
-      // parco — pensato per tenere INDIETRO la scenografia piatta finita, non
-      // la sua impalcatura durante il cantiere): l'impalcatura ereditava
-      // quello stesso -5 fisso, finendo sempre dietro anche a un edificio
-      // vicino piu' in alto sullo schermo che dovrebbe invece passarle
-      // dietro. L'impalcatura e' un decoro di cantiere come quella di
-      // qualunque altro edificio — sempre -y diretto, mai il `fixedDepth` del
-      // tipo sotto di lei.
+      // finiscono sotto"] `depth: -b.y` esplicito invece di `depth: b.depth`:
+      // l'impalcatura e' un decoro di cantiere come quella di qualunque altro
+      // edificio, sempre -y diretto, mai il `fixedDepth` del tipo sotto di
+      // lei — anche ora che `b.depth` stesso resta 0 durante il cantiere del
+      // parco (def.fixedDepth si applica solo alla vera fine, stepConstructions()
+      // in buildings.js: vedi il commento li'), i due finiscono per
+      // coincidere, ma solo perche' quel fix a monte lo garantisce, non per
+      // costruzione di questa riga — resta esplicito apposta.
       if (b.frontSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.frontSpr) });
       // Impalcatura/gru rotanti del grattacielo (game/src/scaffold.js): decoro
       // puro, si scurisce di notte come ogni altro (nessun `_selfLit`, vedi
@@ -5666,9 +5856,38 @@ export async function mountMatch(ctx, params = {}) {
     const ROW2B_Y = ROW2_Y + 20;
     const clockScale = isMobile ? 0.5 : 0.85;
     const clockPos = isMobile ? { x: barX + 90, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 456, y: barY + 8 };
-    const monthPos = isMobile ? { x: barX + 116, y: ROW2_Y } : { x: barX + 402, y: barY + 19 };
-    const timePos = isMobile ? { x: barX + 116, y: ROW2B_Y } : { x: barX + 484, y: barY + 19 };
-    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 528, y: barY + 5 };
+    // [Bug corretto, segnalato dall'autore: "le icone a destra sono
+    // disallineate — prima l'orologio (allineato con le altre icone), poi
+    // mese e anno incolonnati, poi la faccina (allineata con le altre
+    // icone)"] Su desktop mese e anno finivano appaiati sulla STESSA riga
+    // (`barY+19` per entrambi) invece che impilati, e mese partiva PRIMA
+    // dell'orologio (x=402 contro i 456 dell'orologio, che quindi compariva
+    // in mezzo alla data invece che davanti a lei) — l'ordine giusto (vedi
+    // sopra, gia' corretto per la seconda riga mobile) non era mai stato
+    // applicato alla riga unica desktop. DATE_COL_X sta dopo l'orologio
+    // (che a `clockScale` finisce verso x=487); mese e anno condividono
+    // adesso la stessa colonna.
+    // [Bug corretto, segnalato dall'autore: "la faccina e' allineata col
+    // mese invece che con le altre icone, e l'orologio deve cadere esatto a
+    // meta' fra mese e anno"] `drawHtmlText(..., align:"left")` centra
+    // verticalmente sul proprio `y` (transform:"translateY(-50%)", sopra),
+    // e `r.draw()` (game/src/gl.js) centra un frame su `y - oy*scale +
+    // h*scale/2` — con questa formula il VERO centro visivo di ogni
+    // elemento e' stato ricalcolato a mano sui dati reali dei frame (data/
+    // sprites.json): `clockFrame` (subFrameRight di "icone_oriz", ox=0/oy=0,
+    // h=36) a `clockPos.y=barY+8`/scala 0.85 cade a `barY+23.3` — il
+    // riferimento comune, dato che l'orologio era gia' segnalato corretto.
+    // Mese/anno ora si impilano CENTRATI su quel riferimento (`barY+14`/
+    // `barY+32`, stesso passo ~18px di prima ma ricentrato: la loro media
+    // torna a combaciare con l'orologio, non piu' `barY+12` come prima).
+    const DATE_COL_X = barX + 500;
+    const monthPos = isMobile ? { x: barX + 116, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
+    const timePos = isMobile ? { x: barX + 116, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
+    // `hap1`/`hap3` (data/sprites.json): ox=oy=23=w/2=h/2 esatto, quindi il
+    // loro centro visivo coincide SEMPRE con `hapPos.y` stesso qualunque sia
+    // la scala — bastava allinearlo allo stesso `barY+23` di sopra (prima
+    // era `barY+5`, quasi al livello del solo mese).
+    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 552, y: barY + 23 };
     if (!hideResourceText) {
       drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
     }
@@ -5727,12 +5946,30 @@ export async function mountMatch(ctx, params = {}) {
     // nuovo se torna a zero (es. spesa tutta sui fari, platform.js): nessuno
     // stato "mai raccolta" da tracciare a parte, l'icona segue semplicemente
     // se il giocatore ne possiede almeno una in questo istante.
+    // [Bug corretto, richiesto dall'autore: "su desktop c'e' spazio,
+    // spostiamo il contatore gemme a destra della faccina, sempre allineato
+    // con le altre risorse"] Su mobile resta sotto (`barX-6, barY+48` — la
+    // riga scorre gia' stretta con mese/anno/faccina impilati, nessun altro
+    // posto dove metterlo); su desktop invece la riga unica di pop/olio/
+    // energia/denaro/orologio/data/faccina (sopra) ha gia' spazio libero a
+    // destra della faccina — il contatore la segue sulla STESSA riga invece
+    // di finire isolato sotto, come ogni altra risorsa qui.
+    // [Bug corretto, segnalato dall'autore insieme al resto della riga
+    // (vedi il commento su hapPos/monthPos/timePos sopra)] "crys_ico" (data/
+    // sprites.json: w=27,h=40,ox=-7,oy=-16) NON e' centrato sul proprio
+    // frame come `hap1`/`hap3` — il suo centro visivo (stessa formula di
+    // `r.draw()`) cade a `y - oy*scale + h*scale/2 = y + 27` a scala 0.75,
+    // quindi per allinearlo allo stesso `barY+23.3` dell'orologio la sua `y`
+    // deve stare 27px PIU' IN ALTO, non piu' in basso come prima.
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
+      const crysPos = isMobile ? { x: barX - 6, y: barY + 48 } : { x: barX + 600, y: barY - 4 };
+      const crysScale = isMobile ? 0.9 : 0.75;
+      const crysTextPos = isMobile ? { x: barX + 34, y: barY + 77 } : { x: barX + 636, y: barY + 19 };
       r.setColorize(iconsDark);
-      if (!hideResourceIcons && crysFrame) r.draw(crysFrame, barX - 6, barY + 48, 0.9, 0xffffff, 1);
+      if (!hideResourceIcons && crysFrame) r.draw(crysFrame, crysPos.x, crysPos.y, crysScale, 0xffffff, 1);
       r.setColorize(false);
-      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), barX + 34, barY + 77, { size: 15, align: "left", color: barTextColor });
+      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), crysTextPos.x, crysTextPos.y, { size: 15, align: "left", color: barTextColor });
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
@@ -6342,6 +6579,14 @@ export async function mountMatch(ctx, params = {}) {
     // `outcome` (sopra) ha priorita' sul menu di pausa — coerente con onTap
     // (che gia' intercetta `outcome` prima del bottone di pausa): i due non
     // vanno mai disegnati insieme.
+    // `pauseBlurTex` (vedi il commento su di lei, insieme a `paused` piu' in
+    // alto) va invalidato esattamente all'INGRESSO in pausa — `wasPaused`
+    // rileva quella transizione un frame alla volta, cosi' i tre pannelli
+    // sotto (drawPauseOverlay/drawSavingOptionsOverlay/drawConfirmResetOverlay)
+    // possono condividere la stessa cattura per tutta la sessione di pausa
+    // invece di rifarla ad ogni frame di ognuno.
+    if (paused && !wasPaused) pauseBlurTex = null;
+    wasPaused = paused;
     if (outcome) drawOutcomeOverlay();
     else if (paused) {
       if (pauseSubmenu === "saving") drawSavingOptionsOverlay();
@@ -6474,6 +6719,7 @@ export async function mountMatch(ctx, params = {}) {
   // aggancio di debug, comodo per ispezionare senza aspettare il ciclo
   window.__nimbus = {
     cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
+    get drawCalls() { return r.drawCalls; },
     get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
     get tutorialState() { return tutorialState; }, get tutorialOkRect() { return tutorialOkRect; },
     get paused() { return paused; }, setPaused: (v) => { paused = v; }, get pauseBtnRect() { return pauseBtnRect; },

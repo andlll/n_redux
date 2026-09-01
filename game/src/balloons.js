@@ -79,8 +79,13 @@ export const BALLOON_TYPES = {
     spr: "monviola", life: 3600, speedMin: 6, speedMax: 10, stormDice: 190,
     loot: { spr: "monviola_bar", key: "crys", amount: () => 1 + ((Math.random() * 3) | 0) },  // [C] irandom_range(1,3)
   },
+  // [Bug corretto, richiesto dall'autore: "smorza un po' la frequenza degli
+  // aerei/palloni spia e falli andare piu' lenti"] speedMin/speedMax
+  // originali (**[C]**) erano 4/7 — [I] ridotti per una diagonale piu'
+  // placida, la frequenza vera si tocca in stepBalloonSpawner() sotto
+  // (spyDice).
   monspi: {         // [C] rossa — spia, nessun loot (vedi sopra)
-    spr: "monr", life: 750, speedMin: 4, speedMax: 7, stormDice: 68,
+    spr: "monr", life: 750, speedMin: 3, speedMax: 5, stormDice: 68,
     isSpy: true,
   },
   // [C] recogn/Create.gml: la "seconda spia" — un aereo da ricognizione,
@@ -105,9 +110,11 @@ export const BALLOON_TYPES = {
   // a dado fra 11 e 13 — la sua unica vera differenza di rotta rispetto al
   // resto della famiglia. Rimosso `dir` (recogn ora usa la stessa diagonale
   // di default di `spawnBalloon()` sotto, nessun override serve piu').
+  // [Bug corretto, richiesto dall'autore, stesso rallentamento di monspi
+  // sopra] 11/13 originali (**[C]**).
   recogn: {
     spr: "reconspr", life: 550, stormDice: 68, isSpy: true,
-    speed: () => (dice(2) ? 11 : 13),
+    speed: () => (dice(2) ? 8 : 10),
   },
 };
 
@@ -229,7 +236,12 @@ export function stepBalloonSpawner(r12, balloons, dt, buildings) {
     }
     if (r12.spy) {
       const rare = r12.hap >= r12.pop;   // [C] operatore 4, non ==: vedi il commento sopra
-      const spyDice = rare ? 17 : 2;
+      // [Bug corretto, richiesto dall'autore: "smorza un po' la frequenza
+      // degli aerei/palloni spia"] 17/2 originali (**[C]**) — [I] entrambi
+      // dimezzati (dado piu' alto = meno probabile, dice() sopra) per uno
+      // stillicidio piu' rado di monspi/recogn, e quindi delle ondate vere
+      // che innescano (game/src/threats.js, onda/bombn/diron).
+      const spyDice = rare ? 30 : 4;
       // [C] r12/Alarm_1.gml: monspi (mongolfiera spia) mentre chies non e'
       // ancora al livello massimo, recogn (aereo da ricognizione, sopra)
       // una volta che lo e' — mai insieme, stesso dado in entrambi i rami.

@@ -712,13 +712,34 @@ TIERS_PATH = os.path.join(ROOT, "tools", "sprite_tiers.json")
 if os.path.exists(TIERS_PATH):
     _tiers = json.load(open(TIERS_PATH, encoding="utf-8"))
 else:
-    _tiers = {"coreGroups": list(GAMEPLAY_SPRITES.keys()), "deferredGroups": [], "balloonCore": [], "buildingsDeferred": []}
+    _tiers = {"coreGroups": list(GAMEPLAY_SPRITES.keys()), "combatGroups": [], "advancedGroups": [],
+              "balloonCore": [], "balloonCombat": [], "buildingsDeferred": []}
 
-DEFERRED_SPRITE_NAMES = set()
-for group in _tiers["deferredGroups"]:
-    DEFERRED_SPRITE_NAMES |= set(GAMEPLAY_SPRITES.get(group, []))
-DEFERRED_SPRITE_NAMES |= set(_tiers["buildingsDeferred"])
-DEFERRED_SPRITE_NAMES |= set(GAMEPLAY_SPRITES.get("balloons", [])) - set(_tiers["balloonCore"])
+# [Nuova funzionalita', richiesta dall'autore: "il gioco lagga da morire su
+# alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed eviction"]
+# Lo scaglione unico "deferred" (tutto cio' che non e' core, partiva TUTTO
+# insieme in background subito dopo le pagine core — game/src/assets.js,
+# vedi il commento su come si comportava prima) diventa due scaglioni
+# separati, ciascuno impacchettato in pagine PROPRIE (mai mescolate con
+# l'altro tier, stessa ragione gia' spiegata sopra per core/deferred: un
+# trigger a grana di pagina serve pagine che contengono SOLO quel tier) —
+# "combat" (minacce vere/proiettili/fulmini/le mongolfiere spia che le
+# innescano) e "advanced" (tutto il resto: traffico periodico, ponti, la
+# catena fari->piattaforma, ogni edificio oltre la dote iniziale/chies
+# livello 1). game/src/assets.js/loadDeferredGroup() li carica solo quando
+# lo stato di gioco vero si avvicina a quella soglia (game/src/main.js),
+# non piu' incondizionatamente.
+COMBAT_SPRITE_NAMES = set()
+for group in _tiers.get("combatGroups", []):
+    COMBAT_SPRITE_NAMES |= set(GAMEPLAY_SPRITES.get(group, []))
+COMBAT_SPRITE_NAMES |= set(_tiers.get("balloonCombat", []))
+
+ADVANCED_SPRITE_NAMES = set()
+for group in _tiers.get("advancedGroups", []):
+    ADVANCED_SPRITE_NAMES |= set(GAMEPLAY_SPRITES.get(group, []))
+ADVANCED_SPRITE_NAMES |= set(_tiers["buildingsDeferred"])
+ADVANCED_SPRITE_NAMES |= (set(GAMEPLAY_SPRITES.get("balloons", []))
+                           - set(_tiers["balloonCore"]) - COMBAT_SPRITE_NAMES)
 
 
 def tier_of(name):
@@ -732,15 +753,19 @@ def tier_of(name):
     # con sprite di default "ru21" (game/src/tutorial.js, RUIN_POOL), ma
     # quello stesso nome vive ANCHE dentro `BUILDING_TYPES.casa.
     # upgrades[0].ruin` (il rudere del livello 2 di `casa`, un potenziamento
-    # vero — tools/27_sprite_tiers.mjs lo classifica quindi "deferred" per
+    # vero — tools/27_sprite_tiers.mjs lo classifica quindi "advanced" per
     # quella via) — senza questo controllo esplicito PRIMA di guardare
-    # DEFERRED_SPRITE_NAMES, un rudere gia' in piedi dal primissimo istante
-    # del tutorial sarebbe rimasto invisibile finche' la sua pagina
-    # "deferred" non fosse arrivata in background: lo stesso identico "il
+    # COMBAT_SPRITE_NAMES/ADVANCED_SPRITE_NAMES, un rudere gia' in piedi dal
+    # primissimo istante del tutorial sarebbe rimasto invisibile finche' la
+    # sua pagina "advanced" non fosse arrivata: lo stesso identico "il
     # rudere e' invisibile" gia' corretto una volta (43c81e7).
     if name in scene_sprites:
         return "core"
-    return "deferred" if name in DEFERRED_SPRITE_NAMES else "core"
+    if name in COMBAT_SPRITE_NAMES:
+        return "combat"
+    if name in ADVANCED_SPRITE_NAMES:
+        return "advanced"
+    return "core"
 
 # [Bug corretto, segnalato dall'autore: "case e palazzi non dovrebbero
 # essere fade in / fade out ma usare degli sprite esistenti che accendevano
@@ -847,11 +872,14 @@ def pack(rects_subset, page_offset):
     return pages
 
 core_rects = [r for r in rects if r["tier"] == "core"]
-deferred_rects = [r for r in rects if r["tier"] == "deferred"]
+combat_rects = [r for r in rects if r["tier"] == "combat"]
+advanced_rects = [r for r in rects if r["tier"] == "advanced"]
 core_pages = pack(core_rects, 0)
-deferred_pages = pack(deferred_rects, len(core_pages))
-pages = core_pages + deferred_pages
+combat_pages = pack(combat_rects, len(core_pages))
+advanced_pages = pack(advanced_rects, len(core_pages) + len(combat_pages))
+pages = core_pages + combat_pages + advanced_pages
 CORE_PAGE_COUNT = len(core_pages)
+COMBAT_PAGE_COUNT = len(combat_pages)
 
 # altezza reale di ogni pagina, arrotondata a potenza di due
 def pow2(v):
@@ -863,7 +891,16 @@ def pow2(v):
 heights = [pow2(p["bottom"]) for p in pages]
 
 # ---------------------------------------------------------------- output
-atlas = {"room": room_name, "corePages": CORE_PAGE_COUNT, "pages": [], "sprites": {}}
+# `corePages`: quante pagine (dall'inizio) aspettare prima del primo
+# fotogramma (invariato). `combatPages`, IN PIU' rispetto a `corePages`
+# (non un totale assoluto): quante pagine SUBITO DOPO le core appartengono
+# al tier "combat" — game/src/assets.js le carica solo su trigger, mai in
+# automatico. Tutto cio' che segue (`corePages + combatPages` in poi) e'
+# "advanced", stesso principio. Un client piu' vecchio che legge solo
+# `corePages` (prima di questo cambio) tratterebbe comunque combat+advanced
+# come un unico blocco "non core" da aspettare tutto insieme — degrada,
+# non rompe.
+atlas = {"room": room_name, "corePages": CORE_PAGE_COUNT, "combatPages": COMBAT_PAGE_COUNT, "pages": [], "sprites": {}}
 for pi, h in enumerate(heights):
     atlas["pages"].append({"file": "%s_%d.webp" % (room_name, pi), "w": PAGE, "h": h})
 
@@ -900,5 +937,6 @@ print("%s: %d sprite, %d frame" % (room_name, len(by_sprite), len(rects)))
 print("   prima:  %d pagine originali, %.0f MB VRAM"
       % (srcpages, sum(page_by_id[p]["w"] * page_by_id[p]["h"] * 4
                        for p in {r["src"] for r in rects}) / 1e6))
-print("   dopo:   %d pagine %dx%s, %.0f MB VRAM (di cui %d pagine core, %d deferred)"
-      % (len(heights), PAGE, heights, vram / 1e6, CORE_PAGE_COUNT, len(heights) - CORE_PAGE_COUNT))
+print("   dopo:   %d pagine %dx%s, %.0f MB VRAM (di cui %d core, %d combat, %d advanced)"
+      % (len(heights), PAGE, heights, vram / 1e6, CORE_PAGE_COUNT, COMBAT_PAGE_COUNT,
+         len(heights) - CORE_PAGE_COUNT - COMBAT_PAGE_COUNT))
