@@ -40,18 +40,6 @@
 // una mongolfiera incontrata per strada; qui manca solo il caso "beam"
 // (laser, colpo istantaneo senza proiettile fisico, vedi fireFrom sotto).
 //
-// [Bug corretto, richiesto ancora dall'autore: "gatling e lanciarazzi non
-// devono agganciare le mongolfiere, solo il laser — un proiettile vero
-// che le fa fuori a corto raggio non ha nessun tragitto visibile, sembra
-// un colpo a sorpresa invece di uno sparo vero"] Il fallback del paragrafo
-// sopra (buildings.js/stepTurretAim) resta quindi solo per il laser: missile
-// e gatling tornano a restare a riposo quando non c'e' nessuna minaccia
-// vera in portata, ne' in automatico (gia' cosi') ne' col tocco manuale.
-// Un colpo missile/gatling puo' ancora incidentalmente far esplodere una
-// mongolfiera incontrata per strada mentre insegue una minaccia vera
-// (stepProjectiles, invariato) — quello resta fisica del proiettile in
-// volo, non un aggancio deliberato.
-//
 // Le tre torrette non sono varianti dello stesso cannone: `WEAPONS` sotto
 // tiene i dati che le differenziano (raggio, ricarica, munizioni, la forma
 // del colpo) mentre `fireFrom()` e' l'unico posto che li interpreta,

@@ -2993,40 +2993,26 @@ function turretSprFor(type, angleDeg, recoiling) {
  * nessuna regressione sulla difesa vera.
  *
  * **[Bug corretto, richiesto dall'autore]** Quando NESSUNA minaccia vera e'
- * in portata, il LASER non resta piu' a riposo (cannone fermo, `aimTarget`
- * azzerato): punta invece alla mongolfiera (risorsa o spia, `balloons`,
- * game/src/balloons.js) piu' vicina entro lo stesso raggio — segnalato
- * dall'autore ("le strutture di difesa non puntano ne' sparano contro le
- * mongolfiere"): un tap sul cannone in questa situazione ora fa partire un
- * colpo vero (fireTurretManual, projectiles.js) verso la mongolfiera
- * agganciata, esattamente come farebbe contro una minaccia vera. Il fuoco
- * AUTOMATICO invece resta impossibile contro le mongolfiere anche con
- * questo fallback: stepTurretFire ricontrolla da se' che una minaccia vera
- * sia davvero in `fireRange` prima di far partire un colpo senza tocco,
- * quindi un `aimTarget` di tipo mongolfiera (nessuna minaccia intorno) non
- * fa mai scattare nulla da solo — resta un'azione che il giocatore deve
- * chiedere esplicitamente col tap sul cannone. [Bug corretto, segnalato
- * dall'autore: "se clicco su una mongolfiera questa esplode da sola"] Il
- * tap diretto sulla mongolfiera stessa (un tempo l'ALTRA via per
+ * in portata, la torretta non resta piu' a riposo (cannone fermo,
+ * `aimTarget` azzerato): punta invece alla mongolfiera (risorsa o spia,
+ * `balloons`, game/src/balloons.js) piu' vicina entro lo stesso raggio —
+ * segnalato dall'autore ("le strutture di difesa non puntano ne' sparano
+ * contro le mongolfiere"): un tap sul cannone in questa situazione ora fa
+ * partire un colpo vero (fireTurretManual, projectiles.js) verso la
+ * mongolfiera agganciata, esattamente come farebbe contro una minaccia
+ * vera. Il fuoco AUTOMATICO invece resta impossibile contro le mongolfiere
+ * anche con questo fallback: stepTurretFire ricontrolla da se' che una
+ * minaccia vera sia davvero in `fireRange` prima di far partire un colpo
+ * senza tocco, quindi un `aimTarget` di tipo mongolfiera (nessuna minaccia
+ * intorno) non fa mai scattare nulla da solo — resta un'azione che il
+ * giocatore deve chiedere esplicitamente col tap sul cannone. [Bug corretto,
+ * segnalato dall'autore: "se clicco su una mongolfiera questa esplode da
+ * sola"] Il tap diretto sulla mongolfiera stessa (un tempo l'ALTRA via per
  * abbatterle, main.js) e' stato rimosso: nessun oggetto mongolfiera
  * dell'originale ha mai avuto un Mouse_LeftPressed.gml, la torretta (questo
  * fallback incluso) resta l'unico modo di abbatterle. Le auto decorative
  * (`cars`, un tempo incluse come "veicoli_target" dell'originale) restano
  * fuori da entrambi i giri: non sono un bersaglio, ne' ostile ne' cliccabile.
- *
- * [Bug corretto, richiesto dall'autore: "gatling e lanciarazzi non devono
- * agganciare le mongolfiere, solo il laser"] Il fallback sopra e' rimasto
- * SOLO per il laser (`b.type === "laser"` sotto): missile/gatling tornano a
- * restare a riposo (aimAngle/aimTarget azzerati) quando non c'e' nessuna
- * minaccia vera in portata, come prima di questo fallback. Un razzo/
- * proiettile vero contro una mongolfiera la abbatte comunque a un solo
- * colpo (mai una vita vera come le minacce), ma il tragitto fisico e' cosi'
- * breve a corto raggio da risultare invisibile — un colpo che sembra
- * istantaneo "a sorpresa" invece di uno sparo vero, proprio cio' per cui il
- * fascio del laser era stato appena corretto altrove (projectiles.js,
- * `hitsBeam()`/BEAM_VISUAL_LENGTH). Il laser lo mantiene: un fascio
- * istantaneo per natura non ha questo problema, colpire una mongolfiera
- * senza un "tragitto" visibile e' coerente con l'arma, non un bug.
  *
  * **[I]** Se nessuna minaccia NE' mongolfiera e' in portata, `aimAngle`/
  * `aimTarget` vengono azzerati (non lasciati all'ultima direzione come
@@ -3057,11 +3043,9 @@ export function stepTurretAim(buildings, threats, balloons) {
       const d2 = (th.x - b.x) ** 2 + (th.y - b.y) ** 2;
       if (d2 < nearestD2) { nearestD2 = d2; nearest = th; }
     }
-    // Fallback mongolfiere: SOLO per il laser (vedi il commento sopra la
-    // funzione) — non piu' per missile/gatling. Resta comunque condizionato
-    // a non avere gia' una minaccia vera in portata (`nearest` ancora null
-    // qui) — le minacce vere vincono sempre.
-    if (!nearest && balloons && b.type === "laser") {
+    // Fallback mongolfiere: SOLO se non c'e' gia' una minaccia vera in
+    // portata (nearest ancora null qui) — le minacce vere vincono sempre.
+    if (!nearest && balloons) {
       nearestD2 = range2;
       for (const bal of balloons) {
         const d2 = (bal.x - b.x) ** 2 + (bal.y - b.y) ** 2;
