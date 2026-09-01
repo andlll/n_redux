@@ -4906,7 +4906,25 @@ export async function mountMatch(ctx, params = {}) {
       // potenziamento di un edificio gia' sbloccato (casa/industria, gli
       // unici due gate a soglia di popolazione invece che a livello chiesa
       // — upgradeUnlocked(), buildings.js).
-      if (buildings.some((b) => (b.type === "chies" && b.level >= 2) || upgradeUnlocked(b, r12, buildings))) {
+      // [Bug corretto, segnalato dall'autore: "nel tutorial ci sono case che
+      // spariscono perche' sono di livello 2 — succede quando si carica una
+      // partita/scenario dove il giocatore e' gia' a un livello piu' alto,
+      // il software carica solo la 'base'"] `upgradeUnlocked()` risponde
+      // "sta per sbloccarsi un NUOVO potenziamento" (progresso pop/makee
+      // gia' raggiunto per il livello SUCCESSIVO), non "esiste gia' un
+      // edificio che ha GIA' bisogno di uno sprite oltre il livello 1": una
+      // casa gia' a livello 2 (il tutorial la piazza precostruita, un
+      // salvataggio la ricarica cosi' com'era) il cui progresso verso il
+      // livello 3 non e' ancora maturato non fa scattare nulla, restando
+      // silenziosamente sullo sprite mancante (core non lo include, vedi
+      // tools/27_sprite_tiers.mjs) finche' quel progresso non arriva DA
+      // ZERO — mai, se il giocatore non fa altro che restare li'. **[I]**
+      // `b.level >= 2` diretto (sostituisce il caso chies sopra, ora un suo
+      // sottoinsieme): qualunque edificio GIA' oltre il livello 1 in QUESTO
+      // istante (precostruito o ricaricato, non solo "sta per crescere")
+      // copre il gap, sia per il tutorial sia per un salvataggio che
+      // riprende una partita avanzata.
+      if (buildings.some((b) => b.level >= 2 || upgradeUnlocked(b, r12, buildings))) {
         loadDeferredGroup(gl, roomName, "advanced");
       }
       // [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Nuvole veloci
