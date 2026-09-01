@@ -37,6 +37,38 @@ const white = makeSolidTexture(gl);
 const pauseBlur = new PauseBlur(gl);
 const input = new Input(canvas);
 
+// [Nuova funzionalita', richiesta dall'autore: "alcuni device (es. Galaxy
+// S23) hanno fps bassissimi (2-5) mentre un device di fascia media va bene
+// — avvisiamo il giocatore quando la causa e' il fallback software"] `r`
+// (sopra) ha gia' rilevato se sta disegnando via software invece che sulla
+// GPU vera (gl.js, Renderer constructor — `isSoftwareRendering`, dedotto
+// dalla stringa VERA del renderer via WEBGL_debug_renderer_info, non
+// influenzata da quanto sia potente il device: e' una blocklist driver di
+// Chrome/ANGLE per quella specifica combinazione GPU+versione, capita
+// anche su hardware oggettivamente valido). Un banner HTML vero, stesso
+// principio di `loadFileBtn`/`msgEl` in title.js — non un canvas WebGL:
+// deve restare leggibile anche se il rendering vero e proprio e' quello
+// rotto. Dismissibile (il giocatore l'ha gia' letto, non deve restare li'
+// per sempre) ma non a scomparsa automatica: la causa persiste per tutta
+// la sessione, un avviso che sparisce da solo rischia di non essere mai
+// letto in tempo.
+if (r.isSoftwareRendering) {
+  const banner = document.createElement("div");
+  banner.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:20;" +
+    "background:rgba(120,20,20,0.92);color:#fff;padding:10px 40px 10px 14px;" +
+    "font:13px/1.4 system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;" +
+    "text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.3);";
+  banner.textContent = "Hardware acceleration unavailable on this device/browser — performance may be very limited. Try updating your browser or switching to Chrome.";
+  const dismiss = document.createElement("button");
+  dismiss.textContent = "×";
+  dismiss.setAttribute("aria-label", "Dismiss");
+  dismiss.style.cssText = "position:absolute;right:8px;top:50%;transform:translateY(-50%);" +
+    "background:none;border:none;color:#fff;font-size:20px;line-height:1;cursor:pointer;padding:4px 8px;";
+  dismiss.addEventListener("click", () => banner.remove());
+  banner.appendChild(dismiss);
+  document.body.appendChild(banner);
+}
+
 // Schermata di caricamento (index.html #loading): sfondo nero pieno-schermo
 // col logo Mount Fuji Software (tools/26_logo.py) centrato — [C] STUDIO.md
 // §3, il flusso di room originale e' `loguji` (logo Fuji) -> `title` (il
