@@ -574,15 +574,24 @@ export const BUILDING_TYPES = {
     // game/src/projectiles.js.
     manualFire: true,
     // [C] rocket_launcher/Step.gml: insegue la minaccia vera piu' vicina
-    // (`nemici_target`: air/bombar/dirig) entro 400px, un sedicesimo di giro
-    // alla volta (`turretSprFor()` sotto). [I] Le mongolfiere (risorse/spia)
-    // e le auto decorative NON sono un bersaglio (stepTurretAim() sotto,
-    // buildings.js): la torretta resta senza aggancio finche' non c'e' un
-    // velivolo ostile in portata, mai puntata su un pallone o un'auto a
-    // terra. Il fuoco vero (game/src/projectiles.js, stepTurretFire) scatta
-    // separatamente quando una minaccia vera entra entro 250px (`fireRange`),
-    // sempre verso il bersaglio gia' inseguito qui sopra.
-    aim: { range: 400, fireRange: 250 },
+    // (`nemici_target`: air/bombar/dirig), un sedicesimo di giro alla volta
+    // (`turretSprFor()` sotto). [I] Le mongolfiere (risorse/spia) e le auto
+    // decorative NON sono un bersaglio (stepTurretAim() sotto, buildings.js):
+    // la torretta resta senza aggancio finche' non c'e' un velivolo ostile in
+    // portata, mai puntata su un pallone o un'auto a terra. Il fuoco vero
+    // (game/src/projectiles.js, stepTurretFire) scatta separatamente quando
+    // una minaccia vera entra entro `fireRange`, sempre verso il bersaglio
+    // gia' inseguito qui sopra.
+    // [Bug corretto, richiesto dall'autore: "aumenta di un bel po' la
+    // portata degli edifici difensivi, i beta tester lamentano che spesso
+    // anche premendo non sparano"] 400/250 originali (**[C]**, invariati fin
+    // qui) lasciavano il cannone senza nessun bersaglio agganciato per la
+    // maggior parte di una minaccia in avvicinamento — un tap sul cannone in
+    // quella finestra non ha proprio nulla da colpire (`fireTurretManual()`,
+    // projectiles.js: nessun `b.aimTarget` = niente sparo), letto dai
+    // giocatori come "il cannone non risponde al tocco". +50% su entrambe le
+    // soglie (**[I]**, nessun valore decompilato per questa richiesta).
+    aim: { range: 600, fireRange: 380 },
     storm: [{ dice: 130, loss: 50 }],   // [C] rocket_launcher/Alarm_5.gml
     construct: {                  // livello 0 -> 1, impamissr (src/objects/impamissr)
       drain: { mon: 1, every: 20 },              // [C] impamissr/Alarm_10.gml
@@ -880,13 +889,15 @@ export const BUILDING_TYPES = {
     // deliberata dal decompilato per coerenza con le altre due torrette.
     manualFire: true,
     //
-    // [C] gatlinggun/Step.gml: insegue il veicolo piu' vicino entro 550px
-    // (un filo piu' lungo del raggio di missile); il fuoco vero (fireRange,
-    // letto da game/src/projectiles.js) scatta separatamente entro 450px
-    // contro una minaccia vera — stessa struttura "punta sempre al veicolo
-    // piu' vicino, spara verso quello anche se non e' lui il bersaglio che
-    // ha innescato lo sparo" gia' documentata per missile.
-    aim: { range: 550, fireRange: 450 },
+    // [C] gatlinggun/Step.gml: insegue il veicolo piu' vicino (un filo piu'
+    // lungo del raggio di missile); il fuoco vero (fireRange, letto da
+    // game/src/projectiles.js) scatta separatamente contro una minaccia vera
+    // — stessa struttura "punta sempre al veicolo piu' vicino, spara verso
+    // quello anche se non e' lui il bersaglio che ha innescato lo sparo"
+    // gia' documentata per missile. [Bug corretto, richiesto dall'autore,
+    // stesso +50% di missile/laser — vedi il commento su missile.aim sopra]
+    // 550/450 originali (**[C]**).
+    aim: { range: 830, fireRange: 680 },
     storm: [{ dice: 130, loss: 50 }],   // [C] gatlinggun/Alarm_5.gml
     construct: {                  // livello 0 -> 1, impagatlingr (src/objects/impagatlingr)
       drain: { mon: 1, every: 20 },              // [C] impagatlingr/Alarm_10.gml
@@ -921,9 +932,9 @@ export const BUILDING_TYPES = {
   // Decimo edificio: `laser` (src/objects/lasergun — "Laser" nel menu,
   // niente bottone dedicato nel decompilato per questo slot [I] gia' letto
   // da OTHER_BUILDINGS in main.js, `selec==5`). Terza e ultima torretta:
-  // raggio di mira lunghissimo (800px) ma raggio di fuoco vero cortissimo
-  // (200px, "a bruciapelo") e un costo per colpo in energia invece che in
-  // denaro — vedi game/src/projectiles.js.
+  // raggio di mira lunghissimo ma raggio di fuoco vero molto piu' corto
+  // ("a bruciapelo") e un costo per colpo in energia invece che in denaro —
+  // vedi game/src/projectiles.js.
   laser: {
     label: "Laser",
     placeCost: { mon: 20000 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==5
@@ -932,7 +943,9 @@ export const BUILDING_TYPES = {
     // forma del fuoco automatico (stesso costo/ricarica/raggio di mira) —
     // vedi fireTurretManual() in game/src/projectiles.js.
     manualFire: true,
-    aim: { range: 800, fireRange: 200 },
+    // [Bug corretto, richiesto dall'autore, stesso +50% di missile/gatling —
+    // vedi il commento su missile.aim sopra] 800/200 originali (**[C]**).
+    aim: { range: 1200, fireRange: 300 },
     storm: [{ dice: 90, loss: 50, dy: -70 }],   // [C] lasergun/Alarm_5.gml
     construct: {                  // livello 0 -> 1, impalaser_r (src/objects/impalaser_r)
       drain: { mon: 3, every: 20 },              // [C] impalaser_r/Alarm_10.gml

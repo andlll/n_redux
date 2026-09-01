@@ -337,6 +337,16 @@ export async function mountMatch(ctx, params = {}) {
   // "deferred" dell'atlas (assets.js) potrebbero non essere ancora arrivate
   // per qualche nome all'inizio, una cache permanente le lascerebbe fuori
   // per sempre anche dopo che sono arrivate.
+  // [Bug corretto, segnalato dall'autore: "i beta tester lamentano che
+  // spesso anche premendo sulle torrette queste non sparano"] L'unione dei
+  // frame direzionali (sopra) restava comunque la sola sagoma "disegnata"
+  // dello sprite, senza nessun margine per un dito vero — su schermo piccolo
+  // il tap cade spesso appena fuori, specialmente sulle direzioni piu'
+  // strette (il cannone visto quasi di profilo). TURRET_TAP_PAD allarga il
+  // riquadro di TAP (mai il disegno, sempre e solo `turretBox` sopra) di un
+  // margine fisso per lato, indipendente dallo sprite — lo stesso tipo di
+  // "area di tocco piu' grande della grafica" comune su mobile.
+  const TURRET_TAP_PAD = 28;
   function turretHitBox(type) {
     const names = TURRET_SPRITE_NAMES[type];
     if (!names) return null;
@@ -348,6 +358,7 @@ export async function mountMatch(ctx, params = {}) {
       right = Math.max(right, f.w - f.ox); bottom = Math.max(bottom, f.h - f.oy);
     }
     if (left >= right || top >= bottom) return null;
+    left -= TURRET_TAP_PAD; top -= TURRET_TAP_PAD; right += TURRET_TAP_PAD; bottom += TURRET_TAP_PAD;
     return { ox: -left, oy: -top, w: right - left, h: bottom - top };
   }
   /** Frame corrente per uno sprite di CANTIERE con sottoimmagini vere
@@ -978,13 +989,27 @@ export async function mountMatch(ctx, params = {}) {
   // sparire in dissolvenza"] Stato dedicato, separato da buildMenuTagType/
   // Until sopra: quello resta il timer "linger" dell'hover dal vivo (pieno,
   // sparizione di scatto quando scade — corretto per un dito che scorre e
-  // si solleva), un TAP secco su un bottone gia' bloccato (onTap, sotto)
-  // arma invece questi due — LOCKED_TAP_SHOW_MS pieno seguito da
-  // LOCKED_TAP_FADE_MS di dissolvenza (drawBuildMenuOverlay(), sotto).
-  let lockedTapTagType = null;
-  let lockedTapTagAt = 0;
-  const LOCKED_TAP_SHOW_MS = 500;
-  const LOCKED_TAP_FADE_MS = 400;
+  // si solleva), un TAP secco su un bottone (onTap, sotto) arma invece
+  // questi due — GRID_TAP_SHOW_MS pieno seguito da GRID_TAP_FADE_MS di
+  // dissolvenza (drawBuildMenuOverlay(), sotto).
+  // [Nuova funzionalita', richiesta dall'autore: "su mobile come fa
+  // l'utente a vedere il prezzo di un edificio? facciamolo in dissolvenza
+  // come 'level N to unlock'"] Un bottone gia' SBLOCCATO selezionava
+  // (r12.selec) e chiudeva l'overlay al primo tocco (sotto), senza lasciare
+  // mai il tempo di leggere il cartellino prezzo — l'unico modo per vederlo
+  // era un dito fermo sopra SENZA sollevarlo (`input.hover`, il vero hover
+  // desktop qui sotto), un gesto che un tap normale non fa mai. Ora vale lo
+  // stesso schema del bottone bloccato per QUALUNQUE bottone: il primo tap
+  // arma `gridTapTagType`/`At` e mostra il cartellino (prezzo, o "Level N to
+  // unlock" se ancora bloccato) senza selezionare — un secondo tap sullo
+  // STESSO bottone, mentre il cartellino e' ancora visibile, conferma la
+  // selezione (locked non arriva mai li', selezionare un bottone bloccato
+  // resta impossibile come prima). Il nome non e' piu' "locked": lo stesso
+  // stato copre ora entrambi i casi.
+  let gridTapTagType = null;
+  let gridTapTagAt = 0;
+  const GRID_TAP_SHOW_MS = 500;
+  const GRID_TAP_FADE_MS = 400;
 
   // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
   // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
@@ -2554,6 +2579,11 @@ export async function mountMatch(ctx, params = {}) {
   // righe, stessa gerarchia di dimensione, del titolo del menu principale)
   // per la seconda.
   const CUTSCENE_GHOST_LAYERS = [["#00e5ff", "0s"], ["#4d5bff", ".05s"]];
+  // [Bug corretto, segnalato dall'autore: "smorza un po' l'effetto delle
+  // scritte 'Mount Fuji presents'/'Nimbus Redux', e' un po' fastidioso"]
+  // Ciclo rallentato da .5s a .7s (index.html/@keyframes rgbGlitchIntense
+  // dimezza gia' opacita' e spostamento di picco): un tremolio piu' lento,
+  // oltre che piu' tenue, invece del solo range compresso.
   function glitchCutsceneLine(text, sizeCss, baseColorCss) {
     const wrap = document.createElement("div");
     wrap.style.cssText = "position:relative;" + sizeCss + baseColorCss;
@@ -2563,7 +2593,7 @@ export async function mountMatch(ctx, params = {}) {
       ghost.className = "cutsceneGhost";
       ghost.textContent = text;
       ghost.style.cssText = "position:absolute;inset:0;pointer-events:none;" + sizeCss +
-        `color:${color};mix-blend-mode:screen;animation:rgbGlitchIntense .5s infinite;animation-delay:${delay};`;
+        `color:${color};mix-blend-mode:screen;animation:rgbGlitchIntense .7s infinite;animation-delay:${delay};`;
       wrap.appendChild(ghost);
     }
     return wrap;
@@ -3077,23 +3107,23 @@ export async function mountMatch(ctx, params = {}) {
       const locked = buildingLocked(tagBtn.type);
       drawMenuTag(tagBtn, locked ? unlockTagSprite(tagBtn.type) : costTagSprite(tagBtn.type, null), 1);
     }
-    // [Bug corretto, richiesto dall'autore: "quando clicco un edificio
-    // ancora bloccato lo sprite 'level N to unlock' deve comparire mezzo
-    // secondo e sparire in dissolvenza"] Stato dedicato (lockedTapTagType/
-    // At, sopra), separato dal cartellino hover appena sopra: un tap secco
-    // su un bottone bloccato lo arma con un timestamp assoluto invece del
-    // "linger" di `buildMenuTagType`/`Until` (pensato per un dito che scorre
-    // e si solleva, non per questo caso) — pieno per LOCKED_TAP_SHOW_MS,
-    // poi dissolto in LOCKED_TAP_FADE_MS invece di sparire di scatto.
-    if (lockedTapTagType) {
-      const elapsed = performance.now() - lockedTapTagAt;
-      const total = LOCKED_TAP_SHOW_MS + LOCKED_TAP_FADE_MS;
-      const btn = elapsed < total && buildMenuButtons.find((b) => b.type === lockedTapTagType);
+    // [Bug corretto/Nuova funzionalita', vedi il commento su gridTapTagType/
+    // At sopra] Un tap secco su QUALUNQUE bottone (bloccato o no) lo arma
+    // con un timestamp assoluto invece del "linger" di `buildMenuTagType`/
+    // `Until` (pensato per un dito che scorre e si solleva, non per questo
+    // caso) — pieno per GRID_TAP_SHOW_MS, poi dissolto in GRID_TAP_FADE_MS
+    // invece di sparire di scatto. Stesso sprite scelto dal resto della
+    // funzione (locked ? unlockTagSprite : costTagSprite, sopra).
+    if (gridTapTagType) {
+      const elapsed = performance.now() - gridTapTagAt;
+      const total = GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
+      const btn = elapsed < total && buildMenuButtons.find((b) => b.type === gridTapTagType);
       if (btn) {
-        const alpha = elapsed < LOCKED_TAP_SHOW_MS ? 1 : 1 - (elapsed - LOCKED_TAP_SHOW_MS) / LOCKED_TAP_FADE_MS;
-        drawMenuTag(btn, unlockTagSprite(btn.type), alpha);
+        const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
+        const locked = buildingLocked(btn.type);
+        drawMenuTag(btn, locked ? unlockTagSprite(btn.type) : costTagSprite(btn.type, null), alpha);
       } else {
-        lockedTapTagType = null;
+        gridTapTagType = null;
       }
     }
     const backBtn = buildMenuButtons[buildMenuButtons.length - 1];
@@ -4011,26 +4041,44 @@ export async function mountMatch(ctx, params = {}) {
       // [C] pu6|pudj|pugatling|pusolare|puvillone|pumediat/Mouse_LeftPressed.gml:
       // il ramo che scrive `r12.selec` e' innestato dentro `if (unlosei==1)`
       // — un tocco su un bottone ancora bloccato (buildingLocked(), sopra)
-      // non fa NIENTE nel decompilato, non solo "non seleziona". [Bug
-      // corretto, richiesto dall'autore: "su mobile deve comparire 'level 2
-      // to unlock' quando si seleziona un edificio non sbloccato"] Prima un
-      // tap su un bottone bloccato chiudeva subito l'overlay con solo un
-      // messaggio testuale di striscio — troppo poco tempo per leggerlo e
-      // nessuno sprite, a differenza del popup vero del decompilato
-      // (level2*/leve3tounlo*, unlockTagSprite() sopra). Ora resta APERTO e
-      // arma `lockedTapTagType`/`lockedTapTagAt` (sopra): drawBuildMenuOverlay()
-      // lo disegna sopra il bottone stesso mezzo secondo pieno, poi lo
-      // dissolve (LOCKED_TAP_SHOW_MS/LOCKED_TAP_FADE_MS, sopra) — o finche'
-      // un dito non ci "passa sopra" di nuovo, live, via input.hover, che
-      // resta sul timer/comportamento separato di buildMenuTagType/Until.
-      if (hit?.type && buildingLocked(hit.type)) {
-        lockedTapTagType = hit.type;
-        lockedTapTagAt = performance.now();
-        return;
-      }
-      if (hit?.type) {
+      // non fa NIENTE nel decompilato, non solo "non seleziona".
+      // [Bug corretto/Nuova funzionalita', richiesto dall'autore: "su mobile
+      // deve comparire 'level 2 to unlock' quando si seleziona un edificio
+      // non sbloccato" + "su mobile come fa l'utente a vedere il prezzo di
+      // un edificio? facciamolo in dissolvenza come 'level N to unlock'"]
+      // Prima un tap su un bottone SBLOCCATO selezionava e chiudeva
+      // l'overlay all'istante, senza mai lasciare il tempo di leggere il
+      // cartellino prezzo (visibile solo trascinando il dito sopra SENZA
+      // sollevarlo, `input.hover` — un gesto diverso da un tap normale); un
+      // tap su un bottone bloccato chiudeva l'overlay con solo un messaggio
+      // testuale di striscio, nessuno sprite. Ora il PRIMO tap su
+      // qualunque bottone (bloccato o no) non seleziona/chiude piu' nulla:
+      // arma `gridTapTagType`/`gridTapTagAt` (sopra), drawBuildMenuOverlay()
+      // disegna sopra il bottone il cartellino giusto (prezzo, o "Level N
+      // to unlock" se bloccato) mezzo secondo pieno poi lo dissolve
+      // (GRID_TAP_SHOW_MS/GRID_TAP_FADE_MS) — o finche' un dito non ci
+      // "passa sopra" di nuovo, live, via input.hover (buildMenuTagType/
+      // Until, timer separato). Un SECONDO tap sullo STESSO bottone MENTRE
+      // il cartellino e' ancora visibile conferma la selezione — un
+      // bottone bloccato non supera mai questo ramo (`!buildingLocked`
+      // sotto), restando impossibile da selezionare come prima.
+      const tagActive = gridTapTagType === hit?.type && performance.now() - gridTapTagAt < GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
+      if (hit?.type && !buildingLocked(hit.type) && tagActive) {
         selectedType = hit.type;
         r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
+        gridTapTagType = null;
+        buildMenuOpen = false;
+        return;
+      }
+      // Un bottone edificio (locked o no) al primo tap arma solo il
+      // cartellino e resta aperto (sopra, `return` prima di qui). "Indietro"
+      // (`hit` esiste ma senza `.type`) o un tocco fuori da ogni bottone
+      // (`hit` `undefined`) chiudono l'overlay senza selezionare nulla,
+      // come sempre.
+      if (hit?.type) {
+        gridTapTagType = hit.type;
+        gridTapTagAt = performance.now();
+        return;
       }
       buildMenuOpen = false;
       return;

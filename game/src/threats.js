@@ -77,7 +77,11 @@ export const THREAT_TYPES = {
     spawnX: -170, spawnY: [380, 1620],       // [C] r12/Alarm_4.gml
     maxAge: 3000,                             // [C] air/Create.gml: action_set_alarm(3000, 1)
     maxLife: 2,                               // [C] air/Create.gml: life = 2
-    bombEvery: 40, bombChance: 2,             // [C] air/Alarm_0.gml: ogni 40 tick, dado 1/2 — solo se "desto" (vedi spawn)
+    // [Bug corretto, richiesto dall'autore: "riduci un po' l'intensita' dei
+    // bombardamenti"] 40 originale (**[C]**, "ogni 40 tick, dado 1/2") — [I]
+    // allungato per bombe piu' rade, stessa `bombChance` (il dado resta 1/2
+    // per ogni controllo, solo meno spesso).
+    bombEvery: 55, bombChance: 2,             // [C] air/Alarm_0.gml: dado 1/2 — solo se "desto" (vedi spawn)
     stormDice: 68,                            // [C] air/Alarm_5.gml
     smokeTrail: true,                         // [C] air/Alarm_6.gml + Step.gml: vedi spawnAerSmoke()/stepThreats() sotto
     // [C] air/Step.gml: solo 1/2 delle volte che la vita finisce entra in
@@ -91,7 +95,9 @@ export const THREAT_TYPES = {
     spawnX: -170, spawnY: [380, 1620],       // [C] r12/Alarm_5.gml
     maxAge: 6000,                             // [C] bombar/Create.gml: action_set_alarm(6000, 1)
     maxLife: 3.5,                             // [C] bombar/Create.gml: life = 3.5
-    bombEvery: 25, bombChance: 2,             // [C] bombar/Alarm_0.gml
+    // [Bug corretto, richiesto dall'autore, stesso alleggerimento di air
+    // sopra] 25 originale (**[C]**).
+    bombEvery: 35, bombChance: 2,             // [C] bombar/Alarm_0.gml
     stormDice: 68,                            // [C] bombar/Alarm_5.gml
     smokeTrail: true,                         // [C] bombar/Alarm_6.gml: stessa scia di air
     // [C] bombar/Step.gml: SEMPRE piro quando la vita finisce (nessun
@@ -106,7 +112,9 @@ export const THREAT_TYPES = {
     spawnX: -1000, spawnY: [900, 2120],      // [C] r12/Alarm_6.gml
     maxAge: 10000,                            // [C] dirig/Create.gml: action_set_alarm(10000, 1)
     maxLife: 10,                              // [C] dirig/Create.gml: life = 10 (il piu' resistente dei tre)
-    bombEvery: 30,                            // [C] dirig/Alarm_0.gml: due bombe indipendenti, offset fissi
+    // [Bug corretto, richiesto dall'autore, stesso alleggerimento di air/
+    // bombar sopra] 30 originale (**[C]**).
+    bombEvery: 40,                            // [C] dirig/Alarm_0.gml: due bombe indipendenti, offset fissi
     bombOffsets: [{ dx: -20, dy: -5, chance: 2 }, { dx: 20, dy: 5, chance: 2 }],
     stormDice: 68,                            // [C] dirig/Alarm_5.gml
     // [C] nessun Alarm_6/smoko_aer in dirig: a differenza di air/bombar lo
