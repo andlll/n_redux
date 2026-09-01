@@ -2392,7 +2392,25 @@ export async function mountMatch(ctx, params = {}) {
       // caso a parte invece di una LIGHT_FADE di durata zero (divisione per
       // zero). Le altre finestre (m3l1..9) hanno ognuna la propria durata;
       // tutto il resto del motore lascia `_fadeTicks` undefined e riusa LIGHT_FADE.
-      if (d._fadeTicks === 0) { d._alpha = lit ? 1 : 0; continue; }
+      // [Bug corretto, segnalato dall'autore: "le luci del grattacielo/di
+      // alcuni musei non si accendono mai"] `_f` (addDecor() sopra:
+      // `frameFor(spr)`, calcolato una volta sola alla nascita del decoro)
+      // resta `null` per sempre se in quell'istante la pagina texture dello
+      // sprite non era ancora arrivata (assets.js: gli scaglioni "combat"/
+      // "advanced" si scaricano in background, non prima del primo frame
+      // disegnabile) — i due rami sotto (`_scrubSpr`/`_pulse`) lo
+      // ricalcolano gia' ad ogni frame per conto proprio, ma questo e
+      // quello sotto (dissolvenza semplice) no: una volta nato senza
+      // pagina pronta, il fade/alpha restavano giusti ma non c'era nessun
+      // frame vero da disegnare, per sempre, anche dopo che la pagina
+      // finiva di arrivare. Capita quasi solo caricando un salvataggio che
+      // ricrea un edificio GIA' finito (grattacielo/museo, `m3l*`/`med1l`
+      // sono pagine "advanced" — doLoad() li ricostruisce prima che quello
+      // scaglione abbia mai avuto il tempo di scaricare, a differenza di
+      // una partita che ci arriva crescendo in tempo reale, con minuti di
+      // margine): `med2x` invece si salva da solo, e' un `_scrubSpr`.
+      // Ritentato ogni frame finche' non e' valido, poi lasciato stare.
+      if (d._fadeTicks === 0) { if (!d._f) d._f = frameFor(d.spr); d._alpha = lit ? 1 : 0; continue; }
       // Club (`_pulse`, addDecor() sopra): accensione/spegnimento quasi di
       // scatto (CLUB_SNAP, 2 tick — vedi clublite1..4/Step.gml) invece della
       // dissolvenza comune, poi ricolora a dado ogni CLUB_PULSE_PERIOD (30
@@ -2442,6 +2460,10 @@ export async function mountMatch(ctx, params = {}) {
         d._f = frameFor(d._scrubSpr, frameIdx);
         continue;
       }
+      // Stesso ritentativo del ramo `_fadeTicks === 0` sopra — vedi il
+      // commento li': qui e' il caso comune (LIGHT_FADE o `_fadeTicks`>0,
+      // es. "med1l").
+      if (!d._f) d._f = frameFor(d.spr);
       const fade = d._fadeTicks != null ? d._fadeTicks * TICK : LIGHT_FADE;
       d._lightT = Math.max(0, Math.min(fade, d._lightT + (lit ? dt : -dt)));
       d._alpha = d._lightT / fade;
