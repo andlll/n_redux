@@ -350,7 +350,35 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beam
     // + distanza perpendicolare dalla sua linea, non piu' un cerchio):
     // colpisce cio' che il fascio attraversa DAVVERO, non tutto cio' che
     // capita entro `fireRange` in qualunque direzione.
-    const target = b.aimTarget;
+    //
+    // [Bug corretto, segnalato dall'autore: "il cannone laser non funziona
+    // quasi mai, la direzione del fascio e' giusta ma gli oggetti che
+    // colpisce non vengono mai distrutti"] `b.aimTarget` (buildings.js/
+    // stepTurretAim) e' la minaccia piu' vicina entro `aim.range` — per il
+    // laser 1200, QUATTRO VOLTE `fireRange` (300, "a bruciapelo" — vedi il
+    // commento su BUILDING_TYPES.laser.aim): il cannone punta e ruota verso
+    // di lei molto prima di poterla davvero colpire. `stepTurretFire()
+    // (sotto) fa comunque partire il colpo appena UNA QUALSIASI minaccia
+    // vera entra in `fireRange`, ma il fascio restava puntato su
+    // `b.aimTarget` — se quella minaccia inseguita e' oltre `fireRange`
+    // (il caso comune, dato il rapporto 4:1) il fascio partiva nella
+    // direzione visivamente corretta ma il suo stesso hit-test la
+    // scartava subito (`along > fireRange` sotto), mentre nessun'altra
+    // minaccia si trovava per caso sulla stessa linea: un colpo quasi
+    // sempre a vuoto. **[I]** Bersaglio del fascio ricalcolato qui come la
+    // minaccia vera piu' vicina REALMENTE entro `fireRange` (quella che ha
+    // fatto scattare il colpo), non piu' `b.aimTarget` cosi' com'e' — se ce
+    // n'e' una il fascio la centra e la danneggia per davvero, coerente col
+    // raggio "a bruciapelo" del laser. Nessuna minaccia vera in `fireRange`
+    // (fuoco manuale su una mongolfiera lontana, unico altro chiamante —
+    // vedi fireTurretManual sotto): resta `b.aimTarget` com'era, stesso
+    // "colpo a vuoto" gia' documentato li'.
+    let nearestInRange = null, nearestD2 = fireRange * fireRange;
+    for (const th of threats) {
+      const d2 = (th.x - mx) ** 2 + (th.y - my) ** 2;
+      if (d2 < nearestD2) { nearestD2 = d2; nearestInRange = th; }
+    }
+    const target = nearestInRange ?? b.aimTarget;
     const beamAngle = target
       ? (Math.atan2(-(target.y - my), target.x - mx) * 180) / Math.PI
       : b.aimAngle;

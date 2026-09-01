@@ -2219,7 +2219,17 @@ export function tryStartUpgrade(b, r12, buildings) {
   }
   pay(r12, up.cost);
   b.construction = { upgradeIndex: b.level - 1, stepIndex: 0, t: 0 };
-  b.spr = "empty";
+  // [Bug corretto, segnalato dall'autore: "l'edificio sparisce di scatto
+  // appena parte l'upgrade, invece di restare in piedi finche' l'impalcatura
+  // non lo copre davvero"] `b.spr` NON viene piu' azzerato a "empty" qui:
+  // tryStartUpgrade() parte SEMPRE da un edificio gia' finito (richiede
+  // `nextUpgrade(b)`, mai vero a `b.level` 0 — il livello 0 nasce gia' in
+  // cantiere da placeBuilding(), mai da qui), quindi "empty" cancellava
+  // sempre un edificio vero al posto di un lotto libero. Stessa correzione
+  // gia' fatta per tryRuspaRebuild() sotto — vedi il commento li' e
+  // `keepOldSpr`/`hasTopper` in stepConstructions() per come lo sprite
+  // vecchio resta visibile finche' il topper ("il top dell'impalcatura")
+  // non nasce davvero.
   return null;
 }
 
@@ -2494,7 +2504,10 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       // sopra): 0 per ogni altro passo di ogni altro edificio (tutti a un
       // solo frame vero, l'animazione non farebbe differenza).
       c.curSpd = cur.spd ?? 0;
-      if (cur.spawn) onSpawn?.(b, syncTopperLife(cur.spawn, up, c.stepIndex, revealAtStep));
+      if (cur.spawn) {
+        onSpawn?.(b, syncTopperLife(cur.spawn, up, c.stepIndex, revealAtStep));
+        if (cur.spawn.some((sp) => TOPPER_SPRITES.has(sp.spr))) c.toppedOut = true;
+      }
       if (c.stepIndex === revealAtStep && !c.finished && !up.revealAtEnd) {
         applyLevelFinish(b, def, up, c, r12, onDecor, true);
         c.finished = true;
@@ -2533,11 +2546,34 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     // controllo resta comunque qui, difensivo, per lo stesso motivo di
     // sempre.
     const clearingLot = c.rebuilding && c.stepIndex === 0 && b.spr;
+    // [Bug corretto, segnalato dall'autore: "l'edificio sparisce di scatto
+    // appena parte l'upgrade, aspetta che l'impalcatura arrivi al top"]
+    // Stessa idea di `clearingLot` sopra, per il resto della catena: un vero
+    // upgrade (`c.upgradeIndex !== -1`, mai un cantiere ex novo su un lotto
+    // vuoto — quello non ha nessun edificio vecchio da preservare) su un
+    // tipo la cui catena pianta davvero un topper ("toppers"/"topls"/
+    // "topld", TOPPER_SPRITES sopra — il "top dell'impalcatura" richiesto)
+    // resta sullo sprite VECCHIO (mai toccato da tryStartUpgrade()/
+    // tryRuspaRebuild() sopra) finche' quel topper non nasce per davvero
+    // (`c.toppedOut`, i due `onSpawn` sopra/sotto) — il fronte cantiere
+    // (`frontSprFor()`, sotto) resta comunque visibile, cosi' l'impalcatura
+    // si vede crescere ATTORNO all'edificio ancora in piedi invece che al
+    // posto di un vuoto. `c.hasTopper` (calcolato una sola volta, non ad
+    // ogni frame): catene senza nessun topper dichiarato (`chies`: i propri
+    // sprite di cantiere sono gia' un cantiere completo per conto proprio,
+    // non un'impalcatura in sovraimpressione — frontSprFor() non li
+    // riconosce nemmeno) restano quindi al comportamento di sempre, sennò lo
+    // sprite vecchio non sparirebbe mai fino al reveal.
+    if (c.hasTopper === undefined) {
+      c.hasTopper = up.steps.some((s) => s.spawn?.some((sp) => TOPPER_SPRITES.has(sp.spr)));
+    }
+    const preTopper = c.upgradeIndex !== -1 && c.hasTopper && !c.toppedOut;
+    const keepOldSpr = clearingLot || preTopper;
     // Finche' non e' l'ultimo passo lo sprite disegnato e' ancora il
     // cantiere generico (`c.curSpr`); da quando applyLevelFinish() sopra ha
     // gia' girato (`c.finished`) resta quello vero appena assegnato, non
     // va piu' sovrascritto ogni frame.
-    if (!c.finished && !clearingLot) b.spr = c.curSpr;
+    if (!c.finished && !keepOldSpr) b.spr = c.curSpr;
     b.frontSpr = clearingLot ? null : frontSprFor(c.curSpr);
     // [C] `c.rebuilding` (tryRuspaRebuild() sopra): il primo passo di un
     // cantiere avviato dalla ruspa dura `ruspaFirstStepDur`, non `cur.dur`
@@ -2557,7 +2593,10 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       // sopra): 0 per ogni altro passo di ogni altro edificio (tutti a un
       // solo frame vero, l'animazione non farebbe differenza).
       c.curSpd = cur.spd ?? 0;
-      if (cur.spawn) onSpawn?.(b, syncTopperLife(cur.spawn, up, c.stepIndex, revealAtStep));
+      if (cur.spawn) {
+        onSpawn?.(b, syncTopperLife(cur.spawn, up, c.stepIndex, revealAtStep));
+        if (cur.spawn.some((sp) => TOPPER_SPRITES.has(sp.spr))) c.toppedOut = true;
+      }
       if (c.stepIndex === revealAtStep && !c.finished && !up.revealAtEnd) {
         applyLevelFinish(b, def, up, c, r12, onDecor, true);
         c.finished = true;

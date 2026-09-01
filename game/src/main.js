@@ -2574,8 +2574,13 @@ export async function mountMatch(ctx, params = {}) {
   // pausa (`&& !paused` li salta apposta durante il menu — stesso motivo di
   // drawHtmlText() sopra, testo HTML non sfumato dal blur) e possono capitare
   // TUTTI nello stesso frame: 4 risorse + mese + anno + cristalli (7) +
-  // balloon tutorial (1) + i 2 banner = 10, +1 di margine.
-  const TEXT_POOL_SIZE = 11;
+  // balloon tutorial (1) + i 2 banner = 10. Il pannello di vittoria
+  // (drawOutcomeOverlay() sotto, ora anche lui Montserrat vero invece del
+  // font bitmap — vedi il commento li') non congela la partita ("la
+  // vittoria non blocca niente"), quindi puo' capitare nello STESSO frame
+  // della barra risorse: titolo + messaggio + un bottone ("Keep playing") = 3
+  // in piu', 13 nel caso peggiore, +1 di margine.
+  const TEXT_POOL_SIZE = 14;
   const textPool = Array.from({ length: TEXT_POOL_SIZE }, () => {
     const el = document.createElement("div");
     el.className = "gameText";
@@ -3231,21 +3236,22 @@ export async function mountMatch(ctx, params = {}) {
     }
 
     outcomeButtons = [];
-    if (showPanel) {
-      const title = defeat ? "GAME OVER" : "CONGRATULATIONS!";
-      const subtitle = !defeat
-        ? "You've completed the Skyscraper. The game continues."
-        : outcome.reason === "chies"
+    if (showPanel && defeat) {
+      // Sconfitta: pannello scuro/allarmante col font bitmap "gotham" — resta
+      // com'era, la tavolozza rossa e il tono secco si addicono a una vera
+      // fine di partita, diverso di proposito dal "vetro smerigliato"
+      // chiaro degli altri pannelli (nessuna richiesta dall'autore di
+      // toccarlo).
+      const title = "GAME OVER";
+      const subtitle = outcome.reason === "chies"
         ? "The City center, the city's historic building, has been destroyed."
         : "The oil has run out: the rotors have stopped and the platform has crashed.";
-      const rows = defeat
-        ? [
-          { label: "Load last save", action: "load" },
-          { label: "Load from file", action: "loadFile" },
-          { label: "Restart level", action: "resetGame" },
-          { label: "Back to menu", action: "title" },
-        ]
-        : [{ label: "Keep playing", action: "continue" }];
+      const rows = [
+        { label: "Load last save", action: "load" },
+        { label: "Load from file", action: "loadFile" },
+        { label: "Restart level", action: "resetGame" },
+        { label: "Back to menu", action: "title" },
+      ];
 
       const textScale = 1.1;
       const panelW = Math.min(360, cw - 40);
@@ -3257,7 +3263,7 @@ export async function mountMatch(ctx, params = {}) {
       r.draw(solidFrame(white, panelW, panelH), px, py, 1, 0x20242c, 0.97);
 
       drawText(r, fontMini, title, px + (panelW - measureText(fontMini, title, titleScale)) / 2, py + 20,
-        titleScale, defeat ? 0xff6a5a : 0x8ef58e, 1);
+        titleScale, 0xff6a5a, 1);
 
       let ty = py + 20 + 17 * titleScale + 14;
       for (const line of lines) {
@@ -3271,6 +3277,40 @@ export async function mountMatch(ctx, params = {}) {
         const bx = px + (panelW - btnW) / 2;
         r.draw(solidFrame(white, btnW, btnH), bx, by, 1, 0x3a4152, 0.95);
         drawText(r, fontMini, row.label, bx + (btnW - measureText(fontMini, row.label, textScale)) / 2, by + (btnH - 17 * textScale) / 2, textScale, 0xffffff, 1);
+        outcomeButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+        by += btnH + btnGap;
+      }
+    } else if (showPanel) {
+      // [Bug corretto, richiesto dall'autore: "la schermata di congratulazioni
+      // e' brutta, rifacciamola con lo stesso stile del menu di pausa (font,
+      // roundrect bianco ecc), cambiamo anche il messaggio che e' molto
+      // generico"] Vittoria: stesso "vetro smerigliato" (pausePanelFrame()/
+      // PANEL_TINT/PANEL_ALPHA) e Montserrat vero (drawHtmlText()) del menu
+      // di pausa/drawConfirmResetOverlay(), non piu' il pannello scuro col
+      // font bitmap condiviso (fino a qui) con la sconfitta — la vittoria
+      // non e' una fine, non deve sembrarne una. Messaggio riscritto: non
+      // piu' il generico "You've completed the Skyscraper. The game
+      // continues.", ma un riferimento concreto a COSA si e' costruito.
+      const title = "CONGRATULATIONS!";
+      const subtitle = "The Skyscraper stands complete, the tallest building this " +
+        "city has ever raised. Keep building — there's no limit from here.";
+      const rows = [{ label: "Keep playing", action: "continue" }];
+
+      const panelW = Math.min(360, cw - 40);
+      const subH = 100;
+      const panelH = 96 + subH + rows.length * 60 + 20;
+      const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+      r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
+
+      drawHtmlText(title, px + panelW / 2, py + 34, { size: 26 });
+      drawHtmlText(subtitle, px + 30, py + 60, { size: 14, maxWidth: panelW - 60, wrap: true });
+
+      const btnW = panelW - 60, btnH = 46, btnGap = 14;
+      let by = py + 96 + subH;
+      for (const row of rows) {
+        const bx = px + (panelW - btnW) / 2;
+        r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
+        drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
         outcomeButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
         by += btnH + btnGap;
       }
