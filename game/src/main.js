@@ -1,4 +1,4 @@
-import { makeCircleTexture, makeRoundedRectTexture, solidFrame } from "./gl.js";
+import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
@@ -2676,7 +2676,18 @@ export async function mountMatch(ctx, params = {}) {
   // la stessa soglia gia' usata da `setColorize()` per le icone — vedi il
   // commento li'), a differenza del testo sempre scuro-su-chiaro degli
   // altri pannelli.
-  function drawHtmlText(text, x, y, { size = 16, maxWidth, wrap = false, align = "center", color } = {}) {
+  // [Bug corretto, richiesto dall'autore: "centriamo i due testi lunghi
+  // (i messaggi 'oil'/'chies' della schermata di sconfitta)"] `align` non ha
+  // piu' un default fisso a "center": undefined distingue "il chiamante non
+  // l'ha passato" da "center" esplicito, cosi' i due rami sotto possono
+  // avere un default DIVERSO l'uno dall'altro senza toccarsi a vicenda — il
+  // ramo `wrap` restava sempre "left" qualunque cosa arrivasse (il balloon
+  // del tutorial/drawConfirmResetOverlay()/il pannello di vittoria, nessuno
+  // dei quali passa `align`, continuano quindi invariati), il ramo non-wrap
+  // restava sempre "center" salvo `align:"left"` esplicito (barra risorse) —
+  // ora il primo rispetta `align:"center"` quando richiesto esplicitamente
+  // (i due messaggi di sconfitta sotto), il secondo resta identico a prima.
+  function drawHtmlText(text, x, y, { size = 16, maxWidth, wrap = false, align, color } = {}) {
     const el = textPool[textPoolUsed++];
     el.textContent = text;
     el.style.display = "block";
@@ -2685,7 +2696,7 @@ export async function mountMatch(ctx, params = {}) {
     el.style.top = `${y}px`;
     el.style.color = color ?? TEXT_TINT;
     if (wrap) {
-      el.style.textAlign = "left";
+      el.style.textAlign = align === "center" ? "center" : "left";
       el.style.whiteSpace = "normal";
       el.style.overflow = "visible";
       el.style.textOverflow = "clip";
@@ -3182,17 +3193,19 @@ export async function mountMatch(ctx, params = {}) {
     r.flush();
   }
 
-  /** Rettangolo bordato (solo contorno, interno trasparente) — quattro
-   * strisce sottili (`solidFrame`, come ogni altro rettangolo pieno del
-   * motore) invece di un riempimento vero: usato dai bottoni "testo nudo su
-   * nero" della schermata di sconfitta sotto, dove il nero di fondo deve
-   * restare visibile anche dentro il bottone (nessun pannello dietro, a
-   * differenza di pausePanelFrame()/pauseButtonFrame() sopra). */
-  function drawOutlineRect(x, y, w, h, thickness, tint, alpha) {
-    r.draw(solidFrame(white, w, thickness), x, y, 1, tint, alpha);
-    r.draw(solidFrame(white, w, thickness), x, y + h - thickness, 1, tint, alpha);
-    r.draw(solidFrame(white, thickness, h), x, y, 1, tint, alpha);
-    r.draw(solidFrame(white, thickness, h), x + w - thickness, y, 1, tint, alpha);
+  /** Rettangolo bordato (solo contorno, interno trasparente) — usato dai
+   * bottoni "testo nudo su nero" della schermata di sconfitta sotto, dove il
+   * nero di fondo deve restare visibile anche dentro il bottone (nessun
+   * pannello dietro, a differenza di pausePanelFrame()/pauseButtonFrame()
+   * sotto). [Bug corretto, richiesto dall'autore: "il colore bianco solo
+   * contorno va bene, ma facciamo gli angoli arrotondati come il menu di
+   * pausa"] Angoli arrotondati come pauseButtonFrame() sotto (stesso raggio,
+   * 14) invece delle quattro strisce dritte di prima — `outlineButtonFrame`
+   * (sotto, insieme a pausePanelFrame/pauseButtonFrame: stessa cache per
+   * dimensione, stesso motivo li' spiegato) genera il contorno vero via
+   * makeRoundedRectStrokeTexture() (gl.js), non piu' un quad pieno. */
+  function drawOutlineRect(x, y, w, h, tint, alpha) {
+    r.draw(outlineButtonFrame(w, h), x, y, 1, tint, alpha);
   }
 
   /**
@@ -3290,12 +3303,12 @@ export async function mountMatch(ctx, params = {}) {
 
       drawHtmlText(title, cw / 2, ty + titleH / 2, { size: 34, color: "#ffffff" });
       ty += titleH + gap1;
-      drawHtmlText(subtitle, px + 30, ty, { size: 14, maxWidth: contentW - 60, wrap: true, color: "#ffffff" });
+      drawHtmlText(subtitle, px + 30, ty, { size: 14, maxWidth: contentW - 60, wrap: true, align: "center", color: "#ffffff" });
       ty += subH + gap2;
 
       for (const row of rows) {
         const bx = px + (contentW - btnW) / 2;
-        drawOutlineRect(bx, ty, btnW, btnH, 2, 0xffffff, 0.85);
+        drawOutlineRect(bx, ty, btnW, btnH, 0xffffff, 0.85);
         drawHtmlText(row.label, bx + btnW / 2, ty + btnH / 2, { size: 17, maxWidth: btnW - 20, color: "#ffffff" });
         outcomeButtons.push({ x: bx, y: ty, w: btnW, h: btnH, action: row.action });
         ty += btnH + btnGap;
@@ -3428,6 +3441,28 @@ export async function mountMatch(ctx, params = {}) {
   }
   const pausePanelFrame = makeRoundRectCache(20);
   const pauseButtonFrame = makeRoundRectCache(14);
+
+  /** Come makeRoundRectCache() sopra, ma per un contorno invece di un
+   * riempimento (makeRoundedRectStrokeTexture(), gl.js) — usata da
+   * drawOutlineRect() sopra per i bottoni "testo nudo su nero" della
+   * schermata di sconfitta: stesso raggio (14) di pauseButtonFrame(), stesso
+   * motivo di cache per dimensione. `thickness` (2px, l'unico chiamante) e'
+   * parte della chiave della forma quanto `radius`: entrambi fissi qui,
+   * un'unica cache basta (a differenza di pausePanelFrame/pauseButtonFrame,
+   * due raggi diversi sullo STESSO chiamante nello stesso frame). */
+  function makeRoundRectStrokeCache(radius, thickness) {
+    let tex = null, key = "";
+    return (w, h) => {
+      const k = Math.round(w) + "x" + Math.round(h);
+      if (k !== key) {
+        if (tex) gl.deleteTexture(tex);
+        tex = makeRoundedRectStrokeTexture(gl, Math.round(w), Math.round(h), radius, thickness);
+        key = k;
+      }
+      return solidFrame(tex, w, h);
+    };
+  }
+  const outlineButtonFrame = makeRoundRectStrokeCache(14, 2);
 
   /** Test punto-in-rombo, centrato sul bounding box di un frame: i placeholder
    * sono disegnati come sprite romboidali ("phold", il rombo viola —
