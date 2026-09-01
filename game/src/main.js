@@ -2703,9 +2703,20 @@ export async function mountMatch(ctx, params = {}) {
    * accodati ma non `flush()`ati) la cattura vedrebbe un frame vecchio o a
    * meta'.
    */
+  /** Vedi il commento su `pauseBlurTex` (sopra, insieme a `paused`): la
+   * cattura+blur e' identica per i tre pannelli di pausa finche' il mondo
+   * sotto resta congelato, quindi viene fatta al piu' una volta per
+   * "sessione" di pausa invece che ad ogni frame di ognuno dei tre. */
+  function getCachedPauseBlur() {
+    if (!pauseBlurTex || pauseBlurW !== canvas.width || pauseBlurH !== canvas.height) {
+      pauseBlurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+      pauseBlurW = canvas.width; pauseBlurH = canvas.height;
+    }
+    return pauseBlurTex;
+  }
   function drawPauseOverlay() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
-    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    const blurTex = getCachedPauseBlur();
     // `v0`/`v1` scambiati rispetto alla convenzione usuale (v0=alto, ogni
     // sprite caricato da loadTexture() ha UNPACK_FLIP_Y_WEBGL=false):
     // `gl.copyTexImage2D` cattura dal framebuffer di default, che ha
@@ -2783,7 +2794,7 @@ export async function mountMatch(ctx, params = {}) {
    */
   function drawSavingOptionsOverlay() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
-    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    const blurTex = getCachedPauseBlur();
     r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
@@ -2829,7 +2840,7 @@ export async function mountMatch(ctx, params = {}) {
    */
   function drawConfirmResetOverlay() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
-    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    const blurTex = getCachedPauseBlur();
     r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
@@ -3501,6 +3512,26 @@ export async function mountMatch(ctx, params = {}) {
   // investigato" — quello era un acceleratore del grattacielo, non una
   // pausa globale): puramente nostro, richiesto dall'autore.
   let paused = false;
+  // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
+  // alcuni device (es. Galaxy S23) — possiamo ottimizzare lato GPU?"]
+  // Ricatturato: `pauseBlur.blurScreen()` (game/src/gl.js) e' un
+  // `gl.copyTexImage2D` a RISOLUZIONE PIENA del framebuffer + quattro
+  // passate di blur separabile — un post-processo pesante, notoriamente
+  // costoso proprio sulle GPU mobile (tile-based: un readback pieno forza
+  // la risoluzione dell'intero tile buffer). drawPauseOverlay()/
+  // drawSavingOptionsOverlay()/drawConfirmResetOverlay() (sotto) lo
+  // richiamavano ad OGNI frame per tutta la durata della pausa — ma mentre
+  // `paused` e' vero la simulazione e' congelata (skyAlive/`frozen` piu'
+  // sotto: il mondo disegnato sotto lo sfumato e' l'IDENTICO frame,
+  // pixel per pixel, finche' non si esce dalla pausa o non si cambia
+  // sotto-pannello): ricalcolare lo stesso sfocato 60 volte al secondo era
+  // puro spreco, il costo GPU piu' pesante di ogni frame di pausa per
+  // nessun beneficio visivo. `pauseBlurTex` cachea il risultato — vedi
+  // getCachedPauseBlur() sotto — invalidato solo quando si ENTRA in pausa
+  // (mai fra un sotto-pannello e l'altro, che condividono lo stesso mondo
+  // congelato) o se le dimensioni del canvas cambiano nel frattempo
+  // (rotazione schermo mentre in pausa).
+  let pauseBlurTex = null, pauseBlurW = 0, pauseBlurH = 0, wasPaused = false;
   // Gesto di piazzamento a trascinamento in corso (palazzo/museo, buildings.js
   // `def.diagonalPlacement`) — vedi armPlacement()/resolvePlacement() sotto.
   // null quando nessun gesto e' armato (il caso comune, per ogni altro tipo).
@@ -6495,6 +6526,14 @@ export async function mountMatch(ctx, params = {}) {
     // `outcome` (sopra) ha priorita' sul menu di pausa — coerente con onTap
     // (che gia' intercetta `outcome` prima del bottone di pausa): i due non
     // vanno mai disegnati insieme.
+    // `pauseBlurTex` (vedi il commento su di lei, insieme a `paused` piu' in
+    // alto) va invalidato esattamente all'INGRESSO in pausa — `wasPaused`
+    // rileva quella transizione un frame alla volta, cosi' i tre pannelli
+    // sotto (drawPauseOverlay/drawSavingOptionsOverlay/drawConfirmResetOverlay)
+    // possono condividere la stessa cattura per tutta la sessione di pausa
+    // invece di rifarla ad ogni frame di ognuno.
+    if (paused && !wasPaused) pauseBlurTex = null;
+    wasPaused = paused;
     if (outcome) drawOutcomeOverlay();
     else if (paused) {
       if (pauseSubmenu === "saving") drawSavingOptionsOverlay();
@@ -6627,6 +6666,7 @@ export async function mountMatch(ctx, params = {}) {
   // aggancio di debug, comodo per ispezionare senza aspettare il ciclo
   window.__nimbus = {
     cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
+    get drawCalls() { return r.drawCalls; },
     get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
     get tutorialState() { return tutorialState; }, get tutorialOkRect() { return tutorialOkRect; },
     get paused() { return paused; }, setPaused: (v) => { paused = v; }, get pauseBtnRect() { return pauseBtnRect; },
