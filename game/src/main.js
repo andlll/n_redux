@@ -6088,10 +6088,17 @@ export async function mountMatch(ctx, params = {}) {
     // della data, non solo della seconda). Qui l'orologio e' un'unica icona
     // a sinistra, centrata verticalmente sulle due righe della data (mese
     // sopra, anno sotto — `r12.time` e' l'anno di gioco, game/src/state.js)
-    // impilate alla sua destra. Il blocco intero parte comunque da x=90
-    // (non dal margine sinistro vero): stessa distanza di sicurezza di
-    // prima dal contatore cristalli (barX-6..~85, barY+48 in su —
-    // crysFrame/crysText sotto), che altrimenti ci finirebbe sotto.
+    // impilate alla sua destra. Il blocco intero parte comunque da x=70
+    // (non dal margine sinistro vero): distanza di sicurezza dal contatore
+    // cristalli (barX-6..~62, barY+48 in su — crysFrame/crysText sotto),
+    // che altrimenti ci finirebbe sotto. [Bug corretto, segnalato
+    // dall'autore: "la seconda riga (orologio/faccina) e' troppo a destra,
+    // c'e' un gap a sinistra"] Era x=90, tarato per un contatore cristalli
+    // MAI cosi' largo: `r12.crys` e' sempre `Math.min(99, r12.crys)`
+    // (state.js/clampR12()) — al massimo due cifre, misurate ~20px larghe
+    // in Montserrat 15px da `crysTextPos.x` (barX+34), finiscono quindi
+    // verso barX+54: gli altri 36px di margine (90-54) erano vuoti per
+    // davvero, non un residuo di un valore piu' lungo mai raggiungibile.
     const ROW2_Y = barY + 50;
     const ROW2B_Y = ROW2_Y + 20;
     const clockScale = isMobile ? 0.5 : 0.85;
@@ -6105,7 +6112,7 @@ export async function mountMatch(ctx, params = {}) {
     // lungo plausibile (`r12.mon` — misurato: un numero a 9 cifre e' largo
     // ~75px in Montserrat 15px grassetto, finisce quindi verso x=415)
     // l'orologio (ora a x+426) resta comunque staccato, ~11px di margine.
-    const clockPos = isMobile ? { x: barX + 90, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 426, y: barY + 8 };
+    const clockPos = isMobile ? { x: barX + 70, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 426, y: barY + 8 };
     // [Bug corretto, segnalato dall'autore: "le icone a destra sono
     // disallineate — prima l'orologio (allineato con le altre icone), poi
     // mese e anno incolonnati, poi la faccina (allineata con le altre
@@ -6131,13 +6138,13 @@ export async function mountMatch(ctx, params = {}) {
     // `barY+32`, stesso passo ~18px di prima ma ricentrato: la loro media
     // torna a combaciare con l'orologio, non piu' `barY+12` come prima).
     const DATE_COL_X = barX + 470;
-    const monthPos = isMobile ? { x: barX + 116, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
-    const timePos = isMobile ? { x: barX + 116, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
+    const monthPos = isMobile ? { x: barX + 96, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
+    const timePos = isMobile ? { x: barX + 96, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
     // `hap1`/`hap3` (data/sprites.json): ox=oy=23=w/2=h/2 esatto, quindi il
     // loro centro visivo coincide SEMPRE con `hapPos.y` stesso qualunque sia
     // la scala — bastava allinearlo allo stesso `barY+23` di sopra (prima
     // era `barY+5`, quasi al livello del solo mese).
-    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
+    const hapPos = isMobile ? { x: barX + 154, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
     if (!hideResourceText) {
       drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
     }
