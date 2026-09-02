@@ -19,6 +19,28 @@ PAD = 2                                  # margine anti-bleeding fra i frame
 
 room_name = sys.argv[1] if len(sys.argv) > 1 else "match_easy"
 
+# [Nuova funzionalita', richiesta dall'autore: "molti publisher accettano zip
+# HTML5 fino a 50 MB, oggi il pacchetto (atlas di tutte le room) ne pesa ~99"]
+# `match`/`match_easy`/`tutorial` sono tutte e tre in GAMEPLAY_ROOMS sotto,
+# quindi ricevono gia' l'identico EXTRA_SPRITES (~950 nomi) — l'unica
+# differenza reale fra i tre atlas finora era il decoro STATICO della room
+# (`scene.json`, poche decine di nomi), eppure venivano impacchettati TRE
+# volte, ~32.6 MB l'uno, quasi tutti sprite duplicati byte per byte (misurato:
+# 60/60/61 pagine pressoche' identiche). `ATLAS_MERGE_ROOMS`: quando si genera
+# l'atlas per la chiave a sinistra, si include nell'unione anche il decoro
+# statico delle room elencate a destra (i loro `scene.json` restano separati e
+# intatti — solo il PACCHETTO texture diventa uno). Le room in
+# `MERGED_INTO_ATLAS` non hanno piu' un proprio atlas: girare questo script su
+# di loro per errore rigenererebbe un secondo pacchetto duplicato,
+# silenziosamente vanificando il risparmio, quindi si esce subito con un
+# messaggio invece di procedere.
+ATLAS_MERGE_ROOMS = {"match": ["match_easy", "tutorial"]}
+MERGED_INTO_ATLAS = {room: target for target, rooms in ATLAS_MERGE_ROOMS.items() for room in rooms}
+if room_name in MERGED_INTO_ATLAS:
+    sys.exit("%s condivide l'atlas di '%s' (tools/23_atlas.py, ATLAS_MERGE_ROOMS) — "
+              "genera quello invece: tools/23_atlas.py %s"
+              % (room_name, MERGED_INTO_ATLAS[room_name], MERGED_INTO_ATLAS[room_name]))
+
 sprites = json.load(open(os.path.join(ROOT, "data", "sprites.json"), encoding="utf-8"))
 textures = json.load(open(os.path.join(ROOT, "data", "textures.json"), encoding="utf-8"))
 scene = json.load(open(os.path.join(ROOT, "game", "data", room_name + ".scene.json"), encoding="utf-8"))
@@ -817,6 +839,14 @@ DEDUP_CONSECUTIVE_SPRITES = {
 # gia' "core" di default, corretto anche senza caso speciale qui.
 rects = []                               # frame da sistemare
 scene_sprites = {i["spr"] for i in scene["instances"] if "spr" in i}
+# ATLAS_MERGE_ROOMS (sopra): il decoro statico delle room che condividono
+# questo atlas entra nell'unione qui — ognuna mantiene il proprio scene.json
+# per il PIAZZAMENTO (posizioni/istanze restano quelle vere di ciascuna room),
+# solo l'elenco di QUALI sprite impacchettare si allarga per coprire anche i
+# loro nomi.
+for merged_room in ATLAS_MERGE_ROOMS.get(room_name, []):
+    merged_scene = json.load(open(os.path.join(ROOT, "game", "data", merged_room + ".scene.json"), encoding="utf-8"))
+    scene_sprites |= {i["spr"] for i in merged_scene["instances"] if "spr" in i}
 extra = set(EXTRA_SPRITES) if room_name in GAMEPLAY_ROOMS \
     else set(TITLE_DYNAMIC_SPRITES) if room_name == "title" else set()
 used = sorted(scene_sprites | extra)

@@ -19,7 +19,7 @@
 // partite", non ancora fatto), non questo.
 import { Renderer, makeSolidTexture, PauseBlur } from "./gl.js";
 import { Input } from "./input.js";
-import { evictUnneededRoomAtlases } from "./assets.js";
+import { evictUnneededRoomAtlases, atlasKeyFor } from "./assets.js";
 
 const canvas = document.getElementById("view");
 const loading = document.getElementById("loading");
@@ -171,11 +171,17 @@ const SCREEN_MODULES = {
 // title.js) — mai l'atlas di `match` (56 pagine, non serve piu' nessuna
 // citta' dietro al menu). La risoluzione di `roomParam` -> nome room ripete
 // quella in main.js/mountMatch(): deve restare identica, altrimenti si
-// evincerebbe/terrebbe l'atlas sbagliato.
+// evincerebbe/terrebbe l'atlas sbagliato. `atlasKeyFor()` (assets.js):
+// `match`/`match_easy`/`tutorial` condividono ORA lo stesso pacchetto texture
+// (tools/23_atlas.py, ATLAS_MERGE_ROOMS) — la cache in assets.js e' chiavata
+// sulla chiave condivisa, quindi va restituita qui, non il nome room grezzo,
+// altrimenti evictUnneededRoomAtlases() (sotto) non troverebbe mai un match e
+// libererebbe un atlas ancora in uso passando da una all'altra.
 function neededRoomsFor(screen, params) {
   if (screen === "menu") return ["title"];
   const roomParam = params.room;
-  return [roomParam === "match" || roomParam === "tutorial" ? roomParam : "match_easy"];
+  const roomName = roomParam === "match" || roomParam === "tutorial" ? roomParam : "match_easy";
+  return [atlasKeyFor(roomName)];
 }
 
 const ctx = { gl, r, canvas, input, pauseBlur, white, hideLoading, navigate, reportProgress };

@@ -34,8 +34,12 @@ jobs:
         run: pip install pillow
 
       - name: Rigenera gli atlas per room
+        # match/match_easy/tutorial condividono ora un solo pacchetto texture
+        # (tools/23_atlas.py, ATLAS_MERGE_ROOMS — erano tre atlas quasi
+        # identici, ~32.6 MB l'uno): generare l'atlas per "match" copre anche
+        # le altre due, che non hanno piu' un proprio atlas.json/blitplan.json.
         run: |
-          for room in match_easy match title tutorial; do
+          for room in match title; do
             python3 tools/23_atlas.py "$room"
             python3 tools/24_blit.py "$room"
           done

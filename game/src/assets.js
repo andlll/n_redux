@@ -19,7 +19,20 @@
 // ripartire pulita.
 import { loadTexture } from "./gl.js";
 
-const cache = new Map();   // roomName -> entry (vedi loadRoomAtlas)
+// [Nuova funzionalita', richiesta dall'autore: "molti publisher accettano zip
+// HTML5 fino a 50 MB"] `match`/`match_easy`/`tutorial` condividono un solo
+// pacchetto di texture (tools/23_atlas.py, ATLAS_MERGE_ROOMS — misurato:
+// erano tre atlas quasi identici, ~32.6 MB l'uno, ora un solo `match.atlas.
+// json`/`match_*.webp` da 32.8 MB). `roomName` resta quello vero ovunque nel
+// motore (scene.json, logica di gioco: storm/oil/piattaforma differiscono
+// davvero fra le tre room) — SOLO la chiave con cui si carica/cacha/libera
+// l'atlas passa da qui, cosi' entrare in `match_easy` dopo `match` (o
+// viceversa) nella stessa sessione ritrova l'atlas gia' caldo in cache
+// invece di riscaricarlo.
+const ATLAS_KEY = { match_easy: "match", tutorial: "match" };
+export function atlasKeyFor(roomName) { return ATLAS_KEY[roomName] ?? roomName; }
+
+const cache = new Map();   // atlasKey -> entry (vedi loadRoomAtlas)
 
 // [Bug corretto, segnalato dall'autore: "appena avvio match il sito si
 // refresha tornando alla schermata logo e poi al menu", riproducibile su

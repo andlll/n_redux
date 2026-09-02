@@ -1,6 +1,6 @@
-import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture, solidFrame } from "./gl.js";
+import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
-import { loadRoomAtlas, loadDeferredGroup } from "./assets.js";
+import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
@@ -233,9 +233,27 @@ export async function mountMatch(ctx, params = {}) {
   // perche' e' il giocatore a farle comparire. `loadRoomAtlas()` (game/src/
   // assets.js) cache atlas+texture per room: rientrare in questa stessa room
   // piu' volte nella sessione (SPA, game/src/app.js) non le riscarica.
-  const { atlas, pageTex } = await loadRoomAtlas(gl, roomName, {
+  // `atlasKeyFor(roomName)`: `match`/`match_easy`/`tutorial` condividono lo
+  // stesso pacchetto texture (tools/23_atlas.py, ATLAS_MERGE_ROOMS — erano
+  // tre atlas quasi identici) — `roomName` resta quello vero per tutto il
+  // resto (scene.json, la logica di gioco sotto), solo la cache/il fetch
+  // dell'atlas passano dalla chiave condivisa.
+  const { atlas, pageTex } = await loadRoomAtlas(gl, atlasKeyFor(roomName), {
     onProgress: (loaded, total) => reportProgress(roomName, loaded, total, "loading city"),
   });
+  // Icona del bottone di pausa (drawPauseButton() sotto) — fornita
+  // dall'autore come PNG a parte (game/pause-button.png, committato accanto
+  // a favicon/apple-touch-icon: un'immagine statica, non uno sprite del
+  // decompilato ne' materiale da impacchettare nell'atlas per room), caricata
+  // qui come texture GL a se stante invece che passare da loadRoomAtlas()/
+  // tools/23_atlas.py — e' un solo PNG di poche centinaia di byte, sempre
+  // uguale in ogni room, non vale la complessita' della pipeline atlas per
+  // un asset che non cambia mai. Nessuna cache fra mount diversi (a
+  // differenza dell'atlas): ricaricarlo ad ogni ingresso in partita costa
+  // una fetch/decode trascurabile, mai il problema di VRAM che ha reso
+  // necessaria la cache per gli atlas (assets.js).
+  const pauseIconTex = await loadTexture(gl, "./pause-button.png");
+  const pauseIconFrame = { tex: pauseIconTex.tex, u0: 0, v0: 0, u1: 1, v1: 1, w: pauseIconTex.width, h: pauseIconTex.height, ox: 0, oy: 0 };
   // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
   // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed eviction"]
   // Il tier "combat" (sotto, dentro `if (skyAlive)`) si avvia normalmente
@@ -249,7 +267,7 @@ export async function mountMatch(ctx, params = {}) {
   // prima di questo cambio — le sue pagine "combat" partono subito, non
   // c'e' niente da guadagnare a ritardarle in una room che le usa comunque
   // nei primi secondi.
-  if (roomName === "tutorial") loadDeferredGroup(gl, roomName, "combat");
+  if (roomName === "tutorial") loadDeferredGroup(gl, atlasKeyFor(roomName), "combat");
   // `frameIdx` (default 0): quasi tutti gli sprite del motore sono statici,
   // una sola posa (STUDIO.md, "nessun sistema di image_speed") — ma alcuni
   // (le svolte delle auto, game/src/cars.js) sono davvero multi-frame
@@ -2608,11 +2626,13 @@ export async function mountMatch(ctx, params = {}) {
   // senza un ramo dedicato "pulisci se non in pausa".
   // Il menu di pausa e' l'unico chiamante da 8 slot, ma NON e' il worst
   // case: barra risorse/balloon del tutorial/banner "ATTACK INCOMING"/
-  // "THUNDERSTORM INCOMING" (piu' sotto) restano tutti disegnati fuori
-  // pausa (`&& !paused` li salta apposta durante il menu — stesso motivo di
-  // drawHtmlText() sopra, testo HTML non sfumato dal blur) e possono capitare
-  // TUTTI nello stesso frame: 4 risorse + mese + anno + cristalli (7) +
-  // balloon tutorial (1) + i 2 banner = 10. Il pannello di vittoria
+  // "THUNDERSTORM INCOMING" (piu' sotto, ognuno ora su due righe — una
+  // parola per drawHtmlText(), vedi il commento su bannerFontSize() piu'
+  // sotto per il perche') restano tutti disegnati fuori pausa (`&& !paused`
+  // li salta apposta durante il menu — stesso motivo di drawHtmlText() sopra,
+  // testo HTML non sfumato dal blur) e possono capitare TUTTI nello stesso
+  // frame: 4 risorse + mese + anno + cristalli (7) + balloon tutorial (1) +
+  // i 2 banner a 2 righe ciascuno (4) = 12. Il pannello di vittoria
   // (drawOutcomeOverlay() sotto, ora anche lui Montserrat vero invece del
   // font bitmap — vedi il commento li') non congela la partita ("la
   // vittoria non blocca niente"), quindi puo' capitare nello STESSO frame
@@ -2623,9 +2643,9 @@ export async function mountMatch(ctx, params = {}) {
   // menu di game over = 6 — `outcome` non e' incluso in `hideResourceText`
   // (sotto), e l'olio puo' esaurirsi anche nel tutorial (roomName ===
   // "tutorial", piu' sotto), quindi barra risorse (7) + balloon tutorial
-  // (1) + i 2 banner + il pannello di sconfitta (6) possono capitare tutti
-  // nello stesso frame = 16, +1 di margine.
-  const TEXT_POOL_SIZE = 17;
+  // (1) + i 2 banner a 2 righe (4) + il pannello di sconfitta (6) possono
+  // capitare tutti nello stesso frame = 18, +1 di margine.
+  const TEXT_POOL_SIZE = 19;
   const textPool = Array.from({ length: TEXT_POOL_SIZE }, () => {
     const el = document.createElement("div");
     el.className = "gameText";
@@ -4993,7 +5013,7 @@ export async function mountMatch(ctx, params = {}) {
       // attiva non avrebbe mai avviato il proprio scaglione.
       if (r12.spy || r12.storm || r12.stormeasy
         || (r12.ondan ?? 0) > 0 || (r12.bombn ?? 0) > 0 || (r12.diron ?? 0) > 0) {
-        loadDeferredGroup(gl, roomName, "combat");
+        loadDeferredGroup(gl, atlasKeyFor(roomName), "combat");
       }
       // "advanced": chies a livello 2 (la soglia PIU' BASSA fra tutti i
       // `chiesUnlock` — main.js sopra, OTHER_BUILDINGS: chi richiede
@@ -5021,7 +5041,7 @@ export async function mountMatch(ctx, params = {}) {
       // copre il gap, sia per il tutorial sia per un salvataggio che
       // riprende una partita avanzata.
       if (buildings.some((b) => b.level >= 2 || upgradeUnlocked(b, r12, buildings))) {
-        loadDeferredGroup(gl, roomName, "advanced");
+        loadDeferredGroup(gl, atlasKeyFor(roomName), "advanced");
       }
       // [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Nuvole veloci
       // esclusive di `match`/`tutorial` (mai `match_easy` — atmosphere.js,
@@ -6757,19 +6777,38 @@ export async function mountMatch(ctx, params = {}) {
     // — testo HTML vero, fuori dal canvas che pauseBlur.blurScreen() sfuma
     // per il menu di pausa, quindi va saltato del tutto mentre paused e'
     // true invece di restare nitido sopra al resto sfumato.
-    function bannerFontSize(text, maxSize) {
+    // [Bug corretto, segnalato dall'autore: "su schermi stretti (mobile) le
+    // ultime lettere di 'ATTACK INCOMING'/'THUNDERSTORM INCOMING' vengono
+    // troncate in '...'"] `bannerFontSize()` dimensionava il font sulla
+    // frase intera ("THUNDERSTORM INCOMING", 22 caratteri) — su schermi
+    // stretti il risultato tocca il minimo di 14px ben prima che la frase
+    // ci stia davvero (l'euristica `avail/(len*0.62)` e' una stima, non una
+    // misura reale del font Montserrat) e `drawHtmlText()` senza `wrap`
+    // (nowrap + text-overflow:ellipsis) mostra i puntini invece di
+    // sforare. Due righe, una parola ciascuna, invece di spingere la frase
+    // intera su una riga sola: `bannerFontSize()` ora dimensiona sulla
+    // parola piu' lunga fra le due righe ("THUNDERSTORM", 12 caratteri)
+    // invece che sulla frase intera, quindi il font resta leggibile anche
+    // dove prima sarebbe finito troncato.
+    function bannerFontSize(words, maxSize) {
       const avail = canvas.clientWidth - 40;
-      return Math.max(14, Math.min(maxSize, avail / (text.length * 0.62)));
+      const longest = words.reduce((a, b) => (b.length > a.length ? b : a));
+      return Math.max(14, Math.min(maxSize, avail / (longest.length * 0.62)));
+    }
+    function drawBannerLines(words, maxSize) {
+      const size = bannerFontSize(words, maxSize);
+      const lineHeight = size * 1.15;
+      const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
+      words.forEach((word, i) => {
+        const y = cy + (i - (words.length - 1) / 2) * lineHeight;
+        drawHtmlText(word, cx, y, { size, maxWidth: canvas.clientWidth - 40 });
+      });
     }
     if (r12.alertT > 0 && !paused && Math.floor((ALERT_DURATION - r12.alertT) / 0.5) % 2 === 0) {
-      const text = "ATTACK INCOMING";
-      drawHtmlText(text, canvas.clientWidth / 2, canvas.clientHeight / 2,
-        { size: bannerFontSize(text, 48), maxWidth: canvas.clientWidth - 40 });
+      drawBannerLines(["ATTACK", "INCOMING"], 48);
     }
     if (r12.tincomT > 0 && !paused && Math.floor((TINCOM_DURATION - r12.tincomT) / 0.5) % 2 === 0) {
-      const text = "THUNDERSTORM INCOMING";
-      drawHtmlText(text, canvas.clientWidth / 2, canvas.clientHeight / 2,
-        { size: bannerFontSize(text, 48), maxWidth: canvas.clientWidth - 40 });
+      drawBannerLines(["THUNDERSTORM", "INCOMING"], 48);
     }
     // Il pannello prestiti (bankPanelOpen, state.js LOANS) — vero modale in
     // spazio schermo (vedi il commento su bankPanelOpen piu' sopra per il
@@ -6853,17 +6892,28 @@ export async function mountMatch(ctx, params = {}) {
     // destra, ultimo disegnato in questo batch cosi' resta sempre sopra a
     // ogni altro elemento della UI. Nessuno sprite dell'originale (il
     // decompilato non ha una vera pausa, STUDIO.md "playbuttoner" era
-    // tutt'altro): un quadrato pieno scuro con un'icona "II", stessi
-    // rettangoli pieni gia' usati altrove per elementi puramente nostri
-    // (bolla monete, vignetta fuori mappa).
-    const PB_SIZE = 48;
+    // tutt'altro): icona fornita dall'autore (pauseIconFrame, sopra —
+    // game/pause-button.png), un cerchio scuro con l'icona "II" gia'
+    // disegnata dentro il PNG stesso (bordo trasparente attorno, angoli del
+    // riquadro 64x64 esclusi), non piu' composta da due rettangoli pieni
+    // come nella primissima versione di questo bottone.
+    // [Bug corretto, segnalato dall'autore: "il bottone pausa e' piu'
+    // piccolo dei tre a sinistra (handee/groo/baccc, 92px scalati a
+    // UI_SCALE 0.7/0.6 = ~64/~55px)"] Prima disegnato a 48px da un PNG
+    // 64x64: oltre a essere gia' piu' piccolo per scelta, il PNG originale
+    // aveva anche un margine trasparente attorno al cerchio (contenuto vero
+    // 44x44 su tela 64x64), quindi il cerchio VISIBILE finiva a ~33px, meno
+    // di meta' degli altri tre. Corretto in due passi offline (mai un
+    // upscale a runtime): il margine e' stato ritagliato e il contenuto
+    // ricomposto su una tela 64x64 piena (resize LANCZOS una tantum, non
+    // uno stretch GPU ripetuto ogni frame); qui la dimensione di disegno
+    // sale da 48 a 64 (== pauseIconTex.width: scala 1, nessuna
+    // interpolazione, nessuna perdita) per restare fedele alla risoluzione
+    // nativa del file.
+    const PB_SIZE = 64;
     const pbX = canvas.clientWidth - UI_MARGIN - PB_SIZE, pbY = canvas.clientHeight - UI_MARGIN - PB_SIZE;
     pauseBtnRect = { x: pbX, y: pbY, w: PB_SIZE, h: PB_SIZE };
-    r.draw(solidFrame(white, PB_SIZE, PB_SIZE), pbX, pbY, 1, 0x1c1c22, 0.72);
-    const pbBarW = 6, pbBarH = 20, pbGap = 8;
-    const pbBarY = pbY + (PB_SIZE - pbBarH) / 2;
-    r.draw(solidFrame(white, pbBarW, pbBarH), pbX + PB_SIZE / 2 - pbGap / 2 - pbBarW, pbBarY, 1, 0xffffff, 0.95);
-    r.draw(solidFrame(white, pbBarW, pbBarH), pbX + PB_SIZE / 2 + pbGap / 2, pbBarY, 1, 0xffffff, 0.95);
+    r.draw(pauseIconFrame, pbX, pbY, PB_SIZE / pauseIconTex.width, 0xffffff, 1);
     r.flush();
 
     // Menu di pausa: sfuma quello che e' appena stato disegnato (il mondo,
@@ -7058,6 +7108,7 @@ export async function mountMatch(ctx, params = {}) {
       stopped = true;
       window.removeEventListener("keydown", onKeydown);
       delete window.__nimbus;
+      gl.deleteTexture(pauseIconTex.tex);
       // Pool di testo HTML del menu di pausa/il balloon del tutorial
       // (textPool/drawHtmlText(), sopra) — stesso principio di msgEl/
       // loadFileBtn in title.js: nodi DOM creati da questo mount, tocca a
