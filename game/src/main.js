@@ -6088,17 +6088,23 @@ export async function mountMatch(ctx, params = {}) {
     // della data, non solo della seconda). Qui l'orologio e' un'unica icona
     // a sinistra, centrata verticalmente sulle due righe della data (mese
     // sopra, anno sotto — `r12.time` e' l'anno di gioco, game/src/state.js)
-    // impilate alla sua destra. Il blocco intero parte comunque da x=70
-    // (non dal margine sinistro vero): distanza di sicurezza dal contatore
-    // cristalli (barX-6..~62, barY+48 in su — crysFrame/crysText sotto),
-    // che altrimenti ci finirebbe sotto. [Bug corretto, segnalato
-    // dall'autore: "la seconda riga (orologio/faccina) e' troppo a destra,
-    // c'e' un gap a sinistra"] Era x=90, tarato per un contatore cristalli
-    // MAI cosi' largo: `r12.crys` e' sempre `Math.min(99, r12.crys)`
-    // (state.js/clampR12()) — al massimo due cifre, misurate ~20px larghe
-    // in Montserrat 15px da `crysTextPos.x` (barX+34), finiscono quindi
-    // verso barX+54: gli altri 36px di margine (90-54) erano vuoti per
-    // davvero, non un residuo di un valore piu' lungo mai raggiungibile.
+    // impilate alla sua destra.
+    // [Bug corretto, segnalato dall'autore: "l'orologio ora e' allineato
+    // alla prima risorsa della riga sopra?" — non lo era ancora] Il blocco
+    // partiva comunque da un x scelto per lasciare margine al contatore
+    // cristalli (prima a sinistra, sotto — vedi il commento su crysPos piu'
+    // sotto: ora spostato a destra della faccina, quello spazio e' libero
+    // per davvero). Misurato pixel per pixel sulla texture vera di
+    // "icone_oriz" (assets/textures/page_002.png): l'icona "persona"
+    // (popolazione, la prima della riga sopra) occupa la colonna locale
+    // 9..22 (centro 15.5) — lo stesso sistema di coordinate di `barX`, dato
+    // che la striscia si disegna con origine (0,0) a `(barX,barY)`.
+    // `clockFrame` (subFrameRight di "icone_oriz" sotto, ox=0/oy=0) tiene
+    // l'icona orologio alla colonna locale 15..45 (centro 30) DELLA
+    // SOTTO-IMMAGINE tagliata a CLOCK_CUT_X: a `clockScale` 0.5 il suo
+    // centro visivo cade a `clockPos.x + 30*0.5 = clockPos.x + 15` —
+    // uguale al centro dell'icona persona (`barX + 15.5`) quando
+    // `clockPos.x = barX` (arrotondato, la meta' di pixel non conta).
     const ROW2_Y = barY + 50;
     const ROW2B_Y = ROW2_Y + 20;
     const clockScale = isMobile ? 0.5 : 0.85;
@@ -6112,7 +6118,7 @@ export async function mountMatch(ctx, params = {}) {
     // lungo plausibile (`r12.mon` — misurato: un numero a 9 cifre e' largo
     // ~75px in Montserrat 15px grassetto, finisce quindi verso x=415)
     // l'orologio (ora a x+426) resta comunque staccato, ~11px di margine.
-    const clockPos = isMobile ? { x: barX + 70, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 426, y: barY + 8 };
+    const clockPos = isMobile ? { x: barX, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 426, y: barY + 8 };
     // [Bug corretto, segnalato dall'autore: "le icone a destra sono
     // disallineate — prima l'orologio (allineato con le altre icone), poi
     // mese e anno incolonnati, poi la faccina (allineata con le altre
@@ -6138,13 +6144,13 @@ export async function mountMatch(ctx, params = {}) {
     // `barY+32`, stesso passo ~18px di prima ma ricentrato: la loro media
     // torna a combaciare con l'orologio, non piu' `barY+12` come prima).
     const DATE_COL_X = barX + 470;
-    const monthPos = isMobile ? { x: barX + 96, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
-    const timePos = isMobile ? { x: barX + 96, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
+    const monthPos = isMobile ? { x: barX + 26, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
+    const timePos = isMobile ? { x: barX + 26, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
     // `hap1`/`hap3` (data/sprites.json): ox=oy=23=w/2=h/2 esatto, quindi il
     // loro centro visivo coincide SEMPRE con `hapPos.y` stesso qualunque sia
     // la scala — bastava allinearlo allo stesso `barY+23` di sopra (prima
     // era `barY+5`, quasi al livello del solo mese).
-    const hapPos = isMobile ? { x: barX + 154, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
+    const hapPos = isMobile ? { x: barX + 84, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
     if (!hideResourceText) {
       drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
     }
@@ -6212,11 +6218,10 @@ export async function mountMatch(ctx, params = {}) {
     // [Bug corretto, richiesto dall'autore: "il contatore cristalli si usa
     // poco e compare solo in una fase successiva, mettilo a destra della
     // faccina" anche su mobile] Stava impilato sotto, isolato a sinistra
-    // (`barX-6`/`barY+48`) perche' la riga2 (orologio/data/faccina) finiva
-    // a ridosso del margine destro utile — ora che parte 20px piu' a
-    // sinistra (hapPos sopra, "avvicina... al contatore cristalli") c'e'
-    // spazio vero a destra della faccina per seguirla sulla stessa riga,
-    // stesso principio gia' scelto per desktop.
+    // (`barX-6`/`barY+48`): con la riga2 (orologio/data/faccina, sopra)
+    // ora allineata all'icona popolazione invece che tarata sul vecchio
+    // spazio del contatore, c'e' spazio vero a destra della faccina per
+    // seguirla sulla stessa riga, stesso principio gia' scelto per desktop.
     // [C] "crys_ico" (data/sprites.json: w=27,h=40,ox=-7,oy=-16) NON e'
     // centrato sul proprio frame come `hap1`/`hap3` — il suo centro visivo
     // (stessa formula di `r.draw()`) cade a `y - oy*scale + h*scale/2` (a
@@ -6225,9 +6230,9 @@ export async function mountMatch(ctx, params = {}) {
     // stessa riga), non piu' una riga a parte piu' in basso.
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
-      const crysPos = isMobile ? { x: barX + 170, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 570, y: barY - 4 };
+      const crysPos = isMobile ? { x: barX + 100, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 570, y: barY - 4 };
       const crysScale = isMobile ? 0.9 : 0.75;
-      const crysTextPos = isMobile ? { x: barX + 210, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 606, y: barY + 19 };
+      const crysTextPos = isMobile ? { x: barX + 140, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 606, y: barY + 19 };
       r.setColorize(iconsDark);
       if (!hideResourceIcons && crysFrame) r.draw(crysFrame, crysPos.x, crysPos.y, crysScale, 0xffffff, 1);
       r.setColorize(false);
