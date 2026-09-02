@@ -3413,8 +3413,24 @@ export async function mountMatch(ctx, params = {}) {
   }
 
   /** Test punto-in-rettangolo sul bounding box di un frame (sprite/w/h/ox/oy)
-   * — l'hit test "leggero" usato per la maggior parte degli oggetti cliccabili. */
+   * — l'hit test "leggero" usato per la maggior parte degli oggetti cliccabili.
+   * [Bug corretto, segnalato dall'autore: "nel tutorial su mobile a volte
+   * nessun tocco fa piu' niente, nemmeno sulle monete"] `f` puo' essere
+   * `null` (frameFor() in main.js: una pagina texture "combat"/"advanced"
+   * — assets.js — non ancora arrivata quando questo candidato e' nato,
+   * capita piu' spesso su connessioni lente/mobile) — leggere `f.ox` senza
+   * controllo lanciava un TypeError che usciva dal ciclo di picking
+   * dell'intero tocco (input.onTap piu' sotto: itera TUTTI i candidati di
+   * `frameList`, non solo quelli vicini al tocco), interrompendolo A META':
+   * non solo quel candidato restava non cliccabile (corretto, non c'e'
+   * ancora nessuno sprite da colpire), ma OGNI altro tocco successivo,
+   * ovunque sullo schermo, falliva silenziosamente allo stesso modo finche'
+   * quel singolo candidato fosse rimasto nella lista — un solo sprite non
+   * ancora caricato bastava a bloccare ogni interazione del gioco. Un
+   * candidato senza frame vero semplicemente non e' cliccabile: `false`,
+   * non un errore. */
   function inFrameRect(wx, wy, x, y, f) {
+    if (!f) return false;
     const x0 = x - f.ox, y0 = y - f.oy;
     return wx >= x0 && wx <= x0 + f.w && wy >= y0 && wy <= y0 + f.h;
   }
@@ -3526,6 +3542,7 @@ export async function mountMatch(ctx, params = {}) {
    * invece di un rettangolo pieno — molto piu' fedele alla sagoma vera per un
    * costo quasi identico (un confronto in piu' rispetto all'AABB). */
   function inFrameDiamond(wx, wy, x, y, f) {
+    if (!f) return false;   // vedi il commento su inFrameRect() sopra
     const x0 = x - f.ox, y0 = y - f.oy;
     const cx = x0 + f.w / 2, cy = y0 + f.h / 2;
     const hw = f.w / 2, hh = f.h / 2;
