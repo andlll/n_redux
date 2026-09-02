@@ -1,6 +1,6 @@
 import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
-import { loadRoomAtlas, loadDeferredGroup } from "./assets.js";
+import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
@@ -233,7 +233,12 @@ export async function mountMatch(ctx, params = {}) {
   // perche' e' il giocatore a farle comparire. `loadRoomAtlas()` (game/src/
   // assets.js) cache atlas+texture per room: rientrare in questa stessa room
   // piu' volte nella sessione (SPA, game/src/app.js) non le riscarica.
-  const { atlas, pageTex } = await loadRoomAtlas(gl, roomName, {
+  // `atlasKeyFor(roomName)`: `match`/`match_easy`/`tutorial` condividono lo
+  // stesso pacchetto texture (tools/23_atlas.py, ATLAS_MERGE_ROOMS — erano
+  // tre atlas quasi identici) — `roomName` resta quello vero per tutto il
+  // resto (scene.json, la logica di gioco sotto), solo la cache/il fetch
+  // dell'atlas passano dalla chiave condivisa.
+  const { atlas, pageTex } = await loadRoomAtlas(gl, atlasKeyFor(roomName), {
     onProgress: (loaded, total) => reportProgress(roomName, loaded, total, "loading city"),
   });
   // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
@@ -249,7 +254,7 @@ export async function mountMatch(ctx, params = {}) {
   // prima di questo cambio — le sue pagine "combat" partono subito, non
   // c'e' niente da guadagnare a ritardarle in una room che le usa comunque
   // nei primi secondi.
-  if (roomName === "tutorial") loadDeferredGroup(gl, roomName, "combat");
+  if (roomName === "tutorial") loadDeferredGroup(gl, atlasKeyFor(roomName), "combat");
   // `frameIdx` (default 0): quasi tutti gli sprite del motore sono statici,
   // una sola posa (STUDIO.md, "nessun sistema di image_speed") — ma alcuni
   // (le svolte delle auto, game/src/cars.js) sono davvero multi-frame
@@ -4995,7 +5000,7 @@ export async function mountMatch(ctx, params = {}) {
       // attiva non avrebbe mai avviato il proprio scaglione.
       if (r12.spy || r12.storm || r12.stormeasy
         || (r12.ondan ?? 0) > 0 || (r12.bombn ?? 0) > 0 || (r12.diron ?? 0) > 0) {
-        loadDeferredGroup(gl, roomName, "combat");
+        loadDeferredGroup(gl, atlasKeyFor(roomName), "combat");
       }
       // "advanced": chies a livello 2 (la soglia PIU' BASSA fra tutti i
       // `chiesUnlock` — main.js sopra, OTHER_BUILDINGS: chi richiede
@@ -5023,7 +5028,7 @@ export async function mountMatch(ctx, params = {}) {
       // copre il gap, sia per il tutorial sia per un salvataggio che
       // riprende una partita avanzata.
       if (buildings.some((b) => b.level >= 2 || upgradeUnlocked(b, r12, buildings))) {
-        loadDeferredGroup(gl, roomName, "advanced");
+        loadDeferredGroup(gl, atlasKeyFor(roomName), "advanced");
       }
       // [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Nuvole veloci
       // esclusive di `match`/`tutorial` (mai `match_easy` — atmosphere.js,
