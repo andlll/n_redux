@@ -6205,24 +6205,29 @@ export async function mountMatch(ctx, params = {}) {
     // se il giocatore ne possiede almeno una in questo istante.
     // [Bug corretto, richiesto dall'autore: "su desktop c'e' spazio,
     // spostiamo il contatore gemme a destra della faccina, sempre allineato
-    // con le altre risorse"] Su mobile resta sotto (`barX-6, barY+48` — la
-    // riga scorre gia' stretta con mese/anno/faccina impilati, nessun altro
-    // posto dove metterlo); su desktop invece la riga unica di pop/olio/
-    // energia/denaro/orologio/data/faccina (sopra) ha gia' spazio libero a
-    // destra della faccina — il contatore la segue sulla STESSA riga invece
-    // di finire isolato sotto, come ogni altra risorsa qui.
-    // [Bug corretto, segnalato dall'autore insieme al resto della riga
-    // (vedi il commento su hapPos/monthPos/timePos sopra)] "crys_ico" (data/
-    // sprites.json: w=27,h=40,ox=-7,oy=-16) NON e' centrato sul proprio
-    // frame come `hap1`/`hap3` — il suo centro visivo (stessa formula di
-    // `r.draw()`) cade a `y - oy*scale + h*scale/2 = y + 27` a scala 0.75,
-    // quindi per allinearlo allo stesso `barY+23.3` dell'orologio la sua `y`
-    // deve stare 27px PIU' IN ALTO, non piu' in basso come prima.
+    // con le altre risorse"] su desktop la riga unica di pop/olio/energia/
+    // denaro/orologio/data/faccina (sopra) ha gia' spazio libero a destra
+    // della faccina — il contatore la segue sulla STESSA riga invece di
+    // finire isolato sotto, come ogni altra risorsa qui.
+    // [Bug corretto, richiesto dall'autore: "il contatore cristalli si usa
+    // poco e compare solo in una fase successiva, mettilo a destra della
+    // faccina" anche su mobile] Stava impilato sotto, isolato a sinistra
+    // (`barX-6`/`barY+48`) perche' la riga2 (orologio/data/faccina) finiva
+    // a ridosso del margine destro utile — ora che parte 20px piu' a
+    // sinistra (hapPos sopra, "avvicina... al contatore cristalli") c'e'
+    // spazio vero a destra della faccina per seguirla sulla stessa riga,
+    // stesso principio gia' scelto per desktop.
+    // [C] "crys_ico" (data/sprites.json: w=27,h=40,ox=-7,oy=-16) NON e'
+    // centrato sul proprio frame come `hap1`/`hap3` — il suo centro visivo
+    // (stessa formula di `r.draw()`) cade a `y - oy*scale + h*scale/2` (a
+    // scala 0.9, +32.4): sottratto da `crysPos.y` sotto per farlo
+    // combaciare col centro vero di `hapPos` (`(ROW2_Y+ROW2B_Y)/2`, la
+    // stessa riga), non piu' una riga a parte piu' in basso.
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
-      const crysPos = isMobile ? { x: barX - 6, y: barY + 48 } : { x: barX + 570, y: barY - 4 };
+      const crysPos = isMobile ? { x: barX + 170, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 570, y: barY - 4 };
       const crysScale = isMobile ? 0.9 : 0.75;
-      const crysTextPos = isMobile ? { x: barX + 34, y: barY + 77 } : { x: barX + 606, y: barY + 19 };
+      const crysTextPos = isMobile ? { x: barX + 210, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 606, y: barY + 19 };
       r.setColorize(iconsDark);
       if (!hideResourceIcons && crysFrame) r.draw(crysFrame, crysPos.x, crysPos.y, crysScale, 0xffffff, 1);
       r.setColorize(false);
