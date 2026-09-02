@@ -120,6 +120,42 @@ export function takeLoan(r12, index) {
   r12[l.key] = LOAN_MONTHS;
 }
 
+// [Nuova funzionalita', richiesta dall'autore: "nel gioco originale c'era
+// un tasto floating su chies, sbloccato al livello 2, che permetteva di
+// scambiare risorse"] **[C]** get1|2|3|4/Mouse_LeftPressed.gml: quattro
+// scambi fissi, un dare per un avere sempre uguale (mai un tasso a
+// mercato/configurabile) — letti diretti dal decompilato. Il bottone che
+// li sblocca (`tradebuttoner`, main.js) compare accanto a `chies` non
+// appena raggiunge livello 2 (chies/Step.gml: `action_if_variable(level,
+// 2, 0)`), un solo esemplare per partita — mai piu' rimosso nemmeno se il
+// livello risale (nessun ramo che lo distrugge nel decompilato oltre alla
+// morte di chies stessa). "get11" mostra "Get 1000 oil for 2000 mon" ecc.
+// (sprite gia' con l'importo disegnato dentro, data/sprites.json/assets/
+// textures — verificato pixel per pixel, nessun testo da sovrapporre).
+export const TRADES = [
+  { give: "mon", giveAmount: 2000, take: "oil", takeAmount: 1000 },   // [C] get1/Mouse_LeftPressed.gml
+  { give: "mon", giveAmount: 1500, take: "ele", takeAmount: 1000 },   // [C] get2/Mouse_LeftPressed.gml
+  { give: "ele", giveAmount: 1500, take: "mon", takeAmount: 1000 },   // [C] get3/Mouse_LeftPressed.gml
+  { give: "oil", giveAmount: 1200, take: "mon", takeAmount: 1000 },   // [C] get4/Mouse_LeftPressed.gml
+];
+
+/** [C] getN/Mouse_LeftPressed.gml: l'unico controllo prima di scambiare —
+ * a differenza di canAfford() (buildings.js) qui c'e' sempre un solo
+ * canale da coprire, mai un costo composto. */
+export function canTrade(r12, index) {
+  const t = TRADES[index];
+  return (r12[t.give] ?? 0) >= t.giveAmount;
+}
+
+/** [C] getN/Mouse_LeftPressed.gml: il dare/avere vero e proprio. Chi chiama
+ * (main.js) ha gia' verificato canTrade() — nessun controllo qui, stesso
+ * principio di takeLoan() sopra. */
+export function applyTrade(r12, index) {
+  const t = TRADES[index];
+  r12[t.give] -= t.giveAmount;
+  r12[t.take] += t.takeAmount;
+}
+
 /**
  * Tetto dell'olio: nell'originale sale quando la chiesa (`chies`) raggiunge
  * livello 2/3/4 — 20000/30000/50000 — letto identico da `r12/Step.gml`.

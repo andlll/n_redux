@@ -1,7 +1,7 @@
 import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture, solidFrame } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup } from "./assets.js";
-import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TINCOM_DURATION, oilCap } from "./state.js";
+import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
@@ -960,6 +960,26 @@ export async function mountMatch(ctx, params = {}) {
   // letti da input.onTap sotto.
   let bankPanelOpen = false;
   let bankButtons = [];   // { x, y, w, h, index }
+
+  // [Nuova funzionalita', richiesta dall'autore: "nel gioco originale c'era
+  // un tasto floating su chies, sbloccato al livello 2, che permetteva di
+  // scambiare risorse"] **[C]** tradebuttoner/tradoscrino/get1..4 (state.js
+  // TRADES/canTrade/applyTrade) — stesso modale in spazio schermo di
+  // `bankPanelOpen` sopra (`tradoscrino/Step.gml` si ricentra sulla view
+  // ad ogni Step, identico a `loanoscrino`), stesso schema di
+  // `bankButtons`. `tradeCooldownT` (locale, non su r12: al massimo pochi
+  // secondi, nessun bisogno di sopravvivere a un salvataggio) e' il
+  // "cooldown" del bottone dopo uno scambio — [C]
+  // `tradebuttoner/Mouse_LeftPressed.gml` nasconde il bottone (alpha 0)
+  // all'apertura del pannello, `get1..4/Mouse_LeftPressed.gml` armano
+  // `tradebuttoner/Alarm_2.gml` (400 tick) a ogni scambio riuscito: qui
+  // basta un timer che scende verso 0, il bottone (world icon "tradeIcon"
+  // piu' sotto) resta nascosto finche' non e' scaduto O il pannello e'
+  // ancora aperto.
+  let tradePanelOpen = false;
+  let tradeButtons = [];   // { x, y, w, h, index }
+  let tradeCooldownT = 0;
+  const TRADE_COOLDOWN = 400 * TICK;   // [C] tradebuttoner/Alarm_2.gml, armato da get1..4
 
   // Pannello informativo di un edificio (drawBuildingInfoPanel() piu' sotto)
   // — [Nuova funzionalita', richiesta dall'autore: "quando la mano e'
@@ -2392,7 +2412,25 @@ export async function mountMatch(ctx, params = {}) {
       // caso a parte invece di una LIGHT_FADE di durata zero (divisione per
       // zero). Le altre finestre (m3l1..9) hanno ognuna la propria durata;
       // tutto il resto del motore lascia `_fadeTicks` undefined e riusa LIGHT_FADE.
-      if (d._fadeTicks === 0) { d._alpha = lit ? 1 : 0; continue; }
+      // [Bug corretto, segnalato dall'autore: "le luci del grattacielo/di
+      // alcuni musei non si accendono mai"] `_f` (addDecor() sopra:
+      // `frameFor(spr)`, calcolato una volta sola alla nascita del decoro)
+      // resta `null` per sempre se in quell'istante la pagina texture dello
+      // sprite non era ancora arrivata (assets.js: gli scaglioni "combat"/
+      // "advanced" si scaricano in background, non prima del primo frame
+      // disegnabile) — i due rami sotto (`_scrubSpr`/`_pulse`) lo
+      // ricalcolano gia' ad ogni frame per conto proprio, ma questo e
+      // quello sotto (dissolvenza semplice) no: una volta nato senza
+      // pagina pronta, il fade/alpha restavano giusti ma non c'era nessun
+      // frame vero da disegnare, per sempre, anche dopo che la pagina
+      // finiva di arrivare. Capita quasi solo caricando un salvataggio che
+      // ricrea un edificio GIA' finito (grattacielo/museo, `m3l*`/`med1l`
+      // sono pagine "advanced" — doLoad() li ricostruisce prima che quello
+      // scaglione abbia mai avuto il tempo di scaricare, a differenza di
+      // una partita che ci arriva crescendo in tempo reale, con minuti di
+      // margine): `med2x` invece si salva da solo, e' un `_scrubSpr`.
+      // Ritentato ogni frame finche' non e' valido, poi lasciato stare.
+      if (d._fadeTicks === 0) { if (!d._f) d._f = frameFor(d.spr); d._alpha = lit ? 1 : 0; continue; }
       // Club (`_pulse`, addDecor() sopra): accensione/spegnimento quasi di
       // scatto (CLUB_SNAP, 2 tick — vedi clublite1..4/Step.gml) invece della
       // dissolvenza comune, poi ricolora a dado ogni CLUB_PULSE_PERIOD (30
@@ -2442,6 +2480,10 @@ export async function mountMatch(ctx, params = {}) {
         d._f = frameFor(d._scrubSpr, frameIdx);
         continue;
       }
+      // Stesso ritentativo del ramo `_fadeTicks === 0` sopra — vedi il
+      // commento li': qui e' il caso comune (LIGHT_FADE o `_fadeTicks`>0,
+      // es. "med1l").
+      if (!d._f) d._f = frameFor(d.spr);
       const fade = d._fadeTicks != null ? d._fadeTicks * TICK : LIGHT_FADE;
       d._lightT = Math.max(0, Math.min(fade, d._lightT + (lit ? dt : -dt)));
       d._alpha = d._lightT / fade;
@@ -2696,7 +2738,7 @@ export async function mountMatch(ctx, params = {}) {
     el.style.top = `${y}px`;
     el.style.color = color ?? TEXT_TINT;
     if (wrap) {
-      el.style.textAlign = align === "center" ? "center" : "left";
+      el.style.textAlign = align === "center" ? "center" : align === "justify" ? "justify" : "left";
       el.style.whiteSpace = "normal";
       el.style.overflow = "visible";
       el.style.textOverflow = "clip";
@@ -3324,19 +3366,30 @@ export async function mountMatch(ctx, params = {}) {
       // non e' una fine, non deve sembrarne una. Messaggio riscritto: non
       // piu' il generico "You've completed the Skyscraper. The game
       // continues.", ma un riferimento concreto a COSA si e' costruito.
+      // [Bug corretto, richiesto dall'autore: "specifichiamo anche che da
+      // ora in poi i nemici non ci attaccheranno piu'"] Il messaggio ora
+      // annuncia esplicitamente la tregua che stepThreatSpawner rispetta
+      // davvero da qui in poi (vedi `victoryShown` piu' sotto, dove smette
+      // di far nascere nuove minacce), non solo "il gioco continua" senza
+      // dire come cambia. Testo giustificato (`align: "justify"`,
+      // drawHtmlText() sopra) invece del solito "left" di ogni altro
+      // messaggio con wrap: l'unico paragrafo di piu' di due righe fra i
+      // pannelli HTML, un blocco di testo piu' ordinato da leggere con
+      // entrambi i margini dritti.
       const title = "CONGRATULATIONS!";
       const subtitle = "The Skyscraper stands complete, the tallest building this " +
-        "city has ever raised. Keep building — there's no limit from here.";
+        "city has ever raised. From now on, enemies will no longer attack the " +
+        "city — keep building, there's no limit from here.";
       const rows = [{ label: "Keep playing", action: "continue" }];
 
       const panelW = Math.min(360, cw - 40);
-      const subH = 100;
+      const subH = 130;
       const panelH = 96 + subH + rows.length * 60 + 20;
       const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
       r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
       drawHtmlText(title, px + panelW / 2, py + 34, { size: 26 });
-      drawHtmlText(subtitle, px + 30, py + 60, { size: 14, maxWidth: panelW - 60, wrap: true });
+      drawHtmlText(subtitle, px + 30, py + 60, { size: 14, maxWidth: panelW - 60, wrap: true, align: "justify" });
 
       const btnW = panelW - 60, btnH = 46, btnGap = 14;
       let by = py + 96 + subH;
@@ -3360,8 +3413,24 @@ export async function mountMatch(ctx, params = {}) {
   }
 
   /** Test punto-in-rettangolo sul bounding box di un frame (sprite/w/h/ox/oy)
-   * — l'hit test "leggero" usato per la maggior parte degli oggetti cliccabili. */
+   * — l'hit test "leggero" usato per la maggior parte degli oggetti cliccabili.
+   * [Bug corretto, segnalato dall'autore: "nel tutorial su mobile a volte
+   * nessun tocco fa piu' niente, nemmeno sulle monete"] `f` puo' essere
+   * `null` (frameFor() in main.js: una pagina texture "combat"/"advanced"
+   * — assets.js — non ancora arrivata quando questo candidato e' nato,
+   * capita piu' spesso su connessioni lente/mobile) — leggere `f.ox` senza
+   * controllo lanciava un TypeError che usciva dal ciclo di picking
+   * dell'intero tocco (input.onTap piu' sotto: itera TUTTI i candidati di
+   * `frameList`, non solo quelli vicini al tocco), interrompendolo A META':
+   * non solo quel candidato restava non cliccabile (corretto, non c'e'
+   * ancora nessuno sprite da colpire), ma OGNI altro tocco successivo,
+   * ovunque sullo schermo, falliva silenziosamente allo stesso modo finche'
+   * quel singolo candidato fosse rimasto nella lista — un solo sprite non
+   * ancora caricato bastava a bloccare ogni interazione del gioco. Un
+   * candidato senza frame vero semplicemente non e' cliccabile: `false`,
+   * non un errore. */
   function inFrameRect(wx, wy, x, y, f) {
+    if (!f) return false;
     const x0 = x - f.ox, y0 = y - f.oy;
     return wx >= x0 && wx <= x0 + f.w && wy >= y0 && wy <= y0 + f.h;
   }
@@ -3473,6 +3542,7 @@ export async function mountMatch(ctx, params = {}) {
    * invece di un rettangolo pieno — molto piu' fedele alla sagoma vera per un
    * costo quasi identico (un confronto in piu' rispetto all'AABB). */
   function inFrameDiamond(wx, wy, x, y, f) {
+    if (!f) return false;   // vedi il commento su inFrameRect() sopra
     const x0 = x - f.ox, y0 = y - f.oy;
     const cx = x0 + f.w / 2, cy = y0 + f.h / 2;
     const hw = f.w / 2, hh = f.h / 2;
@@ -4153,6 +4223,35 @@ export async function mountMatch(ctx, params = {}) {
       messageT = 3;
       return;
     }
+    // Il pannello scambi (tradePanelOpen sopra) — stesso trattamento modale
+    // di bankPanelOpen appena sopra, con una differenza voluta: un tocco su
+    // uno dei 4 bottoni esegue lo scambio ma NON chiude il pannello ([C]
+    // get1..4/Mouse_LeftPressed.gml non uccidono mai `tradoscrino`, solo
+    // `backotrade`/uscire dal tap lo fa — qui "un tocco fuori" lo sostituisce,
+    // stesso principio gia' scelto per bankPanelOpen) — cosi' si possono
+    // incatenare piu' scambi senza riaprire il pannello ogni volta.
+    if (tradePanelOpen) {
+      const hit = tradeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+      if (hit) {
+        const t = TRADES[hit.index];
+        if (canTrade(r12, hit.index)) {
+          applyTrade(r12, hit.index);
+          message = `traded ${t.giveAmount} ${t.give} for ${t.takeAmount} ${t.take}`;
+          // [C] get1..4/Mouse_LeftPressed.gml: armano tradebuttoner/Alarm_2.gml
+          // (400 tick) solo su uno scambio RIUSCITO — il bottone del mondo
+          // resta comunque nascosto finche' il pannello e' aperto (vedi il
+          // commento su tradeCooldownT sopra), questo timer conta da quando
+          // si chiude.
+          tradeCooldownT = TRADE_COOLDOWN;
+        } else {
+          message = `need ${t.giveAmount} ${t.give} (have ${(r12[t.give] ?? 0).toFixed(0)})`;
+        }
+        messageT = 3;
+      } else {
+        tradePanelOpen = false;
+      }
+      return;
+    }
     // Pannello informativo di un edificio (buildingInfoPanel, sopra) — stesso
     // trattamento modale di bankPanelOpen appena sopra: un tocco QUALUNQUE
     // lo chiude (non solo il bottone dedicato, disegnato per scoperta/
@@ -4310,7 +4409,7 @@ export async function mountMatch(ctx, params = {}) {
     for (const it of frameList) {
       if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
         && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo"
-        && it.obj !== "bankIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
+        && it.obj !== "bankIcon" && it.obj !== "tradeIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
         && it.obj !== "faroDockerSignal" && it.obj !== "faro3Button" && it.obj !== "faro3WaveSignal"
         && it.obj !== "faro3DockerSignal" && it.obj !== "cargoShip" && it.obj !== "ruinLot"
         && it.obj !== "ruin") continue;
@@ -4598,6 +4697,14 @@ export async function mountMatch(ctx, params = {}) {
         bankPanelOpen = true;
       }
       messageT = 3;
+      picked = null;
+    } else if (picked.obj === "tradeIcon") {
+      // [C] tradebuttoner/Mouse_LeftPressed.gml: apre il pannello scambi e
+      // azzera lo strumento armato (`r12.selec=0`, "la mano") — un tocco
+      // sul bottone del mondo non deve anche piazzare cio' che era
+      // eventualmente selezionato prima.
+      r12.selec = 0;
+      tradePanelOpen = true;
       picked = null;
     } else if (picked.obj === "faroButton") {
       // [C] upfaro1/Mouse_LeftPressed.gml (game/src/platform.js): -2000 mon,
@@ -4895,7 +5002,25 @@ export async function mountMatch(ctx, params = {}) {
       // potenziamento di un edificio gia' sbloccato (casa/industria, gli
       // unici due gate a soglia di popolazione invece che a livello chiesa
       // — upgradeUnlocked(), buildings.js).
-      if (buildings.some((b) => (b.type === "chies" && b.level >= 2) || upgradeUnlocked(b, r12, buildings))) {
+      // [Bug corretto, segnalato dall'autore: "nel tutorial ci sono case che
+      // spariscono perche' sono di livello 2 — succede quando si carica una
+      // partita/scenario dove il giocatore e' gia' a un livello piu' alto,
+      // il software carica solo la 'base'"] `upgradeUnlocked()` risponde
+      // "sta per sbloccarsi un NUOVO potenziamento" (progresso pop/makee
+      // gia' raggiunto per il livello SUCCESSIVO), non "esiste gia' un
+      // edificio che ha GIA' bisogno di uno sprite oltre il livello 1": una
+      // casa gia' a livello 2 (il tutorial la piazza precostruita, un
+      // salvataggio la ricarica cosi' com'era) il cui progresso verso il
+      // livello 3 non e' ancora maturato non fa scattare nulla, restando
+      // silenziosamente sullo sprite mancante (core non lo include, vedi
+      // tools/27_sprite_tiers.mjs) finche' quel progresso non arriva DA
+      // ZERO — mai, se il giocatore non fa altro che restare li'. **[I]**
+      // `b.level >= 2` diretto (sostituisce il caso chies sopra, ora un suo
+      // sottoinsieme): qualunque edificio GIA' oltre il livello 1 in QUESTO
+      // istante (precostruito o ricaricato, non solo "sta per crescere")
+      // copre il gap, sia per il tutorial sia per un salvataggio che
+      // riprende una partita avanzata.
+      if (buildings.some((b) => b.level >= 2 || upgradeUnlocked(b, r12, buildings))) {
         loadDeferredGroup(gl, roomName, "advanced");
       }
       // [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Nuvole veloci
@@ -5144,12 +5269,26 @@ export async function mountMatch(ctx, params = {}) {
       // e sparisce da solo. `!!platformState`: solo su una room con una
       // piattaforma vera gli `air` possono nascere "di sfondo" (dietro di
       // lei, threats.js/spawnThreat()) — decisione dell'autore.
-      stepThreatSpawner(r12, threats, dt, !!platformState);
+      // [Bug corretto, richiesto dall'autore: "specifichiamo che da ora in
+      // poi i nemici non ci attaccheranno piu'" nel messaggio di vittoria
+      // (drawOutcomeOverlay() sopra) — la schermata di vittoria deve dire
+      // il vero, non promettere una tregua che poi non arriva] Una volta
+      // completato il grattacielo (`victoryShown`, sopra: mai piu' falso
+      // per il resto della partita) il regista smette di far nascere nuove
+      // minacce vere: quelle gia' in volo in quel momento restano fino a
+      // che non se ne vanno da sole (`stepThreats()` sotto, invariato),
+      // niente sparizione di scatto a meta' volo.
+      if (!victoryShown) stepThreatSpawner(r12, threats, dt, !!platformState);
       stepThreats(threats, bombs, explosions, dt, r12, aerSmoke, debris);
       stepAerSmoke(aerSmoke, dt);
       stepDebris(debris, explosions, dt);
       stepBombs(bombs, explosions, buildings, dt, r12);
       stepExplosions(explosions, dt);
+      // Cooldown del bottone scambi (tradeCooldownT, tradeIcon piu' sotto) —
+      // [C] tradebuttoner/Alarm_2.gml: un timer locale come bankPanelOpen,
+      // non su r12 (al massimo pochi secondi, nessun bisogno di
+      // sopravvivere a un salvataggio).
+      if (tradeCooldownT > 0) tradeCooldownT = Math.max(0, tradeCooldownT - dt);
       // Unico controllo per tutte le fonti di danno di questo frame (fulmini,
       // STUDIO.md "le tempeste diventano reali" + bombe appena sganciate sopra).
       for (const b of buildings) {
@@ -5255,6 +5394,20 @@ export async function mountMatch(ctx, params = {}) {
       // bankbuttoner/_object.json.
       if (b.type === "banca" && !b.construction) {
         dynamic.push({ obj: "bankIcon", ref: b, x: b.x - 50, y: b.y - 40, depth: -9100, _f: frameFor("bancobutt"), _selfLit: true });
+      }
+      // L'iconcina scambi (obj: "tradeIcon") — [C] chies/Step.gml:
+      // `action_if_variable(level, 2, 0)` seguito da un guardiano "un solo
+      // esemplare" (`action_if_number(131, 0, 0)`, 131 = object index di
+      // `tradebuttoner` — verificato nell'asm, un vero
+      // `instance_number(tradebuttoner)==0`): compare accanto a `chies` non
+      // appena raggiunge livello 2, mai piu' rimossa (nessun Destroy nel
+      // decompilato oltre alla morte di chies stessa, gia' gestita sopra —
+      // `chies` e' sempre un solo esemplare per partita, STUDIO.md). Nascosta
+      // (niente push, non solo alpha 0) mentre il pannello e' gia' aperto o
+      // durante il cooldown dopo l'ultimo scambio (tradeCooldownT sopra) —
+      // esattamente i due casi in cui l'originale spegne il proprio sprite.
+      if (b.type === "chies" && b.level >= 2 && !tradePanelOpen && tradeCooldownT <= 0) {
+        dynamic.push({ obj: "tradeIcon", ref: b, x: b.x - 60, y: b.y + 30, depth: -9100, _f: frameFor("tradobutt"), _selfLit: true });
       }
       // Popup si'/no della ruspa (ruspaPending, armato da input.onTap sotto)
       // — [C] demobasia/Create.gml: demobachia (annulla, sprite "demoback")
@@ -5935,10 +6088,23 @@ export async function mountMatch(ctx, params = {}) {
     // della data, non solo della seconda). Qui l'orologio e' un'unica icona
     // a sinistra, centrata verticalmente sulle due righe della data (mese
     // sopra, anno sotto — `r12.time` e' l'anno di gioco, game/src/state.js)
-    // impilate alla sua destra. Il blocco intero parte comunque da x=90
-    // (non dal margine sinistro vero): stessa distanza di sicurezza di
-    // prima dal contatore cristalli (barX-6..~85, barY+48 in su —
-    // crysFrame/crysText sotto), che altrimenti ci finirebbe sotto.
+    // impilate alla sua destra.
+    // [Bug corretto, segnalato dall'autore: "l'orologio ora e' allineato
+    // alla prima risorsa della riga sopra?" — non lo era ancora] Il blocco
+    // partiva comunque da un x scelto per lasciare margine al contatore
+    // cristalli (prima a sinistra, sotto — vedi il commento su crysPos piu'
+    // sotto: ora spostato a destra della faccina, quello spazio e' libero
+    // per davvero). Misurato pixel per pixel sulla texture vera di
+    // "icone_oriz" (assets/textures/page_002.png): l'icona "persona"
+    // (popolazione, la prima della riga sopra) occupa la colonna locale
+    // 9..22 (centro 15.5) — lo stesso sistema di coordinate di `barX`, dato
+    // che la striscia si disegna con origine (0,0) a `(barX,barY)`.
+    // `clockFrame` (subFrameRight di "icone_oriz" sotto, ox=0/oy=0) tiene
+    // l'icona orologio alla colonna locale 15..45 (centro 30) DELLA
+    // SOTTO-IMMAGINE tagliata a CLOCK_CUT_X: a `clockScale` 0.5 il suo
+    // centro visivo cade a `clockPos.x + 30*0.5 = clockPos.x + 15` —
+    // uguale al centro dell'icona persona (`barX + 15.5`) quando
+    // `clockPos.x = barX` (arrotondato, la meta' di pixel non conta).
     const ROW2_Y = barY + 50;
     const ROW2B_Y = ROW2_Y + 20;
     const clockScale = isMobile ? 0.5 : 0.85;
@@ -5952,7 +6118,7 @@ export async function mountMatch(ctx, params = {}) {
     // lungo plausibile (`r12.mon` — misurato: un numero a 9 cifre e' largo
     // ~75px in Montserrat 15px grassetto, finisce quindi verso x=415)
     // l'orologio (ora a x+426) resta comunque staccato, ~11px di margine.
-    const clockPos = isMobile ? { x: barX + 90, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 426, y: barY + 8 };
+    const clockPos = isMobile ? { x: barX, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 426, y: barY + 8 };
     // [Bug corretto, segnalato dall'autore: "le icone a destra sono
     // disallineate — prima l'orologio (allineato con le altre icone), poi
     // mese e anno incolonnati, poi la faccina (allineata con le altre
@@ -5978,13 +6144,13 @@ export async function mountMatch(ctx, params = {}) {
     // `barY+32`, stesso passo ~18px di prima ma ricentrato: la loro media
     // torna a combaciare con l'orologio, non piu' `barY+12` come prima).
     const DATE_COL_X = barX + 470;
-    const monthPos = isMobile ? { x: barX + 116, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
-    const timePos = isMobile ? { x: barX + 116, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
+    const monthPos = isMobile ? { x: barX + 26, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
+    const timePos = isMobile ? { x: barX + 26, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
     // `hap1`/`hap3` (data/sprites.json): ox=oy=23=w/2=h/2 esatto, quindi il
     // loro centro visivo coincide SEMPRE con `hapPos.y` stesso qualunque sia
     // la scala — bastava allinearlo allo stesso `barY+23` di sopra (prima
     // era `barY+5`, quasi al livello del solo mese).
-    const hapPos = isMobile ? { x: barX + 174, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
+    const hapPos = isMobile ? { x: barX + 84, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
     if (!hideResourceText) {
       drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
     }
@@ -6045,24 +6211,28 @@ export async function mountMatch(ctx, params = {}) {
     // se il giocatore ne possiede almeno una in questo istante.
     // [Bug corretto, richiesto dall'autore: "su desktop c'e' spazio,
     // spostiamo il contatore gemme a destra della faccina, sempre allineato
-    // con le altre risorse"] Su mobile resta sotto (`barX-6, barY+48` — la
-    // riga scorre gia' stretta con mese/anno/faccina impilati, nessun altro
-    // posto dove metterlo); su desktop invece la riga unica di pop/olio/
-    // energia/denaro/orologio/data/faccina (sopra) ha gia' spazio libero a
-    // destra della faccina — il contatore la segue sulla STESSA riga invece
-    // di finire isolato sotto, come ogni altra risorsa qui.
-    // [Bug corretto, segnalato dall'autore insieme al resto della riga
-    // (vedi il commento su hapPos/monthPos/timePos sopra)] "crys_ico" (data/
-    // sprites.json: w=27,h=40,ox=-7,oy=-16) NON e' centrato sul proprio
-    // frame come `hap1`/`hap3` — il suo centro visivo (stessa formula di
-    // `r.draw()`) cade a `y - oy*scale + h*scale/2 = y + 27` a scala 0.75,
-    // quindi per allinearlo allo stesso `barY+23.3` dell'orologio la sua `y`
-    // deve stare 27px PIU' IN ALTO, non piu' in basso come prima.
+    // con le altre risorse"] su desktop la riga unica di pop/olio/energia/
+    // denaro/orologio/data/faccina (sopra) ha gia' spazio libero a destra
+    // della faccina — il contatore la segue sulla STESSA riga invece di
+    // finire isolato sotto, come ogni altra risorsa qui.
+    // [Bug corretto, richiesto dall'autore: "il contatore cristalli si usa
+    // poco e compare solo in una fase successiva, mettilo a destra della
+    // faccina" anche su mobile] Stava impilato sotto, isolato a sinistra
+    // (`barX-6`/`barY+48`): con la riga2 (orologio/data/faccina, sopra)
+    // ora allineata all'icona popolazione invece che tarata sul vecchio
+    // spazio del contatore, c'e' spazio vero a destra della faccina per
+    // seguirla sulla stessa riga, stesso principio gia' scelto per desktop.
+    // [C] "crys_ico" (data/sprites.json: w=27,h=40,ox=-7,oy=-16) NON e'
+    // centrato sul proprio frame come `hap1`/`hap3` — il suo centro visivo
+    // (stessa formula di `r.draw()`) cade a `y - oy*scale + h*scale/2` (a
+    // scala 0.9, +32.4): sottratto da `crysPos.y` sotto per farlo
+    // combaciare col centro vero di `hapPos` (`(ROW2_Y+ROW2B_Y)/2`, la
+    // stessa riga), non piu' una riga a parte piu' in basso.
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
-      const crysPos = isMobile ? { x: barX - 6, y: barY + 48 } : { x: barX + 570, y: barY - 4 };
+      const crysPos = isMobile ? { x: barX + 100, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 570, y: barY - 4 };
       const crysScale = isMobile ? 0.9 : 0.75;
-      const crysTextPos = isMobile ? { x: barX + 34, y: barY + 77 } : { x: barX + 606, y: barY + 19 };
+      const crysTextPos = isMobile ? { x: barX + 140, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 606, y: barY + 19 };
       r.setColorize(iconsDark);
       if (!hideResourceIcons && crysFrame) r.draw(crysFrame, crysPos.x, crysPos.y, crysScale, 0xffffff, 1);
       r.setColorize(false);
@@ -6648,6 +6818,34 @@ export async function mountMatch(ctx, params = {}) {
         const bx = cx, by = cy + offsets[i] * bankScale;
         r.draw(f, bx, by, bankScale, 0xffffff, 1);
         bankButtons.push({ x: bx - (f.w * bankScale) / 2, y: by - (f.h * bankScale) / 2, w: f.w * bankScale, h: f.h * bankScale, index: i });
+      }
+    }
+    // Il pannello scambi (tradePanelOpen, state.js TRADES) — stesso schema
+    // di bankPanelOpen appena sopra: "tradescr" (540x1086, la stessa taglia
+    // di "loanscr") ha origine al centro (data/sprites.json) e un solo
+    // titolo disegnato dentro ("TRADE RESOURCES", verificato pixel per
+    // pixel sulla texture vera — assets/textures/page_021.png, il frame di
+    // "tradescr": finisce a y=335 nello stesso sistema di coordinate di
+    // "loanscr" sopra), nessuna seconda riga di testo sotto: l'intera area
+    // fra il titolo e il fondo del pannello resta libera per i 4 bottoni,
+    // niente bias da calcolare come per "loanscr". Offset dei bottoni
+    // (-134/0/122/245) letti diretti da get1..4/Step.gml (`action_move_to
+    // (tradoscrino.x, tradoscrino.y + N * global.sca)`), non re-inventati:
+    // gia' abbastanza distanziati (loro stessi 88px di altezza, margini
+    // reali fra i 12 e i 46px) da non sovrapporsi.
+    tradeButtons = [];
+    if (tradePanelOpen) {
+      const tradeScale = Math.min(canvas.clientWidth / 540, canvas.clientHeight / 1086) * 0.85;
+      const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
+      const panelFrame = frameFor("tradescr");
+      if (panelFrame) r.draw(panelFrame, cx, cy, tradeScale, 0xffffff, 1);
+      const offsets = [-134, 0, 122, 245];
+      for (let i = 0; i < TRADES.length; i++) {
+        const f = frameFor(`get1${i + 1}`);
+        if (!f) continue;
+        const bx = cx, by = cy + offsets[i] * tradeScale;
+        r.draw(f, bx, by, tradeScale, 0xffffff, 1);
+        tradeButtons.push({ x: bx - (f.w * tradeScale) / 2, y: by - (f.h * tradeScale) / 2, w: f.w * tradeScale, h: f.h * tradeScale, index: i });
       }
     }
     // Bottone di pausa — sempre presente (l'unico modo di entrare/uscire dal

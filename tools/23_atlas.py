@@ -407,6 +407,14 @@ GAMEPLAY_SPRITES = {
         # i quattro bottoni prestito (25000/50000/100000/250000, gia' col
         # testo pre-renderizzato).
         "bancobutt", "loanscr", "getlo1", "getlo2", "getlo3", "getlo4",
+        # Scambio risorse (src/objects/tradebuttoner|tradoscrino|get1..4,
+        # game/src/main.js/state.js TRADES): stessa idea dei prestiti sopra,
+        # sbloccato da chies a livello 2 invece che da un edificio dedicato.
+        # "tradobutt" e' l'iconcina persistente accanto a chies, "tradescr"
+        # il pannello di sfondo ("TRADE RESOURCES", nessuna seconda riga),
+        # "get11..14" i quattro bottoni scambio (gia' col testo/le icone
+        # risorsa pre-renderizzati, come "getlo1..4").
+        "tradobutt", "tradescr", "get11", "get12", "get13", "get14",
         # Gli altri bottoni del pannello (src/objects/handbutton|buildbutton|
         # backobutton): nell'originale aprivano/chiudevano le righe del menu
         # (STUDIO.md §9 "menoo", tre pannelli alternati) — qui restano solo
