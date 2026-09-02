@@ -2608,11 +2608,13 @@ export async function mountMatch(ctx, params = {}) {
   // senza un ramo dedicato "pulisci se non in pausa".
   // Il menu di pausa e' l'unico chiamante da 8 slot, ma NON e' il worst
   // case: barra risorse/balloon del tutorial/banner "ATTACK INCOMING"/
-  // "THUNDERSTORM INCOMING" (piu' sotto) restano tutti disegnati fuori
-  // pausa (`&& !paused` li salta apposta durante il menu — stesso motivo di
-  // drawHtmlText() sopra, testo HTML non sfumato dal blur) e possono capitare
-  // TUTTI nello stesso frame: 4 risorse + mese + anno + cristalli (7) +
-  // balloon tutorial (1) + i 2 banner = 10. Il pannello di vittoria
+  // "THUNDERSTORM INCOMING" (piu' sotto, ognuno ora su due righe — una
+  // parola per drawHtmlText(), vedi il commento su bannerFontSize() piu'
+  // sotto per il perche') restano tutti disegnati fuori pausa (`&& !paused`
+  // li salta apposta durante il menu — stesso motivo di drawHtmlText() sopra,
+  // testo HTML non sfumato dal blur) e possono capitare TUTTI nello stesso
+  // frame: 4 risorse + mese + anno + cristalli (7) + balloon tutorial (1) +
+  // i 2 banner a 2 righe ciascuno (4) = 12. Il pannello di vittoria
   // (drawOutcomeOverlay() sotto, ora anche lui Montserrat vero invece del
   // font bitmap — vedi il commento li') non congela la partita ("la
   // vittoria non blocca niente"), quindi puo' capitare nello STESSO frame
@@ -2623,9 +2625,9 @@ export async function mountMatch(ctx, params = {}) {
   // menu di game over = 6 — `outcome` non e' incluso in `hideResourceText`
   // (sotto), e l'olio puo' esaurirsi anche nel tutorial (roomName ===
   // "tutorial", piu' sotto), quindi barra risorse (7) + balloon tutorial
-  // (1) + i 2 banner + il pannello di sconfitta (6) possono capitare tutti
-  // nello stesso frame = 16, +1 di margine.
-  const TEXT_POOL_SIZE = 17;
+  // (1) + i 2 banner a 2 righe (4) + il pannello di sconfitta (6) possono
+  // capitare tutti nello stesso frame = 18, +1 di margine.
+  const TEXT_POOL_SIZE = 19;
   const textPool = Array.from({ length: TEXT_POOL_SIZE }, () => {
     const el = document.createElement("div");
     el.className = "gameText";
@@ -6757,19 +6759,38 @@ export async function mountMatch(ctx, params = {}) {
     // — testo HTML vero, fuori dal canvas che pauseBlur.blurScreen() sfuma
     // per il menu di pausa, quindi va saltato del tutto mentre paused e'
     // true invece di restare nitido sopra al resto sfumato.
-    function bannerFontSize(text, maxSize) {
+    // [Bug corretto, segnalato dall'autore: "su schermi stretti (mobile) le
+    // ultime lettere di 'ATTACK INCOMING'/'THUNDERSTORM INCOMING' vengono
+    // troncate in '...'"] `bannerFontSize()` dimensionava il font sulla
+    // frase intera ("THUNDERSTORM INCOMING", 22 caratteri) — su schermi
+    // stretti il risultato tocca il minimo di 14px ben prima che la frase
+    // ci stia davvero (l'euristica `avail/(len*0.62)` e' una stima, non una
+    // misura reale del font Montserrat) e `drawHtmlText()` senza `wrap`
+    // (nowrap + text-overflow:ellipsis) mostra i puntini invece di
+    // sforare. Due righe, una parola ciascuna, invece di spingere la frase
+    // intera su una riga sola: `bannerFontSize()` ora dimensiona sulla
+    // parola piu' lunga fra le due righe ("THUNDERSTORM", 12 caratteri)
+    // invece che sulla frase intera, quindi il font resta leggibile anche
+    // dove prima sarebbe finito troncato.
+    function bannerFontSize(words, maxSize) {
       const avail = canvas.clientWidth - 40;
-      return Math.max(14, Math.min(maxSize, avail / (text.length * 0.62)));
+      const longest = words.reduce((a, b) => (b.length > a.length ? b : a));
+      return Math.max(14, Math.min(maxSize, avail / (longest.length * 0.62)));
+    }
+    function drawBannerLines(words, maxSize) {
+      const size = bannerFontSize(words, maxSize);
+      const lineHeight = size * 1.15;
+      const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
+      words.forEach((word, i) => {
+        const y = cy + (i - (words.length - 1) / 2) * lineHeight;
+        drawHtmlText(word, cx, y, { size, maxWidth: canvas.clientWidth - 40 });
+      });
     }
     if (r12.alertT > 0 && !paused && Math.floor((ALERT_DURATION - r12.alertT) / 0.5) % 2 === 0) {
-      const text = "ATTACK INCOMING";
-      drawHtmlText(text, canvas.clientWidth / 2, canvas.clientHeight / 2,
-        { size: bannerFontSize(text, 48), maxWidth: canvas.clientWidth - 40 });
+      drawBannerLines(["ATTACK", "INCOMING"], 48);
     }
     if (r12.tincomT > 0 && !paused && Math.floor((TINCOM_DURATION - r12.tincomT) / 0.5) % 2 === 0) {
-      const text = "THUNDERSTORM INCOMING";
-      drawHtmlText(text, canvas.clientWidth / 2, canvas.clientHeight / 2,
-        { size: bannerFontSize(text, 48), maxWidth: canvas.clientWidth - 40 });
+      drawBannerLines(["THUNDERSTORM", "INCOMING"], 48);
     }
     // Il pannello prestiti (bankPanelOpen, state.js LOANS) — vero modale in
     // spazio schermo (vedi il commento su bankPanelOpen piu' sopra per il
