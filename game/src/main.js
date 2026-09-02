@@ -6895,9 +6895,22 @@ export async function mountMatch(ctx, params = {}) {
     // tutt'altro): icona fornita dall'autore (pauseIconFrame, sopra —
     // game/pause-button.png), un cerchio scuro con l'icona "II" gia'
     // disegnata dentro il PNG stesso (bordo trasparente attorno, angoli del
-    // riquadro 48x48 esclusi), non piu' composta da due rettangoli pieni
+    // riquadro 64x64 esclusi), non piu' composta da due rettangoli pieni
     // come nella primissima versione di questo bottone.
-    const PB_SIZE = 48;
+    // [Bug corretto, segnalato dall'autore: "il bottone pausa e' piu'
+    // piccolo dei tre a sinistra (handee/groo/baccc, 92px scalati a
+    // UI_SCALE 0.7/0.6 = ~64/~55px)"] Prima disegnato a 48px da un PNG
+    // 64x64: oltre a essere gia' piu' piccolo per scelta, il PNG originale
+    // aveva anche un margine trasparente attorno al cerchio (contenuto vero
+    // 44x44 su tela 64x64), quindi il cerchio VISIBILE finiva a ~33px, meno
+    // di meta' degli altri tre. Corretto in due passi offline (mai un
+    // upscale a runtime): il margine e' stato ritagliato e il contenuto
+    // ricomposto su una tela 64x64 piena (resize LANCZOS una tantum, non
+    // uno stretch GPU ripetuto ogni frame); qui la dimensione di disegno
+    // sale da 48 a 64 (== pauseIconTex.width: scala 1, nessuna
+    // interpolazione, nessuna perdita) per restare fedele alla risoluzione
+    // nativa del file.
+    const PB_SIZE = 64;
     const pbX = canvas.clientWidth - UI_MARGIN - PB_SIZE, pbY = canvas.clientHeight - UI_MARGIN - PB_SIZE;
     pauseBtnRect = { x: pbX, y: pbY, w: PB_SIZE, h: PB_SIZE };
     r.draw(pauseIconFrame, pbX, pbY, PB_SIZE / pauseIconTex.width, 0xffffff, 1);
