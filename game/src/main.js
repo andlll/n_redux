@@ -1,4 +1,4 @@
-import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture, solidFrame } from "./gl.js";
+import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
@@ -241,6 +241,19 @@ export async function mountMatch(ctx, params = {}) {
   const { atlas, pageTex } = await loadRoomAtlas(gl, atlasKeyFor(roomName), {
     onProgress: (loaded, total) => reportProgress(roomName, loaded, total, "loading city"),
   });
+  // Icona del bottone di pausa (drawPauseButton() sotto) — fornita
+  // dall'autore come PNG a parte (game/pause-button.png, committato accanto
+  // a favicon/apple-touch-icon: un'immagine statica, non uno sprite del
+  // decompilato ne' materiale da impacchettare nell'atlas per room), caricata
+  // qui come texture GL a se stante invece che passare da loadRoomAtlas()/
+  // tools/23_atlas.py — e' un solo PNG di poche centinaia di byte, sempre
+  // uguale in ogni room, non vale la complessita' della pipeline atlas per
+  // un asset che non cambia mai. Nessuna cache fra mount diversi (a
+  // differenza dell'atlas): ricaricarlo ad ogni ingresso in partita costa
+  // una fetch/decode trascurabile, mai il problema di VRAM che ha reso
+  // necessaria la cache per gli atlas (assets.js).
+  const pauseIconTex = await loadTexture(gl, "./pause-button.png");
+  const pauseIconFrame = { tex: pauseIconTex.tex, u0: 0, v0: 0, u1: 1, v1: 1, w: pauseIconTex.width, h: pauseIconTex.height, ox: 0, oy: 0 };
   // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
   // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed eviction"]
   // Il tier "combat" (sotto, dentro `if (skyAlive)`) si avvia normalmente
@@ -6879,17 +6892,15 @@ export async function mountMatch(ctx, params = {}) {
     // destra, ultimo disegnato in questo batch cosi' resta sempre sopra a
     // ogni altro elemento della UI. Nessuno sprite dell'originale (il
     // decompilato non ha una vera pausa, STUDIO.md "playbuttoner" era
-    // tutt'altro): un quadrato pieno scuro con un'icona "II", stessi
-    // rettangoli pieni gia' usati altrove per elementi puramente nostri
-    // (bolla monete, vignetta fuori mappa).
+    // tutt'altro): icona fornita dall'autore (pauseIconFrame, sopra —
+    // game/pause-button.png), un cerchio scuro con l'icona "II" gia'
+    // disegnata dentro il PNG stesso (bordo trasparente attorno, angoli del
+    // riquadro 48x48 esclusi), non piu' composta da due rettangoli pieni
+    // come nella primissima versione di questo bottone.
     const PB_SIZE = 48;
     const pbX = canvas.clientWidth - UI_MARGIN - PB_SIZE, pbY = canvas.clientHeight - UI_MARGIN - PB_SIZE;
     pauseBtnRect = { x: pbX, y: pbY, w: PB_SIZE, h: PB_SIZE };
-    r.draw(solidFrame(white, PB_SIZE, PB_SIZE), pbX, pbY, 1, 0x1c1c22, 0.72);
-    const pbBarW = 6, pbBarH = 20, pbGap = 8;
-    const pbBarY = pbY + (PB_SIZE - pbBarH) / 2;
-    r.draw(solidFrame(white, pbBarW, pbBarH), pbX + PB_SIZE / 2 - pbGap / 2 - pbBarW, pbBarY, 1, 0xffffff, 0.95);
-    r.draw(solidFrame(white, pbBarW, pbBarH), pbX + PB_SIZE / 2 + pbGap / 2, pbBarY, 1, 0xffffff, 0.95);
+    r.draw(pauseIconFrame, pbX, pbY, PB_SIZE / pauseIconTex.width, 0xffffff, 1);
     r.flush();
 
     // Menu di pausa: sfuma quello che e' appena stato disegnato (il mondo,
@@ -7084,6 +7095,7 @@ export async function mountMatch(ctx, params = {}) {
       stopped = true;
       window.removeEventListener("keydown", onKeydown);
       delete window.__nimbus;
+      gl.deleteTexture(pauseIconTex.tex);
       // Pool di testo HTML del menu di pausa/il balloon del tutorial
       // (textPool/drawHtmlText(), sopra) — stesso principio di msgEl/
       // loadFileBtn in title.js: nodi DOM creati da questo mount, tocca a
