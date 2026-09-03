@@ -383,7 +383,18 @@ export async function mountMatch(ctx, params = {}) {
   // margine fisso per lato, indipendente dallo sprite — lo stesso tipo di
   // "area di tocco piu' grande della grafica" comune su mobile.
   const TURRET_TAP_PAD = 28;
-  function turretHitBox(type) {
+  // `pad` di default a TURRET_TAP_PAD (il comportamento originale, per ogni
+  // chiamante che non lo passa): [Bug corretto, segnalato dall'autore: "i
+  // fumetti rossi del costo dell'autodifesa devono comparire piu' vicino
+  // alla torretta"] il floater del costo (stepAutoDefenseUpkeep() sotto)
+  // usava questo stesso bbox per ANCORARSI visivamente sopra la torretta —
+  // ma il commento qui sopra e' esplicito, "mai il disegno": i +28px per
+  // lato sono un margine di TAP, pensato per allargare l'area cliccabile
+  // oltre lo sprite vero, non per un punto di spawn visivo. Un chiamante
+  // visivo ora passa `pad: 0` per il bbox vero (unione dei frame
+  // direzionali, senza il margine tap), invece di ereditare per sbaglio
+  // 28px di distanza in piu' dalla torretta.
+  function turretHitBox(type, pad = TURRET_TAP_PAD) {
     const names = TURRET_SPRITE_NAMES[type];
     if (!names) return null;
     let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
@@ -394,7 +405,7 @@ export async function mountMatch(ctx, params = {}) {
       right = Math.max(right, f.w - f.ox); bottom = Math.max(bottom, f.h - f.oy);
     }
     if (left >= right || top >= bottom) return null;
-    left -= TURRET_TAP_PAD; top -= TURRET_TAP_PAD; right += TURRET_TAP_PAD; bottom += TURRET_TAP_PAD;
+    left -= pad; top -= pad; right += pad; bottom += pad;
     return { ox: -left, oy: -top, w: right - left, h: bottom - top };
   }
   /** Torretta (missile/gatling/laser) sotto un punto schermo, o `null` —
@@ -5534,8 +5545,19 @@ export async function mountMatch(ctx, params = {}) {
       // (t negativo: stepCostFloaters() sotto lo ignora finche' non arriva
       // a 0) invece che impilato esattamente sul primo — "due in sequenza",
       // non due sovrapposte.
+      // [Bug corretto, segnalato dall'autore: "i fumetti del costo
+      // dell'autodifesa devono comparire piu' vicino alla torretta"]
+      // `turretHitBox(s.type)` SENZA argomenti (il default, sopra) include
+      // TURRET_TAP_PAD (28px) — un margine di TAP, mai pensato per un punto
+      // di spawn visivo (vedi il commento li'): sommato al vecchio "- 10"
+      // qui sotto, il floater nasceva 38px sopra il VERO bordo superiore
+      // dello sprite, prima ancora di cominciare a salire. `turretHitBox(s.
+      // type, 0)` prende lo stesso bbox (l'unione dei frame direzionali,
+      // corretto: la torretta ruota) ma senza quel margine — un piccolo "-
+      // 6" resta solo per non far nascere l'icona esattamente incollata al
+      // pixel del bordo.
       for (const s of stepAutoDefenseUpkeep(buildings, r12, dt)) {
-        const top = s.y - turretHitBox(s.type).oy - 10;
+        const top = s.y - turretHitBox(s.type, 0).oy - 6;
         for (let i = 0; i < s.count; i++) costFloaters.push({ x: s.x, y: top, t: -i * 0.2 });
       }
       // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
@@ -6127,13 +6149,25 @@ export async function mountMatch(ctx, params = {}) {
     // vedi il commento sul loop di simulazione) non e' ancora "nato":
     // saltato senza disegnare nulla, mai tolto dall'array (stepCostFloaters,
     // sopra: l'invecchiamento normale lo fa comunque avanzare verso 0).
+    // [Bug corretto, segnalato dall'autore: "grandi come le gocce blu sugli
+    // edifici"] Scala 1 (nativa), non piu' 0.55: le monete VERE (coins.js,
+    // dynamic.push({obj:"coin",...}) piu' sopra) disegnano lo stesso
+    // "soldico" senza alcuna `_scale` — quindi a scala 1, il default del
+    // ciclo mondo — mentre questo floater lo rimpiccioliva SOLO qui, senza
+    // un motivo dichiarato: risultava percettibilmente piu' piccolo delle
+    // gocce blu vere invece di leggersi come "la stessa icona, colorata
+    // diversa". Colore in attesa di un asset dedicato disegnato a mano
+    // dall'autore (pin rosso con la moneta visibile in bianco dentro —
+    // irraggiungibile col solo colorize su un unico sprite piatto, pin e
+    // monete nella stessa immagine): resta il colorize rosso pieno per ora,
+    // da sostituire quando l'asset arriva.
     const costFloaterFrame = frameFor("soldico");
     if (costFloaterFrame && costFloaters.length) {
       r.setColorize(true);
       for (const p of costFloaters) {
         if (p.t < 0) continue;
         const k = p.t / COST_FLOAT_LIFE;
-        r.draw(costFloaterFrame, p.x, p.y - k * COST_FLOAT_RISE, 0.55, 0xe53935, (1 - k) * 0.9);
+        r.draw(costFloaterFrame, p.x, p.y - k * COST_FLOAT_RISE, 1, 0xe53935, (1 - k) * 0.9);
       }
       r.setColorize(false);
     }

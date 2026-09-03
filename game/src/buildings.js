@@ -3154,7 +3154,13 @@ export const AUTO_DEFENSE_COST_PER_MIN = {   // [I] mon/min, per livello (1 = gr
  * il chiamante (main.js) le traduce in floater veri sapendo gia' come
  * leggere `turretHitBox()` per ancorarli sopra la torretta giusta.
  */
-const AUTO_DEFENSE_FLOAT_PERIOD = 1;   // [I] secondi fra un impulso visivo e il successivo
+// [Bug corretto, segnalato dall'autore: "i fumetti del costo dell'autodifesa
+// devono comparire meno spesso"] Era 1s (un impulso visivo al secondo per
+// torretta attiva, due in sequenza al livello 3): alzato a 3s — il prelievo
+// vero (r12.mon -=, sopra) resta comunque continuo/frazionato su `dt`, solo
+// l'IMPULSO VISIVO diventa piu' diradato, un "promemoria" invece di un
+// lampeggio quasi ininterrotto con piu' torrette attive insieme.
+const AUTO_DEFENSE_FLOAT_PERIOD = 3;   // [I] secondi fra un impulso visivo e il successivo
 export function stepAutoDefenseUpkeep(buildings, r12, dt) {
   const spawns = [];
   for (const b of buildings) {
