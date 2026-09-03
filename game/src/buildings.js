@@ -1,3 +1,5 @@
+import { BALLOON_TYPES } from "./balloons.js";
+
 // Edifici come dati, non come codice (STUDIO.md §7.3): la catena di
 // cantiere di `chies` (upcrc12/upcrc23, decompilati da
 // src/objects/upcrc12|upcrc23/Alarm_0.gml) e la famiglia `impa*` di
@@ -3038,21 +3040,33 @@ export function stepTurretAim(buildings, threats, balloons) {
     const def = BUILDING_TYPES[b.type];
     if (!def.aim) continue;
     const range2 = def.aim.range * def.aim.range;
-    let nearest = null, nearestD2 = range2;
+    let nearest = null, nearestD2 = range2, nearestIsSpyBalloon = false;
     for (const th of threats) {
       const d2 = (th.x - b.x) ** 2 + (th.y - b.y) ** 2;
-      if (d2 < nearestD2) { nearestD2 = d2; nearest = th; }
+      if (d2 < nearestD2) { nearestD2 = d2; nearest = th; nearestIsSpyBalloon = false; }
     }
     // Fallback mongolfiere: SOLO se non c'e' gia' una minaccia vera in
     // portata (nearest ancora null qui) — le minacce vere vincono sempre.
+    // [Nuova funzionalita', richiesta dall'autore: "modalita' autodifesa
+    // opzionale per le torrette, abbatte da sola mongolfiere/aerei spia"]
+    // Con `b.autoDefense` attivo (toggle nel pannello edificio, main.js) il
+    // fallback si restringe alle SOLE mongolfiere/aerei spia (`isSpy`,
+    // balloons.js — monspi/recogn): mai a quelle di risorse, che il
+    // giocatore potrebbe voler ancora raccogliere di persona. Senza
+    // autodifesa il fallback resta quello di sempre (la piu' vicina di
+    // qualunque tipo), solo per il tap manuale (fireTurretManual,
+    // projectiles.js) — mai per il fuoco automatico, invariato sotto.
     if (!nearest && balloons) {
       nearestD2 = range2;
       for (const bal of balloons) {
+        const isSpy = !!BALLOON_TYPES[bal.type]?.isSpy;
+        if (b.autoDefense && !isSpy) continue;
         const d2 = (bal.x - b.x) ** 2 + (bal.y - b.y) ** 2;
-        if (d2 < nearestD2) { nearestD2 = d2; nearest = bal; }
+        if (d2 < nearestD2) { nearestD2 = d2; nearest = bal; nearestIsSpyBalloon = isSpy; }
       }
     }
-    if (!nearest) { b.aimAngle = null; b.aimTarget = null; continue; }
+    if (!nearest) { b.aimAngle = null; b.aimTarget = null; b.aimIsSpyBalloon = false; continue; }
+    b.aimIsSpyBalloon = nearestIsSpyBalloon;
     const angle = (Math.atan2(-(nearest.y - b.y), nearest.x - b.x) * 180) / Math.PI;
     // [Bug corretto] `b.fireT` (game/src/projectiles.js: azzerato a ogni
     // colpo, poi conta il tempo trascorso dall'ultimo) e' esattamente il
@@ -3073,5 +3087,43 @@ export function stepTurretAim(buildings, threats, balloons) {
     // punta, `aimTarget` per il vero ricalcolo in stepTurretFire.
     b.aimAngle = angle;
     b.aimTarget = { x: nearest.x, y: nearest.y };
+  }
+}
+
+/**
+ * [Nuova funzionalita', richiesta dall'autore: "modalita' per le torrette
+ * di difesa per cui abbattono automaticamente mongolfiere rosse e aerei
+ * spia, attivabile dall'utente con un costo al minuto"] Nessun equivalente
+ * nel decompilato: puramente nostro, come `sandbox`/DEBUG_INFINITE_RESOURCES
+ * sopra. Un costo crescente per tipo di torretta, sulla stessa proporzione
+ * 1:2:4 gia' usata per `placeCost` (missile 5000/gatling 10000/laser 20000
+ * mon, sopra) — nessun valore decompilato da cui derivarli, scelti per
+ * restare un vero costo ricorrente (non trascurabile a lungo andare) senza
+ * essere proibitivi su una singola torretta.
+ */
+export const AUTO_DEFENSE_COST_PER_MIN = { missile: 30, gatling: 60, laser: 120 };   // [I] mon/min
+
+/**
+ * Preleva il costo dell'autodifesa (sopra) dalle torrette con `b.autoDefense`
+ * attivo, un frazionamento continuo di AUTO_DEFENSE_COST_PER_MIN su `dt`
+ * (non una detrazione a scatti ogni 60s: coerente con ogni altro drain
+ * continuo del motore — produzione/consumo di industria/casa, main.js).
+ * Si autodisattiva da sola (`b.autoDefense = false`) quando i fondi non
+ * bastano piu' per la prossima frazione — mai un saldo negativo lasciato
+ * a carico del giocatore, a differenza del costo per colpo di gatling
+ * (projectiles.js, WEAPONS.gatling: quello e' fedele al decompilato,
+ * questo essendo puramente nostro non ha nessun vincolo di fedelta' da
+ * rispettare). Un edificio la cui costruzione e' ancora in corso (o gia'
+ * distrutto/ricostruito, `b.autoDefense` perso col resto dell'istanza)
+ * non paga mai: il toggle stesso non e' raggiungibile in quello stato
+ * (drawBuildingInfoPanel, main.js).
+ */
+export function stepAutoDefenseUpkeep(buildings, r12, dt) {
+  for (const b of buildings) {
+    if (!b.autoDefense || b.construction) continue;
+    const costPerMin = AUTO_DEFENSE_COST_PER_MIN[b.type];
+    const cost = costPerMin * (dt / 60);
+    if (!costPerMin || !canAfford(r12, { mon: cost })) { b.autoDefense = false; continue; }
+    r12.mon -= cost;
   }
 }

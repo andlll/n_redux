@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -396,6 +396,24 @@ export async function mountMatch(ctx, params = {}) {
     if (left >= right || top >= bottom) return null;
     left -= TURRET_TAP_PAD; top -= TURRET_TAP_PAD; right += TURRET_TAP_PAD; bottom += TURRET_TAP_PAD;
     return { ox: -left, oy: -top, w: right - left, h: bottom - top };
+  }
+  /** Torretta (missile/gatling/laser) sotto un punto schermo, o `null` —
+   * usata SOLO dal tocco prolungato (input.onLongPress, sotto: apre il
+   * pannello stats/autodifesa) invece del picking generico di onTap
+   * (troppo, per un caso che riguarda solo tre tipi di edificio: niente
+   * placeholder/casse/monete/popup da concorrere). Stessa area di tocco
+   * allargata (`turretHitBox()`, sopra) e stessa convenzione "ultimo
+   * disegnato vince" del secondo giro di picking di onTap (frameList e'
+   * gia' back-to-front, l'ultimo che combacia e' il piu' vicino alla
+   * telecamera). */
+  function turretAt(sx, sy) {
+    const w = cam.screenToWorld(sx, sy);
+    for (let i = frameList.length - 1; i >= 0; i--) {
+      const it = frameList[i];
+      if (it.obj !== "building" || !BUILDING_TYPES[it.ref.type]?.turret) continue;
+      if (inFrameRect(w.x, w.y, it.x, it.y, turretHitBox(it.ref.type))) return it.ref;
+    }
+    return null;
   }
   /** Frame corrente per uno sprite di CANTIERE con sottoimmagini vere
    * ("impvent1"/"impvent3" della pala eolica — `c.curSpd`, buildings.js/
@@ -1010,6 +1028,15 @@ export async function mountMatch(ctx, params = {}) {
   // in spazio schermo come `bankPanelOpen`: mentre e' aperto un tap va
   // SOLO al suo bottone di chiusura, mai al mondo sotto.
   let buildingInfoPanel = null;   // istanza edificio, o null
+  // Riquadro (spazio schermo) del toggle di autodifesa dentro il pannello
+  // sopra — ricalcolato ad ogni drawBuildingInfoPanel(), `null` quando il
+  // pannello e' chiuso o l'edificio non e' una torretta (nessun toggle da
+  // disegnare quel frame). onTap (sotto) lo controlla PRIMA di trattare il
+  // tocco come "chiudi il pannello" (comportamento di default per ogni
+  // altro punto del pannello) — stesso principio dei bottoni di
+  // bankPanelOpen/tradePanelOpen sopra, qui con un solo bottone invece di un
+  // array perche' non ce n'e' mai piu' di uno alla volta.
+  let buildingInfoToggleRect = null;   // { x, y, w, h }
 
   // Overlay costruzioni per mobile (drawBuildMenuOverlay() piu' sotto) —
   // [Nuova funzionalita', richiesta dall'autore: "sul mobile, invece della
@@ -2995,6 +3022,16 @@ export async function mountMatch(ctx, params = {}) {
    * ancora vita/abitanti veri (`b.life`/`r12.pop` restano a 0/quello di
    * prima finche' il cantiere non finisce): mostra solo lo stato, non
    * statistiche a zero che sembrerebbero un edificio morente.
+   *
+   * [Nuova funzionalita', richiesta dall'autore] Sotto la barra vita, SOLO
+   * per una torretta finita (missile/gatling/laser — `AUTO_DEFENSE_COST_
+   * PER_MIN`, buildings.js), il toggle di autodifesa: un bottone ON/OFF col
+   * costo/minuto, sempre visibile a prescindere dallo stato (cosi' il costo
+   * resta leggibile anche gia' attivo). `buildingInfoToggleRect` (sopra) e'
+   * l'unica eccezione al "qualunque tocco chiude" di onTap — il tocco sul
+   * bottone stesso alterna `b.autoDefense` e TIENE il pannello aperto
+   * (stesso principio "chainable" gia' scelto per tradePanelOpen sopra:
+   * vedere subito il nuovo stato/costo senza dover riaprire il pannello).
    */
   function drawBuildingInfoPanel() {
     const b = buildingInfoPanel;
@@ -3016,10 +3053,14 @@ export async function mountMatch(ctx, params = {}) {
     if (residents != null) statLines.push(`Residents: ${Math.round(residents)}`);
     if (production) statLines.push(`Energy: +${production.ele}/cycle (uses ${production.oil} oil)`);
 
+    const autoDefenseCost = AUTO_DEFENSE_COST_PER_MIN[b.type];
+    const showToggle = !b.construction && autoDefenseCost != null;
+    const toggleH = 44;
+
     const panelW = Math.min(320, cw - 40);
     const barH = 20;
     const headerH = 70;
-    const bodyH = b.construction ? 30 : (22 + barH + 20);
+    const bodyH = b.construction ? 30 : (22 + barH + 20 + (showToggle ? toggleH + 16 : 0));
     const statsH = statLines.length * 26;
     const btnH = 46;
     const panelH = headerH + bodyH + statsH + 16 + btnH + 20;
@@ -3029,6 +3070,7 @@ export async function mountMatch(ctx, params = {}) {
     const title = def.label + (maxLevel > 1 && !b.construction ? ` — Level ${b.level}/${maxLevel}` : "");
     drawHtmlText(title, px + panelW / 2, py + 32, { size: 20, maxWidth: panelW - 30 });
 
+    buildingInfoToggleRect = null;
     let cy = py + headerH;
     if (b.construction) {
       drawHtmlText("Under construction…", px + panelW / 2, cy + 10, { size: 15, maxWidth: panelW - 30 });
@@ -3042,6 +3084,14 @@ export async function mountMatch(ctx, params = {}) {
       const barColor = ratio > 0.5 ? 0x4caf50 : ratio > 0.2 ? 0xffa726 : 0xef5350;
       if (ratio > 0) r.draw(solidFrame(white, barW * ratio, barH), barX, cy, 1, barColor, 0.9);
       cy += barH + 20;
+      if (showToggle) {
+        const on = !!b.autoDefense;
+        buildingInfoToggleRect = { x: barX, y: cy, w: barW, h: toggleH };
+        r.draw(pauseButtonFrame(barW, toggleH), barX, cy, 1, on ? 0x4caf50 : BUTTON_TINT, on ? 0.85 : BUTTON_ALPHA);
+        drawHtmlText(`Auto-defense: ${on ? "ON" : "OFF"} (-${autoDefenseCost} mon/min)`,
+          barX + barW / 2, cy + toggleH / 2, { size: 14, maxWidth: barW - 20 });
+        cy += toggleH + 16;
+      }
     }
     for (const line of statLines) {
       drawHtmlText(line, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
@@ -3598,6 +3648,22 @@ export async function mountMatch(ctx, params = {}) {
     messageT = 3;
   };
   input.onPointerUp = (sx, sy) => { if (!paused) resolvePlacement(sx, sy); };
+  // Tocco prolungato su una torretta finita (turretAt(), sopra) con la mano
+  // selezionata: apre lo stesso pannello informativo degli altri edifici
+  // (buildingInfoPanel, drawBuildingInfoPanel() sotto — qui in piu' mostra
+  // il toggle di autodifesa, solo per missile/gatling/laser). Il tap
+  // NORMALE sulle torrette resta invariato (spara subito, vedi onTap sotto,
+  // ramo `manualFire`): i due gesti non si sovrappongono mai per lo stesso
+  // tocco (game/src/input.js, LONG_PRESS_MS > TAP_MS). Ignorato durante
+  // ogni altro modale/overlay gia' aperto — stessi guard dell'apertura
+  // "normale" del pannello su un edificio non difensivo (onTap sotto).
+  input.onLongPress = (sx, sy) => {
+    if (paused || outcome || bankPanelOpen || tradePanelOpen || buildingInfoPanel
+      || buildMenuOpen || tutorialState?.cutscene || r12.selec !== 0) return;
+    const b = turretAt(sx, sy);
+    if (!b || b.construction) return;
+    buildingInfoPanel = b;
+  };
   // Il fattore si applica a `targetZoom`, non a `zoom` (che insegue con un
   // filo di ritardo, vedi Camera.update()): cosi' una rotellata mentre lo
   // zoom sta ancora animando accumula sul bersaglio invece di "strappare"
@@ -4275,8 +4341,16 @@ export async function mountMatch(ctx, params = {}) {
     // Pannello informativo di un edificio (buildingInfoPanel, sopra) — stesso
     // trattamento modale di bankPanelOpen appena sopra: un tocco QUALUNQUE
     // lo chiude (non solo il bottone dedicato, disegnato per scoperta/
-    // chiarezza), mai raggiunge il mondo sotto mentre e' aperto.
+    // chiarezza), mai raggiunge il mondo sotto mentre e' aperto. Un tocco
+    // sul toggle di autodifesa (buildingInfoToggleRect, drawBuildingInfoPanel()
+    // sopra — solo torrette) e' l'unica eccezione: alterna lo stato e TIENE
+    // il pannello aperto, stesso principio "chainable" di tradePanelOpen.
     if (buildingInfoPanel) {
+      const t = buildingInfoToggleRect;
+      if (t && sx >= t.x && sx <= t.x + t.w && sy >= t.y && sy <= t.y + t.h) {
+        buildingInfoPanel.autoDefense = !buildingInfoPanel.autoDefense;
+        return;
+      }
       // registerChiesTap() (sopra): il pannello di chies e' gia' aperto —
       // questo tap lo chiude come ogni altro, ma deve comunque contare per
       // lo shortcut sandbox (vedi il commento su registerChiesTap()).
@@ -5330,12 +5404,19 @@ export async function mountMatch(ctx, params = {}) {
       // (`cars`) restano fuori: non sono un bersaglio, ne' ostile ne'
       // cliccabile.
       stepTurretAim(buildings, threats, balloons);
+      // Costo/minuto dell'autodifesa opzionale (buildings.js,
+      // AUTO_DEFENSE_COST_PER_MIN) — prima del fuoco vero sotto, cosi' una
+      // torretta appena rimasta senza fondi (b.autoDefense spento qui) non
+      // spara comunque quel colpo nello stesso frame.
+      stepAutoDefenseUpkeep(buildings, r12, dt);
       // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
       // gia' nella direzione appena calcolata (b.aimAngle). Automatico resta
-      // SOLO contro minacce vere, mai contro mongolfiere — quelle si
-      // abbattono solo col tap manuale sul cannone (fireTurretManual piu'
-      // sotto) o un tap diretto sulla mongolfiera stessa.
-      stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails, beams);
+      // SOLO contro minacce vere, mai contro mongolfiere di risorse — quelle
+      // si abbattono solo col tap manuale sul cannone (fireTurretManual piu'
+      // sotto) o, per le sole mongolfiere/aerei SPIA, con l'autodifesa
+      // attiva (stepTurretFire, projectiles.js — `balloons`/`loot` servono
+      // solo a quel ramo, per il laser).
+      stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails, beams, balloons, loot);
       stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt);
       stepBeams(beams, dt);
       stepSmoko(trails, dt);
