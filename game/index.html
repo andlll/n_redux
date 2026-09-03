@@ -28,7 +28,24 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <style>
   html, body { margin: 0; height: 100%; background: #0b1020; overflow: hidden;
-               touch-action: none; overscroll-behavior: none; }
+               touch-action: none; overscroll-behavior: none;
+               -webkit-user-select: none; user-select: none;
+               -webkit-touch-callout: none; }
+  /* [Bug corretto, segnalato dall'autore: "il tocco prolungato per aprire il
+     pannello autodifesa (torretta missile/gatling/laser: input.onLongPress,
+     game/src/main.js) su Safari iPhone apre invece la lente di
+     ingrandimento di selezione testo, o seleziona il canvas facendolo
+     diventare blu"] Safari iOS riconosce il tocco prolungato come un
+     possibile inizio di selezione testo (mostra la lente/il menu
+     copia-incolla) SU QUALSIASI elemento selezionabile, canvas incluso, a
+     prescindere da `touch-action` sopra (quella proprieta' governa solo
+     scroll/pinch-zoom, non la selezione testo — i due gesti sono
+     riconosciuti da sistemi separati del browser). `-webkit-touch-callout:
+     none` disattiva il menu contestuale/lente sul tocco prolungato,
+     `user-select: none` disattiva la selezione stessa (la "macchia blu"):
+     nessuna delle due tocca `LONG_PRESS_MS` (game/src/input.js) o il gesto
+     applicativo, e' Safari che smette di interpretare il dito fermo come
+     un gesto di selezione PRIMA che il nostro timer scatti. */
   /* [Bug corretto, segnalato dall'autore: "su Safari iPhone la barra
      indirizzi in basso copre i pulsanti"] `100vh` su Safari iOS e' sempre la
      LARGE viewport height — l'altezza disponibile quando la barra
