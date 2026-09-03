@@ -20,6 +20,7 @@
 import { Renderer, makeSolidTexture, PauseBlur } from "./gl.js";
 import { Input } from "./input.js";
 import { evictUnneededRoomAtlases, atlasKeyFor } from "./assets.js";
+import { RenderScale } from "./renderscale.js";
 
 const canvas = document.getElementById("view");
 const loading = document.getElementById("loading");
@@ -36,6 +37,11 @@ const white = makeSolidTexture(gl);
 // due schermate che lo usano.
 const pauseBlur = new PauseBlur(gl);
 const input = new Input(canvas);
+// Scala di risoluzione interna adattiva (game/src/renderscale.js) — una sola
+// istanza condivisa fra menu e partita (come `r`/`pauseBlur`/`input` sopra),
+// cosi' un cambio di gradino gia' misurato sopravvive al passaggio fra
+// schermate invece di doversi ri-adattare da zero ad ogni navigate().
+const renderScale = new RenderScale(r.isSoftwareRendering);
 
 // [Nuova funzionalita', richiesta dall'autore: "alcuni device (es. Galaxy
 // S23) hanno fps bassissimi (2-5) mentre un device di fascia media va bene
@@ -184,7 +190,7 @@ function neededRoomsFor(screen, params) {
   return [atlasKeyFor(roomName)];
 }
 
-const ctx = { gl, r, canvas, input, pauseBlur, white, hideLoading, navigate, reportProgress };
+const ctx = { gl, r, canvas, input, pauseBlur, white, hideLoading, navigate, reportProgress, renderScale };
 
 let current = null;   // { dispose() } della schermata montata adesso
 let navigating = false;   // guardia contro un doppio navigate() in corsa

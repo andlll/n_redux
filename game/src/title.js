@@ -53,7 +53,7 @@ import {
 const TICK = 1 / 60;
 
 export async function mountTitle(ctx) {
-  const { gl, r, canvas, input, pauseBlur, white, navigate, hideLoading, reportProgress } = ctx;
+  const { gl, r, canvas, input, pauseBlur, white, navigate, hideLoading, reportProgress, renderScale } = ctx;
   let stopped = false;
   const SOLID = solidFrame(white, 1, 1);
 
@@ -268,7 +268,10 @@ export async function mountTitle(ctx) {
 
   // ---------------------------------------------------------------- resize
   function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // renderScale.scale (game/src/renderscale.js): stesso principio di
+    // main.js/resize() — riduce solo il backing store fisico del canvas,
+    // mai le coordinate CSS che camUI/camWorld usano sotto.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2) * renderScale.scale;
     const w = Math.round(canvas.clientWidth * dpr);
     const h = Math.round(canvas.clientHeight * dpr);
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
@@ -355,8 +358,20 @@ export async function mountTitle(ctx) {
     // ritentato dallo stesso menu invece di restare morto in silenzio.
     try {
     const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
+    // renderScale.sample() (game/src/renderscale.js) vuole il tempo di frame
+    // VERO, non clampato — stesso motivo di cutsceneDt in main.js: un `dt`
+    // limitato a 0.05s nasconderebbe proprio i frame lenti da individuare.
+    renderScale.sample(Math.max(0, (now - last) / 1000));
     last = now;
     elapsed += dt;
+    // renderScale.scale puo' essere cambiato da questa stessa chiamata sopra
+    // (o durante una partita precedente, la stessa istanza e' condivisa fra
+    // le schermate — game/src/app.js): a differenza di main.js, questo loop
+    // non richiamava resize() ad ogni frame (solo al mount e sull'evento
+    // 'resize' della finestra) — un cambio di gradino restava quindi senza
+    // effetto sul canvas finche' la finestra non veniva ridimensionata per
+    // davvero. Richiamata qui, si applica al frame successivo.
+    resize();
 
     if (navigateTo) {
       fadeT += dt;

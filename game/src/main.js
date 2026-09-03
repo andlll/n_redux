@@ -46,7 +46,7 @@ import {
 // window.__nimbus), cosi' tornare al menu e rientrare in partita piu' volte
 // nella stessa sessione non accumula loop/listener fantasma.
 export async function mountMatch(ctx, params = {}) {
-  const { gl, r, canvas, input, pauseBlur, white, navigate, reportProgress } = ctx;
+  const { gl, r, canvas, input, pauseBlur, white, navigate, reportProgress, renderScale } = ctx;
   let stopped = false;
   // Cerchio morbido per l'animazione "bolla" delle monete raccolte (vedi
   // coinPops/collectCoinAt() piu' sotto) — nessun asset dell'originale la
@@ -4971,7 +4971,12 @@ export async function mountMatch(ctx, params = {}) {
 
   // ---------------------------------------------------------------- loop
   function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // renderScale.scale (game/src/renderscale.js): <1 su software rendering
+    // o dopo un framerate reale sostenuto sotto soglia — riduce SOLO il
+    // backing store fisico del canvas (qui), mai `cam`/`pixelPerfectZoom()`
+    // sotto (lavorano gia' in coordinate CSS, indipendenti da questa scala:
+    // vedi il commento in renderscale.js).
+    const dpr = Math.min(window.devicePixelRatio || 1, 2) * renderScale.scale;
     const w = Math.round(canvas.clientWidth * dpr);
     const h = Math.round(canvas.clientHeight * dpr);
     if (canvas.width !== w || canvas.height !== h) {
@@ -5139,6 +5144,11 @@ export async function mountMatch(ctx, params = {}) {
     // (main.js piu' sotto): la cutscene resta sincronizzata al tempo reale
     // anche durante uno stallo iniziale, invece di rallentare con lui.
     const cutsceneDt = Math.max(0, (now - last) / 1000);
+    // renderScale.sample() (game/src/renderscale.js) vuole lo stesso tempo di
+    // frame VERO, non clampato, gia' calcolato sopra per la cutscene — un
+    // `dt` limitato a 0.05s nasconderebbe proprio i frame lenti che deve
+    // individuare.
+    renderScale.sample(cutsceneDt);
     last = now;
     phaseT += dt;
     resize();
