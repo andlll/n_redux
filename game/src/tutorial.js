@@ -45,7 +45,7 @@ export const TUTORIAL_TEXTS = [
   "If you have enough parks you will see an happy face next to the resources count, otherwise yes, they will stop paying taxes!",
   "The defense of the city is another crucial point. As you can see we use massive artillery to keep the city safe!",
   "Build a rocket launcher in an empty spot. Remember that you can't build them too close at it would be too dangerous!",
-  "We use weapons also to gather resources from our enemy, that carry them in those huge balloons you see flying above us!",
+  "We use weapons also to gather resources from our enemy, that carry them in those huge balloons you see flying above us! Tip: press and hold a weapon to open its panel and turn on Auto-defense, so it shoots down spy balloons and planes on its own (small cost per minute)!",
   "Yes, I know what you are thinking and yes, NIMBUS grew stealing oil to foreign nations, but what can you do?",
   "When a balloon is aproaching, click to the closest weapon to destroy it, then quickly collect the resource falling from the sky!",
   "Green balloons are the ones carrying oil. They are the most common ones!",
