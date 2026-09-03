@@ -3101,24 +3101,45 @@ export async function mountMatch(ctx, params = {}) {
       drawHtmlText(`Health: ${Math.max(0, Math.round(b.life))} / ${Math.round(maxLife)}`, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
       cy += 22;
       const barX = px + 20, barW = panelW - 40;
-      r.draw(solidFrame(white, barW, barH), barX, cy, 1, 0x000000, 0.12);
+      drawPillBar(barX, cy, barW, barH, 0x000000, 0.12);
       const barColor = ratio > 0.5 ? 0x4caf50 : ratio > 0.2 ? 0xffa726 : 0xef5350;
-      if (ratio > 0) r.draw(solidFrame(white, barW * ratio, barH), barX, cy, 1, barColor, 0.9);
+      if (ratio > 0) drawPillBar(barX, cy, barW * ratio, barH, barColor, 0.9);
       cy += barH + 20;
       if (showControl) {
         const level = b.autoDefenseLevel ?? 1;
-        // Traccia neutra (stesso "vetro" di ogni altro bottone del
-        // pannello) + una "pillola" verde sovrapposta sul terzo
-        // selezionato — l'inset (SEG_PAD) la stacca visibilmente dalla
-        // traccia sotto, lo stesso principio di un vero segmented control
-        // iOS (mai un bordo netto fra le tre celle).
+        // [Nuova funzionalita', richiesta dall'autore: "i pulsanti delle
+        // strutture di difesa devono essere rettangoli stondato"] Tre
+        // bottoni VERI e distinti (pauseButtonFrame, lo stesso "vetro"
+        // arrotondato del bottone "Close" sotto), non piu' un'unica traccia
+        // con una pillola sovrapposta solo sul selezionato — cosi' anche i
+        // due non selezionati si leggono come bottoni a se stanti, non come
+        // sfondo neutro. SEG_GAP li stacca visibilmente l'uno dall'altro.
         buildingInfoSegRect = { x: barX, y: cy, w: barW, h: SEG_H };
-        r.draw(pauseButtonFrame(barW, SEG_H), barX, cy, 1, BUTTON_TINT, BUTTON_ALPHA);
-        const segW = barW / 3, SEG_PAD = 3;
-        r.draw(pauseButtonFrame(segW - SEG_PAD * 2, SEG_H - SEG_PAD * 2),
-          barX + (level - 1) * segW + SEG_PAD, cy + SEG_PAD, 1, 0x4caf50, 0.88);
+        const segW = barW / 3, SEG_GAP = 6;
+        // [Nuova funzionalita', richiesta dall'autore: "al posto dei numeri
+        // 1/2/3 usiamo i tre simboli dell'occhio inutilizzati che hanno gia'
+        // il numerino"] `eyee1`/`eyee2`/`eyee3` (data/sprites.json — mai
+        // usati nel decompilato, un occhio con un piccolo "1"/"2"/"3"
+        // incorporato nell'icona stessa: STUDIO.md, il "pannello vista" mai
+        // ricostruito) aggiunti all'atlas apposta (tools/23_atlas.py,
+        // GAMEPLAY_SPRITES — non ci finivano da soli, nessun oggetto li
+        // referenzia in nessuna room). Scala calcolata dall'altezza VERA
+        // del frame (`f.h`, mai un numero fisso) cosi' l'icona resta
+        // proporzionata qualunque sia SEG_H; centrata nel bottone tenendo
+        // conto di `f.ox/f.oy` (l'origine del frame, tutt'altro che al
+        // centro per questo sprite — un semplice x,y senza correggerli
+        // avrebbe disegnato l'occhio fuori asse).
         for (let i = 0; i < 3; i++) {
-          drawHtmlText(String(i + 1), barX + segW * (i + 0.5), cy + SEG_H / 2, { size: 16 });
+          const bx = barX + i * segW + SEG_GAP / 2, bw = segW - SEG_GAP;
+          const selected = level === i + 1;
+          r.draw(pauseButtonFrame(bw, SEG_H), bx, cy, 1, selected ? 0x4caf50 : BUTTON_TINT, selected ? 0.88 : BUTTON_ALPHA);
+          const eyeF = frameFor(`eyee${i + 1}`);
+          if (eyeF) {
+            const eyeScale = (SEG_H * 0.72) / eyeF.h;
+            const ex = bx + bw / 2 + eyeF.ox * eyeScale - (eyeF.w * eyeScale) / 2;
+            const ey = cy + SEG_H / 2 + eyeF.oy * eyeScale - (eyeF.h * eyeScale) / 2;
+            r.draw(eyeF, ex, ey, eyeScale, 0xffffff, 1);
+          }
         }
         cy += SEG_H + 12;
         const info = AUTO_DEFENSE_LEVELS[level - 1];
@@ -3618,6 +3639,46 @@ export async function mountMatch(ctx, params = {}) {
   }
   const pausePanelFrame = makeRoundRectCache(20);
   const pauseButtonFrame = makeRoundRectCache(14);
+
+  /**
+   * [Nuova funzionalita', richiesta dall'autore: "la barra della vita deve
+   * avere i lati corti completamente tondi"] Una vera barra "a pillola"
+   * (semicerchio pieno su entrambi i lati corti, non solo angoli
+   * smussati) — diversa da makeRoundRectCache() sopra perche' la sua
+   * larghezza cambia ad OGNI frame con la vita dell'edificio (barW * ratio,
+   * drawBuildingInfoPanel() sotto): una cache a slot singolo come quelle
+   * sopra rigenererebbe la texture quasi ad ogni chiamata (larghezza quasi
+   * sempre diversa), tanto vale non avere nessuna cache. Qui invece la
+   * texture generata resta FISSA (altezza vera della barra, larghezza
+   * doppia e mezzo cosi' i due cappucci non si toccano mai — un vero
+   * "stadio" con un tratto centrale piatto, non un cerchio) e si ricicla
+   * per QUALUNQUE larghezza richiesta: due cappucci disegnati alla loro
+   * dimensione nativa (mai deformati, sempre perfettamente semicircolari)
+   * piu' una sottile fetta centrale presa dal tratto piatto (zero
+   * curvatura li' — qualunque punto in quel tratto e' un taglio verticale
+   * IDENTICO, quindi anche un campione di 1px non introduce nessun
+   * artefatto) stirata a coprire lo spazio restante.
+   */
+  let pillCapTex = null, pillCapH = -1;
+  function drawPillBar(x, y, w, h, tint, alpha) {
+    if (pillCapH !== h) {
+      if (pillCapTex) gl.deleteTexture(pillCapTex);
+      pillCapTex = makeRoundedRectTexture(gl, Math.round(h * 2.4), Math.round(h), Math.round(h / 2));
+      pillCapH = h;
+    }
+    const cap = h / 2;
+    if (w <= h) {
+      // Troppo stretta per due cappucci interi (salute quasi a zero): un
+      // caso raro/cosmetico, non vale la texture arrotondata — un
+      // rettangolo pieno minuscolo passa inosservato.
+      r.draw(solidFrame(white, w, h), x, y, 1, tint, alpha);
+      return;
+    }
+    const texW = h * 2.4, capFrac = cap / texW;
+    r.draw({ tex: pillCapTex, u0: 0, v0: 0, u1: capFrac, v1: 1, w: cap, h, ox: 0, oy: 0 }, x, y, 1, tint, alpha);
+    r.draw({ tex: pillCapTex, u0: 0.49, v0: 0, u1: 0.51, v1: 1, w: w - h, h, ox: 0, oy: 0 }, x + cap, y, 1, tint, alpha);
+    r.draw({ tex: pillCapTex, u0: 1 - capFrac, v0: 0, u1: 1, v1: 1, w: cap, h, ox: 0, oy: 0 }, x + w - cap, y, 1, tint, alpha);
+  }
 
   /** Come makeRoundRectCache() sopra, ma per un contorno invece di un
    * riempimento (makeRoundedRectStrokeTexture(), gl.js) — usata da

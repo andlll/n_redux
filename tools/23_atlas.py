@@ -442,10 +442,17 @@ GAMEPLAY_SPRITES = {
         # (STUDIO.md §9 "menoo", tre pannelli alternati) — qui restano solo
         # "casa"/"edifici", sempre visibili. Il terzo pannello ("vista":
         # eyebutton/eyebutton1|2|3, zoom_plus/zoom_minus) e' stato rimosso su
-        # richiesta dell'autore: i tre bottoni occhio erano segnaposto senza
-        # funzione (mai ricostruiti) e zoom+/- erano ridondanti con pinch/
-        # rotella (game/src/input.js, gia' l'unico controllo zoom vero).
+        # richiesta dell'autore: zoom+/- erano ridondanti con pinch/rotella
+        # (game/src/input.js, gia' l'unico controllo zoom vero) — i tre
+        # bottoni occhio (segnaposto senza funzione, mai ricostruiti come
+        # "vista") sono pero' tornati utili altrove: "eyee1"/"eyee2"/"eyee3"
+        # (data/sprites.json — il vero nome, non "eyebutton1|2|3" come nel
+        # decompilato) hanno gia' un numerino 1/2/3 incorporato nell'icona,
+        # riusati come indicatori dei tre livelli del controllo di
+        # autodifesa delle torrette (game/src/main.js, drawBuildingInfoPanel()
+        # — [Nuova funzionalita', richiesta dall'autore]).
         "handee", "groo", "baccc",
+        "eyee1", "eyee2", "eyee3",
     ],
     # Alberi (src/objects/albe|albe2|albe3/Create.gml, STUDIO.md): a Create
     # l'originale sceglie a dado uno sprite finale diverso per istanza fra
