@@ -3985,3 +3985,75 @@ paragrafo 8.
   `tutorial` solo `spd` negativi (-8..-14, `depth:20`, sprite `n2`/`n3`
   soli) — confermato via `window.__nimbus.atmo` in Chromium headless,
   zero errori console sul menu.
+
+- **Ottimizzazioni mobile per device datati: pool di particelle, pausa in
+  background, risoluzione interna adattiva.** Tre interventi indipendenti,
+  nessuno dei tre richiesto da un bug segnalato — mirati ai device Android
+  di fascia bassa/vecchi che il resto di questa sezione già cita (Galaxy
+  S23 dal fallback software, `gl.js`/`app.js`).
+  - **`game/src/pool.js` (nuovo)**: object pool riusabile (`active`/`free`,
+    `spawn()`/`release()` con swap-pop O(1) invece di `splice()` O(n)) per
+    i tre stream di particelle continui del motore — fumo di centrali/navi
+    (`smoke.js` + `bridges.js`/`stepCargoShips`), scintille dei fuochi
+    d'artificio (`fireworks.js`), gocce di pioggia (`weather.js`, fino a
+    900/s). È l'equivalente qui del `part_system` nativo di GameMaker
+    (**[C]** `raw/gml/gml_Object_rainlauncher_Create_0.gml`: la pioggia
+    vera era un motore particellare con un proprio buffer di slot
+    riusabili) — prima ogni particella era un oggetto JS allocato/buttato
+    via ad ogni spawn/morte, pressione sul GC plausibilmente responsabile
+    degli stutter periodici segnalati durante un temporale. Verificato
+    isolatamente in Node (i moduli non hanno dipendenze DOM): dopo un
+    breve transiente il numero totale di oggetti allocati si stabilizza,
+    zero nuove allocazioni da lì in poi. **Lasciato fuori apposta**:
+    `coins.js` — troppo intrecciato con `main.js` (`coins.filter(...)` per
+    rimozione di massa alla demolizione, `indexOf` per la raccolta al
+    click, push diretto da `main.js` per la moneta "pratica" del
+    tutorial) per il beneficio quasi nullo di un pool su uno spawn ogni
+    ~50s per edificio.
+  - **Pausa su `document.hidden`** (`main.js`/`title.js`, dentro `frame()`,
+    subito dopo `if (stopped) return;`): tab in background/app minimizzata
+    → zero simulazione e zero disegno, solo `last = now` per non accumulare
+    un `dt` enorme al ritorno (`requestAnimationFrame` resta comunque
+    ripianificato, il loop riparte da sé). Necessario perché alcuni browser
+    mobili throttlano `requestAnimationFrame` in background invece di
+    fermarlo del tutto (~1Hz) — senza il controllo esplicito il motore
+    continuerebbe a ridisegnare un canvas invisibile.
+  - **`game/src/renderscale.js` (nuovo)**: scala di risoluzione interna
+    adattiva ("dynamic resolution scaling"), un'unica istanza `RenderScale`
+    creata in `app.js` e condivisa fra menu e partita via `ctx` (stesso
+    pattern di `r`/`pauseBlur`/`input`), 5 gradini (`1, 0.85, 0.7, 0.6,
+    0.5`). Due percorsi indipendenti verso lo stesso `stepIdx`: (a)
+    software rendering (`gl.js`, `Renderer.isSoftwareRendering`, noto già
+    alla creazione del contesto — non "una GPU più lenta", l'assenza
+    totale della GPU: ogni operazione che normalmente gira in parallelo su
+    hardware dedicato viene eseguita dalla CPU in sequenza, da qui i 2-5fps
+    indipendentemente da quanto sia leggera la scena) → subito al gradino
+    minimo, nessuna misura necessaria, il segnale è certo a priori; (b)
+    tutto il resto (GPU mobile debole ma vera, throttling termico, scena
+    affollata) → media mobile esponenziale del framerate REALE (tempo di
+    frame non clampato, come `cutsceneDt` già in `main.js` per lo stesso
+    motivo: un `dt` limitato a 0.05s nasconderebbe proprio i frame lenti
+    da individuare), isteresi fra soglia di discesa (24fps) e di risalita
+    (50fps) + cooldown di 3s fra un cambio e il successivo. **Bug corretto
+    prima di pubblicare**: il primissimo `sample()` inizializzava l'EMA sul
+    valore grezzo di un solo frame e poteva già decidere un cambio subito
+    (JIT a freddo/upload texture, il momento meno rappresentativo) —
+    `cooldownT` ora parte già "in cooldown" invece che a 0, così i primi
+    3s scaldano solo la media. La scala riduce SOLO `canvas.width/height`
+    (il backing store fisico, dentro `resize()`), mai `clientWidth/Height`:
+    funziona senza toccare `Camera.projection()`/`screenProjection()`
+    (già in coordinate CSS, indipendenti dalla risoluzione fisica) — il
+    browser fa lo stesso upscale bilineare che già fa per ogni sprite
+    (LINEAR ovunque nel motore). `title.js` non richiamava `resize()` ad
+    ogni frame (solo al mount e sull'evento `resize` della finestra):
+    aggiunta la chiamata anche lì, altrimenti un cambio di gradino restava
+    senza effetto sul canvas finché la finestra non veniva davvero
+    ridimensionata.
+  - Verificato: build esbuild pulita, logica testata isolatamente in Node
+    (pool, `RenderScale` — software rendering fisso al minimo, degrado
+    sostenuto che scende un gradino ogni ~3s fino al minimo, recupero
+    altrettanto graduale, nessun cambio con fps oscillante nella banda fra
+    le due soglie). **Non verificato dal vivo**: `game/assets/` è
+    gitignored in questo checkout, la title screen non carica qui — da
+    controllare in un ambiente con gli asset veri prima di fidarsi ciecamente
+    dei numeri sopra su un device reale.
