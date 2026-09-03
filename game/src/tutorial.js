@@ -1,12 +1,25 @@
 // Tutorial ("me3" in title screen, room "tutorial" — mai portato finora,
 // STUDIO.md). [C] tutorial_square/DrawGUI.gml: 34 messaggi in inglese (mai
 // tradotti nel decompilato stesso), un balloon di testo fisso in basso — 33
-// qui sotto: **[Rimosso su richiesta dell'autore]** il messaggio sui
-// "bottoni vista" (il terzo pannello della barra inferiore, menoo 2 in
+// qui sotto in origine: **[Rimosso su richiesta dell'autore]** il messaggio
+// sui "bottoni vista" (il terzo pannello della barra inferiore, menoo 2 in
 // main.js — tolto perche' erano segnaposto senza funzione, e zoom+/-
 // duplicavano pinch/rotella) non ha piu' senso senza quel pannello; il
 // messaggio successivo (pan/zoom col mouse/dito) resta, copre da solo la
 // stessa informazione utile.
+// [Bug corretto, segnalato dall'autore: "nel tutorial spezza in due parti
+// la parte sul lanciarazzi, e nella seconda specifica che il tocco
+// prolungato va fatto selezionando lo strumento mano"] Il messaggio sul
+// lanciarazzi (raccolta risorse dai palloncini + il tocco prolungato per
+// aprire il pannello/attivare l'autodifesa) era un singolo balloon con due
+// concetti distinti — spezzato in due sotto, di nuovo 34 messaggi in
+// totale (coincidenza col conteggio originale sopra, contenuto diverso). Il
+// secondo dei due ora specifica anche di selezionare prima lo strumento
+// mano: **[C]** `input.onLongPress` (game/src/input.js) e il suo
+// consumatore in main.js richiedono davvero `r12.selec === 0` (mano) per
+// scattare — con un altro attrezzo selezionato (es. un edificio da
+// piazzare) il tocco prolungato su una torretta non apre nessun pannello,
+// un dettaglio che il balloon originale non spiegava.
 // L'avanzamento e' un misto di due meccanismi, entrambi letti dal
 // decompilato: **[C]** 8 fasi hanno una condizione di gioco vera
 // (tutorial_square/Step.gml, stepTutorialAuto() sotto); tutte le altre
@@ -45,7 +58,8 @@ export const TUTORIAL_TEXTS = [
   "If you have enough parks you will see an happy face next to the resources count, otherwise yes, they will stop paying taxes!",
   "The defense of the city is another crucial point. As you can see we use massive artillery to keep the city safe!",
   "Build a rocket launcher in an empty spot. Remember that you can't build them too close at it would be too dangerous!",
-  "We use weapons also to gather resources from our enemy, that carry them in those huge balloons you see flying above us! Tip: press and hold a weapon to open its panel and turn on Auto-defense, so it shoots down spy balloons and planes on its own (small cost per minute)!",
+  "We use weapons also to gather resources from our enemy, that carry them in those huge balloons you see flying above us!",
+  "Tip: select the hand tool, then press and hold a weapon to open its panel and turn on Auto-defense, so it shoots down spy balloons and planes on its own (small cost per minute)!",
   "Yes, I know what you are thinking and yes, NIMBUS grew stealing oil to foreign nations, but what can you do?",
   "When a balloon is aproaching, click to the closest weapon to destroy it, then quickly collect the resource falling from the sky!",
   "Green balloons are the ones carrying oil. They are the most common ones!",

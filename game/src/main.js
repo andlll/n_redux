@@ -6831,7 +6831,9 @@ export async function mountMatch(ctx, params = {}) {
         // [Bug corretto, segnalato dall'autore: "la freccia punta a caso
         // invece che puntare le monete"] Le tre fasi che parlano di una
         // risorsa specifica della barra in alto (6: denaro appena
-        // raccolto, 11: energia/centrali, 24: olio/consumo) puntavano tutte
+        // raccolto, 11: energia/centrali, 25: olio/consumo — indice
+        // spostato di uno da 24: tutorial.js, TUTORIAL_TEXTS, il messaggio
+        // sul lanciarazzi spezzato in due) puntavano tutte
         // allo stesso bersaglio sbagliato — il CENTRO dell'intero schermo a
         // y=100, un punto nel bel mezzo della mappa di gioco, non vicino
         // alla barra risorse (che vive in alto a sinistra, `barX`/`barY`
@@ -6842,7 +6844,7 @@ export async function mountMatch(ctx, params = {}) {
         // decompilato per disegnare i numeri, sotto), dal basso verso
         // l'alto (`angle:90`, gia' la convenzione per "punta alla barra
         // risorse in alto" — solo le coordinate erano sbagliate).
-        case 6: case 11: case 24: {
+        case 6: case 11: case 25: {
           const resX = tutorialState.phase === 6 ? 340 : tutorialState.phase === 11 ? 228 : 142;
           target = { x: barX + resX, y: barY + 43, angle: 90 };
           break;

@@ -8,11 +8,17 @@ const TAP_SLOP = 8;       // px di movimento sotto cui resta un tap
 const TAP_MS = 350;
 // [Nuova funzionalita', richiesta dall'autore: "un modo per aprire il
 // pannello stats/autodifesa di una torretta senza rubare il tap normale,
-// che deve continuare a sparare"] Soglia del tocco prolungato — piu' lunga
-// di TAP_MS apposta: quando scatta, il rilascio del dito arriva sempre
-// oltre TAP_MS, quindi onTap non parte mai per lo stesso gesto (nessun
-// doppio evento da filtrare a mano lato chiamante).
-const LONG_PRESS_MS = 550;
+// che deve continuare a sparare"] Soglia del tocco prolungato.
+// [Bug corretto, segnalato dall'autore: "il tocco prolungato per selezionare
+// le strutture di difesa e' troppo lungo"] Era 550ms (deliberatamente sopra
+// TAP_MS, cosi' il rilascio arrivava sempre oltre TAP_MS e onTap non
+// scattava mai per lo stesso gesto): ridotta a 350ms, uguale a TAP_MS, su
+// richiesta esplicita — non serve piu' un margine fra le due soglie perche'
+// a evitare il doppio evento e' gia' il flag esplicito `longPressFired`
+// controllato in _up() sotto (`!st.longPressFired`), non l'ordine
+// temporale: un long press che scatta PRIMA del rilascio marca il gesto e
+// basta, qualunque sia la relazione fra le due costanti.
+const LONG_PRESS_MS = 350;
 
 export class Input {
   constructor(el) {
