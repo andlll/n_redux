@@ -6893,27 +6893,36 @@ export async function mountMatch(ctx, params = {}) {
     // ogni altro elemento della UI. Nessuno sprite dell'originale (il
     // decompilato non ha una vera pausa, STUDIO.md "playbuttoner" era
     // tutt'altro): icona fornita dall'autore (pauseIconFrame, sopra —
-    // game/pause-button.png), un cerchio scuro con l'icona "II" gia'
-    // disegnata dentro il PNG stesso (bordo trasparente attorno, angoli del
-    // riquadro 64x64 esclusi), non piu' composta da due rettangoli pieni
-    // come nella primissima versione di questo bottone.
-    // [Bug corretto, segnalato dall'autore: "il bottone pausa e' piu'
-    // piccolo dei tre a sinistra (handee/groo/baccc, 92px scalati a
-    // UI_SCALE 0.7/0.6 = ~64/~55px)"] Prima disegnato a 48px da un PNG
-    // 64x64: oltre a essere gia' piu' piccolo per scelta, il PNG originale
-    // aveva anche un margine trasparente attorno al cerchio (contenuto vero
-    // 44x44 su tela 64x64), quindi il cerchio VISIBILE finiva a ~33px, meno
-    // di meta' degli altri tre. Corretto in due passi offline (mai un
-    // upscale a runtime): il margine e' stato ritagliato e il contenuto
-    // ricomposto su una tela 64x64 piena (resize LANCZOS una tantum, non
-    // uno stretch GPU ripetuto ogni frame); qui la dimensione di disegno
-    // sale da 48 a 64 (== pauseIconTex.width: scala 1, nessuna
-    // interpolazione, nessuna perdita) per restare fedele alla risoluzione
-    // nativa del file.
+    // game/pause-button.png), esattamente il file ricevuto, senza nessuna
+    // modifica offline.
+    // [Corretto su richiesta dell'autore: "voglio l'originale, coi buchi
+    // visibili, pixel perfect"] Una prima versione qui aveva "riparato" il
+    // PNG riempiendo di bianco pieno i due buchi della "II" (letti come un
+    // difetto, non intenzionale) e poi ritagliato/ricomposto il margine
+    // trasparente attorno al cerchio (contenuto vero 44x44 su tela 64x64)
+    // per pareggiare la dimensione visibile agli altri tre bottoni
+    // (handee/groo/baccc, ~64/~55px). Il file e' TUTTO un unico colore
+    // pieno (0,0,0 a piena alpha, verificato pixel per pixel): la "II" non
+    // e' bianca disegnata sopra, sono BUCHI veri (alpha 0) nel cerchio
+    // nero — la stessa tecnica silhouette di handee/groo/baccc, solo con
+    // due rettangoli di trasparenza invece di una sagoma piena. Qui quindi
+    // niente flood-fill ne' resize: il cerchio visibile torna a 44x44 (il
+    // margine trasparente attorno resta, disegnato a risoluzione nativa —
+    // PB_SIZE = pauseIconTex.width, scala 1), piu' piccolo degli altri tre
+    // come nel file originale.
+    // Essendo un colore piatto su alpha (non piu' "gia' colorato" come si
+    // pensava), vale lo stesso trattamento notturno delle altre icone nere
+    // della barra (`iconsDark`/`setColorize()`, sopra): di giorno resta
+    // nero (colorize off, RGB*tint bianco = nero), di notte diventa bianco
+    // pieno (colorize on: solo l'alpha della texture fa da maschera, RGB
+    // sostituito dal tint) — i buchi restano SEMPRE trasparenti in
+    // entrambi i casi, l'alpha 0 non cambia con la colorize mode.
     const PB_SIZE = 64;
     const pbX = canvas.clientWidth - UI_MARGIN - PB_SIZE, pbY = canvas.clientHeight - UI_MARGIN - PB_SIZE;
     pauseBtnRect = { x: pbX, y: pbY, w: PB_SIZE, h: PB_SIZE };
+    r.setColorize(iconsDark);
     r.draw(pauseIconFrame, pbX, pbY, PB_SIZE / pauseIconTex.width, 0xffffff, 1);
+    r.setColorize(false);
     r.flush();
 
     // Menu di pausa: sfuma quello che e' appena stato disegnato (il mondo,
