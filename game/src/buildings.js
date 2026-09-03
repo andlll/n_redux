@@ -3155,12 +3155,17 @@ export const AUTO_DEFENSE_COST_PER_MIN = {   // [I] mon/min, per livello (1 = gr
  * leggere `turretHitBox()` per ancorarli sopra la torretta giusta.
  */
 // [Bug corretto, segnalato dall'autore: "i fumetti del costo dell'autodifesa
-// devono comparire meno spesso"] Era 1s (un impulso visivo al secondo per
-// torretta attiva, due in sequenza al livello 3): alzato a 3s — il prelievo
-// vero (r12.mon -=, sopra) resta comunque continuo/frazionato su `dt`, solo
-// l'IMPULSO VISIVO diventa piu' diradato, un "promemoria" invece di un
-// lampeggio quasi ininterrotto con piu' torrette attive insieme.
-const AUTO_DEFENSE_FLOAT_PERIOD = 3;   // [I] secondi fra un impulso visivo e il successivo
+// devono comparire meno spesso — 1 ogni 8s al livello 2, 1 ogni 5s al
+// livello 3"] Era un solo valore fisso (prima 1s, poi 3s per ogni livello):
+// ora un periodo diverso per livello, PIU' LUNGO al 2 che al 3 apposta — il
+// livello 3 spende gia' il doppio al minuto (AUTO_DEFENSE_COST_PER_MIN
+// sopra) e spawna gia' 2 icone a impulso invece di 1 (`count`, sotto): un
+// impulso piu' frequente ma raddoppiato resta comunque un "meno spesso"
+// rispetto a prima (era 3s per entrambi), solo tarato sul livello invece che
+// uguale per tutti. Il prelievo vero (r12.mon -=, sotto) resta comunque
+// continuo/frazionato su `dt`, indipendente da questa tabella: cambia solo
+// il ritmo dell'IMPULSO VISIVO.
+const AUTO_DEFENSE_FLOAT_PERIOD = { 2: 8, 3: 5 };   // [I] secondi fra un impulso visivo e il successivo, per livello
 export function stepAutoDefenseUpkeep(buildings, r12, dt) {
   const spawns = [];
   for (const b of buildings) {
@@ -3171,8 +3176,9 @@ export function stepAutoDefenseUpkeep(buildings, r12, dt) {
     if (!costPerMin || !canAfford(r12, { mon: cost })) { b.autoDefenseLevel = 1; b._costFloatT = 0; continue; }
     r12.mon -= cost;
     b._costFloatT = (b._costFloatT ?? 0) + dt;
-    if (b._costFloatT >= AUTO_DEFENSE_FLOAT_PERIOD) {
-      b._costFloatT -= AUTO_DEFENSE_FLOAT_PERIOD;
+    const floatPeriod = AUTO_DEFENSE_FLOAT_PERIOD[level];
+    if (b._costFloatT >= floatPeriod) {
+      b._costFloatT -= floatPeriod;
       spawns.push({ x: b.x, y: b.y, type: b.type, count: level - 1 });
     }
   }
