@@ -923,6 +923,20 @@ export async function mountMatch(ctx, params = {}) {
   // collectCoinAt() piu' sotto e disegnate/scartate nel loop principale.
   let coinPops = [];
   const COIN_POP_LIFE = 0.4;
+  // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva quando
+  // l'autodifesa scala i soldi — l'icona blu dei soldi con un colorize
+  // rosso, fade out, sale verso l'alto: una per il livello 2, due in
+  // sequenza per il livello 3"] Stesso principio di `coinPops` sopra (un
+  // array di `{x,y,t}`, spawnati altrove e invecchiati/disegnati nel loop
+  // principale) ma un'animazione diversa — sale e sfuma invece di crescere
+  // sul posto, coerente con un COSTO invece di un guadagno. Spawnati da
+  // stepAutoDefenseUpkeep() (buildings.js): quella funzione resta pura
+  // simulazione (nessun accesso a sprite/atlas/render), quindi ritorna solo
+  // le richieste di spawn ({x,y,type,count} per torretta appena "scattata")
+  // — il loop principale le traduce in floater veri, sapendo gia' come
+  // leggere `turretHitBox()` per ancorarli sopra la torretta giusta.
+  let costFloaters = [];
+  const COST_FLOAT_LIFE = 1.0, COST_FLOAT_RISE = 56;
   // Il fumo decorativo delle centrali (game/src/smoke.js): una o due ciminiere
   // per `industria` in piedi, mai in cantiere — vedi stepSmokeSpawner() piu'
   // sotto.
@@ -5384,6 +5398,10 @@ export async function mountMatch(ctx, params = {}) {
         coinPops[i].t += dt;
         if (coinPops[i].t >= COIN_POP_LIFE) coinPops.splice(i, 1);
       }
+      for (let i = costFloaters.length - 1; i >= 0; i--) {
+        costFloaters[i].t += dt;
+        if (costFloaters[i].t >= COST_FLOAT_LIFE) costFloaters.splice(i, 1);
+      }
       stepConstructionBalloons(constructionBalloons, constructionBoxes, dt);
       // onLand: [C] mon_box|mon_bbox/Alarm_0.gml crea "smoko" prima di
       // autodistruggersi — vedi il commento in stepConstructionBoxes() (balloons.js).
@@ -5508,8 +5526,18 @@ export async function mountMatch(ctx, params = {}) {
       // AUTO_DEFENSE_COST_PER_MIN, un valore per livello 2/3) — prima del
       // fuoco vero sotto, cosi' una torretta appena rimasta senza fondi
       // (b.autoDefenseLevel riportato a 1 qui) non spara comunque quel
-      // colpo nello stesso frame.
-      stepAutoDefenseUpkeep(buildings, r12, dt);
+      // colpo nello stesso frame. Le richieste di spawn ritornate (una ogni
+      // AUTO_DEFENSE_FLOAT_PERIOD di prelievo continuo — buildings.js)
+      // diventano qui i floater veri (costFloaters, sopra): ancorati sopra
+      // la torretta vera con turretHitBox() (solo main.js sa leggere
+      // sprite/atlas), un secondo al livello 3 parte leggermente sfalsato
+      // (t negativo: stepCostFloaters() sotto lo ignora finche' non arriva
+      // a 0) invece che impilato esattamente sul primo — "due in sequenza",
+      // non due sovrapposte.
+      for (const s of stepAutoDefenseUpkeep(buildings, r12, dt)) {
+        const top = s.y - turretHitBox(s.type).oy - 10;
+        for (let i = 0; i < s.count; i++) costFloaters.push({ x: s.x, y: top, t: -i * 0.2 });
+      }
       // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
       // gia' nella direzione appena calcolata (b.aimAngle). Automatico resta
       // SOLO contro minacce vere al livello 1 (il default) — dal livello 2
@@ -6060,6 +6088,33 @@ export async function mountMatch(ctx, params = {}) {
       const k = p.t / COIN_POP_LIFE;
       const size = 36 + k * 94;
       r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, 0x4fc3f7, (1 - k) * 0.85);
+    }
+    // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva
+    // quando l'autodifesa scala i soldi al giocatore — l'icona blu dei
+    // soldi con un colorize rosso, fade out, sale verso l'alto"]
+    // `costFloaters` (sopra, spawnati dal loop di simulazione quando
+    // stepAutoDefenseUpkeep() segnala un prelievo — buildings.js): la
+    // stessa icona "soldico" (coins.js, il pin blu della raccolta tasse)
+    // ma in colorize mode — un pin blu MOLTIPLICATO per un tint non
+    // darebbe mai un rosso leggibile (il blu ha poco rosso da moltiplicare
+    // per), colorize sostituisce l'RGB con `tint` usando solo l'alpha
+    // della texture come sagoma, stessa tecnica gia' in uso per le icone
+    // nere della UI (`iconsDark`/`setColorize()`, sopra). Sale e sfuma
+    // invece di crescere sul posto come le bolle di raccolta appena sopra:
+    // coerente con un COSTO, non un guadagno. `p.t < 0` (il secondo
+    // floater del livello 3, spawnato con un ritardo negativo apposta —
+    // vedi il commento sul loop di simulazione) non e' ancora "nato":
+    // saltato senza disegnare nulla, mai tolto dall'array (stepCostFloaters,
+    // sopra: l'invecchiamento normale lo fa comunque avanzare verso 0).
+    const costFloaterFrame = frameFor("soldico");
+    if (costFloaterFrame && costFloaters.length) {
+      r.setColorize(true);
+      for (const p of costFloaters) {
+        if (p.t < 0) continue;
+        const k = p.t / COST_FLOAT_LIFE;
+        r.draw(costFloaterFrame, p.x, p.y - k * COST_FLOAT_RISE, 0.55, 0xe53935, (1 - k) * 0.9);
+      }
+      r.setColorize(false);
     }
     // Linguetta di prezzo sul segnale di potenziamento (upsign) al passaggio
     // del mouse — [C] upsign12|23|45s|45d/Mouse_MouseEnter.gml, vedi
@@ -7278,7 +7333,7 @@ export async function mountMatch(ctx, params = {}) {
     get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
     atmo, get pedestrians() { return pedestrians; },
     get balloons() { return balloons; }, get loot() { return loot; }, get coins() { return coins; },
-    get coinPops() { return coinPops; },
+    get coinPops() { return coinPops; }, get costFloaters() { return costFloaters; },
     get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
     get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
     get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },

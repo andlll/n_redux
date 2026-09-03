@@ -3140,14 +3140,35 @@ export const AUTO_DEFENSE_COST_PER_MIN = {   // [I] mon/min, per livello (1 = gr
  * corso (o gia' distrutto/ricostruito, `b.autoDefenseLevel` perso col resto
  * dell'istanza) non paga mai: il controllo stesso non e' raggiungibile in
  * quello stato (drawBuildingInfoPanel, main.js).
+ *
+ * [Nuova funzionalita', richiesta dall'autore: "una traccia visiva quando
+ * l'autodifesa scala i soldi, una icona per il livello 2 e due in sequenza
+ * per il livello 3"] Il conto alla rovescia dell'impulso visivo vive qui
+ * (`b._costFloatT`, un accumulatore per torretta — resettato quando il
+ * livello scende a 1, cosi' una torretta appena spenta e poi riaccesa non
+ * "eredita" un impulso a meta' strada) perche' e' l'UNICO posto che gia'
+ * sa quando un prelievo vero e' avvenuto; la funzione resta pura
+ * simulazione (nessun accesso a sprite/atlas/render, come il resto di
+ * questo file) — ritorna solo le RICHIESTE di spawn (`{x,y,type,count}`,
+ * `count` = quante icone: `level-1`, cosi' livello 2 -> 1, livello 3 -> 2),
+ * il chiamante (main.js) le traduce in floater veri sapendo gia' come
+ * leggere `turretHitBox()` per ancorarli sopra la torretta giusta.
  */
+const AUTO_DEFENSE_FLOAT_PERIOD = 1;   // [I] secondi fra un impulso visivo e il successivo
 export function stepAutoDefenseUpkeep(buildings, r12, dt) {
+  const spawns = [];
   for (const b of buildings) {
     const level = b.autoDefenseLevel ?? 1;
-    if (level < 2 || b.construction) continue;
+    if (level < 2 || b.construction) { b._costFloatT = 0; continue; }
     const costPerMin = AUTO_DEFENSE_COST_PER_MIN[b.type]?.[level];
     const cost = costPerMin * (dt / 60);
-    if (!costPerMin || !canAfford(r12, { mon: cost })) { b.autoDefenseLevel = 1; continue; }
+    if (!costPerMin || !canAfford(r12, { mon: cost })) { b.autoDefenseLevel = 1; b._costFloatT = 0; continue; }
     r12.mon -= cost;
+    b._costFloatT = (b._costFloatT ?? 0) + dt;
+    if (b._costFloatT >= AUTO_DEFENSE_FLOAT_PERIOD) {
+      b._costFloatT -= AUTO_DEFENSE_FLOAT_PERIOD;
+      spawns.push({ x: b.x, y: b.y, type: b.type, count: level - 1 });
+    }
   }
+  return spawns;
 }
