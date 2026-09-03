@@ -6935,7 +6935,14 @@ export async function mountMatch(ctx, params = {}) {
     // frame, il balloon resterebbe comunque coperto (e visibile solo il suo
     // testo HTML, che non passa dal canvas — lo stesso problema del fix "in
     // pausa" qui sopra, stavolta per l'overlay invece del menu di pausa).
-    if (tutorialState?.showText && !paused && !buildMenuOpen) {
+    // [Nuova funzionalita', richiesta dall'autore: "quando il giocatore apre
+    // una finestra edificio (normale o difesa) nascondi il testo del
+    // tutorial"] `&& !buildingInfoPanel`: stesso principio, stesso motivo —
+    // quel pannello e' un altro blur pieno schermo (drawBuildingInfoPanel()
+    // sopra), il balloon di testo ci resterebbe sotto, visibile solo nel suo
+    // HTML fuori canvas invece che coperto per davvero come il resto del
+    // mondo.
+    if (tutorialState?.showText && !paused && !buildMenuOpen && !buildingInfoPanel) {
       const pad = 20;
       // [Bug corretto, segnalato dall'autore: "su mobile il pollice e'
       // gigante e occupa troppo spazio"] Il box usa ora sempre tutta la
@@ -6964,8 +6971,12 @@ export async function mountMatch(ctx, params = {}) {
     // `&& !buildMenuOpen`: stesso motivo di freccia/balloon sopra — resterebbe
     // comunque coperto dall'overlay costruzioni mobile, disegnato piu' tardi
     // nel frame; `tutorialOkRect` resta `null` (sopra), quindi non serve
-    // nemmeno bloccare input.onTap a parte per questo caso.
-    if (tutorialState?.showOkButton && !buildMenuOpen) {
+    // nemmeno bloccare input.onTap a parte per questo caso. `&&
+    // !buildingInfoPanel`: stesso motivo — senza il balloon di testo sopra
+    // (nascosto insieme, vedi il commento li') un pollice "avanti" da solo,
+    // ancorato a un `tutorialBoxRect` ormai vecchio di un frame, galleggerebbe
+    // senza senso sopra il pannello edificio appena aperto.
+    if (tutorialState?.showOkButton && !buildMenuOpen && !buildingInfoPanel) {
       // [Bug corretto, segnalato dall'autore: "su mobile il pollice e'
       // gigante e occupa troppo spazio"] Scala 1.3 -> 1: sagoma nativa
       // (45x52), gia' sopra il minimo ~44px comunemente raccomandato per un
