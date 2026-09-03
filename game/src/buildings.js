@@ -3040,32 +3040,46 @@ export function stepTurretAim(buildings, threats, balloons) {
     const def = BUILDING_TYPES[b.type];
     if (!def.aim) continue;
     const range2 = def.aim.range * def.aim.range;
-    let nearest = null, nearestD2 = range2, nearestIsSpyBalloon = false;
+    let nearest = null, nearestD2 = range2, nearestIsBalloon = false, nearestIsSpyBalloon = false;
     for (const th of threats) {
       const d2 = (th.x - b.x) ** 2 + (th.y - b.y) ** 2;
-      if (d2 < nearestD2) { nearestD2 = d2; nearest = th; nearestIsSpyBalloon = false; }
+      if (d2 < nearestD2) { nearestD2 = d2; nearest = th; nearestIsBalloon = false; nearestIsSpyBalloon = false; }
     }
     // Fallback mongolfiere: SOLO se non c'e' gia' una minaccia vera in
     // portata (nearest ancora null qui) — le minacce vere vincono sempre.
     // [Nuova funzionalita', richiesta dall'autore: "modalita' autodifesa
-    // opzionale per le torrette, abbatte da sola mongolfiere/aerei spia"]
-    // Con `b.autoDefense` attivo (toggle nel pannello edificio, main.js) il
-    // fallback si restringe alle SOLE mongolfiere/aerei spia (`isSpy`,
-    // balloons.js — monspi/recogn): mai a quelle di risorse, che il
-    // giocatore potrebbe voler ancora raccogliere di persona. Senza
-    // autodifesa il fallback resta quello di sempre (la piu' vicina di
-    // qualunque tipo), solo per il tap manuale (fireTurretManual,
-    // projectiles.js) — mai per il fuoco automatico, invariato sotto.
+    // opzionale per le torrette, a tre livelli con costo crescente"] Nessun
+    // equivalente nel decompilato. `b.autoDefenseLevel` (1/2/3, toggle nel
+    // pannello edificio, main.js — 1 e' il default implicito quando non
+    // ancora impostato, `?? 1` ovunque venga letto):
+    //   1 — nessuna modifica: il fallback resta quello di sempre (la
+    //       mongolfiera/spia piu' vicina di QUALUNQUE tipo), usato pero'
+    //       SOLO dal tap manuale (fireTurretManual, projectiles.js) — il
+    //       fuoco automatico sotto lo ignora comunque a livello 1.
+    //   2 — il fallback si restringe alle SOLE mongolfiere/aerei spia
+    //       (`isSpy`, balloons.js — monspi/recogn): quelle di risorse
+    //       restano fuori, il giocatore potrebbe volerle ancora raccogliere
+    //       di persona.
+    //   3 — il fallback torna ad aprirsi a QUALUNQUE mongolfiera (come il
+    //       livello 1), ma stavolta il fuoco automatico (stepTurretFire,
+    //       projectiles.js) le ingaggia TUTTE, spia o risorsa che sia — la
+    //       cassa di loot cade comunque, il giocatore la raccoglie dopo.
+    // `nearestIsBalloon` (sotto) distingue "il bersaglio agganciato e' una
+    // mongolfiera qualunque" da `nearestIsSpyBalloon` ("...ed e' anche una
+    // spia"): stepTurretFire ha bisogno di entrambi per decidere se il
+    // livello corrente autorizza il colpo automatico.
+    const level = b.autoDefenseLevel ?? 1;
     if (!nearest && balloons) {
       nearestD2 = range2;
       for (const bal of balloons) {
         const isSpy = !!BALLOON_TYPES[bal.type]?.isSpy;
-        if (b.autoDefense && !isSpy) continue;
+        if (level === 2 && !isSpy) continue;
         const d2 = (bal.x - b.x) ** 2 + (bal.y - b.y) ** 2;
-        if (d2 < nearestD2) { nearestD2 = d2; nearest = bal; nearestIsSpyBalloon = isSpy; }
+        if (d2 < nearestD2) { nearestD2 = d2; nearest = bal; nearestIsBalloon = true; nearestIsSpyBalloon = isSpy; }
       }
     }
-    if (!nearest) { b.aimAngle = null; b.aimTarget = null; b.aimIsSpyBalloon = false; continue; }
+    if (!nearest) { b.aimAngle = null; b.aimTarget = null; b.aimIsBalloon = false; b.aimIsSpyBalloon = false; continue; }
+    b.aimIsBalloon = nearestIsBalloon;
     b.aimIsSpyBalloon = nearestIsSpyBalloon;
     const angle = (Math.atan2(-(nearest.y - b.y), nearest.x - b.x) * 180) / Math.PI;
     // [Bug corretto] `b.fireT` (game/src/projectiles.js: azzerato a ogni
@@ -3093,37 +3107,47 @@ export function stepTurretAim(buildings, threats, balloons) {
 /**
  * [Nuova funzionalita', richiesta dall'autore: "modalita' per le torrette
  * di difesa per cui abbattono automaticamente mongolfiere rosse e aerei
- * spia, attivabile dall'utente con un costo al minuto"] Nessun equivalente
- * nel decompilato: puramente nostro, come `sandbox`/DEBUG_INFINITE_RESOURCES
- * sopra. Un costo crescente per tipo di torretta, sulla stessa proporzione
- * 1:2:4 gia' usata per `placeCost` (missile 5000/gatling 10000/laser 20000
- * mon, sopra) — nessun valore decompilato da cui derivarli, scelti per
- * restare un vero costo ricorrente (non trascurabile a lungo andare) senza
- * essere proibitivi su una singola torretta.
+ * spia, attivabile dall'utente con un costo al minuto — tre livelli, il
+ * terzo spara a tutto, costo crescente per livello"] Nessun equivalente nel
+ * decompilato: puramente nostro, come `sandbox`/DEBUG_INFINITE_RESOURCES
+ * sopra. Un solo costo per livello 1 (zero: e' il comportamento di sempre,
+ * minacce vere sempre gratis) — solo 2 e 3 hanno una voce qui. Scala su due
+ * assi, nessuno dei due letto dal decompilato: fra torrette, la stessa
+ * proporzione 1:2:4 gia' usata per `placeCost` (missile 5000/gatling
+ * 10000/laser 20000 mon, sopra); fra livello 2 e 3 della STESSA torretta,
+ * un raddoppio secco (livello 3 ingaggia molto di piu' — ogni mongolfiera
+ * di risorse in portata, non solo le spie — quindi costa il doppio di
+ * quanto costerebbe restare al livello 2).
  */
-export const AUTO_DEFENSE_COST_PER_MIN = { missile: 30, gatling: 60, laser: 120 };   // [I] mon/min
+export const AUTO_DEFENSE_COST_PER_MIN = {   // [I] mon/min, per livello (1 = gratis, nessuna voce)
+  missile: { 2: 30, 3: 60 },
+  gatling: { 2: 60, 3: 120 },
+  laser: { 2: 120, 3: 240 },
+};
 
 /**
- * Preleva il costo dell'autodifesa (sopra) dalle torrette con `b.autoDefense`
- * attivo, un frazionamento continuo di AUTO_DEFENSE_COST_PER_MIN su `dt`
- * (non una detrazione a scatti ogni 60s: coerente con ogni altro drain
- * continuo del motore — produzione/consumo di industria/casa, main.js).
- * Si autodisattiva da sola (`b.autoDefense = false`) quando i fondi non
- * bastano piu' per la prossima frazione — mai un saldo negativo lasciato
- * a carico del giocatore, a differenza del costo per colpo di gatling
- * (projectiles.js, WEAPONS.gatling: quello e' fedele al decompilato,
- * questo essendo puramente nostro non ha nessun vincolo di fedelta' da
- * rispettare). Un edificio la cui costruzione e' ancora in corso (o gia'
- * distrutto/ricostruito, `b.autoDefense` perso col resto dell'istanza)
- * non paga mai: il toggle stesso non e' raggiungibile in quello stato
- * (drawBuildingInfoPanel, main.js).
+ * Preleva il costo dell'autodifesa (sopra) dalle torrette con
+ * `b.autoDefenseLevel` >= 2, un frazionamento continuo di
+ * AUTO_DEFENSE_COST_PER_MIN[tipo][livello] su `dt` (non una detrazione a
+ * scatti ogni 60s: coerente con ogni altro drain continuo del motore —
+ * produzione/consumo di industria/casa, main.js). Si autodisattiva da sola
+ * (torna a `b.autoDefenseLevel = 1`, il livello "gratis") quando i fondi
+ * non bastano piu' per la prossima frazione — mai un saldo negativo
+ * lasciato a carico del giocatore, a differenza del costo per colpo di
+ * gatling (projectiles.js, WEAPONS.gatling: quello e' fedele al
+ * decompilato, questo essendo puramente nostro non ha nessun vincolo di
+ * fedelta' da rispettare). Un edificio la cui costruzione e' ancora in
+ * corso (o gia' distrutto/ricostruito, `b.autoDefenseLevel` perso col resto
+ * dell'istanza) non paga mai: il controllo stesso non e' raggiungibile in
+ * quello stato (drawBuildingInfoPanel, main.js).
  */
 export function stepAutoDefenseUpkeep(buildings, r12, dt) {
   for (const b of buildings) {
-    if (!b.autoDefense || b.construction) continue;
-    const costPerMin = AUTO_DEFENSE_COST_PER_MIN[b.type];
+    const level = b.autoDefenseLevel ?? 1;
+    if (level < 2 || b.construction) continue;
+    const costPerMin = AUTO_DEFENSE_COST_PER_MIN[b.type]?.[level];
     const cost = costPerMin * (dt / 60);
-    if (!costPerMin || !canAfford(r12, { mon: cost })) { b.autoDefense = false; continue; }
+    if (!costPerMin || !canAfford(r12, { mon: cost })) { b.autoDefenseLevel = 1; continue; }
     r12.mon -= cost;
   }
 }

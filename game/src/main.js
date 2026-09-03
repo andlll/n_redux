@@ -1028,15 +1028,15 @@ export async function mountMatch(ctx, params = {}) {
   // in spazio schermo come `bankPanelOpen`: mentre e' aperto un tap va
   // SOLO al suo bottone di chiusura, mai al mondo sotto.
   let buildingInfoPanel = null;   // istanza edificio, o null
-  // Riquadro (spazio schermo) del toggle di autodifesa dentro il pannello
-  // sopra — ricalcolato ad ogni drawBuildingInfoPanel(), `null` quando il
-  // pannello e' chiuso o l'edificio non e' una torretta (nessun toggle da
-  // disegnare quel frame). onTap (sotto) lo controlla PRIMA di trattare il
-  // tocco come "chiudi il pannello" (comportamento di default per ogni
-  // altro punto del pannello) — stesso principio dei bottoni di
-  // bankPanelOpen/tradePanelOpen sopra, qui con un solo bottone invece di un
-  // array perche' non ce n'e' mai piu' di uno alla volta.
-  let buildingInfoToggleRect = null;   // { x, y, w, h }
+  // Riquadro (spazio schermo) del controllo a tre segmenti (1/2/3) di
+  // autodifesa dentro il pannello sopra — ricalcolato ad ogni
+  // drawBuildingInfoPanel(), `null` quando il pannello e' chiuso o
+  // l'edificio non e' una torretta (nessun controllo da disegnare quel
+  // frame). onTap (sotto) lo controlla PRIMA di trattare il tocco come
+  // "chiudi il pannello" (comportamento di default per ogni altro punto del
+  // pannello): un tap dentro il riquadro sceglie il segmento sotto il dito
+  // (`Math.floor((sx - x) / (w / 3))`), non serve un rect per segmento.
+  let buildingInfoSegRect = null;   // { x, y, w, h } — w/3 per segmento (1/2/3)
 
   // Overlay costruzioni per mobile (drawBuildMenuOverlay() piu' sotto) —
   // [Nuova funzionalita', richiesta dall'autore: "sul mobile, invece della
@@ -3023,16 +3023,37 @@ export async function mountMatch(ctx, params = {}) {
    * prima finche' il cantiere non finisce): mostra solo lo stato, non
    * statistiche a zero che sembrerebbero un edificio morente.
    *
-   * [Nuova funzionalita', richiesta dall'autore] Sotto la barra vita, SOLO
-   * per una torretta finita (missile/gatling/laser — `AUTO_DEFENSE_COST_
-   * PER_MIN`, buildings.js), il toggle di autodifesa: un bottone ON/OFF col
-   * costo/minuto, sempre visibile a prescindere dallo stato (cosi' il costo
-   * resta leggibile anche gia' attivo). `buildingInfoToggleRect` (sopra) e'
-   * l'unica eccezione al "qualunque tocco chiude" di onTap — il tocco sul
-   * bottone stesso alterna `b.autoDefense` e TIENE il pannello aperto
-   * (stesso principio "chainable" gia' scelto per tradePanelOpen sopra:
-   * vedere subito il nuovo stato/costo senza dover riaprire il pannello).
+   * [Nuova funzionalita', richiesta dall'autore: "il toggle in tre step con
+   * uno slider stile pannello impostazioni iOS: 1 solo minacce reali, 2
+   * anche le spie (costo piu' alto), 3 spara a tutto (costo ancora piu'
+   * alto), mostra il costo e spiega bene cosa fa ogni step"] Sotto la barra
+   * vita, SOLO per una torretta finita (missile/gatling/laser —
+   * `AUTO_DEFENSE_COST_PER_MIN`, buildings.js): un controllo "segmentato" a
+   * tre posizioni (1/2/3, `AUTO_DEFENSE_LEVELS` sotto per nome/descrizione
+   * di ognuna) invece di un vero slider trascinabile — stesso risultato per
+   * l'utente (un tocco su 1/2/3 sceglie subito quel livello, sempre uno dei
+   * tre selezionato) ma senza dover intercettare `onDrag` dentro il
+   * pannello (oggi sempre e solo pan della camera): un vero slider con
+   * trascinamento avrebbe richiesto un secondo stato "sto trascinando il
+   * cursore" da instradare PRIMA del pan, per un risultato finale
+   * identico — tre segmenti toccabili bastano e sono anche piu' affidabili
+   * col dito. Nome/descrizione/costo del livello ATTUALMENTE selezionato
+   * restano sempre visibili sotto il controllo (si aggiornano subito ad
+   * ogni tocco, il livello non richiede mai una conferma separata).
+   * `buildingInfoSegRect` (sopra) e' l'unica eccezione al "qualunque tocco
+   * chiude" di onTap — un tocco su uno dei tre segmenti alterna
+   * `b.autoDefenseLevel` e TIENE il pannello aperto (stesso principio
+   * "chainable" gia' scelto per tradePanelOpen sopra: vedere subito il
+   * nuovo costo senza dover riaprire il pannello).
    */
+  const AUTO_DEFENSE_LEVELS = [
+    { name: "Real threats only",
+      desc: "Automatically engages planes and airships in range. Always on, no extra cost." },
+    { name: "+ Spy patrol",
+      desc: "Also shoots down red spy balloons and recon planes on sight." },
+    { name: "Full auto",
+      desc: "Fires at anything in range — spies and resource balloons alike (loot still drops)." },
+  ];
   function drawBuildingInfoPanel() {
     const b = buildingInfoPanel;
     const def = BUILDING_TYPES[b.type];
@@ -3053,14 +3074,14 @@ export async function mountMatch(ctx, params = {}) {
     if (residents != null) statLines.push(`Residents: ${Math.round(residents)}`);
     if (production) statLines.push(`Energy: +${production.ele}/cycle (uses ${production.oil} oil)`);
 
-    const autoDefenseCost = AUTO_DEFENSE_COST_PER_MIN[b.type];
-    const showToggle = !b.construction && autoDefenseCost != null;
-    const toggleH = 44;
+    const autoDefenseCosts = AUTO_DEFENSE_COST_PER_MIN[b.type];
+    const showControl = !b.construction && autoDefenseCosts != null;
+    const SEG_H = 40, AUTODEF_BLOCK_H = 144;
 
     const panelW = Math.min(320, cw - 40);
     const barH = 20;
     const headerH = 70;
-    const bodyH = b.construction ? 30 : (22 + barH + 20 + (showToggle ? toggleH + 16 : 0));
+    const bodyH = b.construction ? 30 : (22 + barH + 20 + (showControl ? AUTODEF_BLOCK_H + 16 : 0));
     const statsH = statLines.length * 26;
     const btnH = 46;
     const panelH = headerH + bodyH + statsH + 16 + btnH + 20;
@@ -3070,7 +3091,7 @@ export async function mountMatch(ctx, params = {}) {
     const title = def.label + (maxLevel > 1 && !b.construction ? ` — Level ${b.level}/${maxLevel}` : "");
     drawHtmlText(title, px + panelW / 2, py + 32, { size: 20, maxWidth: panelW - 30 });
 
-    buildingInfoToggleRect = null;
+    buildingInfoSegRect = null;
     let cy = py + headerH;
     if (b.construction) {
       drawHtmlText("Under construction…", px + panelW / 2, cy + 10, { size: 15, maxWidth: panelW - 30 });
@@ -3084,13 +3105,30 @@ export async function mountMatch(ctx, params = {}) {
       const barColor = ratio > 0.5 ? 0x4caf50 : ratio > 0.2 ? 0xffa726 : 0xef5350;
       if (ratio > 0) r.draw(solidFrame(white, barW * ratio, barH), barX, cy, 1, barColor, 0.9);
       cy += barH + 20;
-      if (showToggle) {
-        const on = !!b.autoDefense;
-        buildingInfoToggleRect = { x: barX, y: cy, w: barW, h: toggleH };
-        r.draw(pauseButtonFrame(barW, toggleH), barX, cy, 1, on ? 0x4caf50 : BUTTON_TINT, on ? 0.85 : BUTTON_ALPHA);
-        drawHtmlText(`Auto-defense: ${on ? "ON" : "OFF"} (-${autoDefenseCost} mon/min)`,
-          barX + barW / 2, cy + toggleH / 2, { size: 14, maxWidth: barW - 20 });
-        cy += toggleH + 16;
+      if (showControl) {
+        const level = b.autoDefenseLevel ?? 1;
+        // Traccia neutra (stesso "vetro" di ogni altro bottone del
+        // pannello) + una "pillola" verde sovrapposta sul terzo
+        // selezionato — l'inset (SEG_PAD) la stacca visibilmente dalla
+        // traccia sotto, lo stesso principio di un vero segmented control
+        // iOS (mai un bordo netto fra le tre celle).
+        buildingInfoSegRect = { x: barX, y: cy, w: barW, h: SEG_H };
+        r.draw(pauseButtonFrame(barW, SEG_H), barX, cy, 1, BUTTON_TINT, BUTTON_ALPHA);
+        const segW = barW / 3, SEG_PAD = 3;
+        r.draw(pauseButtonFrame(segW - SEG_PAD * 2, SEG_H - SEG_PAD * 2),
+          barX + (level - 1) * segW + SEG_PAD, cy + SEG_PAD, 1, 0x4caf50, 0.88);
+        for (let i = 0; i < 3; i++) {
+          drawHtmlText(String(i + 1), barX + segW * (i + 0.5), cy + SEG_H / 2, { size: 16 });
+        }
+        cy += SEG_H + 12;
+        const info = AUTO_DEFENSE_LEVELS[level - 1];
+        drawHtmlText(info.name, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
+        cy += 20;
+        drawHtmlText(info.desc, barX, cy, { size: 12.5, maxWidth: barW, wrap: true, align: "center" });
+        cy += 50;
+        const costText = level === 1 ? "Free — always on" : `-${autoDefenseCosts[level]} mon/min`;
+        drawHtmlText(costText, px + panelW / 2, cy, { size: 14, maxWidth: panelW - 30, color: level > 1 ? "#c65050" : undefined });
+        cy += 22;
       }
     }
     for (const line of statLines) {
@@ -4342,13 +4380,14 @@ export async function mountMatch(ctx, params = {}) {
     // trattamento modale di bankPanelOpen appena sopra: un tocco QUALUNQUE
     // lo chiude (non solo il bottone dedicato, disegnato per scoperta/
     // chiarezza), mai raggiunge il mondo sotto mentre e' aperto. Un tocco
-    // sul toggle di autodifesa (buildingInfoToggleRect, drawBuildingInfoPanel()
-    // sopra — solo torrette) e' l'unica eccezione: alterna lo stato e TIENE
-    // il pannello aperto, stesso principio "chainable" di tradePanelOpen.
+    // sul controllo a tre segmenti di autodifesa (buildingInfoSegRect,
+    // drawBuildingInfoPanel() sopra — solo torrette) e' l'unica eccezione:
+    // sceglie il livello sotto il dito e TIENE il pannello aperto, stesso
+    // principio "chainable" di tradePanelOpen.
     if (buildingInfoPanel) {
-      const t = buildingInfoToggleRect;
+      const t = buildingInfoSegRect;
       if (t && sx >= t.x && sx <= t.x + t.w && sy >= t.y && sy <= t.y + t.h) {
-        buildingInfoPanel.autoDefense = !buildingInfoPanel.autoDefense;
+        buildingInfoPanel.autoDefenseLevel = Math.floor((sx - t.x) / (t.w / 3)) + 1;
         return;
       }
       // registerChiesTap() (sopra): il pannello di chies e' gia' aperto —
@@ -5405,17 +5444,19 @@ export async function mountMatch(ctx, params = {}) {
       // cliccabile.
       stepTurretAim(buildings, threats, balloons);
       // Costo/minuto dell'autodifesa opzionale (buildings.js,
-      // AUTO_DEFENSE_COST_PER_MIN) — prima del fuoco vero sotto, cosi' una
-      // torretta appena rimasta senza fondi (b.autoDefense spento qui) non
-      // spara comunque quel colpo nello stesso frame.
+      // AUTO_DEFENSE_COST_PER_MIN, un valore per livello 2/3) — prima del
+      // fuoco vero sotto, cosi' una torretta appena rimasta senza fondi
+      // (b.autoDefenseLevel riportato a 1 qui) non spara comunque quel
+      // colpo nello stesso frame.
       stepAutoDefenseUpkeep(buildings, r12, dt);
       // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
       // gia' nella direzione appena calcolata (b.aimAngle). Automatico resta
-      // SOLO contro minacce vere, mai contro mongolfiere di risorse — quelle
+      // SOLO contro minacce vere al livello 1 (il default) — dal livello 2
+      // in su ingaggia anche le mongolfiere/aerei SPIA, dal 3 qualunque
+      // mongolfiera (stepTurretFire, projectiles.js — `balloons`/`loot`
+      // servono solo a quei rami, per il laser). Livello 1: le mongolfiere
       // si abbattono solo col tap manuale sul cannone (fireTurretManual piu'
-      // sotto) o, per le sole mongolfiere/aerei SPIA, con l'autodifesa
-      // attiva (stepTurretFire, projectiles.js — `balloons`/`loot` servono
-      // solo a quel ramo, per il laser).
+      // sotto).
       stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails, beams, balloons, loot);
       stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt);
       stepBeams(beams, dt);
