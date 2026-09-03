@@ -228,6 +228,30 @@ const CUTSCENE_BLACK1_DURATION = 90 / 60;   // secondi — [C] blacker1/Alarm_0:
 const CUTSCENE_BATTLE_DURATION = 240 / 60;  // secondi — [C] blacker12/Alarm_0: 240 tick
 const CUTSCENE_BLACK2_DURATION = 200 / 60;  // secondi — [C] blacker2/Alarm_0: 200 tick
 
+// [C] `tut_sf/Create.gml` (lo sfondo "mare", sprite `tuto_sfondo`):
+// `action_set_motion(210, 6)` — direzione 210°, 6px/step alla room speed
+// originale di 60fps. In GameMaker `hspeed = speed*cos(dir)`, `vspeed =
+// -speed*sin(dir)`: a 210° `cos<0` (sinistra) e `sin<0` (quindi `vspeed>0`,
+// verso il basso) — il mare scorre in diagonale verso sinistra/basso, non
+// e' fermo dietro al sorvolo. Il proprio `Alarm_1` lo distruggerebbe dopo
+// 400 tick, ma `air_tut2/Alarm_1` (240 tick, `CUTSCENE_PLANES_DURATION`
+// sopra) lo uccide comunque prima insieme al resto della fase "planes":
+// la durata visibile vera e' quella, non 400 tick. Qui in px/secondo
+// (invece che px/step) per restare coerenti col resto della cutscene, gia'
+// integrata su `dt` reale invece che a tick fissi (vedi il commento su
+// `stepCutscene`/dt piu' sotto).
+const SEA_SCROLL_VX = 6 * Math.cos((210 * Math.PI) / 180) * 60;   // px/s, negativo = verso sinistra
+const SEA_SCROLL_VY = -6 * Math.sin((210 * Math.PI) / 180) * 60;  // px/s, positivo = verso il basso
+
+/** Offset di scorrimento del tassello "mare" (`tuto_sfondo`) alla fase
+ * "planes" della cutscene, in pixel — main.js lo applica modulo la
+ * dimensione del tassello (texture seamless) per tappezzare lo schermo
+ * senza buchi. `phaseT`: secondi trascorsi dall'inizio della fase
+ * (`cutscene.phaseT`, gia' tracciato da stepCutscene()). */
+export function seaScrollOffset(phaseT) {
+  return { x: SEA_SCROLL_VX * phaseT, y: SEA_SCROLL_VY * phaseT };
+}
+
 // Attraversano lo schermo da un bordo oltre l'altro (frazione della
 // larghezza vista, -0.3..1.3) in tempi/altezze leggermente sfalsati fra
 // loro — tre sagome invece di un'unica traiettoria identica.

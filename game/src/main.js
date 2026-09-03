@@ -30,7 +30,7 @@ import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmok
 import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
-  TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN,
+  TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN, seaScrollOffset,
 } from "./tutorial.js";
 
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
@@ -6980,8 +6980,17 @@ export async function mountMatch(ctx, params = {}) {
         r.setProjection(screenProjection(cw, ch));
         const bgFrame = frameFor("tuto_sfondo", 0, true);
         if (bgFrame) {
-          for (let y = 0; y < ch; y += bgFrame.h) {
-            for (let x = 0; x < cw; x += bgFrame.w) r.draw(bgFrame, x, y, 1, 0xffffff, 1);
+          // [C] tut_sf/Create.gml: action_set_motion(210, 6) — il mare non
+          // e' fermo dietro al sorvolo, scorre in diagonale verso
+          // sinistra/basso (seaScrollOffset(), tutorial.js). Texture
+          // seamless: basta ridurre l'offset modulo la dimensione del
+          // tassello e far partire il tappeto da un tassello "in piu'"
+          // fuori bordo (in alto/a sinistra) cosi' non resta mai un buco.
+          const off = seaScrollOffset(tutorialState.cutscene.phaseT);
+          const wrap = (v, size) => (((v % size) + size) % size) - size;
+          const ox = wrap(off.x, bgFrame.w), oy = wrap(off.y, bgFrame.h);
+          for (let y = oy; y < ch; y += bgFrame.h) {
+            for (let x = ox; x < cw; x += bgFrame.w) r.draw(bgFrame, x, y, 1, 0xffffff, 1);
           }
         }
         for (const p of tutorialState.cutscene.planes) {
