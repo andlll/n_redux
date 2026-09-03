@@ -6023,18 +6023,39 @@ export async function mountMatch(ctx, params = {}) {
     // il resto — altrimenti "si accendono" ma restano scure quanto la notte
     // intorno, indistinguibili (il bug segnalato: "le luci non funzionano").
     r.setProjection(cam.projection());
+    // [Bug corretto, segnalato dall'autore: "la primissima scena del
+    // tutorial (il mare che scorre) laggava un po' su iPhone"] Indagine:
+    // il tassello "mare" in se' (tuto_sfondo, 1000x564 — vedi il commento
+    // piu' sotto su "planes") e' gia' a buon mercato, ne bastano 4-6 a
+    // schermo su un telefono; il costo vero era invece questo LAYER MONDO
+    // (il ciclo su `frameList` sotto — fino a ~190 istanze statiche solo
+    // nella room tutorial, PIU' edifici/decoro/atmosfera/minacce dinamici,
+    // sopra) disegnato per intero OGNI frame anche durante le tre fasi
+    // della cutscene ("planes"/"black1"/"black2", sotto) in cui finisce
+    // comunque interamente coperto — dal tappeto di `tuto_sfondo` nella
+    // prima, da un rettangolo nero pieno nelle altre due (vedi il blocco
+    // cutscene molto piu' sotto): lavoro GPU (tante draw call submesse a
+    // WebGL, il costo reale su Safari mobile) buttato via su sprite che
+    // non arrivano mai sullo schermo. `worldHidden` salta silenziosamente
+    // solo LA SOTTOMISSIONE dei draw (questo blocco, overlay giorno/notte
+    // incluso) — non il calcolo di `frameList` ne' la simulazione sopra
+    // (buildings/threats/atmosfera continuano ad avanzare in tempo reale,
+    // cosi' la fase "battle" che segue riparte da uno stato coerente, non
+    // "congelato"): resta `false` per "battle" (li' il mondo torna visibile
+    // per davvero, STUDIO.md sopra) e per ogni altra room/fase di gioco.
+    const worldHidden = !!tutorialState?.cutscene && tutorialState.cutscene.phase !== "battle";
     // Overlay giorno/notte (AURA_OVERLAY sopra) — un quad a tinta unita che
     // copre l'intera room, disegnato PRIMA di ogni sprite del layer mondo cosi'
     // resta sempre dietro. `_selfLit` lo attraversa intatto per lo stesso
     // motivo delle luci (sopra): nessuno qui, il quad stesso non e' un decoro.
     const aura = auraOverlayAt(phaseT);
-    if (aura.a > 0.002) {
+    if (!worldHidden && aura.a > 0.002) {
       const auraTint = (Math.round(aura.rgb[0] * 255) << 16) | (Math.round(aura.rgb[1] * 255) << 8) | Math.round(aura.rgb[2] * 255);
       r.draw(solidFrame(white, scene.width, scene.height), 0, 0, 1, auraTint, aura.a);
     }
     const vw = cam.worldW, vh = cam.worldH;
     const l = cam.x - vw / 2, t = cam.y - vh / 2, rr = l + vw, bb = t + vh;
-    for (const it of frameList) {
+    if (!worldHidden) for (const it of frameList) {
       if (it.obj === "placeholder" && !it._hovered && !it._armed) continue;
       const f = it._f;
       // Istanze senza sprite: nel decompilato sono esattamente questo, non
