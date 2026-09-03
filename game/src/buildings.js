@@ -1,3 +1,5 @@
+import { BALLOON_TYPES } from "./balloons.js";
+
 // Edifici come dati, non come codice (STUDIO.md §7.3): la catena di
 // cantiere di `chies` (upcrc12/upcrc23, decompilati da
 // src/objects/upcrc12|upcrc23/Alarm_0.gml) e la famiglia `impa*` di
@@ -3038,21 +3040,47 @@ export function stepTurretAim(buildings, threats, balloons) {
     const def = BUILDING_TYPES[b.type];
     if (!def.aim) continue;
     const range2 = def.aim.range * def.aim.range;
-    let nearest = null, nearestD2 = range2;
+    let nearest = null, nearestD2 = range2, nearestIsBalloon = false, nearestIsSpyBalloon = false;
     for (const th of threats) {
       const d2 = (th.x - b.x) ** 2 + (th.y - b.y) ** 2;
-      if (d2 < nearestD2) { nearestD2 = d2; nearest = th; }
+      if (d2 < nearestD2) { nearestD2 = d2; nearest = th; nearestIsBalloon = false; nearestIsSpyBalloon = false; }
     }
     // Fallback mongolfiere: SOLO se non c'e' gia' una minaccia vera in
     // portata (nearest ancora null qui) — le minacce vere vincono sempre.
+    // [Nuova funzionalita', richiesta dall'autore: "modalita' autodifesa
+    // opzionale per le torrette, a tre livelli con costo crescente"] Nessun
+    // equivalente nel decompilato. `b.autoDefenseLevel` (1/2/3, toggle nel
+    // pannello edificio, main.js — 1 e' il default implicito quando non
+    // ancora impostato, `?? 1` ovunque venga letto):
+    //   1 — nessuna modifica: il fallback resta quello di sempre (la
+    //       mongolfiera/spia piu' vicina di QUALUNQUE tipo), usato pero'
+    //       SOLO dal tap manuale (fireTurretManual, projectiles.js) — il
+    //       fuoco automatico sotto lo ignora comunque a livello 1.
+    //   2 — il fallback si restringe alle SOLE mongolfiere/aerei spia
+    //       (`isSpy`, balloons.js — monspi/recogn): quelle di risorse
+    //       restano fuori, il giocatore potrebbe volerle ancora raccogliere
+    //       di persona.
+    //   3 — il fallback torna ad aprirsi a QUALUNQUE mongolfiera (come il
+    //       livello 1), ma stavolta il fuoco automatico (stepTurretFire,
+    //       projectiles.js) le ingaggia TUTTE, spia o risorsa che sia — la
+    //       cassa di loot cade comunque, il giocatore la raccoglie dopo.
+    // `nearestIsBalloon` (sotto) distingue "il bersaglio agganciato e' una
+    // mongolfiera qualunque" da `nearestIsSpyBalloon` ("...ed e' anche una
+    // spia"): stepTurretFire ha bisogno di entrambi per decidere se il
+    // livello corrente autorizza il colpo automatico.
+    const level = b.autoDefenseLevel ?? 1;
     if (!nearest && balloons) {
       nearestD2 = range2;
       for (const bal of balloons) {
+        const isSpy = !!BALLOON_TYPES[bal.type]?.isSpy;
+        if (level === 2 && !isSpy) continue;
         const d2 = (bal.x - b.x) ** 2 + (bal.y - b.y) ** 2;
-        if (d2 < nearestD2) { nearestD2 = d2; nearest = bal; }
+        if (d2 < nearestD2) { nearestD2 = d2; nearest = bal; nearestIsBalloon = true; nearestIsSpyBalloon = isSpy; }
       }
     }
-    if (!nearest) { b.aimAngle = null; b.aimTarget = null; continue; }
+    if (!nearest) { b.aimAngle = null; b.aimTarget = null; b.aimIsBalloon = false; b.aimIsSpyBalloon = false; continue; }
+    b.aimIsBalloon = nearestIsBalloon;
+    b.aimIsSpyBalloon = nearestIsSpyBalloon;
     const angle = (Math.atan2(-(nearest.y - b.y), nearest.x - b.x) * 180) / Math.PI;
     // [Bug corretto] `b.fireT` (game/src/projectiles.js: azzerato a ogni
     // colpo, poi conta il tempo trascorso dall'ultimo) e' esattamente il
@@ -3074,4 +3102,73 @@ export function stepTurretAim(buildings, threats, balloons) {
     b.aimAngle = angle;
     b.aimTarget = { x: nearest.x, y: nearest.y };
   }
+}
+
+/**
+ * [Nuova funzionalita', richiesta dall'autore: "modalita' per le torrette
+ * di difesa per cui abbattono automaticamente mongolfiere rosse e aerei
+ * spia, attivabile dall'utente con un costo al minuto — tre livelli, il
+ * terzo spara a tutto, costo crescente per livello"] Nessun equivalente nel
+ * decompilato: puramente nostro, come `sandbox`/DEBUG_INFINITE_RESOURCES
+ * sopra. Un solo costo per livello 1 (zero: e' il comportamento di sempre,
+ * minacce vere sempre gratis) — solo 2 e 3 hanno una voce qui. Scala su due
+ * assi, nessuno dei due letto dal decompilato: fra torrette, la stessa
+ * proporzione 1:2:4 gia' usata per `placeCost` (missile 5000/gatling
+ * 10000/laser 20000 mon, sopra); fra livello 2 e 3 della STESSA torretta,
+ * un raddoppio secco (livello 3 ingaggia molto di piu' — ogni mongolfiera
+ * di risorse in portata, non solo le spie — quindi costa il doppio di
+ * quanto costerebbe restare al livello 2).
+ */
+export const AUTO_DEFENSE_COST_PER_MIN = {   // [I] mon/min, per livello (1 = gratis, nessuna voce)
+  missile: { 2: 30, 3: 60 },
+  gatling: { 2: 60, 3: 120 },
+  laser: { 2: 120, 3: 240 },
+};
+
+/**
+ * Preleva il costo dell'autodifesa (sopra) dalle torrette con
+ * `b.autoDefenseLevel` >= 2, un frazionamento continuo di
+ * AUTO_DEFENSE_COST_PER_MIN[tipo][livello] su `dt` (non una detrazione a
+ * scatti ogni 60s: coerente con ogni altro drain continuo del motore —
+ * produzione/consumo di industria/casa, main.js). Si autodisattiva da sola
+ * (torna a `b.autoDefenseLevel = 1`, il livello "gratis") quando i fondi
+ * non bastano piu' per la prossima frazione — mai un saldo negativo
+ * lasciato a carico del giocatore, a differenza del costo per colpo di
+ * gatling (projectiles.js, WEAPONS.gatling: quello e' fedele al
+ * decompilato, questo essendo puramente nostro non ha nessun vincolo di
+ * fedelta' da rispettare). Un edificio la cui costruzione e' ancora in
+ * corso (o gia' distrutto/ricostruito, `b.autoDefenseLevel` perso col resto
+ * dell'istanza) non paga mai: il controllo stesso non e' raggiungibile in
+ * quello stato (drawBuildingInfoPanel, main.js).
+ *
+ * [Nuova funzionalita', richiesta dall'autore: "una traccia visiva quando
+ * l'autodifesa scala i soldi, una icona per il livello 2 e due in sequenza
+ * per il livello 3"] Il conto alla rovescia dell'impulso visivo vive qui
+ * (`b._costFloatT`, un accumulatore per torretta — resettato quando il
+ * livello scende a 1, cosi' una torretta appena spenta e poi riaccesa non
+ * "eredita" un impulso a meta' strada) perche' e' l'UNICO posto che gia'
+ * sa quando un prelievo vero e' avvenuto; la funzione resta pura
+ * simulazione (nessun accesso a sprite/atlas/render, come il resto di
+ * questo file) — ritorna solo le RICHIESTE di spawn (`{x,y,type,count}`,
+ * `count` = quante icone: `level-1`, cosi' livello 2 -> 1, livello 3 -> 2),
+ * il chiamante (main.js) le traduce in floater veri sapendo gia' come
+ * leggere `turretHitBox()` per ancorarli sopra la torretta giusta.
+ */
+const AUTO_DEFENSE_FLOAT_PERIOD = 1;   // [I] secondi fra un impulso visivo e il successivo
+export function stepAutoDefenseUpkeep(buildings, r12, dt) {
+  const spawns = [];
+  for (const b of buildings) {
+    const level = b.autoDefenseLevel ?? 1;
+    if (level < 2 || b.construction) { b._costFloatT = 0; continue; }
+    const costPerMin = AUTO_DEFENSE_COST_PER_MIN[b.type]?.[level];
+    const cost = costPerMin * (dt / 60);
+    if (!costPerMin || !canAfford(r12, { mon: cost })) { b.autoDefenseLevel = 1; b._costFloatT = 0; continue; }
+    r12.mon -= cost;
+    b._costFloatT = (b._costFloatT ?? 0) + dt;
+    if (b._costFloatT >= AUTO_DEFENSE_FLOAT_PERIOD) {
+      b._costFloatT -= AUTO_DEFENSE_FLOAT_PERIOD;
+      spawns.push({ x: b.x, y: b.y, type: b.type, count: level - 1 });
+    }
+  }
+  return spawns;
 }

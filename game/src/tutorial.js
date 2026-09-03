@@ -45,7 +45,7 @@ export const TUTORIAL_TEXTS = [
   "If you have enough parks you will see an happy face next to the resources count, otherwise yes, they will stop paying taxes!",
   "The defense of the city is another crucial point. As you can see we use massive artillery to keep the city safe!",
   "Build a rocket launcher in an empty spot. Remember that you can't build them too close at it would be too dangerous!",
-  "We use weapons also to gather resources from our enemy, that carry them in those huge balloons you see flying above us!",
+  "We use weapons also to gather resources from our enemy, that carry them in those huge balloons you see flying above us! Tip: press and hold a weapon to open its panel and turn on Auto-defense, so it shoots down spy balloons and planes on its own (small cost per minute)!",
   "Yes, I know what you are thinking and yes, NIMBUS grew stealing oil to foreign nations, but what can you do?",
   "When a balloon is aproaching, click to the closest weapon to destroy it, then quickly collect the resource falling from the sky!",
   "Green balloons are the ones carrying oil. They are the most common ones!",
@@ -227,6 +227,30 @@ const CUTSCENE_PLANES_DURATION = 4;         // secondi — [C] air_tut2/Alarm_1:
 const CUTSCENE_BLACK1_DURATION = 90 / 60;   // secondi — [C] blacker1/Alarm_0: 90 tick
 const CUTSCENE_BATTLE_DURATION = 240 / 60;  // secondi — [C] blacker12/Alarm_0: 240 tick
 const CUTSCENE_BLACK2_DURATION = 200 / 60;  // secondi — [C] blacker2/Alarm_0: 200 tick
+
+// [C] `tut_sf/Create.gml` (lo sfondo "mare", sprite `tuto_sfondo`):
+// `action_set_motion(210, 6)` — direzione 210°, 6px/step alla room speed
+// originale di 60fps. In GameMaker `hspeed = speed*cos(dir)`, `vspeed =
+// -speed*sin(dir)`: a 210° `cos<0` (sinistra) e `sin<0` (quindi `vspeed>0`,
+// verso il basso) — il mare scorre in diagonale verso sinistra/basso, non
+// e' fermo dietro al sorvolo. Il proprio `Alarm_1` lo distruggerebbe dopo
+// 400 tick, ma `air_tut2/Alarm_1` (240 tick, `CUTSCENE_PLANES_DURATION`
+// sopra) lo uccide comunque prima insieme al resto della fase "planes":
+// la durata visibile vera e' quella, non 400 tick. Qui in px/secondo
+// (invece che px/step) per restare coerenti col resto della cutscene, gia'
+// integrata su `dt` reale invece che a tick fissi (vedi il commento su
+// `stepCutscene`/dt piu' sotto).
+const SEA_SCROLL_VX = 6 * Math.cos((210 * Math.PI) / 180) * 60;   // px/s, negativo = verso sinistra
+const SEA_SCROLL_VY = -6 * Math.sin((210 * Math.PI) / 180) * 60;  // px/s, positivo = verso il basso
+
+/** Offset di scorrimento del tassello "mare" (`tuto_sfondo`) alla fase
+ * "planes" della cutscene, in pixel — main.js lo applica modulo la
+ * dimensione del tassello (texture seamless) per tappezzare lo schermo
+ * senza buchi. `phaseT`: secondi trascorsi dall'inizio della fase
+ * (`cutscene.phaseT`, gia' tracciato da stepCutscene()). */
+export function seaScrollOffset(phaseT) {
+  return { x: SEA_SCROLL_VX * phaseT, y: SEA_SCROLL_VY * phaseT };
+}
 
 // Attraversano lo schermo da un bordo oltre l'altro (frazione della
 // larghezza vista, -0.3..1.3) in tempi/altezze leggermente sfalsati fra

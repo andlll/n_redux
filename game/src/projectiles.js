@@ -40,6 +40,15 @@
 // una mongolfiera incontrata per strada; qui manca solo il caso "beam"
 // (laser, colpo istantaneo senza proiettile fisico, vedi fireFrom sotto).
 //
+// [Nuova funzionalita', richiesta dall'autore: "una modalita' opzionale per
+// cui le torrette abbattono da sole mongolfiere rosse e aerei spia, con un
+// costo al minuto"] Prima vera eccezione al fuoco automatico "solo minacce
+// vere" appena sopra: con `b.autoDefense` attivo (un toggle per torretta,
+// pannello edificio in main.js) stepTurretFire() spara anche contro la
+// spia (mai una mongolfiera di risorse) gia' agganciata dal fallback di
+// stepTurretAim(), quando e' entro `fireRange` — vedi il commento sulla
+// funzione stessa, sotto.
+//
 // Le tre torrette non sono varianti dello stesso cannone: `WEAPONS` sotto
 // tiene i dati che le differenziano (raggio, ricarica, munizioni, la forma
 // del colpo) mentre `fireFrom()` e' l'unico posto che li interpreta,
@@ -456,12 +465,33 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beam
  * ognuna, cerca se una minaccia vera (aereo/bombardiere/dirigibile,
  * `threats`) e' entro `aim.fireRange`, e se il cannone non e' in ricarica
  * (ne' — solo per laser — a corto di energia) fa partire un colpo verso il
- * bersaglio gia' inseguito (fireFrom sopra). Le mongolfiere non fanno mai
- * scattare il fuoco automatico — vedi il commento in cima al file:
- * distruggerle e' un'azione esplicita del giocatore (un tap diretto sulla
- * mongolfiera, main.js), non qualcosa che una torretta decide da sola.
+ * bersaglio gia' inseguito (fireFrom sopra). Le mongolfiere di RISORSE non
+ * fanno mai scattare il fuoco automatico — distruggerle resta un'azione
+ * esplicita del giocatore (tap manuale sul cannone, fireTurretManual sotto).
+ *
+ * [Nuova funzionalita', richiesta dall'autore: vedi buildings.js/
+ * AUTO_DEFENSE_COST_PER_MIN] `b.autoDefenseLevel` (1/2/3, toggle nel
+ * pannello edificio, main.js — un costo/minuto scalato per livello altrove,
+ * stepAutoDefenseUpkeep) apre due eccezioni via via piu' larghe al "mai
+ * contro le mongolfiere" appena sopra, quando nessuna minaccia vera e' in
+ * portata:
+ *   2 — SOLO le spie (`b.aimIsSpyBalloon`, buildings.js: il fallback di
+ *       stepTurretAim() si restringe gia' alle sole spie a questo livello).
+ *   3 — QUALUNQUE mongolfiera agganciata (`b.aimIsBalloon`, spia o
+ *       risorsa — a questo livello il fallback torna ad aprirsi a tutte).
+ * In entrambi i casi basta ricontrollare che il bersaglio sia dentro
+ * `fireRange` (non solo `aim.range`, piu' largo) per far partire il colpo
+ * da solo, stessa `fireFrom()` di sempre. `balloons`/`loot` (opzionali,
+ * passati SOLO su questo ramo): servono al laser (kind "beam", hitscan
+ * senza proiettile fisico) per colpire davvero la mongolfiera — missile/
+ * gatling non ne hanno bisogno qui, il proiettile fisico la incontra da
+ * solo per strada (stepProjectiles, gia' cosi' da prima). Passarli SOLO in
+ * questo ramo (mai per un colpo contro una minaccia vera) evita un effetto
+ * collaterale nuovo: un laser che difende da un aereo vero non deve
+ * abbattere di striscio anche una mongolfiera di risorse che capita sul
+ * fascio, comportamento invariato per ogni torretta a livello 1.
  */
-export function stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails, beams) {
+export function stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails, beams, balloons, loot) {
   for (const b of buildings) {
     const weapon = WEAPONS[b.type];
     if (b.construction || !weapon) continue;
@@ -469,15 +499,25 @@ export function stepTurretFire(buildings, threats, dt, projectiles, explosions, 
     if (b.fireT < weapon.cooldown || b.aimAngle == null) continue;
     if (weapon.kind !== "beam" && !b.aimTarget) continue;
     const fireRange = BUILDING_TYPES[b.type].aim.fireRange;
-    let inRange = false;
     const r2 = fireRange * fireRange;
+    let inRange = false;
     for (const th of threats) {
       const dx = th.x - b.x, dy = th.y - b.y;
       if (dx * dx + dy * dy < r2) { inRange = true; break; }
     }
-    if (!inRange || !canFireAmmo(weapon, r12)) continue;
+    if (inRange) {
+      if (!canFireAmmo(weapon, r12)) continue;
+      b.fireT = 0;
+      fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams);
+      continue;
+    }
+    const level = b.autoDefenseLevel ?? 1;
+    if (level < 2 || !b.aimIsBalloon || !b.aimTarget) continue;
+    if (level === 2 && !b.aimIsSpyBalloon) continue;
+    const dx = b.aimTarget.x - b.x, dy = b.aimTarget.y - b.y;
+    if (dx * dx + dy * dy >= r2 || !canFireAmmo(weapon, r12)) continue;
     b.fireT = 0;
-    fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams);
+    fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beams, balloons, loot);
   }
 }
 

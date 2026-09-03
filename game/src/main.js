@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -30,7 +30,7 @@ import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmok
 import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
-  TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN,
+  TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN, seaScrollOffset,
 } from "./tutorial.js";
 
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
@@ -396,6 +396,24 @@ export async function mountMatch(ctx, params = {}) {
     if (left >= right || top >= bottom) return null;
     left -= TURRET_TAP_PAD; top -= TURRET_TAP_PAD; right += TURRET_TAP_PAD; bottom += TURRET_TAP_PAD;
     return { ox: -left, oy: -top, w: right - left, h: bottom - top };
+  }
+  /** Torretta (missile/gatling/laser) sotto un punto schermo, o `null` —
+   * usata SOLO dal tocco prolungato (input.onLongPress, sotto: apre il
+   * pannello stats/autodifesa) invece del picking generico di onTap
+   * (troppo, per un caso che riguarda solo tre tipi di edificio: niente
+   * placeholder/casse/monete/popup da concorrere). Stessa area di tocco
+   * allargata (`turretHitBox()`, sopra) e stessa convenzione "ultimo
+   * disegnato vince" del secondo giro di picking di onTap (frameList e'
+   * gia' back-to-front, l'ultimo che combacia e' il piu' vicino alla
+   * telecamera). */
+  function turretAt(sx, sy) {
+    const w = cam.screenToWorld(sx, sy);
+    for (let i = frameList.length - 1; i >= 0; i--) {
+      const it = frameList[i];
+      if (it.obj !== "building" || !BUILDING_TYPES[it.ref.type]?.turret) continue;
+      if (inFrameRect(w.x, w.y, it.x, it.y, turretHitBox(it.ref.type))) return it.ref;
+    }
+    return null;
   }
   /** Frame corrente per uno sprite di CANTIERE con sottoimmagini vere
    * ("impvent1"/"impvent3" della pala eolica — `c.curSpd`, buildings.js/
@@ -905,6 +923,20 @@ export async function mountMatch(ctx, params = {}) {
   // collectCoinAt() piu' sotto e disegnate/scartate nel loop principale.
   let coinPops = [];
   const COIN_POP_LIFE = 0.4;
+  // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva quando
+  // l'autodifesa scala i soldi — l'icona blu dei soldi con un colorize
+  // rosso, fade out, sale verso l'alto: una per il livello 2, due in
+  // sequenza per il livello 3"] Stesso principio di `coinPops` sopra (un
+  // array di `{x,y,t}`, spawnati altrove e invecchiati/disegnati nel loop
+  // principale) ma un'animazione diversa — sale e sfuma invece di crescere
+  // sul posto, coerente con un COSTO invece di un guadagno. Spawnati da
+  // stepAutoDefenseUpkeep() (buildings.js): quella funzione resta pura
+  // simulazione (nessun accesso a sprite/atlas/render), quindi ritorna solo
+  // le richieste di spawn ({x,y,type,count} per torretta appena "scattata")
+  // — il loop principale le traduce in floater veri, sapendo gia' come
+  // leggere `turretHitBox()` per ancorarli sopra la torretta giusta.
+  let costFloaters = [];
+  const COST_FLOAT_LIFE = 1.0, COST_FLOAT_RISE = 56;
   // Il fumo decorativo delle centrali (game/src/smoke.js): una o due ciminiere
   // per `industria` in piedi, mai in cantiere — vedi stepSmokeSpawner() piu'
   // sotto.
@@ -1010,6 +1042,15 @@ export async function mountMatch(ctx, params = {}) {
   // in spazio schermo come `bankPanelOpen`: mentre e' aperto un tap va
   // SOLO al suo bottone di chiusura, mai al mondo sotto.
   let buildingInfoPanel = null;   // istanza edificio, o null
+  // Riquadro (spazio schermo) del controllo a tre segmenti (1/2/3) di
+  // autodifesa dentro il pannello sopra — ricalcolato ad ogni
+  // drawBuildingInfoPanel(), `null` quando il pannello e' chiuso o
+  // l'edificio non e' una torretta (nessun controllo da disegnare quel
+  // frame). onTap (sotto) lo controlla PRIMA di trattare il tocco come
+  // "chiudi il pannello" (comportamento di default per ogni altro punto del
+  // pannello): un tap dentro il riquadro sceglie il segmento sotto il dito
+  // (`Math.floor((sx - x) / (w / 3))`), non serve un rect per segmento.
+  let buildingInfoSegRect = null;   // { x, y, w, h } — w/3 per segmento (1/2/3)
 
   // Overlay costruzioni per mobile (drawBuildMenuOverlay() piu' sotto) —
   // [Nuova funzionalita', richiesta dall'autore: "sul mobile, invece della
@@ -2995,7 +3036,38 @@ export async function mountMatch(ctx, params = {}) {
    * ancora vita/abitanti veri (`b.life`/`r12.pop` restano a 0/quello di
    * prima finche' il cantiere non finisce): mostra solo lo stato, non
    * statistiche a zero che sembrerebbero un edificio morente.
+   *
+   * [Nuova funzionalita', richiesta dall'autore: "il toggle in tre step con
+   * uno slider stile pannello impostazioni iOS: 1 solo minacce reali, 2
+   * anche le spie (costo piu' alto), 3 spara a tutto (costo ancora piu'
+   * alto), mostra il costo e spiega bene cosa fa ogni step"] Sotto la barra
+   * vita, SOLO per una torretta finita (missile/gatling/laser —
+   * `AUTO_DEFENSE_COST_PER_MIN`, buildings.js): un controllo "segmentato" a
+   * tre posizioni (1/2/3, `AUTO_DEFENSE_LEVELS` sotto per nome/descrizione
+   * di ognuna) invece di un vero slider trascinabile — stesso risultato per
+   * l'utente (un tocco su 1/2/3 sceglie subito quel livello, sempre uno dei
+   * tre selezionato) ma senza dover intercettare `onDrag` dentro il
+   * pannello (oggi sempre e solo pan della camera): un vero slider con
+   * trascinamento avrebbe richiesto un secondo stato "sto trascinando il
+   * cursore" da instradare PRIMA del pan, per un risultato finale
+   * identico — tre segmenti toccabili bastano e sono anche piu' affidabili
+   * col dito. Nome/descrizione/costo del livello ATTUALMENTE selezionato
+   * restano sempre visibili sotto il controllo (si aggiornano subito ad
+   * ogni tocco, il livello non richiede mai una conferma separata).
+   * `buildingInfoSegRect` (sopra) e' l'unica eccezione al "qualunque tocco
+   * chiude" di onTap — un tocco su uno dei tre segmenti alterna
+   * `b.autoDefenseLevel` e TIENE il pannello aperto (stesso principio
+   * "chainable" gia' scelto per tradePanelOpen sopra: vedere subito il
+   * nuovo costo senza dover riaprire il pannello).
    */
+  const AUTO_DEFENSE_LEVELS = [
+    { name: "Real threats only",
+      desc: "Automatically engages planes and airships in range. Always on, no extra cost." },
+    { name: "+ Spy patrol",
+      desc: "Also shoots down red spy balloons and recon planes on sight." },
+    { name: "Full auto",
+      desc: "Fires at anything in range — spies and resource balloons alike (loot still drops)." },
+  ];
   function drawBuildingInfoPanel() {
     const b = buildingInfoPanel;
     const def = BUILDING_TYPES[b.type];
@@ -3016,10 +3088,14 @@ export async function mountMatch(ctx, params = {}) {
     if (residents != null) statLines.push(`Residents: ${Math.round(residents)}`);
     if (production) statLines.push(`Energy: +${production.ele}/cycle (uses ${production.oil} oil)`);
 
+    const autoDefenseCosts = AUTO_DEFENSE_COST_PER_MIN[b.type];
+    const showControl = !b.construction && autoDefenseCosts != null;
+    const SEG_H = 40, AUTODEF_BLOCK_H = 144;
+
     const panelW = Math.min(320, cw - 40);
     const barH = 20;
     const headerH = 70;
-    const bodyH = b.construction ? 30 : (22 + barH + 20);
+    const bodyH = b.construction ? 30 : (22 + barH + 20 + (showControl ? AUTODEF_BLOCK_H + 16 : 0));
     const statsH = statLines.length * 26;
     const btnH = 46;
     const panelH = headerH + bodyH + statsH + 16 + btnH + 20;
@@ -3029,6 +3105,7 @@ export async function mountMatch(ctx, params = {}) {
     const title = def.label + (maxLevel > 1 && !b.construction ? ` — Level ${b.level}/${maxLevel}` : "");
     drawHtmlText(title, px + panelW / 2, py + 32, { size: 20, maxWidth: panelW - 30 });
 
+    buildingInfoSegRect = null;
     let cy = py + headerH;
     if (b.construction) {
       drawHtmlText("Under construction…", px + panelW / 2, cy + 10, { size: 15, maxWidth: panelW - 30 });
@@ -3038,10 +3115,56 @@ export async function mountMatch(ctx, params = {}) {
       drawHtmlText(`Health: ${Math.max(0, Math.round(b.life))} / ${Math.round(maxLife)}`, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
       cy += 22;
       const barX = px + 20, barW = panelW - 40;
-      r.draw(solidFrame(white, barW, barH), barX, cy, 1, 0x000000, 0.12);
+      drawPillBar(barX, cy, barW, barH, 0x000000, 0.12);
       const barColor = ratio > 0.5 ? 0x4caf50 : ratio > 0.2 ? 0xffa726 : 0xef5350;
-      if (ratio > 0) r.draw(solidFrame(white, barW * ratio, barH), barX, cy, 1, barColor, 0.9);
+      if (ratio > 0) drawPillBar(barX, cy, barW * ratio, barH, barColor, 0.9);
       cy += barH + 20;
+      if (showControl) {
+        const level = b.autoDefenseLevel ?? 1;
+        // [Nuova funzionalita', richiesta dall'autore: "i pulsanti delle
+        // strutture di difesa devono essere rettangoli stondato"] Tre
+        // bottoni VERI e distinti (pauseButtonFrame, lo stesso "vetro"
+        // arrotondato del bottone "Close" sotto), non piu' un'unica traccia
+        // con una pillola sovrapposta solo sul selezionato — cosi' anche i
+        // due non selezionati si leggono come bottoni a se stanti, non come
+        // sfondo neutro. SEG_GAP li stacca visibilmente l'uno dall'altro.
+        buildingInfoSegRect = { x: barX, y: cy, w: barW, h: SEG_H };
+        const segW = barW / 3, SEG_GAP = 6;
+        // [Nuova funzionalita', richiesta dall'autore: "al posto dei numeri
+        // 1/2/3 usiamo i tre simboli dell'occhio inutilizzati che hanno gia'
+        // il numerino"] `eyee1`/`eyee2`/`eyee3` (data/sprites.json — mai
+        // usati nel decompilato, un occhio con un piccolo "1"/"2"/"3"
+        // incorporato nell'icona stessa: STUDIO.md, il "pannello vista" mai
+        // ricostruito) aggiunti all'atlas apposta (tools/23_atlas.py,
+        // GAMEPLAY_SPRITES — non ci finivano da soli, nessun oggetto li
+        // referenzia in nessuna room). Scala calcolata dall'altezza VERA
+        // del frame (`f.h`, mai un numero fisso) cosi' l'icona resta
+        // proporzionata qualunque sia SEG_H; centrata nel bottone tenendo
+        // conto di `f.ox/f.oy` (l'origine del frame, tutt'altro che al
+        // centro per questo sprite — un semplice x,y senza correggerli
+        // avrebbe disegnato l'occhio fuori asse).
+        for (let i = 0; i < 3; i++) {
+          const bx = barX + i * segW + SEG_GAP / 2, bw = segW - SEG_GAP;
+          const selected = level === i + 1;
+          r.draw(pauseButtonFrame(bw, SEG_H), bx, cy, 1, selected ? 0x4caf50 : BUTTON_TINT, selected ? 0.88 : BUTTON_ALPHA);
+          const eyeF = frameFor(`eyee${i + 1}`);
+          if (eyeF) {
+            const eyeScale = (SEG_H * 0.72) / eyeF.h;
+            const ex = bx + bw / 2 + eyeF.ox * eyeScale - (eyeF.w * eyeScale) / 2;
+            const ey = cy + SEG_H / 2 + eyeF.oy * eyeScale - (eyeF.h * eyeScale) / 2;
+            r.draw(eyeF, ex, ey, eyeScale, 0xffffff, 1);
+          }
+        }
+        cy += SEG_H + 12;
+        const info = AUTO_DEFENSE_LEVELS[level - 1];
+        drawHtmlText(info.name, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
+        cy += 20;
+        drawHtmlText(info.desc, barX, cy, { size: 12.5, maxWidth: barW, wrap: true, align: "center" });
+        cy += 50;
+        const costText = level === 1 ? "Free — always on" : `-${autoDefenseCosts[level]} mon/min`;
+        drawHtmlText(costText, px + panelW / 2, cy, { size: 14, maxWidth: panelW - 30, color: level > 1 ? "#c65050" : undefined });
+        cy += 22;
+      }
     }
     for (const line of statLines) {
       drawHtmlText(line, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
@@ -3531,6 +3654,46 @@ export async function mountMatch(ctx, params = {}) {
   const pausePanelFrame = makeRoundRectCache(20);
   const pauseButtonFrame = makeRoundRectCache(14);
 
+  /**
+   * [Nuova funzionalita', richiesta dall'autore: "la barra della vita deve
+   * avere i lati corti completamente tondi"] Una vera barra "a pillola"
+   * (semicerchio pieno su entrambi i lati corti, non solo angoli
+   * smussati) — diversa da makeRoundRectCache() sopra perche' la sua
+   * larghezza cambia ad OGNI frame con la vita dell'edificio (barW * ratio,
+   * drawBuildingInfoPanel() sotto): una cache a slot singolo come quelle
+   * sopra rigenererebbe la texture quasi ad ogni chiamata (larghezza quasi
+   * sempre diversa), tanto vale non avere nessuna cache. Qui invece la
+   * texture generata resta FISSA (altezza vera della barra, larghezza
+   * doppia e mezzo cosi' i due cappucci non si toccano mai — un vero
+   * "stadio" con un tratto centrale piatto, non un cerchio) e si ricicla
+   * per QUALUNQUE larghezza richiesta: due cappucci disegnati alla loro
+   * dimensione nativa (mai deformati, sempre perfettamente semicircolari)
+   * piu' una sottile fetta centrale presa dal tratto piatto (zero
+   * curvatura li' — qualunque punto in quel tratto e' un taglio verticale
+   * IDENTICO, quindi anche un campione di 1px non introduce nessun
+   * artefatto) stirata a coprire lo spazio restante.
+   */
+  let pillCapTex = null, pillCapH = -1;
+  function drawPillBar(x, y, w, h, tint, alpha) {
+    if (pillCapH !== h) {
+      if (pillCapTex) gl.deleteTexture(pillCapTex);
+      pillCapTex = makeRoundedRectTexture(gl, Math.round(h * 2.4), Math.round(h), Math.round(h / 2));
+      pillCapH = h;
+    }
+    const cap = h / 2;
+    if (w <= h) {
+      // Troppo stretta per due cappucci interi (salute quasi a zero): un
+      // caso raro/cosmetico, non vale la texture arrotondata — un
+      // rettangolo pieno minuscolo passa inosservato.
+      r.draw(solidFrame(white, w, h), x, y, 1, tint, alpha);
+      return;
+    }
+    const texW = h * 2.4, capFrac = cap / texW;
+    r.draw({ tex: pillCapTex, u0: 0, v0: 0, u1: capFrac, v1: 1, w: cap, h, ox: 0, oy: 0 }, x, y, 1, tint, alpha);
+    r.draw({ tex: pillCapTex, u0: 0.49, v0: 0, u1: 0.51, v1: 1, w: w - h, h, ox: 0, oy: 0 }, x + cap, y, 1, tint, alpha);
+    r.draw({ tex: pillCapTex, u0: 1 - capFrac, v0: 0, u1: 1, v1: 1, w: cap, h, ox: 0, oy: 0 }, x + w - cap, y, 1, tint, alpha);
+  }
+
   /** Come makeRoundRectCache() sopra, ma per un contorno invece di un
    * riempimento (makeRoundedRectStrokeTexture(), gl.js) — usata da
    * drawOutlineRect() sopra per i bottoni "testo nudo su nero" della
@@ -3598,6 +3761,22 @@ export async function mountMatch(ctx, params = {}) {
     messageT = 3;
   };
   input.onPointerUp = (sx, sy) => { if (!paused) resolvePlacement(sx, sy); };
+  // Tocco prolungato su una torretta finita (turretAt(), sopra) con la mano
+  // selezionata: apre lo stesso pannello informativo degli altri edifici
+  // (buildingInfoPanel, drawBuildingInfoPanel() sotto — qui in piu' mostra
+  // il toggle di autodifesa, solo per missile/gatling/laser). Il tap
+  // NORMALE sulle torrette resta invariato (spara subito, vedi onTap sotto,
+  // ramo `manualFire`): i due gesti non si sovrappongono mai per lo stesso
+  // tocco (game/src/input.js, LONG_PRESS_MS > TAP_MS). Ignorato durante
+  // ogni altro modale/overlay gia' aperto — stessi guard dell'apertura
+  // "normale" del pannello su un edificio non difensivo (onTap sotto).
+  input.onLongPress = (sx, sy) => {
+    if (paused || outcome || bankPanelOpen || tradePanelOpen || buildingInfoPanel
+      || buildMenuOpen || tutorialState?.cutscene || r12.selec !== 0) return;
+    const b = turretAt(sx, sy);
+    if (!b || b.construction) return;
+    buildingInfoPanel = b;
+  };
   // Il fattore si applica a `targetZoom`, non a `zoom` (che insegue con un
   // filo di ritardo, vedi Camera.update()): cosi' una rotellata mentre lo
   // zoom sta ancora animando accumula sul bersaglio invece di "strappare"
@@ -4275,8 +4454,17 @@ export async function mountMatch(ctx, params = {}) {
     // Pannello informativo di un edificio (buildingInfoPanel, sopra) — stesso
     // trattamento modale di bankPanelOpen appena sopra: un tocco QUALUNQUE
     // lo chiude (non solo il bottone dedicato, disegnato per scoperta/
-    // chiarezza), mai raggiunge il mondo sotto mentre e' aperto.
+    // chiarezza), mai raggiunge il mondo sotto mentre e' aperto. Un tocco
+    // sul controllo a tre segmenti di autodifesa (buildingInfoSegRect,
+    // drawBuildingInfoPanel() sopra — solo torrette) e' l'unica eccezione:
+    // sceglie il livello sotto il dito e TIENE il pannello aperto, stesso
+    // principio "chainable" di tradePanelOpen.
     if (buildingInfoPanel) {
+      const t = buildingInfoSegRect;
+      if (t && sx >= t.x && sx <= t.x + t.w && sy >= t.y && sy <= t.y + t.h) {
+        buildingInfoPanel.autoDefenseLevel = Math.floor((sx - t.x) / (t.w / 3)) + 1;
+        return;
+      }
       // registerChiesTap() (sopra): il pannello di chies e' gia' aperto —
       // questo tap lo chiude come ogni altro, ma deve comunque contare per
       // lo shortcut sandbox (vedi il commento su registerChiesTap()).
@@ -5210,6 +5398,10 @@ export async function mountMatch(ctx, params = {}) {
         coinPops[i].t += dt;
         if (coinPops[i].t >= COIN_POP_LIFE) coinPops.splice(i, 1);
       }
+      for (let i = costFloaters.length - 1; i >= 0; i--) {
+        costFloaters[i].t += dt;
+        if (costFloaters[i].t >= COST_FLOAT_LIFE) costFloaters.splice(i, 1);
+      }
       stepConstructionBalloons(constructionBalloons, constructionBoxes, dt);
       // onLand: [C] mon_box|mon_bbox/Alarm_0.gml crea "smoko" prima di
       // autodistruggersi — vedi il commento in stepConstructionBoxes() (balloons.js).
@@ -5330,12 +5522,31 @@ export async function mountMatch(ctx, params = {}) {
       // (`cars`) restano fuori: non sono un bersaglio, ne' ostile ne'
       // cliccabile.
       stepTurretAim(buildings, threats, balloons);
+      // Costo/minuto dell'autodifesa opzionale (buildings.js,
+      // AUTO_DEFENSE_COST_PER_MIN, un valore per livello 2/3) — prima del
+      // fuoco vero sotto, cosi' una torretta appena rimasta senza fondi
+      // (b.autoDefenseLevel riportato a 1 qui) non spara comunque quel
+      // colpo nello stesso frame. Le richieste di spawn ritornate (una ogni
+      // AUTO_DEFENSE_FLOAT_PERIOD di prelievo continuo — buildings.js)
+      // diventano qui i floater veri (costFloaters, sopra): ancorati sopra
+      // la torretta vera con turretHitBox() (solo main.js sa leggere
+      // sprite/atlas), un secondo al livello 3 parte leggermente sfalsato
+      // (t negativo: stepCostFloaters() sotto lo ignora finche' non arriva
+      // a 0) invece che impilato esattamente sul primo — "due in sequenza",
+      // non due sovrapposte.
+      for (const s of stepAutoDefenseUpkeep(buildings, r12, dt)) {
+        const top = s.y - turretHitBox(s.type).oy - 10;
+        for (let i = 0; i < s.count; i++) costFloaters.push({ x: s.x, y: top, t: -i * 0.2 });
+      }
       // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
       // gia' nella direzione appena calcolata (b.aimAngle). Automatico resta
-      // SOLO contro minacce vere, mai contro mongolfiere — quelle si
-      // abbattono solo col tap manuale sul cannone (fireTurretManual piu'
-      // sotto) o un tap diretto sulla mongolfiera stessa.
-      stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails, beams);
+      // SOLO contro minacce vere al livello 1 (il default) — dal livello 2
+      // in su ingaggia anche le mongolfiere/aerei SPIA, dal 3 qualunque
+      // mongolfiera (stepTurretFire, projectiles.js — `balloons`/`loot`
+      // servono solo a quei rami, per il laser). Livello 1: le mongolfiere
+      // si abbattono solo col tap manuale sul cannone (fireTurretManual piu'
+      // sotto).
+      stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails, beams, balloons, loot);
       stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt);
       stepBeams(beams, dt);
       stepSmoko(trails, dt);
@@ -5878,6 +6089,33 @@ export async function mountMatch(ctx, params = {}) {
       const size = 36 + k * 94;
       r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, 0x4fc3f7, (1 - k) * 0.85);
     }
+    // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva
+    // quando l'autodifesa scala i soldi al giocatore — l'icona blu dei
+    // soldi con un colorize rosso, fade out, sale verso l'alto"]
+    // `costFloaters` (sopra, spawnati dal loop di simulazione quando
+    // stepAutoDefenseUpkeep() segnala un prelievo — buildings.js): la
+    // stessa icona "soldico" (coins.js, il pin blu della raccolta tasse)
+    // ma in colorize mode — un pin blu MOLTIPLICATO per un tint non
+    // darebbe mai un rosso leggibile (il blu ha poco rosso da moltiplicare
+    // per), colorize sostituisce l'RGB con `tint` usando solo l'alpha
+    // della texture come sagoma, stessa tecnica gia' in uso per le icone
+    // nere della UI (`iconsDark`/`setColorize()`, sopra). Sale e sfuma
+    // invece di crescere sul posto come le bolle di raccolta appena sopra:
+    // coerente con un COSTO, non un guadagno. `p.t < 0` (il secondo
+    // floater del livello 3, spawnato con un ritardo negativo apposta —
+    // vedi il commento sul loop di simulazione) non e' ancora "nato":
+    // saltato senza disegnare nulla, mai tolto dall'array (stepCostFloaters,
+    // sopra: l'invecchiamento normale lo fa comunque avanzare verso 0).
+    const costFloaterFrame = frameFor("soldico");
+    if (costFloaterFrame && costFloaters.length) {
+      r.setColorize(true);
+      for (const p of costFloaters) {
+        if (p.t < 0) continue;
+        const k = p.t / COST_FLOAT_LIFE;
+        r.draw(costFloaterFrame, p.x, p.y - k * COST_FLOAT_RISE, 0.55, 0xe53935, (1 - k) * 0.9);
+      }
+      r.setColorize(false);
+    }
     // Linguetta di prezzo sul segnale di potenziamento (upsign) al passaggio
     // del mouse — [C] upsign12|23|45s|45d/Mouse_MouseEnter.gml, vedi
     // costTagSprite() in buildings.js. Solo mouse (come la raccolta monete
@@ -6050,8 +6288,18 @@ export async function mountMatch(ctx, params = {}) {
     // disegna NESSUN velo sopra il mondo — il combattimento vero e' visibile
     // per intero, senza copertura — quindi le icone restavano lì da sole,
     // senza piu' i numeri accanto (gia' nascosti da `hideResourceText`).
-    // `hideResourceIcons` copre solo questo caso, non pausa/buildMenuOpen.
-    const hideResourceIcons = !!tutorialState?.cutscene;
+    // `hideResourceIcons` copriva solo questo caso, non pausa/buildMenuOpen
+    // (gia' oscurati/sfumati da soli, essendo lo stesso canvas che il loro
+    // blur cattura). [Nuova funzionalita', richiesta dall'autore: "nascondi
+    // anche il testo delle risorse sopra e le relative icone" quando si
+    // apre il pannello edificio] `|| buildingInfoPanel` e' in realta' un
+    // caso "gia' coperto" come pausa/buildMenuOpen (drawBuildingInfoPanel()
+    // sotto cattura e sfuma lo stesso canvas, la barra ci finirebbe dentro
+    // comunque blurrata) — qui pero' nascosta DAVVERO, non solo sfumata
+    // sotto al blur, coerente con la richiesta esplicita e con lo stesso
+    // trattamento gia' dato al balloon/pollice del tutorial per questo
+    // stesso pannello (vedi il commento li' sotto).
+    const hideResourceIcons = !!tutorialState?.cutscene || !!buildingInfoPanel;
     r.setColorize(iconsDark);
     if (!hideResourceIcons && barRowFrame) r.draw(barRowFrame, barX, barY, 1, 0xffffff, 1);
     r.setColorize(false);
@@ -6075,7 +6323,7 @@ export async function mountMatch(ctx, params = {}) {
     // numeri nudi restavano leggibili sopra a un fondale che dovrebbe
     // nasconderli. `hideResourceText` raccoglie tutti i casi in cui il resto
     // della barra risorse e' gia' coperto/oscurato da qualcos'altro.
-    const hideResourceText = paused || buildMenuOpen || !!tutorialState?.cutscene;
+    const hideResourceText = paused || buildMenuOpen || !!tutorialState?.cutscene || !!buildingInfoPanel;
     const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                    [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
     if (!hideResourceText) for (const [value, x] of stats) {
@@ -6697,7 +6945,14 @@ export async function mountMatch(ctx, params = {}) {
     // frame, il balloon resterebbe comunque coperto (e visibile solo il suo
     // testo HTML, che non passa dal canvas — lo stesso problema del fix "in
     // pausa" qui sopra, stavolta per l'overlay invece del menu di pausa).
-    if (tutorialState?.showText && !paused && !buildMenuOpen) {
+    // [Nuova funzionalita', richiesta dall'autore: "quando il giocatore apre
+    // una finestra edificio (normale o difesa) nascondi il testo del
+    // tutorial"] `&& !buildingInfoPanel`: stesso principio, stesso motivo —
+    // quel pannello e' un altro blur pieno schermo (drawBuildingInfoPanel()
+    // sopra), il balloon di testo ci resterebbe sotto, visibile solo nel suo
+    // HTML fuori canvas invece che coperto per davvero come il resto del
+    // mondo.
+    if (tutorialState?.showText && !paused && !buildMenuOpen && !buildingInfoPanel) {
       const pad = 20;
       // [Bug corretto, segnalato dall'autore: "su mobile il pollice e'
       // gigante e occupa troppo spazio"] Il box usa ora sempre tutta la
@@ -6726,8 +6981,12 @@ export async function mountMatch(ctx, params = {}) {
     // `&& !buildMenuOpen`: stesso motivo di freccia/balloon sopra — resterebbe
     // comunque coperto dall'overlay costruzioni mobile, disegnato piu' tardi
     // nel frame; `tutorialOkRect` resta `null` (sopra), quindi non serve
-    // nemmeno bloccare input.onTap a parte per questo caso.
-    if (tutorialState?.showOkButton && !buildMenuOpen) {
+    // nemmeno bloccare input.onTap a parte per questo caso. `&&
+    // !buildingInfoPanel`: stesso motivo — senza il balloon di testo sopra
+    // (nascosto insieme, vedi il commento li') un pollice "avanti" da solo,
+    // ancorato a un `tutorialBoxRect` ormai vecchio di un frame, galleggerebbe
+    // senza senso sopra il pannello edificio appena aperto.
+    if (tutorialState?.showOkButton && !buildMenuOpen && !buildingInfoPanel) {
       // [Bug corretto, segnalato dall'autore: "su mobile il pollice e'
       // gigante e occupa troppo spazio"] Scala 1.3 -> 1: sagoma nativa
       // (45x52), gia' sopra il minimo ~44px comunemente raccomandato per un
@@ -6893,27 +7152,36 @@ export async function mountMatch(ctx, params = {}) {
     // ogni altro elemento della UI. Nessuno sprite dell'originale (il
     // decompilato non ha una vera pausa, STUDIO.md "playbuttoner" era
     // tutt'altro): icona fornita dall'autore (pauseIconFrame, sopra —
-    // game/pause-button.png), un cerchio scuro con l'icona "II" gia'
-    // disegnata dentro il PNG stesso (bordo trasparente attorno, angoli del
-    // riquadro 64x64 esclusi), non piu' composta da due rettangoli pieni
-    // come nella primissima versione di questo bottone.
-    // [Bug corretto, segnalato dall'autore: "il bottone pausa e' piu'
-    // piccolo dei tre a sinistra (handee/groo/baccc, 92px scalati a
-    // UI_SCALE 0.7/0.6 = ~64/~55px)"] Prima disegnato a 48px da un PNG
-    // 64x64: oltre a essere gia' piu' piccolo per scelta, il PNG originale
-    // aveva anche un margine trasparente attorno al cerchio (contenuto vero
-    // 44x44 su tela 64x64), quindi il cerchio VISIBILE finiva a ~33px, meno
-    // di meta' degli altri tre. Corretto in due passi offline (mai un
-    // upscale a runtime): il margine e' stato ritagliato e il contenuto
-    // ricomposto su una tela 64x64 piena (resize LANCZOS una tantum, non
-    // uno stretch GPU ripetuto ogni frame); qui la dimensione di disegno
-    // sale da 48 a 64 (== pauseIconTex.width: scala 1, nessuna
-    // interpolazione, nessuna perdita) per restare fedele alla risoluzione
-    // nativa del file.
+    // game/pause-button.png), esattamente il file ricevuto, senza nessuna
+    // modifica offline.
+    // [Corretto su richiesta dell'autore: "voglio l'originale, coi buchi
+    // visibili, pixel perfect"] Una prima versione qui aveva "riparato" il
+    // PNG riempiendo di bianco pieno i due buchi della "II" (letti come un
+    // difetto, non intenzionale) e poi ritagliato/ricomposto il margine
+    // trasparente attorno al cerchio (contenuto vero 44x44 su tela 64x64)
+    // per pareggiare la dimensione visibile agli altri tre bottoni
+    // (handee/groo/baccc, ~64/~55px). Il file e' TUTTO un unico colore
+    // pieno (0,0,0 a piena alpha, verificato pixel per pixel): la "II" non
+    // e' bianca disegnata sopra, sono BUCHI veri (alpha 0) nel cerchio
+    // nero — la stessa tecnica silhouette di handee/groo/baccc, solo con
+    // due rettangoli di trasparenza invece di una sagoma piena. Qui quindi
+    // niente flood-fill ne' resize: il cerchio visibile torna a 44x44 (il
+    // margine trasparente attorno resta, disegnato a risoluzione nativa —
+    // PB_SIZE = pauseIconTex.width, scala 1), piu' piccolo degli altri tre
+    // come nel file originale.
+    // Essendo un colore piatto su alpha (non piu' "gia' colorato" come si
+    // pensava), vale lo stesso trattamento notturno delle altre icone nere
+    // della barra (`iconsDark`/`setColorize()`, sopra): di giorno resta
+    // nero (colorize off, RGB*tint bianco = nero), di notte diventa bianco
+    // pieno (colorize on: solo l'alpha della texture fa da maschera, RGB
+    // sostituito dal tint) — i buchi restano SEMPRE trasparenti in
+    // entrambi i casi, l'alpha 0 non cambia con la colorize mode.
     const PB_SIZE = 64;
     const pbX = canvas.clientWidth - UI_MARGIN - PB_SIZE, pbY = canvas.clientHeight - UI_MARGIN - PB_SIZE;
     pauseBtnRect = { x: pbX, y: pbY, w: PB_SIZE, h: PB_SIZE };
+    r.setColorize(iconsDark);
     r.draw(pauseIconFrame, pbX, pbY, PB_SIZE / pauseIconTex.width, 0xffffff, 1);
+    r.setColorize(false);
     r.flush();
 
     // Menu di pausa: sfuma quello che e' appena stato disegnato (il mondo,
@@ -6980,8 +7248,17 @@ export async function mountMatch(ctx, params = {}) {
         r.setProjection(screenProjection(cw, ch));
         const bgFrame = frameFor("tuto_sfondo", 0, true);
         if (bgFrame) {
-          for (let y = 0; y < ch; y += bgFrame.h) {
-            for (let x = 0; x < cw; x += bgFrame.w) r.draw(bgFrame, x, y, 1, 0xffffff, 1);
+          // [C] tut_sf/Create.gml: action_set_motion(210, 6) — il mare non
+          // e' fermo dietro al sorvolo, scorre in diagonale verso
+          // sinistra/basso (seaScrollOffset(), tutorial.js). Texture
+          // seamless: basta ridurre l'offset modulo la dimensione del
+          // tassello e far partire il tappeto da un tassello "in piu'"
+          // fuori bordo (in alto/a sinistra) cosi' non resta mai un buco.
+          const off = seaScrollOffset(tutorialState.cutscene.phaseT);
+          const wrap = (v, size) => (((v % size) + size) % size) - size;
+          const ox = wrap(off.x, bgFrame.w), oy = wrap(off.y, bgFrame.h);
+          for (let y = oy; y < ch; y += bgFrame.h) {
+            for (let x = ox; x < cw; x += bgFrame.w) r.draw(bgFrame, x, y, 1, 0xffffff, 1);
           }
         }
         for (const p of tutorialState.cutscene.planes) {
@@ -7077,7 +7354,7 @@ export async function mountMatch(ctx, params = {}) {
     get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
     atmo, get pedestrians() { return pedestrians; },
     get balloons() { return balloons; }, get loot() { return loot; }, get coins() { return coins; },
-    get coinPops() { return coinPops; },
+    get coinPops() { return coinPops; }, get costFloaters() { return costFloaters; },
     get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
     get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
     get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },

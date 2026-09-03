@@ -6,6 +6,13 @@
 
 const TAP_SLOP = 8;       // px di movimento sotto cui resta un tap
 const TAP_MS = 350;
+// [Nuova funzionalita', richiesta dall'autore: "un modo per aprire il
+// pannello stats/autodifesa di una torretta senza rubare il tap normale,
+// che deve continuare a sparare"] Soglia del tocco prolungato — piu' lunga
+// di TAP_MS apposta: quando scatta, il rilascio del dito arriva sempre
+// oltre TAP_MS, quindi onTap non parte mai per lo stesso gesto (nessun
+// doppio evento da filtrare a mano lato chiamante).
+const LONG_PRESS_MS = 550;
 
 export class Input {
   constructor(el) {
@@ -33,6 +40,13 @@ export class Input {
     // altro edificio (`onTap`) — l'unica differenza reale rispetto al resto
     // del piazzamento a un lotto solo.
     this.onPointerDown = null;       // (sx, sy)
+    // Tocco prolungato fermo (LONG_PRESS_MS, sopra) su UN solo puntatore —
+    // mai durante un pinch, mai se il dito si e' mosso oltre TAP_SLOP nel
+    // frattempo (stesso identico "fermo" di un tap, solo tenuto piu' a
+    // lungo). Il consumatore (main.js) lo usa per il pannello di una
+    // torretta senza toccare il tap veloce, che deve continuare a sparare.
+    this.onLongPress = null;         // (sx, sy)
+    this._longPressTimer = null;
     // Un gesto che comincia sopra la UI (es. la barra di selettore edifici,
     // su mobile in scroll orizzontale) non deve muovere la camera sotto di
     // essa: `uiHitTest(sx, sy)` decide, al pointerdown, se questo puntatore
@@ -74,12 +88,27 @@ export class Input {
   _down(e) {
     this.el.setPointerCapture?.(e.pointerId);
     const p = this._pos(e);
-    if (this.pointers.size === 0) this.onPointerDown?.(p.x, p.y);
-    this.pointers.set(e.pointerId, {
+    const first = this.pointers.size === 0;
+    if (first) this.onPointerDown?.(p.x, p.y);
+    const st = {
       x: p.x, y: p.y, sx: p.x, sy: p.y, t: performance.now(), moved: false,
-      ui: this.uiHitTest?.(p.x, p.y) ?? false,
-    });
-    if (this.pointers.size === 2) this.pinchDist = this._dist();
+      ui: this.uiHitTest?.(p.x, p.y) ?? false, longPressFired: false,
+    };
+    this.pointers.set(e.pointerId, st);
+    if (this.pointers.size === 2) { this.pinchDist = this._dist(); this._clearLongPress(); }
+    else if (first) {
+      this._clearLongPress();
+      this._longPressTimer = setTimeout(() => {
+        this._longPressTimer = null;
+        if (st.moved || !this.pointers.has(e.pointerId)) return;
+        st.longPressFired = true;
+        this.onLongPress?.(st.x, st.y);
+      }, LONG_PRESS_MS);
+    }
+  }
+
+  _clearLongPress() {
+    if (this._longPressTimer != null) { clearTimeout(this._longPressTimer); this._longPressTimer = null; }
   }
 
   _move(e) {
@@ -90,7 +119,7 @@ export class Input {
     if (!st) return;
     const dx = p.x - st.x, dy = p.y - st.y;
     st.x = p.x; st.y = p.y;
-    if (Math.hypot(p.x - st.sx, p.y - st.sy) > TAP_SLOP) st.moved = true;
+    if (Math.hypot(p.x - st.sx, p.y - st.sy) > TAP_SLOP) { st.moved = true; this._clearLongPress(); }
 
     if (this.pointers.size === 2) {
       const d = this._dist();
@@ -110,12 +139,16 @@ export class Input {
     if (!st) return;
     this.pointers.delete(e.pointerId);
     if (this.pointers.size < 2) this.pinchDist = 0;
+    this._clearLongPress();
     // Il touch non ha hover senza contatto (a differenza del mouse, che
     // resta "sopra" il canvas anche a tasto rilasciato): alzando il dito
     // l'evidenziazione del placeholder deve sparire subito, non restare
     // agganciata all'ultimo punto toccato.
     if (e.pointerType !== "mouse") { this.hover = null; this.hoverPointerType = null; }
-    if (!st.moved && performance.now() - st.t < TAP_MS) this.onTap?.(st.x, st.y);
+    // `!st.longPressFired` e' gia' implicito (LONG_PRESS_MS > TAP_MS, sopra)
+    // ma esplicito qui per chiarezza — un tap non deve MAI ripetere
+    // un'azione gia' presa dal long press sullo stesso gesto.
+    if (!st.moved && !st.longPressFired && performance.now() - st.t < TAP_MS) this.onTap?.(st.x, st.y);
     this.onPointerUp?.(st.x, st.y);
   }
 
