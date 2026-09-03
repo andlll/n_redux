@@ -62,6 +62,11 @@
 // stessa pioggia "diluita" su piu' schermo, coerente con un'intensita' di
 // pioggia vera e propria, non un numero di gocce a schermo tenuto costante
 // ad ogni zoom.
+import { Pool } from "./pool.js";
+
+// `state.drops` sotto: un Pool riusabile (game/src/pool.js), non un array
+// semplice — a 900 gocce/s (sotto) e' di gran lunga il flusso di particelle
+// piu' pesante del motore, vedi il commento in pool.js sul perche'.
 const RAIN_SPAWN_PERIOD = 1 / 900;         // 900 gocce/s — [C] 15 particelle/tick a 60fps, densita' nativa
 const RAIN_LIFE = 2.4;                     // [I] tetto di sicurezza — la rimozione vera e' "uscita dall'area inquadrata" sotto, la vita nativa (360-380 tick, ~6s) non viene quasi mai raggiunta prima di uscire dallo schermo
 const RAIN_DIR_MIN = 210, RAIN_DIR_MAX = 290;  // [C] part_type_direction: range di lancio iniziale
@@ -84,7 +89,7 @@ const RAIN_TINT = 0x4a6a82;
 const RAIN_ALPHA = 0.55;
 
 export function createWeatherState() {
-  return { spawnT: 0, drops: [] };
+  return { spawnT: 0, drops: new Pool() };
 }
 
 /** Nasce appena sopra il bordo SUPERIORE dell'area attualmente inquadrata
@@ -96,15 +101,13 @@ export function createWeatherState() {
  * (px/s, spazio schermo — y positiva verso il basso), letta direttamente da
  * rainDropAngle() per orientare il quad — nessuna ricostruzione
  * trigonometrica separata per il disegno. */
-function spawnDrop(camLeft, camRight, camTop) {
+function spawnDrop(d, camLeft, camRight, camTop) {
   const dirRad = ((RAIN_DIR_MIN + Math.random() * (RAIN_DIR_MAX - RAIN_DIR_MIN)) * Math.PI) / 180;
-  return {
-    x: camLeft - RAIN_MARGIN + Math.random() * (camRight - camLeft + RAIN_MARGIN * 2),
-    y: camTop - RAIN_MARGIN,
-    vx: Math.cos(dirRad) * RAIN_SPEED,
-    vy: -Math.sin(dirRad) * RAIN_SPEED,
-    t: 0,
-  };
+  d.x = camLeft - RAIN_MARGIN + Math.random() * (camRight - camLeft + RAIN_MARGIN * 2);
+  d.y = camTop - RAIN_MARGIN;
+  d.vx = Math.cos(dirRad) * RAIN_SPEED;
+  d.vy = -Math.sin(dirRad) * RAIN_SPEED;
+  d.t = 0;
 }
 
 /** `raining`: true se un temporale (vero o cosmetico) e' attivo in questo
@@ -121,17 +124,18 @@ function spawnDrop(camLeft, camRight, camTop) {
  * invece della scena intera, vedi il commento in cima al file. */
 export function stepRain(state, dt, raining, camLeft, camRight, camTop, camBottom) {
   if (!raining) {
-    if (state.drops.length) state.drops.length = 0;
+    if (state.drops.active.length) state.drops.clear();
     state.spawnT = 0;
     return;
   }
   state.spawnT += dt;
   while (state.spawnT >= RAIN_SPAWN_PERIOD) {
     state.spawnT -= RAIN_SPAWN_PERIOD;
-    state.drops.push(spawnDrop(camLeft, camRight, camTop));
+    spawnDrop(state.drops.spawn(), camLeft, camRight, camTop);
   }
-  for (let i = state.drops.length - 1; i >= 0; i--) {
-    const d = state.drops[i];
+  const drops = state.drops.active;
+  for (let i = drops.length - 1; i >= 0; i--) {
+    const d = drops[i];
     d.t += dt;
     // [Bug corretto, segnalato dall'autore: "la direzione e' irrealistica"]
     // Vettore vero (RAIN_GRAVITY_X/Y sopra: componenti di un'accelerazione
@@ -152,7 +156,7 @@ export function stepRain(state, dt, raining, camLeft, camRight, camTop, camBotto
       || d.y > camBottom + RAIN_MARGIN
       || d.x < camLeft - RAIN_MARGIN * 2
       || d.x > camRight + RAIN_MARGIN * 2) {
-      state.drops.splice(i, 1);
+      state.drops.release(i);
     }
   }
 }

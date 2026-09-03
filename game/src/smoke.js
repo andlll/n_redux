@@ -31,6 +31,11 @@ const SMOKE_DIR = (70 * Math.PI) / 180;
 const SMOKE_VX = 1.3 * 60 * Math.cos(SMOKE_DIR);
 const SMOKE_VY = -1.3 * 60 * Math.sin(SMOKE_DIR);
 
+// `smoke` (parametro di stepSmokeSpawner()/stepSmoke() sotto, bridges.js/
+// stepCargoShips()): un Pool riusabile (game/src/pool.js), non piu' un
+// array semplice — vedi il commento li' sul perche' (ottimizzazione
+// mobile: niente allocazione/GC per ogni sbuffo).
+
 // { dx, dy, family, firstDelay } — family e' l'offset di profondita' fisso
 // dell'oggetto originale (smoke_ind: depth = -y-150, smoke_ind_2: -y-200),
 // firstDelay il primo riarmo (letto da industriaN/Create.gml, diverso dai
@@ -80,10 +85,9 @@ export function stepSmokeSpawner(buildings, smoke, dt, r12) {
         if (r12.oil <= 0) continue;          // [C] with(r12) oil>0 — niente fumo a olio esaurito
         if (Math.random() < 0.25) continue;  // [C] action_if_dice(4): 1/4 si autodistrugge appena nata
         const ch = chimneys[i];
-        smoke.push({
-          x: b.x + ch.dx, y: b.y + ch.dy, family: ch.family,
-          spr: puffSprite(), scale: 1, t: 0,
-        });
+        const p = smoke.spawn();
+        p.x = b.x + ch.dx; p.y = b.y + ch.dy; p.family = ch.family;
+        p.spr = puffSprite(); p.scale = 1; p.t = 0;
       }
     }
   }
@@ -102,10 +106,11 @@ export function stepSmokeSpawner(buildings, smoke, dt, r12) {
 // out, coerente col resto del motore che gia' preferisce dissolvenze a
 // sparizioni istantanee.
 export function stepSmoke(smoke, dt) {
-  for (let i = smoke.length - 1; i >= 0; i--) {
-    const p = smoke[i];
+  const arr = smoke.active;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const p = arr[i];
     p.t += dt;
-    if (p.t >= SMOKE_LIFE) { smoke.splice(i, 1); continue; }
+    if (p.t >= SMOKE_LIFE) { smoke.release(i); continue; }
     p.x += SMOKE_VX * dt;
     p.y += SMOKE_VY * dt;
     p.scale += SMOKE_GROWTH * dt;

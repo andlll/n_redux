@@ -13,6 +13,7 @@ import {
 } from "./balloons.js";
 import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
+import { Pool } from "./pool.js";
 import { spawnLightning, stepLightning, boltSprite, glowPosition, glowFrame, LIGHTNING_GLOW_LIFE } from "./lightning.js";
 import { createWeatherState, stepRain, rainDropAngle, RAIN_STREAK_LENGTH, RAIN_STREAK_WIDTH, RAIN_TINT, RAIN_ALPHA } from "./weather.js";
 import { createFireworksState, stepFireworks, FIREWORK_DEPTH, FIREWORK_SPARK_SIZE } from "./fireworks.js";
@@ -45,7 +46,7 @@ import {
 // window.__nimbus), cosi' tornare al menu e rientrare in partita piu' volte
 // nella stessa sessione non accumula loop/listener fantasma.
 export async function mountMatch(ctx, params = {}) {
-  const { gl, r, canvas, input, pauseBlur, white, navigate, reportProgress } = ctx;
+  const { gl, r, canvas, input, pauseBlur, white, navigate, reportProgress, renderScale } = ctx;
   let stopped = false;
   // Cerchio morbido per l'animazione "bolla" delle monete raccolte (vedi
   // coinPops/collectCoinAt() piu' sotto) — nessun asset dell'originale la
@@ -951,7 +952,7 @@ export async function mountMatch(ctx, params = {}) {
   // Il fumo decorativo delle centrali (game/src/smoke.js): una o due ciminiere
   // per `industria` in piedi, mai in cantiere — vedi stepSmokeSpawner() piu'
   // sotto.
-  let smoke = [];
+  let smoke = new Pool();
   // Il lampo del fulmine (game/src/lightning.js) — un colpo per ogni edificio
   // (stepStormDamage, buildings.js) o mongolfiera (stepBalloons, balloons.js)
   // effettivamente colpiti durante una tempesta, vedi entrambe le chiamate
@@ -4970,7 +4971,12 @@ export async function mountMatch(ctx, params = {}) {
 
   // ---------------------------------------------------------------- loop
   function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // renderScale.scale (game/src/renderscale.js): <1 su software rendering
+    // o dopo un framerate reale sostenuto sotto soglia — riduce SOLO il
+    // backing store fisico del canvas (qui), mai `cam`/`pixelPerfectZoom()`
+    // sotto (lavorano gia' in coordinate CSS, indipendenti da questa scala:
+    // vedi il commento in renderscale.js).
+    const dpr = Math.min(window.devicePixelRatio || 1, 2) * renderScale.scale;
     const w = Math.round(canvas.clientWidth * dpr);
     const h = Math.round(canvas.clientHeight * dpr);
     if (canvas.width !== w || canvas.height !== h) {
@@ -5076,6 +5082,21 @@ export async function mountMatch(ctx, params = {}) {
   let last = performance.now();
   function frame(now) {
     if (stopped) return;
+    // [Nuova funzionalita', ottimizzazione mobile] Pagina in background
+    // (`document.hidden`: tab non attivo, app minimizzata/schermo spento) —
+    // niente simulazione ne' disegno finche' non torna visibile. Non basta
+    // il `dt` gia' clampato a 0.05s piu' sotto (protegge la SIMULAZIONE da
+    // un salto enorme, ma non evita il lavoro vero e proprio): molti motori
+    // JS/browser mobili non fermano del tutto requestAnimationFrame in
+    // background, solo lo throttlano (~1Hz) — senza questo controllo
+    // continuerebbe comunque a ridisegnare un canvas invisibile una volta al
+    // secondo, GPU/batteria sprecate per niente. `last = now` qui evita che
+    // il PROSSIMO frame reale (al ritorno in foreground) veda un `dt`
+    // gigante accumulato durante tutto il tempo in background.
+    // requestAnimationFrame() resta comunque ripianificato: il ciclo
+    // riparte da solo, senza bisogno di un listener 'visibilitychange' a
+    // parte.
+    if (document.hidden) { last = now; requestAnimationFrame(frame); return; }
     // Un solo reset per frame, prima di ogni possibile drawHtmlText() (il
     // balloon del tutorial e il menu di pausa/"saving options", entrambi
     // piu' sotto) — hideUnusedText() (in fondo a questa stessa funzione)
@@ -5123,6 +5144,11 @@ export async function mountMatch(ctx, params = {}) {
     // (main.js piu' sotto): la cutscene resta sincronizzata al tempo reale
     // anche durante uno stallo iniziale, invece di rallentare con lui.
     const cutsceneDt = Math.max(0, (now - last) / 1000);
+    // renderScale.sample() (game/src/renderscale.js) vuole lo stesso tempo di
+    // frame VERO, non clampato, gia' calcolato sopra per la cutscene — un
+    // `dt` limitato a 0.05s nasconderebbe proprio i frame lenti che deve
+    // individuare.
+    renderScale.sample(cutsceneDt);
     last = now;
     phaseT += dt;
     resize();
@@ -5767,7 +5793,7 @@ export async function mountMatch(ctx, params = {}) {
     // differenza di monete/segnali, fissi sul loro edificio). L'animazione a
     // 70 frame di cc1/cc2/cc3 gira per davvero (frameIdx), oltre e non invece
     // dell'ingrandimento uniforme (_scale) — vedi smoke.js.
-    for (const p of smoke) {
+    for (const p of smoke.active) {
       const frameIdx = Math.min(SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
       dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, SMOKE_LIFE) });
     }
@@ -5905,7 +5931,7 @@ export async function mountMatch(ctx, params = {}) {
     // `bubbleTex` (sopra, gia' caricata per la "bolla" delle monete
     // raccolte): lo stesso cerchio morbido, sfumato dal centro al bordo
     // trasparente, invece del quadrato netto.
-    if (fireworksState) for (const s of fireworksState.sparks) {
+    if (fireworksState) for (const s of fireworksState.sparks.active) {
       dynamic.push({
         obj: "decor", x: s.x, y: s.y, depth: FIREWORK_DEPTH,
         _f: { ...solidFrame(bubbleTex, FIREWORK_SPARK_SIZE, FIREWORK_SPARK_SIZE), ox: FIREWORK_SPARK_SIZE / 2, oy: FIREWORK_SPARK_SIZE / 2 },
@@ -6116,9 +6142,9 @@ export async function mountMatch(ctx, params = {}) {
     // da ordinare per depth con il resto — vedi il commento in weather.js
     // su RAIN_DEPTH) ma sempre dentro la proiezione mondo di questo frame,
     // quindi seguono comunque la camera come ogni altro decoro.
-    if (weatherState.drops.length) {
+    if (weatherState.drops.active.length) {
       const rainFrame = { ...solidFrame(white, RAIN_STREAK_WIDTH, RAIN_STREAK_LENGTH), ox: RAIN_STREAK_WIDTH / 2, oy: RAIN_STREAK_LENGTH / 2 };
-      for (const d of weatherState.drops) drawRotated(rainFrame, d.x, d.y, rainDropAngle(d), 1, RAIN_TINT, RAIN_ALPHA);
+      for (const d of weatherState.drops.active) drawRotated(rainFrame, d.x, d.y, rainDropAngle(d), 1, RAIN_TINT, RAIN_ALPHA);
     }
     // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che
     // cresce e sfuma sul punto della moneta appena presa, in primo piano come
@@ -7414,7 +7440,7 @@ export async function mountMatch(ctx, params = {}) {
     get coinPops() { return coinPops; }, get costFloaters() { return costFloaters; },
     get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
     get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
-    get projectiles() { return projectiles; }, get smoke() { return smoke; }, get trails() { return trails; },
+    get projectiles() { return projectiles; }, get smoke() { return smoke.active; }, get trails() { return trails; },
     get lightning() { return lightning; }, get weatherState() { return weatherState; },
     get fireworksState() { return fireworksState; },
     get beams() { return beams; },

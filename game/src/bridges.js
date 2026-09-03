@@ -155,10 +155,11 @@ export function stepCargoShips(ships, smoke, dt) {
     s.smokeT += dt;
     while (s.smokeT >= SHIP_SMOKE_PERIOD) {
       s.smokeT -= SHIP_SMOKE_PERIOD;
-      smoke.push({
-        x: s.x + SHIP_SMOKE_OFFSET.x, y: s.y + SHIP_SMOKE_OFFSET.y,
-        family: 150, spr: puffSprite(), scale: 1, t: 0,
-      });
+      // smoke: Pool riusabile (game/src/pool.js), non piu' un array
+      // semplice — vedi il commento in game/src/smoke.js.
+      const p = smoke.spawn();
+      p.x = s.x + SHIP_SMOKE_OFFSET.x; p.y = s.y + SHIP_SMOKE_OFFSET.y;
+      p.family = 150; p.spr = puffSprite(); p.scale = 1; p.t = 0;
     }
     if (s.t >= SHIP_LIFE_SECONDS) ships.splice(i, 1);
   }
