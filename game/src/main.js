@@ -6288,8 +6288,18 @@ export async function mountMatch(ctx, params = {}) {
     // disegna NESSUN velo sopra il mondo — il combattimento vero e' visibile
     // per intero, senza copertura — quindi le icone restavano lì da sole,
     // senza piu' i numeri accanto (gia' nascosti da `hideResourceText`).
-    // `hideResourceIcons` copre solo questo caso, non pausa/buildMenuOpen.
-    const hideResourceIcons = !!tutorialState?.cutscene;
+    // `hideResourceIcons` copriva solo questo caso, non pausa/buildMenuOpen
+    // (gia' oscurati/sfumati da soli, essendo lo stesso canvas che il loro
+    // blur cattura). [Nuova funzionalita', richiesta dall'autore: "nascondi
+    // anche il testo delle risorse sopra e le relative icone" quando si
+    // apre il pannello edificio] `|| buildingInfoPanel` e' in realta' un
+    // caso "gia' coperto" come pausa/buildMenuOpen (drawBuildingInfoPanel()
+    // sotto cattura e sfuma lo stesso canvas, la barra ci finirebbe dentro
+    // comunque blurrata) — qui pero' nascosta DAVVERO, non solo sfumata
+    // sotto al blur, coerente con la richiesta esplicita e con lo stesso
+    // trattamento gia' dato al balloon/pollice del tutorial per questo
+    // stesso pannello (vedi il commento li' sotto).
+    const hideResourceIcons = !!tutorialState?.cutscene || !!buildingInfoPanel;
     r.setColorize(iconsDark);
     if (!hideResourceIcons && barRowFrame) r.draw(barRowFrame, barX, barY, 1, 0xffffff, 1);
     r.setColorize(false);
@@ -6313,7 +6323,7 @@ export async function mountMatch(ctx, params = {}) {
     // numeri nudi restavano leggibili sopra a un fondale che dovrebbe
     // nasconderli. `hideResourceText` raccoglie tutti i casi in cui il resto
     // della barra risorse e' gia' coperto/oscurato da qualcos'altro.
-    const hideResourceText = paused || buildMenuOpen || !!tutorialState?.cutscene;
+    const hideResourceText = paused || buildMenuOpen || !!tutorialState?.cutscene || !!buildingInfoPanel;
     const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
                    [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
     if (!hideResourceText) for (const [value, x] of stats) {
