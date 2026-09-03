@@ -337,6 +337,13 @@ export async function mountTitle(ctx) {
   let elapsed = 0;
   function frame(now) {
     if (stopped) return;
+    // [Nuova funzionalita', ottimizzazione mobile] Stesso principio
+    // applicato a game/src/main.js: pagina in background (`document.hidden`)
+    // -> niente simulazione/disegno (incluso il blur del menu, il pezzo piu'
+    // costoso di questo stesso ciclo, vedi il commento su BG_INTERVAL sopra)
+    // finche' non torna visibile. `last = now` evita un `dt` gigante al
+    // ritorno; requestAnimationFrame() resta comunque ripianificato.
+    if (document.hidden) { last = now; requestAnimationFrame(frame); return; }
     // Stesso principio applicato a game/src/main.js (segnalato dall'autore:
     // "su desktop non riesco ad avviare match, rimane fermo in caricamento
     // con schermo nero") — un errore qui dentro (requestAnimationFrame, mai

@@ -22,6 +22,8 @@
 // (**[C]** `action_effect` impacchetta il colore R+G*256+B*65536, la stessa
 // convenzione BGR gia' letta altrove in questo progetto — es. NIGHT_TINT,
 // cars.js): decodificati una volta sola qui invece che a runtime.
+import { Pool } from "./pool.js";
+
 const LAUNCHERS = [
   { dx: -60, dy: 0, tint: 0xff8000, initialDelay: 20 / 60 },    // arancione
   { dx: 50, dy: 20, tint: 0x00ff40, initialDelay: 50 / 60 },    // verde
@@ -44,15 +46,19 @@ const SPARK_GRAVITY = 260;
 const SPARK_SIZE = 7;
 export const FIREWORK_DEPTH = -4000;   // stessa quota di esplosioni/fuoco vero (threats.js/projectiles.js)
 
+// `sparks` (state.sparks sotto): un Pool riusabile (game/src/pool.js), non
+// un array semplice — un burst crea 24 scintille in un colpo solo, fino a
+// 4 volte/s con tutti e 4 i lanciatori attivi: abbastanza da valere lo
+// stesso riciclo gia' fatto per il fumo/la pioggia, vedi il commento in
+// pool.js.
 function spawnBurst(x, y, tint, sparks) {
   for (let i = 0; i < SPARK_COUNT; i++) {
     const a = (i / SPARK_COUNT) * Math.PI * 2 + Math.random() * 0.3;
     const spd = SPARK_SPEED[0] + Math.random() * (SPARK_SPEED[1] - SPARK_SPEED[0]);
-    sparks.push({
-      x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
-      t: 0, life: SPARK_LIFE[0] + Math.random() * (SPARK_LIFE[1] - SPARK_LIFE[0]),
-      tint,
-    });
+    const s = sparks.spawn();
+    s.x = x; s.y = y; s.vx = Math.cos(a) * spd; s.vy = Math.sin(a) * spd;
+    s.t = 0; s.life = SPARK_LIFE[0] + Math.random() * (SPARK_LIFE[1] - SPARK_LIFE[0]);
+    s.tint = tint;
   }
 }
 
@@ -62,7 +68,7 @@ export function createFireworksState(chiesX, chiesY) {
   return {
     x: chiesX, y: chiesY + OFFSET_Y,
     timers: LAUNCHERS.map((l) => l.initialDelay),
-    sparks: [],
+    sparks: new Pool(),
   };
 }
 
@@ -82,11 +88,11 @@ export function stepFireworks(state, dt, active) {
       }
     }
   }
-  const sparks = state.sparks;
+  const sparks = state.sparks.active;
   for (let i = sparks.length - 1; i >= 0; i--) {
     const s = sparks[i];
     s.t += dt;
-    if (s.t >= s.life) { sparks.splice(i, 1); continue; }
+    if (s.t >= s.life) { state.sparks.release(i); continue; }
     s.vy += SPARK_GRAVITY * dt;
     s.x += s.vx * dt;
     s.y += s.vy * dt;
