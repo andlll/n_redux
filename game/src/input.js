@@ -12,13 +12,15 @@ const TAP_MS = 350;
 // [Bug corretto, segnalato dall'autore: "il tocco prolungato per selezionare
 // le strutture di difesa e' troppo lungo"] Era 550ms (deliberatamente sopra
 // TAP_MS, cosi' il rilascio arrivava sempre oltre TAP_MS e onTap non
-// scattava mai per lo stesso gesto): ridotta a 350ms, uguale a TAP_MS, su
-// richiesta esplicita — non serve piu' un margine fra le due soglie perche'
-// a evitare il doppio evento e' gia' il flag esplicito `longPressFired`
-// controllato in _up() sotto (`!st.longPressFired`), non l'ordine
-// temporale: un long press che scatta PRIMA del rilascio marca il gesto e
-// basta, qualunque sia la relazione fra le due costanti.
-const LONG_PRESS_MS = 350;
+// scattava mai per lo stesso gesto): ridotta prima a 350ms (uguale a
+// TAP_MS), poi — su ulteriore richiesta dell'autore, "il tocco prolungato
+// per aprire i sottomenu degli edifici deve scattare a 0.25s, anche sugli
+// edifici non difensivi" — a 250ms: non serve un margine fra le due soglie
+// perche' a evitare il doppio evento e' gia' il flag esplicito
+// `longPressFired` controllato in _up() sotto (`!st.longPressFired`), non
+// l'ordine temporale: un long press che scatta PRIMA del rilascio marca il
+// gesto e basta, qualunque sia la relazione fra le due costanti.
+const LONG_PRESS_MS = 250;
 
 export class Input {
   constructor(el) {

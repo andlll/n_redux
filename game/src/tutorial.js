@@ -20,6 +20,20 @@
 // scattare — con un altro attrezzo selezionato (es. un edificio da
 // piazzare) il tocco prolungato su una torretta non apre nessun pannello,
 // un dettaglio che il balloon originale non spiegava.
+// [Nuova funzionalita', richiesta dall'autore: "il tocco prolungato per
+// aprire i sottomenu degli edifici deve funzionare su TUTTI gli edifici,
+// non solo su quelli difensivi — spieghiamolo anche nel tutorial, magari
+// subito dopo il messaggio sullo strumento mano"] Un messaggio in piu' dopo
+// quello sull'autodifesa (sopra: il primo a introdurre "tieni premuto con
+// la mano attiva"), che estende lo stesso gesto a qualunque edificio — main.
+// js/buildingAt() (rinominata da turretAt()) ora riconosce infatti ogni
+// edificio finito, non solo le tre torrette. 35 messaggi in totale ora
+// (34 + questo), nessun'altra fase del tutorial ne dipende per
+// l'avanzamento (il messaggio e' solo informativo, si avanza col bottone
+// "avanti" come ogni altra fase senza condizione automatica) — l'unico
+// altro punto del codice che punta a un NUMERO di fase fisso dopo questa
+// (non solo al TESTO), il bersaglio della freccia sull'icona dell'olio in
+// main.js, e' stato spostato da 25 a 26 di conseguenza.
 // L'avanzamento e' un misto di due meccanismi, entrambi letti dal
 // decompilato: **[C]** 8 fasi hanno una condizione di gioco vera
 // (tutorial_square/Step.gml, stepTutorialAuto() sotto); tutte le altre
@@ -60,6 +74,7 @@ export const TUTORIAL_TEXTS = [
   "Build a rocket launcher in an empty spot. Remember that you can't build them too close at it would be too dangerous!",
   "We use weapons also to gather resources from our enemy, that carry them in those huge balloons you see flying above us!",
   "Tip: select the hand tool, then press and hold a weapon to open its panel and turn on Auto-defense, so it shoots down spy balloons and planes on its own (small cost per minute)!",
+  "Tip: that works on any building, not just weapons! With the hand tool selected, press and hold a building to see its stats panel.",
   "Yes, I know what you are thinking and yes, NIMBUS grew stealing oil to foreign nations, but what can you do?",
   "When a balloon is aproaching, click to the closest weapon to destroy it, then quickly collect the resource falling from the sky!",
   "Green balloons are the ones carrying oil. They are the most common ones!",
@@ -164,7 +179,7 @@ export function stepTutorialAuto(state, ctx) {
 // tutorial_thumb/Step.gml, le stesse 8 fasi elencate li' come "nascosto").
 export const HIDE_ADVANCE_BUTTON = new Set([2, 5, 7, 8, 9, 12, 16, 19]);
 
-export const LAST_PHASE = TUTORIAL_TEXTS.length - 1;   // 32
+export const LAST_PHASE = TUTORIAL_TEXTS.length - 1;   // 34
 
 // ---------------------------------------------------------- intro cutscene
 // [C] air_tut2 (istanza in tutorial.json, x=363,y=219) al Create: crea 2

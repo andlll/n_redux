@@ -23,9 +23,9 @@ import {
   maybeSpawnShip, stepCargoShips, clickShip,
 } from "./bridges.js";
 
-const FARO1 = { x: 616, y: 1100 };
-const FARO2 = { x: 1655, y: 1111 };
-const FARO3 = { x: 2556, y: 1208 };   // [C] dockersig1/Alarm_4.gml: action_create_object(faro3, 2556, 1208)
+export const FARO1 = { x: 616, y: 1100 };
+export const FARO2 = { x: 1655, y: 1111 };
+export const FARO3 = { x: 2556, y: 1208 };   // [C] dockersig1/Alarm_4.gml: action_create_object(faro3, 2556, 1208)
 
 // [C] src/objects/placeholder/Create.gml + Collision_r12|r120|r22|r220|r32|
 // r320.gml: su `match` (736==0) ogni placeholder nasce con `act=0`

@@ -293,30 +293,23 @@ GAMEPLAY_SPRITES = {
         # dedicato (asimmetria reale: l'acceso e' "med2x"/"med2dx" stesso).
         "med1", "med1l", "med2", "med2x",
         "med1d", "med1dl", "med2d", "med2dx",
-        # Linguette di prezzo all'hover (STUDIO.md §5.4, gia' documentate ma
-        # mai ricostruite — game/src/buildings.js, costTagSprite()): sprite
-        # pre-renderizzati col numero gia' dentro, un taglio per ogni costo
-        # reale di placeCost/upgrades[].cost in questo file. "c12aa"/"c23aa"
-        # sono i due banner dedicati di chies (mon+oil insieme, nessun taglio
-        # a valuta singola gli si addice).
-        "c100", "c500", "c1000", "c2000", "c3500", "c5000", "c6000", "c7500",
-        "c10000", "c20000", "c35000", "c50000", "c100000", "c200000", "c12aa", "c23aa",
-        "cfree",   # [C] ccfree/Create.gml: l'unico edificio davvero gratis (banca) ha il proprio cartellino dedicato
-        # Banner "Level N to unlock" all'hover/tap su un bottone edificio
-        # ancora bloccato sotto il livello chiesa (STUDIO.md, `chiesUnlock` —
-        # game/src/main.js, unlockTagSprite()): [C] pu6|pudj|pugatling|
-        # pusolare/Mouse_MouseEnter.gml creano level2club|gatling|palazz|sol,
-        # tutti questo stesso sprite reale ("unlocklvl2"); pu4prov|pu5prov|
-        # puvillone|pumediat/Mouse_MouseEnter.gml creano leve3tounlo4|5|villa/
-        # level3tounlomedia, tutti "unlocklvl3" — un solo banner per soglia,
-        # mai uno dedicato per edificio.
-        "unlocklvl2", "unlocklvl3",
-        # Popup si'/no della ruspa (STUDIO.md, "demolizione/riparazione" —
-        # game/src/buildings.js tryRuspaRebuild()/ruspaDemolish, main.js
-        # ruspaPending): "demoback" (annulla, src/objects/demobachia) e
-        # "demoyesse" (conferma, src/objects/demoiessa). Il cartellino di
-        # prezzo del popup riusa i "cN" sopra, nessuno sprite in piu'.
-        "demoback", "demoyesse",
+        # [Nuova funzionalita', richiesta dall'autore: "altri sprite da
+        # sostituire con grafica vettoriale per risparmiare spazio?"] Le
+        # linguette di prezzo all'hover (STUDIO.md §5.4) NON servono piu'
+        # come sprite pre-renderizzati — "c100".."c200000" (un taglio per
+        # ogni costo reale di placeCost/upgrades[].cost in questo file),
+        # "c12aa"/"c23aa" (i due banner dedicati di chies, mon+oil insieme),
+        # "cfree" (l'unico edificio davvero gratis, banca), "unlocklvl2"/
+        # "unlocklvl3" (banner "Level N to unlock" sui bottoni edificio
+        # ancora bloccati) e i due bottoni conferma ruspa "demoback"/
+        # "demoyesse" — diciotto sprite in tutto, la stessa identica ricetta
+        # visiva (pillola nera o colorata, testo bianco bold). Sostituiti da
+        # drawCostTagScreen()/drawCostTagWorld()/costText()/unlockTagText()
+        # (game/src/main.js): stessa pillola arrotondata ma procedurale
+        # (riusata dalla cache di pausePanelFrame()/pauseButtonFrame(),
+        # nessuna texture nuova) + testo HTML vero generato a runtime da
+        # placeCost/upgrades[].cost/CHIES_UNLOCK_BY_TYPE direttamente,
+        # invece di un ritaglio dedicato per ogni combinazione possibile.
         # monumento/banca: quattordicesimo e quindicesimo edificio, i primi
         # due "a stella" (STUDIO.md, ricompense di traguardo mai nel menu
         # base — game/src/buildings.js BUILDING_TYPES.monum/banca). Stesso
@@ -389,6 +382,13 @@ GAMEPLAY_SPRITES = {
     "gui": [
         "icone_oriz",          # sfondo barra risorse (repre/DrawGUI.gml)
         "crys_ico",            # icona nera dei cristalli (main.js, riga GUI sotto la barra risorse)
+        # [Nuova funzionalita', richiesta dall'autore: "il grattacielo si
+        # sblocca davvero a biotech>=100 (stella3/Step.gml, mai portato
+        # prima) — aggiungiamo anche il contatore in barra, come i
+        # cristalli"] "biot_ico" e' l'icona nera dedicata (stessa famiglia/
+        # taglia di "crys_ico" sopra — data/sprites.json le elenca vicine),
+        # per il contatore biotech nella barra risorse.
+        "biot_ico",
         # Icona "salvataggio in corso" (src/objects/savvvvvco, sprite
         # "savicona" — [C] r12/Alarm_10.gml: autosalvataggio ogni 1800 tick
         # (30s) + reversi/Mouse_LeftPressed.gml: salvataggio all'uscita,
@@ -424,19 +424,26 @@ GAMEPLAY_SPRITES = {
         "reset",                # pureset
         # Prestiti bancari (src/objects/bankbuttoner|loanoscrino|get_loan1..4):
         # "bancobutt" e' l'iconcina persistente ancorata alla banca (creata
-        # da banca1/Create.gml, sempre visibile una volta costruita), "loanscr"
-        # il pannello di sfondo ("GET A LOAN" + "20% interest rate"), "getlo1..4"
-        # i quattro bottoni prestito (25000/50000/100000/250000, gia' col
-        # testo pre-renderizzato).
-        "bancobutt", "loanscr", "getlo1", "getlo2", "getlo3", "getlo4",
+        # da banca1/Create.gml, sempre visibile una volta costruita) — resta.
+        # [Nuova funzionalita', richiesta dall'autore: "menu 'non raster' per
+        # risparmiare texture, come gli altri pannelli"] "loanscr" (il
+        # pannello di sfondo, "GET A LOAN" + "20% interest rate") e
+        # "getlo1..4" (i quattro bottoni prestito, gia' col testo
+        # pre-renderizzato) NON servono piu': game/src/main.js/drawBankPanel()
+        # li ha sostituiti con lo stesso pannello/bottoni procedurali gia'
+        # in uso per pausa/info edificio/vittoria (pausePanelFrame()/
+        # pauseButtonFrame(), nessuna texture nuova) + testo HTML vero
+        # (drawHtmlText()) — dieci sprite in meno da impacchettare qui
+        # diventano cinque, ~1.5 milioni di pixel RGBA risparmiati fra
+        # questo gruppo e quello scambi sotto.
+        "bancobutt",
         # Scambio risorse (src/objects/tradebuttoner|tradoscrino|get1..4,
         # game/src/main.js/state.js TRADES): stessa idea dei prestiti sopra,
         # sbloccato da chies a livello 2 invece che da un edificio dedicato.
-        # "tradobutt" e' l'iconcina persistente accanto a chies, "tradescr"
-        # il pannello di sfondo ("TRADE RESOURCES", nessuna seconda riga),
-        # "get11..14" i quattro bottoni scambio (gia' col testo/le icone
-        # risorsa pre-renderizzati, come "getlo1..4").
-        "tradobutt", "tradescr", "get11", "get12", "get13", "get14",
+        # "tradobutt" e' l'iconcina persistente accanto a chies — resta.
+        # "tradescr"/"get11..14" NON servono piu' per lo stesso motivo di
+        # "loanscr"/"getlo1..4" sopra: game/src/main.js/drawTradePanel().
+        "tradobutt",
         # Gli altri bottoni del pannello (src/objects/handbutton|buildbutton|
         # backobutton): nell'originale aprivano/chiudevano le righe del menu
         # (STUDIO.md §9 "menoo", tre pannelli alternati) — qui restano solo
@@ -613,8 +620,11 @@ GAMEPLAY_SPRITES = {
     # 23|upind12|23 — tutti la stessa icona "upico", game/src/main.js
     # renderUpgradeSign()). "soldico" e' il pin statico (nessun chies di
     # livello 3), "soldfade" la stessa icona con la dissolvenza a 20 frame
-    # usata quando invece si autoriscuote.
-    "coins": ["soldico", "soldfade", "upico"],
+    # usata quando invece si autoriscuote. "bioico" e' lo stesso pin ma per
+    # "soldbio" (villa, ava==0, game/src/coins.js) — un pin con la doppia
+    # elica del DNA al posto delle monete, per la risorsa `biotech` invece
+    # di `mon` (mai usato prima d'ora: soldbio riusava per errore "soldico").
+    "coins": ["soldico", "soldfade", "upico", "bioico"],
     # Il fumo decorativo delle centrali (src/objects/smoke_ind|smoke_ind_2,
     # game/src/smoke.js): un solo sbuffo per famiglia ("cc1" il default,
     # "cc2"/"cc3" le due varianti a dado di Create.gml — non serve

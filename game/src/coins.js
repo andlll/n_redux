@@ -99,14 +99,22 @@ export function stepCoinSpawner(buildings, coins, dt, r12) {
       if (ava === 0) {
         // [C] villa1/Alarm_4.gml, ava==0: crea "soldbio" — stessa famiglia
         // "sold*" (depth/hitbox/raccolta) ma NON assegna mon: incrementa
-        // r12.biotech (mai scritto altrove nel motore finora — [?] il suo
-        // scopo reale resta ignoto, STUDIO.md). `soldbio` non ha ne'
-        // Create.gml ne' Alarm_0.gml propri nel decompilato: a differenza
-        // di sold1..5 non diventa mai "soldfade" e non si autoriscuote mai,
-        // nemmeno con chies di livello 3 — resta "soldico" finche' non
-        // viene toccata, sempre `auto: false`.
+        // r12.biotech. **[Risolto, STUDIO.md/main.js STAR_BUILDINGS.
+        // grattacielo]** lo scopo di `biotech` era rimasto ignoto per un
+        // pezzo: e' il carburante del terzo edificio stella, il grattacielo
+        // — a 100 si azzera e sblocca la stella (`stella3/Step.gml`),
+        // esattamente come `distrutti` per il monumento. `soldbio` non ha
+        // ne' Create.gml ne' Alarm_0.gml propri nel decompilato: a
+        // differenza di sold1..5 non diventa mai "soldfade" e non si
+        // autoriscuote mai, nemmeno con chies di livello 3 — resta ferma
+        // finche' non viene toccata, sempre `auto: false`. Sprite dedicato
+        // `bioico` (non "soldico" — **[Bug corretto]** il pin blu generico
+        // usato finora era un placeholder: `soldbio/_object.json` nel
+        // decompilato specifica proprio "bioico", un pin con la doppia
+        // elica del DNA invece delle monete impilate, coerente con
+        // un'icona di una risorsa diversa dai soldi).
         coins.push({ buildingId: b.id, x: b.x, y: b.y, depth: COIN_DEPTH, amount: 1,
-          kind: "biotech", t: 0, spr: "soldico", auto: false });
+          kind: "biotech", t: 0, spr: "bioico", auto: false });
         continue;
       }
       // [C] villa1/Alarm_4.gml, ava 1..4 -> sold2..sold5 (40/60/80/100 mon,

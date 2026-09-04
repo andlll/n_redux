@@ -1,8 +1,8 @@
 import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
-import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN } from "./buildings.js";
+import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -23,7 +23,7 @@ import {
   applyMatchPlatform, createFaroState, stepFaroChain, faroDecor, r120MotorDecor,
   clickFaroButton, clickWaveSignal, clickDockerSignal,
   clickFaro3Button, clickWaveSignal3, clickDockerSignal3,
-  isPlaceholderActive,
+  isPlaceholderActive, FARO1, FARO2, FARO3,
 } from "./platform.js";
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
@@ -73,14 +73,15 @@ export async function mountMatch(ctx, params = {}) {
   // (dynamic.push() piu' sopra nel ciclo di frame, molto prima della sezione
   // che disegna i bottoni) puo' riusarla invece di un secondo numero scollegato.
   const UI_SCALE = isMobile ? 0.6 : 0.7;
-  // [I] Segnalato dall'autore: le etichette dei PREZZI (i cartellini "cN"/
-  // "cfree", costTagSprite() in buildings.js) restavano comunque troppo
-  // grandi su desktop anche a UI_SCALE (0.7) — a differenza dei bottoni/
-  // popup sopra, un cartellino e' un dettaglio testuale che deve leggersi
-  // in un angolo, non occupare quasi quanto l'icona che descrive. Scala
-  // dedicata, unica per ogni cartellino di prezzo del motore (popup ruspa,
-  // segnale di potenziamento, lotto-rudere del tutorial, selettore edificio).
-  const COST_TAG_SCALE = 0.5;
+  // [I] Segnalato dall'autore: le etichette dei PREZZI restavano comunque
+  // troppo grandi su desktop anche a UI_SCALE (0.7) — a differenza dei
+  // bottoni/popup sopra, un cartellino e' un dettaglio testuale che deve
+  // leggersi in un angolo, non occupare quasi quanto l'icona che descrive.
+  // Taglia dedicata (TAG_PILL_H, sotto — 44px, meta' degli 88 nativi dei
+  // vecchi sprite "cN"/"cfree" rimossi), unica per ogni cartellino di
+  // prezzo del motore (popup ruspa, segnale di potenziamento, lotto-rudere
+  // del tutorial, selettore edificio) — vedi drawCostTagScreen()/
+  // drawCostTagWorld() piu' sotto.
 
   // ---------------------------------------------------------------- room
   // Quale room caricare — [C] `standma`/`easma`/`me3` (src/objects, la room
@@ -255,6 +256,33 @@ export async function mountMatch(ctx, params = {}) {
   // necessaria la cache per gli atlas (assets.js).
   const pauseIconTex = await loadTexture(gl, "./pause-button.png");
   const pauseIconFrame = { tex: pauseIconTex.tex, u0: 0, v0: 0, u1: 1, v1: 1, w: pauseIconTex.width, h: pauseIconTex.height, ox: 0, oy: 0 };
+  // Icona del "fumetto costo" (costFloaters, sotto) — stesso trattamento di
+  // pauseIconTex appena sopra: un PNG a se stante (game/cost-warning-icon.png),
+  // non materiale del decompilato ne' da impacchettare nell'atlas. E' l'asset
+  // "pin rosso con la moneta in bianco dentro" a lungo atteso dal commento su
+  // costFloaterFrame piu' sotto — pin e monete nella stessa immagine, colori
+  // veri, niente piu' bisogno del colorize rosso usato finora su "soldico"
+  // (l'icona blu della raccolta tasse, coins.js) come sostituto provvisorio.
+  // [NOTA] L'autore ha condiviso l'icona vera solo come immagine incollata in
+  // chat, non come file: questa sessione non ha modo di salvare a disco
+  // un'immagine incollata (nessuno strumento per farlo, a differenza di
+  // pause-button.png sopra — quello sì un file vero ricevuto e committato
+  // cosi' com'e', "senza nessuna modifica offline"). Il PNG qui e' quindi una
+  // RICOSTRUZIONE fatta a partire dalla descrizione/dallo screenshot (stesso
+  // stile: pin rosso, pila di monete bianca dentro, stessa sagoma/misura di
+  // "soldico" sotto) — da sostituire con l'immagine originale appena
+  // disponibile come file vero: stesso path/nome basta a farla entrare senza
+  // toccare altro codice. `ox`/`oy` = centro in basso (la punta del pin, come
+  // l'origine 30,88 di "soldico" nel suo stesso atlas — STUDIO.md): e' il
+  // punto che finisce sulle coordinate passate a r.draw(), cosi' il pin
+  // "punta" verso l'ancora e si apre verso l'alto, esattamente come ogni
+  // altro pin del gioco.
+  const costWarningIconTex = await loadTexture(gl, "./cost-warning-icon.png");
+  const costWarningIconFrame = {
+    tex: costWarningIconTex.tex, u0: 0, v0: 0, u1: 1, v1: 1,
+    w: costWarningIconTex.width, h: costWarningIconTex.height,
+    ox: costWarningIconTex.width / 2, oy: costWarningIconTex.height,
+  };
   // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
   // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed eviction"]
   // Il tier "combat" (sotto, dentro `if (skyAlive)`) si avvia normalmente
@@ -409,21 +437,34 @@ export async function mountMatch(ctx, params = {}) {
     left -= pad; top -= pad; right += pad; bottom += pad;
     return { ox: -left, oy: -top, w: right - left, h: bottom - top };
   }
-  /** Torretta (missile/gatling/laser) sotto un punto schermo, o `null` —
-   * usata SOLO dal tocco prolungato (input.onLongPress, sotto: apre il
-   * pannello stats/autodifesa) invece del picking generico di onTap
-   * (troppo, per un caso che riguarda solo tre tipi di edificio: niente
-   * placeholder/casse/monete/popup da concorrere). Stessa area di tocco
-   * allargata (`turretHitBox()`, sopra) e stessa convenzione "ultimo
-   * disegnato vince" del secondo giro di picking di onTap (frameList e'
-   * gia' back-to-front, l'ultimo che combacia e' il piu' vicino alla
-   * telecamera). */
-  function turretAt(sx, sy) {
+  /** Edificio finito sotto un punto schermo, o `null` — usata SOLO dal
+   * tocco prolungato (input.onLongPress, sotto: apre il pannello stats/
+   * eventuale autodifesa) invece del picking generico di onTap (troppo,
+   * per un caso che riguarda solo gli edifici: niente placeholder/casse/
+   * monete/popup da concorrere).
+   * [Nuova funzionalita', richiesta dall'autore: "il tocco prolungato per
+   * aprire i sottomenu degli edifici deve funzionare su TUTTI gli edifici,
+   * anche quelli non difensivi"] Prima limitata alle sole torrette
+   * (missile/gatling/laser): sul tap NORMALE quelle hanno gia' un
+   * comportamento diverso (sparo manuale, vedi manualFire piu' sotto) da
+   * quello degli edifici comuni (apertura diretta dello stesso pannello),
+   * quindi restano l'unico caso che ha davvero bisogno del tocco prolungato
+   * come gesto ALTERNATIVO al tap — ma il gesto in se' ora riconosce
+   * qualunque edificio, cosi' che main.js possa in futuro estendere questo
+   * stesso pannello ad altri edifici senza dover toccare di nuovo il
+   * picking. Stessa area di tocco allargata delle torrette
+   * (`turretHitBox()`, sopra) per quelle tre, sagoma vera (`it._f`) per
+   * ogni altro edificio — stessa convenzione "ultimo disegnato vince" del
+   * secondo giro di picking di onTap (frameList e' gia' back-to-front,
+   * l'ultimo che combacia e' il piu' vicino alla telecamera). */
+  function buildingAt(sx, sy) {
     const w = cam.screenToWorld(sx, sy);
     for (let i = frameList.length - 1; i >= 0; i--) {
       const it = frameList[i];
-      if (it.obj !== "building" || !BUILDING_TYPES[it.ref.type]?.turret) continue;
-      if (inFrameRect(w.x, w.y, it.x, it.y, turretHitBox(it.ref.type))) return it.ref;
+      if (it.obj !== "building") continue;
+      const isTurret = !!BUILDING_TYPES[it.ref.type]?.turret;
+      const box = isTurret ? turretHitBox(it.ref.type) : it._f;
+      if (box && inFrameRect(w.x, w.y, it.x, it.y, box)) return it.ref;
     }
     return null;
   }
@@ -935,20 +976,72 @@ export async function mountMatch(ctx, params = {}) {
   // collectCoinAt() piu' sotto e disegnate/scartate nel loop principale.
   let coinPops = [];
   const COIN_POP_LIFE = 0.4;
+  const COIN_POP_COLOR = 0x4fc3f7;   // default: monete/mon — invariato
+  // [Nota dell'autore: "per ora sono state fatte blu ovunque, falle invece
+  // verdi per i barili di oil e gialle per i container elettrici che
+  // droppano le mongolfiere"] Colore per cassa (`loot.key`, balloons.js:
+  // "oil" = barus/barus_giga, "ele" = mong, "crys" = monviola) — "mon"
+  // (monss) resta blu come le monete vere, non menzionato dalla richiesta.
+  // [Nota successiva dell'autore: "cristalli viola seguendo la stessa
+  // logica" (del biotech sotto, BIOTECH_POP_COLOR) — 0x6d5289, campionato
+  // dal colore vero dei cristalli viola dentro "monviola_bar" (la cassa che
+  // il giocatore raccoglie davvero, data/sprites.json tex=46 x=906 y=270
+  // 65x81), non un viola generico.
+  const LOOT_POP_COLOR = { oil: 0x66bb6a, ele: 0xffca28, crys: 0x6d5289 };
+  // [Nota dell'autore: "biotech falle ocra come il colore di sfondo della
+  // goccia"] `bioico` (la "goccia"/pin di soldbio, coins.js) e' quasi
+  // interamente in tinta unita — 0x93812b, campionato dal pin vero
+  // (data/sprites.json tex=18 x=1982 y=1746 60x88): non un'approssimazione,
+  // il colore dominante di quel pin (>85% dei pixel opachi).
+  const BIOTECH_POP_COLOR = 0x93812b;
+  // **[Nuova funzionalita', richiesta dall'autore: "se riesci integra un
+  // sistema di particelle coerente col colore del 'flash' che emette e con
+  // la funzione di beacon"]** [C] farolux|farolux3/Alarm_0.gml:
+  // `action_effect(1, 0, -280, 2, 16744703, 0)` riarmato ogni 40 tick
+  // finche' l'istanza vive — un lampo (GameMaker `ef_ring`, tipo 1) 280px
+  // sopra il faro, colore 16744703 = BGR -> #ff80ff (rosa magenta). Nessun
+  // sistema di particelle esiste in questo motore (stesso gap gia'
+  // dichiarato per la scintilla di sold*/Mouse_MouseEnter.gml e il fumo di
+  // industria): qui una versione minima, stessa forma di `coinPops` sopra
+  // (`{x,y,t}`, un cerchio morbido — `bubbleTex` — che cresce e sfuma),
+  // spawnata a intervalli regolari finche' il faro e' acceso (stage "lit"/
+  // "expanding" — le stesse condizioni con cui game/src/platform.js disegna
+  // gia' il bagliore "f1lux") invece che a ogni singolo tick del giocatore.
+  let faroFlashes = [];
+  const FARO_FLASH_PERIOD = 40 / 60;   // [C] farolux|farolux3/Alarm_0.gml: action_set_alarm(40, 0)
+  const FARO_FLASH_LIFE = 0.7;
+  const FARO_FLASH_COLOR = 0xff80ff;   // [C] action_effect(...): colore 16744703 (BGR) -> #ff80ff
+  let faroFlashT1 = 0, faroFlashT2 = 0;
   // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva quando
-  // l'autodifesa scala i soldi — l'icona blu dei soldi con un colorize
-  // rosso, fade out, sale verso l'alto: una per il livello 2, due in
+  // l'autodifesa scala i soldi — l'icona rossa dei soldi (costWarningIconFrame,
+  // sopra), fade out, sale verso l'alto: una per il livello 2, due in
   // sequenza per il livello 3"] Stesso principio di `coinPops` sopra (un
   // array di `{x,y,t}`, spawnati altrove e invecchiati/disegnati nel loop
   // principale) ma un'animazione diversa — sale e sfuma invece di crescere
-  // sul posto, coerente con un COSTO invece di un guadagno. Spawnati da
-  // stepAutoDefenseUpkeep() (buildings.js): quella funzione resta pura
-  // simulazione (nessun accesso a sprite/atlas/render), quindi ritorna solo
-  // le richieste di spawn ({x,y,type,count} per torretta appena "scattata")
-  // — il loop principale le traduce in floater veri, sapendo gia' come
-  // leggere `turretHitBox()` per ancorarli sopra la torretta giusta.
+  // sul posto, coerente con un COSTO invece di un guadagno. Due sorgenti:
+  // stepAutoDefenseUpkeep() (buildings.js — pura simulazione, nessun accesso
+  // a sprite/atlas/render: ritorna solo le richieste di spawn
+  // {x,y,type,count} per torretta appena "scattata", il loop principale le
+  // traduce in floater veri sapendo gia' come leggere `turretHitBox()` per
+  // ancorarli sopra la torretta giusta), e spawnInsufficientFundsWarning()
+  // sotto — [Nuova funzionalita', richiesta dall'autore: "la stessa icona
+  // anche sul placeholder quando si prova a costruire senza abbastanza
+  // soldi"] — chiamata da onTap/onPointerDown quando placeAt()/
+  // armPlacement() rifiutano un piazzamento proprio per fondi insufficienti.
   let costFloaters = [];
   const COST_FLOAT_LIFE = 1.0, COST_FLOAT_RISE = 56;
+  /** Spawna un costFloater (sopra) ancorato sopra un placeholder — stessa
+   * icona/animazione del prelievo autodifesa, per segnalare un tentativo di
+   * piazzamento fallito per fondi insufficienti. `f` e' il frame del
+   * placeholder (`ph._f`, sempre presente: frameFor("phold") non fallisce
+   * mai) — `f.oy` e' la distanza in pixel dall'ancora al bordo SUPERIORE
+   * vero dello sprite (stessa convenzione di `turretHitBox().oy` gia' usata
+   * per le torrette, vedi il loop di simulazione sotto), il piccolo "-6" e'
+   * lo stesso margine cosmetico usato li' per non far nascere l'icona
+   * incollata al pixel del bordo. */
+  function spawnInsufficientFundsWarning(x, y, f) {
+    costFloaters.push({ x, y: y - f.oy - 6, t: 0 });
+  }
   // Il fumo decorativo delle centrali (game/src/smoke.js): una o due ciminiere
   // per `industria` in piedi, mai in cantiere — vedi stepSmokeSpawner() piu'
   // sotto.
@@ -1886,6 +1979,46 @@ export async function mountMatch(ctx, params = {}) {
     return err;
   }
 
+  // [Nuova funzionalita', richiesta dall'autore: "come vogliamo gestire la
+  // visibilita' del costo di upgrade su mobile? su desktop si vede con
+  // l'hover, su mobile non e' contemplato" — "facciamo tap to reveal, solo
+  // su mobile, mi sembra l'opzione piu' pulita"] Stesso principio del
+  // cartellino del menu costruzioni (gridTapTagType/gridTapTagAt, sopra: la
+  // stessa dissolvenza GRID_TAP_SHOW_MS/GRID_TAP_FADE_MS), ma qui il PRIMO
+  // tap non conferma mai — a differenza di li' (comment su gridTapTagType,
+  // sopra: selezionare un tipo e' un'azione gratuita/reversibile, un
+  // secondo tap di conferma ci era sembrato solo confusione in piu'), un
+  // upgrade vero scala soldi per davvero al tap, quindi qui vale l'opposto:
+  // un tap su un edificio con l'upgrade sbloccato (`upsign` visibile, o un
+  // tocco diretto sull'edificio con un altro attrezzo armato — entrambi i
+  // chiamanti sotto, onTap) mostra SOLO il cartellino prezzo la prima
+  // volta; il secondo tap sullo STESSO edificio, entro quella stessa
+  // finestra di dissolvenza, conferma davvero l'upgrade (stesso
+  // `startUpgrade()` di sempre). Su desktop invariato — il prezzo si vede
+  // gia' in hover PRIMA di decidere di toccare (main.js, il cartellino
+  // "upsign" piu' sotto), un tap di conferma in piu' sarebbe solo un
+  // doppione inutile.
+  // Ritorna `undefined` quando questo tap ha SOLO rivelato il cartellino
+  // (il chiamante non deve mostrare nessun messaggio quel giro), altrimenti
+  // lo stesso valore di startUpgrade() (null = avviato, stringa = motivo
+  // del rifiuto) — i due esiti si distinguono cosi' invece che con `null`
+  // per entrambi, che avrebbe fatto leggere "construction started" anche
+  // quando non e' partito nulla.
+  let upgradeTagBuildingId = null;
+  let upgradeTagAt = 0;
+  function attemptUpgradeTap(b) {
+    if (isMobile && upgradeUnlocked(b, r12, buildings)) {
+      const peeking = upgradeTagBuildingId === b.id
+        && performance.now() - upgradeTagAt < GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
+      if (!peeking) {
+        upgradeTagBuildingId = b.id;
+        upgradeTagAt = performance.now();
+        return undefined;
+      }
+    }
+    return startUpgrade(b);
+  }
+
   /** Stessa correzione di startUpgrade() sopra, per il cantiere riavviato
    * dalla ruspa (tryRuspaRebuild() — un impalcatura torna comunque sopra
    * all'edificio, con lo stesso decoro vecchio da spegnere subito). */
@@ -2469,6 +2602,19 @@ export async function mountMatch(ctx, params = {}) {
     "faroButton", "faroWaveSignal", "faroDockerSignal",
     "faro3Button", "faro3WaveSignal", "faro3DockerSignal",
   ]);
+  // Costi della catena fari, duplicati qui per il cartellino hover sotto
+  // (game/src/platform.js: clickFaroButton/clickWaveSignal/clickDockerSignal/
+  // clickFaro3Button/clickWaveSignal3/clickDockerSignal3) — platform.js non
+  // esporta costanti di costo, solo letterali dentro quelle funzioni: se
+  // cambiano la', vanno aggiornati anche qui.
+  const FARO_SIGN_COST = {
+    faroButton: { mon: 2000 },
+    faroWaveSignal: { crys: 20 },
+    faroDockerSignal: { mon: 5000, oil: 9000 },
+    faro3Button: { mon: 5000 },
+    faro3WaveSignal: { crys: 50 },
+    faro3DockerSignal: { mon: 15000, oil: 27000 },
+  };
   function stepLights(entities, dt, night, r12) {
     // [C] cddvd/Step.gml: sotto questa soglia di elettricita' la luce non si
     // accende (o si spegne di colpo se lo era gia', "bout" nel decompilato —
@@ -3190,6 +3336,107 @@ export async function mountMatch(ctx, params = {}) {
     r.flush();
   }
 
+  /**
+   * Pannello prestiti (bankPanelOpen, state.js LOANS) — [Nuova
+   * funzionalita', richiesta dall'autore: "menu 'non raster' per
+   * risparmiare texture, come gli altri pannelli"] Non piu' i vecchi sprite
+   * decompilati "loanscr" (540x1086 — quasi tutto vuoto: solo un titolo e
+   * la nota sul tasso, verificato pixel per pixel sulla texture vera,
+   * assets/textures/page_022.png) e "getlo1..4" (506x88 l'uno, una pillola
+   * nera con testo/icona GIA' cotti nel PNG) — dieci sprite, ~1.5 milioni
+   * di pixel RGBA in tutto solo per una manciata di numeri su sfondo per
+   * lo piu' bianco. Stesso "vetro smerigliato" (blur fresco ad ogni frame,
+   * vedi il commento su drawBuildingInfoPanel() sopra per il perche' NON e'
+   * la cache di `getCachedPauseBlur()`) ma pannello/bottoni PROCEDURALI
+   * (`pausePanelFrame()`/`pauseButtonFrame()`, gia' in uso per pausa/info
+   * edificio/vittoria — nessuna texture NUOVA, solo le due gia' in cache)
+   * e testo HTML vero (`drawHtmlText()`) al posto dei numeri cotti nel PNG:
+   * stesso layout "titolo, nota, quattro bottoni impilati" del vecchio
+   * sprite, stesso identico contenuto testuale (l'importo, "in 3 anni",
+   * "20% interest rate" — LOAN_MONTHS/12, state.js), ma ricalcolato a
+   * runtime invece che letto da un'immagine fissa: si aggiorna da solo se
+   * `LOANS` cambia, non serve piu' un giro di re-export dall'originale per
+   * ogni ritocco ai numeri. Spostato qui (prima disegnava inline nel batch
+   * GUI ancora aperto, prima del bottone di pausa) per poter catturare quel
+   * batch gia' chiuso col resto della UI dentro — e per vivere nella stessa
+   * catena if/else-if degli altri modali piu' sotto (mai due aperti
+   * insieme, vedi i guard `bankPanelOpen || tradePanelOpen ||
+   * buildingInfoPanel || ...` sparsi per il file).
+   */
+  function drawBankPanel() {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
+    r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+
+    const panelW = Math.min(360, cw - 40);
+    const titleH = 34, subH = 26, gap1 = 6, gap2 = 20, padTop = 30, padBottom = 26;
+    const btnW = panelW - 60, btnH = 52, btnGap = 12;
+    const btnsH = LOANS.length * btnH + (LOANS.length - 1) * btnGap;
+    const panelH = padTop + titleH + gap1 + subH + gap2 + btnsH + padBottom;
+    const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+    r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
+
+    let ty = py + padTop;
+    drawHtmlText("GET A LOAN", px + panelW / 2, ty + titleH / 2, { size: 22 });
+    ty += titleH + gap1;
+    drawHtmlText("20% interest rate", px + panelW / 2, ty + subH / 2, { size: 13 });
+    ty += subH + gap2;
+
+    const years = LOAN_MONTHS / 12;
+    bankButtons = [];
+    for (let i = 0; i < LOANS.length; i++) {
+      const bx = px + (panelW - btnW) / 2;
+      r.draw(pauseButtonFrame(btnW, btnH), bx, ty, 1, BUTTON_TINT, BUTTON_ALPHA);
+      drawHtmlText(`${LOANS[i].amount} mon in ${years} years`, bx + btnW / 2, ty + btnH / 2, { size: 16, maxWidth: btnW - 20 });
+      bankButtons.push({ x: bx, y: ty, w: btnW, h: btnH, index: i });
+      ty += btnH + btnGap;
+    }
+    r.flush();
+  }
+
+  /**
+   * Pannello scambi (tradePanelOpen, state.js TRADES) — stesso trattamento
+   * "non raster" di drawBankPanel() appena sopra (stesso motivo: gli
+   * sprite decompilati "tradescr"/"get1..4" erano lo stesso genere di
+   * spreco — vedi il commento li'), niente titolo/nota da leggere da una
+   * texture: "TRADE RESOURCES" e le quattro righe scambio sono generate
+   * direttamente da `TRADES` (state.js) — `${t.takeAmount} ${t.take} for
+   * ${t.giveAmount} ${t.give}`, le stesse sigle risorsa gia' usate da ogni
+   * altro messaggio del gioco ("need X mon", "insufficient energy" — mai
+   * un'icona dedicata, coerente con quello stile invece che con le
+   * iconcine cotte nel vecchio "get1..4").
+   */
+  function drawTradePanel() {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
+    r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+
+    const panelW = Math.min(360, cw - 40);
+    const titleH = 34, gap1 = 20, padTop = 30, padBottom = 26;
+    const btnW = panelW - 60, btnH = 52, btnGap = 12;
+    const btnsH = TRADES.length * btnH + (TRADES.length - 1) * btnGap;
+    const panelH = padTop + titleH + gap1 + btnsH + padBottom;
+    const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+    r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
+
+    let ty = py + padTop;
+    drawHtmlText("TRADE RESOURCES", px + panelW / 2, ty + titleH / 2, { size: 22 });
+    ty += titleH + gap1;
+
+    tradeButtons = [];
+    for (let i = 0; i < TRADES.length; i++) {
+      const t = TRADES[i];
+      const bx = px + (panelW - btnW) / 2;
+      r.draw(pauseButtonFrame(btnW, btnH), bx, ty, 1, BUTTON_TINT, BUTTON_ALPHA);
+      drawHtmlText(`Get ${t.takeAmount} ${t.take} for ${t.giveAmount} ${t.give}`, bx + btnW / 2, ty + btnH / 2, { size: 15, maxWidth: btnW - 20 });
+      tradeButtons.push({ x: bx, y: ty, w: btnW, h: btnH, index: i });
+      ty += btnH + btnGap;
+    }
+    r.flush();
+  }
+
   // Overlay costruzioni mobile (buildMenuOpen, sopra) — griglia 4 colonne
   // richiesta dall'autore: riga 1 casa/industria/parco/lanciarazzi, riga 2
   // palazzo/fotovoltaico/club/gatling, riga 3 villa/eolico/mediateca/laser.
@@ -3326,42 +3573,42 @@ export async function mountMatch(ctx, params = {}) {
       r.draw(f, iconX, iconY, scale, isSelected ? (icon?.tint ?? 0xffffff) : 0xffffff, locked ? LOCKED_BUTTON_ALPHA : 1);
       r.setColorize(false);
     }
-    // Cartellino prezzo/"Level N to unlock" (unlockTagSprite()/
-    // costTagSprite(), sopra) — l'equivalente touch dell'hover mouse della
-    // riga scorrevole desktop (drawUiRow() piu' sotto, stesso schema).
-    // `input.hover` segue anche un dito che scorre senza sollevarsi
-    // (Input._move(), input.js): un "pan" sopra un bottone lo rivela in
-    // diretta, aggiornando anche `buildMenuTagType`/`Until` cosi' che
-    // sollevare il dito subito dopo lasci il cartellino ancora un attimo.
-    // Nessun controllo su `hoverPointerType`: questo overlay esiste solo su
-    // mobile (isMobile, buildMenuOpen sopra), il touch e' l'unico caso reale.
+    // Cartellino prezzo/"Unlock at level N" (unlockTagText()/costText(),
+    // sopra) — l'equivalente touch dell'hover mouse della riga scorrevole
+    // desktop (drawUiRow() piu' sotto, stesso schema). `input.hover` segue
+    // anche un dito che scorre senza sollevarsi (Input._move(), input.js):
+    // un "pan" sopra un bottone lo rivela in diretta, aggiornando anche
+    // `buildMenuTagType`/`Until` cosi' che sollevare il dito subito dopo
+    // lasci il cartellino ancora un attimo. Nessun controllo su
+    // `hoverPointerType`: questo overlay esiste solo su mobile (isMobile,
+    // buildMenuOpen sopra), il touch e' l'unico caso reale.
     const hoveredTagBtn = input.hover && buildMenuButtons.find((b) => b.type
       && input.hover.x >= b.x && input.hover.x <= b.x + b.w
       && input.hover.y >= b.y && input.hover.y <= b.y + b.h);
     if (hoveredTagBtn) { buildMenuTagType = hoveredTagBtn.type; buildMenuTagUntil = performance.now() + 2500; }
     const tagBtn = hoveredTagBtn
       ?? (buildMenuTagType && performance.now() < buildMenuTagUntil ? buildMenuButtons.find((b) => b.type === buildMenuTagType) : null);
-    function drawMenuTag(btn, spr, alpha) {
-      const tagFrame = frameFor(spr);
-      if (!tagFrame) return;
-      // Clampato dentro lo schermo (min/max sotto): un bottone sul bordo
-      // sinistro/destro della griglia spingerebbe altrimenti il cartellino
-      // (piu' largo di una singola cella) oltre il bordo del canvas.
-      const tx = Math.min(Math.max(btn.x + btn.w / 2 - (tagFrame.w * COST_TAG_SCALE) / 2, 4), cw - tagFrame.w * COST_TAG_SCALE - 4);
+    // Clampato dentro lo schermo (min/max sotto): un bottone sul bordo
+    // sinistro/destro della griglia spingerebbe altrimenti il cartellino
+    // (piu' largo di una singola cella) oltre il bordo del canvas.
+    function drawMenuTag(btn, text, alpha) {
+      if (!text) return;
+      const w = tagWidth(text);
+      const tx = Math.min(Math.max(btn.x + btn.w / 2, 4 + w / 2), cw - w / 2 - 4);
       const ty = Math.max(btn.y - 8, 4);
-      r.draw(tagFrame, tx, ty, COST_TAG_SCALE, 0xffffff, alpha);
+      drawCostTagScreen(text, tx, ty, { alpha });
     }
     if (tagBtn) {
       const locked = buildingLocked(tagBtn.type);
-      drawMenuTag(tagBtn, locked ? unlockTagSprite(tagBtn.type) : costTagSprite(tagBtn.type, null), 1);
+      drawMenuTag(tagBtn, locked ? unlockTagText(tagBtn.type) : costText(BUILDING_TYPES[tagBtn.type]?.placeCost), 1);
     }
     // [Bug corretto/Nuova funzionalita', vedi il commento su gridTapTagType/
     // At sopra] Un tap secco su QUALUNQUE bottone (bloccato o no) lo arma
     // con un timestamp assoluto invece del "linger" di `buildMenuTagType`/
     // `Until` (pensato per un dito che scorre e si solleva, non per questo
     // caso) — pieno per GRID_TAP_SHOW_MS, poi dissolto in GRID_TAP_FADE_MS
-    // invece di sparire di scatto. Stesso sprite scelto dal resto della
-    // funzione (locked ? unlockTagSprite : costTagSprite, sopra).
+    // invece di sparire di scatto. Stesso testo scelto dal resto della
+    // funzione (locked ? unlockTagText : costText, sopra).
     if (gridTapTagType) {
       const elapsed = performance.now() - gridTapTagAt;
       const total = GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
@@ -3369,7 +3616,7 @@ export async function mountMatch(ctx, params = {}) {
       if (btn) {
         const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
         const locked = buildingLocked(btn.type);
-        drawMenuTag(btn, locked ? unlockTagSprite(btn.type) : costTagSprite(btn.type, null), alpha);
+        drawMenuTag(btn, locked ? unlockTagText(btn.type) : costText(BUILDING_TYPES[btn.type]?.placeCost), alpha);
       } else {
         // Il cartellino e' svanito del tutto: se era quello di un bottone
         // GIA' selezionato al tap (input.onTap sopra: un bloccato non
@@ -3534,7 +3781,7 @@ export async function mountMatch(ctx, params = {}) {
       const title = "CONGRATULATIONS!";
       const subtitle = "The Skyscraper stands complete, the tallest building this " +
         "city has ever raised. From now on, enemies will no longer attack the " +
-        "city — keep building, there's no limit from here.";
+        "city. Keep building, there's no limit from here.";
       const rows = [{ label: "Keep playing", action: "continue" }];
 
       const panelW = Math.min(360, cw - 40);
@@ -3667,6 +3914,107 @@ export async function mountMatch(ctx, params = {}) {
   const pauseButtonFrame = makeRoundRectCache(14);
 
   /**
+   * [Nuova funzionalita', richiesta dall'autore: "altri sprite da
+   * sostituire con grafica vettoriale per risparmiare spazio? facciamolo"]
+   * "Cartellini" (pillola arrotondata + testo) — sostituiscono gli sprite
+   * decompilati pre-renderizzati `costTagSprite()`/`unlockTagSprite()`
+   * (buildings.js/main.js: "c100".."c200000", "cfree", "c12aa"/"c23aa",
+   * "unlocklvl2"/"unlocklvl3") e i due bottoni conferma ruspa
+   * ("demoyesse"/"demoback") — ~20 sprite, tutti la stessa identica
+   * ricetta visiva (pillola nera o colorata, testo bianco bold, a volte
+   * una mini-icona), usati da CINQUE punti diversi del file (hover
+   * desktop/tap mobile sul menu costruzioni, popup ruspa, hover/tap
+   * upgrade edificio, lotti-rudere del tutorial).
+   * A differenza di `pausePanelFrame`/`pauseButtonFrame` sopra (un solo
+   * pannello alla volta, uno slot di cache basta) qui piu' cartellini di
+   * taglia DIVERSA possono comparire nello stesso frame — un upgrade
+   * pronto qui, un bottone bloccato li' — quindi uno slot singolo li
+   * farebbe rigenerare in continuazione. Le taglie realmente in gioco
+   * restano comunque pochissime (sempre un numero o una frase breve, mai
+   * testo libero): un Map senza scadenza basta, non serve un'eviction vera.
+   */
+  const tagPillCache = new Map();
+  function tagPillFrame(w, h) {
+    const key = w + "x" + h;
+    let tex = tagPillCache.get(key);
+    if (!tex) { tex = makeRoundedRectTexture(gl, w, h, h / 2); tagPillCache.set(key, tex); }
+    return solidFrame(tex, w, h);
+  }
+  const TAG_PILL_H = 44;      // stessa taglia (88px nativi degli sprite rimossi * COST_TAG_SCALE, sopra)
+  const TAG_TEXT_SIZE = 15;
+  const TAG_CHAR_W = 9.2;     // larghezza approssimata di un carattere Montserrat bold a TAG_TEXT_SIZE
+  const TAG_PAD = 26;         // margine orizzontale pieno (dentro la pillola) attorno al testo
+  // Pillola fissa dei due bottoni conferma ruspa (dynamic.push({obj:
+  // "ruspaYes"/"ruspaNo",...}) piu' sotto) — testo sempre breve ("Yes!"/
+  // "No", mai un numero variabile come le altre pillole), quindi una taglia
+  // fissa basta invece di ricalcolarla dal testo come TAG_PAD/TAG_CHAR_W
+  // sopra. Vicina alla taglia nativa dei vecchi sprite "demoyesse"/
+  // "demoback" (139x60, data/sprites.json) per restare proporzionata agli
+  // altri elementi del popup ruspa.
+  const RUSPA_BTN_W = 120, RUSPA_BTN_H = 56;
+  /** Larghezza della pillola per un dato testo — condivisa fra drawCostTagAt()
+   * sotto (che ne ha bisogno per centrare/posizionare il quad) e i chiamanti
+   * che devono clampare la posizione DENTRO lo schermo PRIMA di disegnare
+   * (drawMenuTag() piu' sotto): un solo posto che decide la formula, mai
+   * due calcoli che potrebbero disallinearsi. */
+  function tagWidth(text) {
+    return Math.round(text.length * TAG_CHAR_W + TAG_PAD);
+  }
+  /** Nucleo comune di drawCostTagScreen()/drawCostTagWorld() sotto: `pillX,
+   * pillY` e' il centro-alto della pillola nello spazio in cui `r` sta gia'
+   * disegnando in questo momento (mondo o schermo — la pillola e' un quad
+   * come un altro, segue la proiezione ATTIVA); `textX,textY` e' lo STESSO
+   * punto ma sempre in pixel schermo veri, perche' drawHtmlText() e' un
+   * overlay DOM che non sa nulla della matrice camera.
+   * `alpha` (default 1, per la dissolvenza dei cartellini "a tap" — build
+   * menu/upgrade edificio, sotto): drawHtmlText() non ha un parametro
+   * alpha proprio (`color`, sempre opaco altrove — nessun altro testo HTML
+   * di questo motore sfuma mai), quindi qui si compone un `rgba(...)`
+   * esplicito da `textRgb` invece di passare una stringa CSS gia' pronta
+   * come fa ogni altro chiamante di drawHtmlText(): l'unico punto che deve
+   * sapere fondere colore e trasparenza in un'unica stringa. */
+  function drawCostTagAt(text, pillX, pillY, textX, textY, { tint = 0x000000, textRgb = [255, 255, 255], alpha = 1 } = {}) {
+    const w = tagWidth(text);
+    const h = TAG_PILL_H;
+    r.draw(tagPillFrame(w, h), pillX - w / 2, pillY, 1, tint, alpha);
+    const [tr, tg, tb] = textRgb;
+    drawHtmlText(text, textX, textY + h / 2, { size: TAG_TEXT_SIZE, color: `rgba(${tr},${tg},${tb},${alpha})`, maxWidth: w - 10 });
+  }
+  /** Cartellino in spazio SCHERMO (menu costruzioni, riga scorrevole
+   * desktop): `topCenterX,topCenterY` sono gia' pixel schermo, nessuna
+   * conversione. */
+  function drawCostTagScreen(text, topCenterX, topCenterY, opts) {
+    drawCostTagAt(text, topCenterX, topCenterY, topCenterX, topCenterY, opts);
+  }
+  /** Cartellino ancorato a un punto del MONDO (popup ruspa, cartellino
+   * upgrade sull'edificio, lotti-rudere del tutorial): la pillola segue la
+   * camera come ogni altro sprite di mondo, il testo (DOM, sempre schermo)
+   * usa cam.worldToScreen() sullo stesso punto. */
+  function drawCostTagWorld(text, wx, wy, opts) {
+    const s = cam.worldToScreen(wx, wy);
+    drawCostTagAt(text, wx, wy, s.x, s.y, opts);
+  }
+  /** Testo di un costo (mon/oil/ele...) — stessa formattazione gia' usata
+   * da tryStartUpgrade()/drawTradePanel() per un rifiuto/scambio multi-
+   * risorsa ("need 2000 mon, 500 oil"), qui senza il "need": un cartellino
+   * mostra il prezzo, non un rifiuto. `null`/`undefined` (nessun costo
+   * applicabile: es. un tipo non ancora ricostruito, o un livello di
+   * potenziamento che non esiste) restano "niente cartellino", come il
+   * vecchio costTagSprite() — un oggetto vuoto (`{}`, es. `placeCost`
+   * della banca) e' un caso DIVERSO, un vero costo di zero. A differenza
+   * del vecchio costTagSprite() (buildings.js — tornava `null` anche per
+   * qualunque costo che non fosse SOLO `mon`) funziona per qualunque
+   * combinazione di risorse: nessun caso speciale per chies (prima
+   * l'unico tipo con due sprite dedicati, "c12aa"/"c23aa", per il suo
+   * costo doppio mon+oil).
+   */
+  function costText(cost) {
+    if (!cost) return null;
+    const entries = Object.entries(cost);
+    return entries.length ? entries.map(([k, v]) => `${v} ${k}`).join(", ") : "It's free!";
+  }
+
+  /**
    * [Nuova funzionalita', richiesta dall'autore: "la barra della vita deve
    * avere i lati corti completamente tondi"] Una vera barra "a pillola"
    * (semicerchio pieno su entrambi i lati corti, non solo angoli
@@ -3769,23 +4117,34 @@ export async function mountMatch(ctx, params = {}) {
     const ph = placeholders.find((p) => !p.consumed && inFrameDiamond(w.x, w.y, p.x, p.y, p._f));
     if (!ph) return;
     const err = armPlacement(ph, selectedType);
+    // Stesso avviso visivo di placeAt() sotto (onTap, `spawnInsufficientFundsWarning()`
+    // sopra): qui l'unico modo di riconoscere PROPRIO il rifiuto per fondi
+    // insufficienti (armPlacement() puo' fallire anche per altri motivi —
+    // piattaforma non ancora attiva, nessun lotto diagonale libero) e'
+    // ripetere lo stesso controllo che la funzione ha gia' fatto al suo
+    // interno: economico (canAfford e' una pura lettura di r12), niente
+    // parsing del messaggio d'errore.
+    if (err && !canAfford(r12, def.placeCost)) spawnInsufficientFundsWarning(ph.x, ph.y, ph._f);
     message = err ?? "drag to a free adjacent lot";
     messageT = 3;
   };
   input.onPointerUp = (sx, sy) => { if (!paused) resolvePlacement(sx, sy); };
-  // Tocco prolungato su una torretta finita (turretAt(), sopra) con la mano
-  // selezionata: apre lo stesso pannello informativo degli altri edifici
-  // (buildingInfoPanel, drawBuildingInfoPanel() sotto — qui in piu' mostra
-  // il toggle di autodifesa, solo per missile/gatling/laser). Il tap
-  // NORMALE sulle torrette resta invariato (spara subito, vedi onTap sotto,
-  // ramo `manualFire`): i due gesti non si sovrappongono mai per lo stesso
-  // tocco (game/src/input.js, LONG_PRESS_MS > TAP_MS). Ignorato durante
-  // ogni altro modale/overlay gia' aperto — stessi guard dell'apertura
-  // "normale" del pannello su un edificio non difensivo (onTap sotto).
+  // Tocco prolungato su un edificio finito (buildingAt(), sopra) con la
+  // mano selezionata: apre il pannello informativo dell'edificio
+  // (buildingInfoPanel, drawBuildingInfoPanel() sotto — con in piu' il
+  // toggle di autodifesa per le sole missile/gatling/laser). Per una
+  // torretta e' l'UNICO modo di arrivarci: il tap normale su di lei resta
+  // invariato (spara subito, vedi onTap sotto, ramo `manualFire`) — i due
+  // gesti non si sovrappongono mai per lo stesso tocco (`longPressFired` in
+  // game/src/input.js). Per ogni altro edificio il tap normale apre gia' lo
+  // stesso pannello (onTap sotto): il tocco prolungato qui e' semplicemente
+  // un modo equivalente e piu' rapido di arrivarci, coerente su tutti gli
+  // edifici. Ignorato durante ogni altro modale/overlay gia' aperto —
+  // stessi guard dell'apertura "normale" del pannello (onTap sotto).
   input.onLongPress = (sx, sy) => {
     if (paused || outcome || bankPanelOpen || tradePanelOpen || buildingInfoPanel
       || buildMenuOpen || tutorialState?.cutscene || r12.selec !== 0) return;
-    const b = turretAt(sx, sy);
+    const b = buildingAt(sx, sy);
     if (!b || b.construction) return;
     buildingInfoPanel = b;
   };
@@ -4119,7 +4478,7 @@ export async function mountMatch(ctx, params = {}) {
   for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
   const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
   const CHIES_UNLOCK_BY_TYPE = Object.fromEntries(OTHER_BUILDINGS.filter((b) => b.chiesUnlock).map((b) => [b.type, b.chiesUnlock]));
-  /** Lo sprite del cartellino "Level N to unlock" per un bottone edificio
+  /** Il testo del cartellino "Unlock at level N" per un bottone edificio
    * ancora bloccato (`buildingLocked()`, sotto) — **[C]** `pu6|pudj|
    * pugatling|pusolare/Mouse_MouseEnter.gml` (chiesUnlock:2) creano
    * `level2club|gatling|palazz|sol`, tutti lo stesso sprite reale
@@ -4127,16 +4486,19 @@ export async function mountMatch(ctx, params = {}) {
    * (chiesUnlock:3) creano `leve3tounlo4|5|villa`/`level3tounlomedia`,
    * tutti "unlocklvl3" — un solo banner generico per soglia, non uno per
    * edificio (verificato: ogni oggetto sopra referenzia lo stesso sprite,
-   * mai uno dedicato). Stesso posto/occasione del cartellino prezzo vero
-   * (`costTagSprite()`, buildings.js) quando il bottone e' gia' sbloccato —
-   * vedi il commento su come i due si alternano piu' sotto (drawUiRow()/
-   * drawBuildMenuOverlay()). `null` per `parco` (`pu7`, sotto un flag
-   * diverso da `chies` — `unlocinque`, mai portato qui, STUDIO.md: nessun
-   * gate nel nostro port) o qualunque tipo senza `chiesUnlock`.
+   * mai uno dedicato) — **[Nuova funzionalita', richiesta dall'autore:
+   * "altri sprite da vettorializzare?"]** quei due sprite dedicati non
+   * servono piu': drawCostTagScreen()/drawCostTagWorld() (sopra) disegnano
+   * questo stesso testo su una pillola procedurale. Stesso posto/occasione
+   * del cartellino prezzo vero (`costText()`, sopra) quando il bottone e'
+   * gia' sbloccato — vedi il commento su come i due si alternano piu' sotto
+   * (drawUiRow()/drawBuildMenuOverlay()). `null` per `parco` (`pu7`, sotto
+   * un flag diverso da `chies` — `unlocinque`, mai portato qui, STUDIO.md:
+   * nessun gate nel nostro port) o qualunque tipo senza `chiesUnlock`.
    */
-  function unlockTagSprite(type) {
+  function unlockTagText(type) {
     const need = CHIES_UNLOCK_BY_TYPE[type];
-    return need === 2 ? "unlocklvl2" : need === 3 ? "unlocklvl3" : null;
+    return need != null ? `Unlock at level ${need}` : null;
   }
   /** [C] vedi il commento su `chiesUnlock` sopra: `true` finche' `chies`
    * (l'unica istanza, STUDIO.md §5.3) non ha raggiunto il livello richiesto —
@@ -4225,13 +4587,23 @@ export async function mountMatch(ctx, params = {}) {
     // semplicemente "costruisci una banca" — e su `match_easy`, che non ha
     // mai una piattaforma da espandere, resta percio' irraggiungibile
     // (fedele, non un buco: `platformState` e' `null` li').
+    // [Nuova funzionalita', richiesta dall'autore: indagare se le ville
+    // producessero una seconda risorsa a forma di elica del DNA legata al
+    // grattacielo] Confermato e aggiunto un quarto requisito, mancante
+    // finora: `r12.grattacieloUnlocked` (state.js — il latch a
+    // `biotech>=100`, azzerato all'atto, impostato nel loop di simulazione
+    // sopra — [C] stella3/Step.gml). Le ville lo producevano gia' nel
+    // motore (coins.js, la moneta "biotech") ma nessuno lo leggeva ancora:
+    // il grattacielo si sbloccava con banca+piattaforma senza mai chiedere
+    // biotech, un requisito reale dell'originale rimasto fuori.
     {
       type: "grattacielo", selec: 82, spr: "sta3", tint: 0x82824f, label: "Skyscraper", cost: 200000,
       // `sandbox.on ||` bypassa anche il vincolo "solo su `match`" (sopra:
-      // `platformState` e' `null` su `match_easy`) — coerente con "tutto
-      // sbloccato", non piu' fedele all'originale a quel punto.
+      // `platformState` e' `null` su `match_easy`) e il requisito biotech —
+      // coerente con "tutto sbloccato", non piu' fedele all'originale a
+      // quel punto.
       unlocked: () => !buildings.some((b) => b.type === "grattacielo") && (sandbox.on || (buildings.some((b) => b.type === "banca")
-        && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded")),
+        && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded" && r12.grattacieloUnlocked)),
     },
   ];
   for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; BUILDING_LABEL[b.type] = b.label; }
@@ -4266,23 +4638,28 @@ export async function mountMatch(ctx, params = {}) {
     // quindi a meta' larghezza sopra l'ancora, non sull'ancora stessa.
     const f = frameFor(item.spr);
     const bubbleY = f ? item.y - (f.oy - f.w / 2) : item.y;
-    coinPops.push({ x: item.x, y: bubbleY, t: 0 });
+    // BIOTECH_POP_COLOR sopra: solo "soldbio" (item.kind === "biotech",
+    // coins.js) cambia colore — sold1..18/sold19..30 (kind "mon") restano blu.
+    coinPops.push({ x: item.x, y: bubbleY, t: 0, color: item.kind === "biotech" ? BIOTECH_POP_COLOR : COIN_POP_COLOR });
     collectCoin(coins, item, r12);
   }
 
   /** Raccoglie una cassa di risorse lasciata da una mongolfiera (balloons.js)
-   * e fa partire la stessa "bolla" blu della raccolta monete (coinPops sopra,
+   * e fa partire la stessa "bolla" della raccolta monete (coinPops sopra,
    * collectCoinAt()) — segnalato dall'autore: un effetto visivo simile a
-   * quello dei soldi, non uno tutto suo. A differenza del pin delle monete la
-   * cassa e' un semplice box (nessuna "testa" separata dal resto dello
-   * sprite), quindi la bolla centra l'intero frame invece del solo cerchio
-   * superiore. Punto d'ingresso condiviso da input.onTap (sotto) e dalla
-   * raccolta al passaggio del mouse (hover, nel loop principale) — vedi il
-   * commento li' per il perche' in piu' del solo tap. */
+   * quello dei soldi, non uno tutto suo. Colore diverso per barile di oil
+   * (verde) e container elettrico (giallo) — LOOT_POP_COLOR sopra, richiesta
+   * successiva dell'autore ("erano state fatte blu ovunque"); mon/crys
+   * restano blu. A differenza del pin delle monete la cassa e' un semplice
+   * box (nessuna "testa" separata dal resto dello sprite), quindi la bolla
+   * centra l'intero frame invece del solo cerchio superiore. Punto
+   * d'ingresso condiviso da input.onTap (sotto) e dalla raccolta al
+   * passaggio del mouse (hover, nel loop principale) — vedi il commento
+   * li' per il perche' in piu' del solo tap. */
   function collectLootAt(item) {
     const f = frameFor(item.spr);
     const bubbleY = f ? item.y - f.oy + f.h / 2 : item.y;
-    coinPops.push({ x: item.x, y: bubbleY, t: 0 });
+    coinPops.push({ x: item.x, y: bubbleY, t: 0, color: LOOT_POP_COLOR[item.key] ?? COIN_POP_COLOR });
     collectLoot(loot, item, r12);
   }
 
@@ -4348,7 +4725,10 @@ export async function mountMatch(ctx, params = {}) {
     // "modale" di bankPanelOpen sotto, controllato PRIMA di lui apposta:
     // se il pannello prestiti fosse gia' aperto quando si preme pausa,
     // restare bloccati su quello invece che sul menu di pausa sarebbe
-    // confuso (e comunque quel pannello non e' piu' disegnato sopra il blur).
+    // confuso (e comunque `paused` ha gia' priorita' su `bankPanelOpen`
+    // nella catena if/else-if di drawBankPanel()/drawPauseOverlay() piu'
+    // sotto: quel pannello smette proprio di disegnarsi finche' `paused`
+    // resta vero, non solo di restare sopra).
     if (paused) {
       const hit = pauseMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       // "Saving options" (pauseSubmenu, sopra): stesso array `pauseMenuButtons`
@@ -4570,7 +4950,7 @@ export async function mountMatch(ctx, params = {}) {
         else if (btn.kind === "building") {                              // casa/industria/...
           // Stesso gate della griglia mobile qui sopra, per lo stesso
           // bottone visto nella riga scorrevole desktop (buildingLocked()).
-          // Il cartellino vero (unlockTagSprite(), sopra) e' gia' visibile
+          // Il cartellino vero (unlockTagText(), sopra) e' gia' visibile
           // all'hover su questa riga (drawUiRow() sotto): il messaggio resta
           // solo come rinforzo testuale del click stesso.
           if (buildingLocked(btn.type)) {
@@ -4778,6 +5158,19 @@ export async function mountMatch(ctx, params = {}) {
         message = `${BUILDING_LABEL[selectedType] ?? selectedType}: not rebuilt yet`;
       } else {
         const err = placeAt(picked, selectedType);
+        // [Nuova funzionalita', richiesta dall'autore: "la stessa icona del
+        // costo dell'autodifesa deve comparire anche sul placeholder quando
+        // si prova a costruire senza abbastanza soldi"] `spawnInsufficientFundsWarning()`,
+        // sopra — stesso avviso, stesso "sale e sfuma verso l'alto". placeAt()
+        // (sopra) puo' rifiutare anche per altri motivi (piattaforma non
+        // ancora attiva, torretta troppo vicina, nessun'area libera per un
+        // multi-tile): qui l'unico modo di riconoscere PROPRIO il rifiuto per
+        // fondi insufficienti e' ripetere lo stesso controllo che la funzione
+        // ha gia' fatto al suo interno (identico a `def.noAffordCheck`
+        // incluso), non un parsing del messaggio d'errore.
+        if (err && !def.noAffordCheck && !canAfford(r12, def.placeCost)) {
+          spawnInsufficientFundsWarning(picked.x, picked.y, picked._f);
+        }
         message = err ?? `${def.label.toLowerCase()} placed (-${def.placeCost.mon} mon)`;
       }
       messageT = 3;
@@ -4855,9 +5248,8 @@ export async function mountMatch(ctx, params = {}) {
         // pannello qui li intercetterebbe prima e romperebbe quel tocco.
         buildingInfoPanel = b;
       } else {
-        const err = startUpgrade(b);
-        message = err ?? "construction started";
-        messageT = 3;
+        const err = attemptUpgradeTap(b);
+        if (err !== undefined) { message = err ?? "construction started"; messageT = 3; }
       }
     } else if (picked.obj === "ruspaYes") {
       // [C] demoiessa/Mouse_LeftReleased.gml: `iessa=1`, letto dalla
@@ -4902,10 +5294,11 @@ export async function mountMatch(ctx, params = {}) {
       // [C] upsign12|23/Mouse_LeftPressed.gml: la stessa cosa che "building"
       // gia' fa tap-ovunque-sull'edificio (tryStartUpgrade gia' controlla
       // soglia e costo) — qui e' solo il bersaglio VISIBILE e prioritario
-      // quando il potenziamento e' davvero pronto.
-      const err = startUpgrade(picked.ref);
-      message = err ?? "construction started";
-      messageT = 3;
+      // quando il potenziamento e' davvero pronto. attemptUpgradeTap()
+      // (sopra): su mobile il primo tap qui rivela solo il cartellino
+      // prezzo, non avvia ancora niente.
+      const err = attemptUpgradeTap(picked.ref);
+      if (err !== undefined) { message = err ?? "construction started"; messageT = 3; }
       picked = null;
     } else if (picked.obj === "bankIcon") {
       // [C] bankbuttoner/Mouse_LeftPressed.gml: apre il pannello solo se
@@ -5401,9 +5794,53 @@ export async function mountMatch(ctx, params = {}) {
       // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
       stepCoinSpawner(buildings, coins, dt, r12);
       stepCoins(coins, dt, r12);
+      // [Nuova funzionalita', richiesta dall'autore: indagare se le ville
+      // producessero una seconda risorsa a forma di elica del DNA legata al
+      // grattacielo — confermato: `biotech` (r12, sopra — le monete "bioico"
+      // di villa, coins.js) e' proprio il carburante della terza stella.
+      // [C] stella3/Step.gml: a 100 si azzera e sblocca — qui un latch
+      // permanente (r12.grattacieloUnlocked, state.js) invece di una soglia
+      // ricontrollata ogni frame, coerente con l'originale (un evento
+      // discreto e "speso" una volta, non una condizione che si ri-blocca
+      // se `biotech` scende sotto 100 di nuovo dopo). **[Bug corretto sul
+      // decompilato]** l'originale richiede anche `instance_count(m3cant)
+      // >0` (il grattacielo gia' esistente) per questo stesso sblocco — un
+      // requisito circolare mai raggiungibile per davvero (vedi il
+      // commento su `grattacieloUnlocked`, state.js): qui omesso, il gate
+      // "un solo grattacielo per partita" resta comunque garantito da
+      // `STAR_BUILDINGS.grattacielo.unlocked()` sotto.
+      if (!r12.grattacieloUnlocked && r12.biotech >= 100) {
+        r12.biotech = 0;
+        r12.grattacieloUnlocked = true;
+      }
       if (platformState) {
         const chiesLevel = buildings.find((b) => b.type === "chies")?.level ?? 0;
         stepFaroChain(platformState, r12, balloons, cars, smoke, dt, chiesLevel, night);
+        // Lampo periodico dei fari accesi (faroFlashes/FARO_FLASH_* sopra) —
+        // stesse condizioni di stage con cui faro1Decor()/faro3Decor()
+        // (game/src/platform.js) disegnano gia' "f1lux": tier1 accende
+        // ENTRAMBI i fari gemelli (FARO1 e FARO2), tier2 solo FARO3.
+        const tier1Lit = platformState.tier1.stage === "lit" || platformState.tier1.stage === "expanding";
+        const tier2Lit = platformState.tier2.stage === "lit" || platformState.tier2.stage === "expanding";
+        if (tier1Lit) {
+          faroFlashT1 += dt;
+          while (faroFlashT1 >= FARO_FLASH_PERIOD) {
+            faroFlashT1 -= FARO_FLASH_PERIOD;
+            faroFlashes.push({ x: FARO1.x, y: FARO1.y - 280, t: 0 });
+            faroFlashes.push({ x: FARO2.x, y: FARO2.y - 280, t: 0 });
+          }
+        } else faroFlashT1 = 0;
+        if (tier2Lit) {
+          faroFlashT2 += dt;
+          while (faroFlashT2 >= FARO_FLASH_PERIOD) {
+            faroFlashT2 -= FARO_FLASH_PERIOD;
+            faroFlashes.push({ x: FARO3.x, y: FARO3.y - 280, t: 0 });
+          }
+        } else faroFlashT2 = 0;
+        for (let i = faroFlashes.length - 1; i >= 0; i--) {
+          faroFlashes[i].t += dt;
+          if (faroFlashes[i].t >= FARO_FLASH_LIFE) faroFlashes.splice(i, 1);
+        }
       }
       // Raccolta al passaggio del mouse — [C] sold*/soldbio/Mouse_MouseEnter.gml
       // usa davvero un hover, non un click (coins.js, collectCoin() sopra il tap
@@ -5691,26 +6128,30 @@ export async function mountMatch(ctx, params = {}) {
       // Popup si'/no della ruspa (ruspaPending, armato da input.onTap sotto)
       // — [C] demobasia/Create.gml: demobachia (annulla, sprite "demoback")
       // offset (16,-16), demoiessa (conferma, "demoyesse") offset (177,-16),
-      // disegnaprezzo (il costo, qui il cartellino gia' generico "cN" invece
-      // di un font disegnato a runtime — stesso riuso di costTagSprite())
-      // offset (157,-185), tutti relativi alla posizione dell'edificio
+      // disegnaprezzo (il costo, il cartellino "cN" — vedi drawCostTagWorld()
+      // sopra) offset (157,-185), tutti relativi alla posizione dell'edificio
       // (demobasia stesso nasce li', offset (0,0)). [I] Segnalato dall'autore:
       // a piena grandezza (scale 1) il popup risultava molto piu' grande dei
       // bottoni gia' rimpiccioliti — disegnato a UI_SCALE (sopra, la stessa
       // dei bottoni) con gli offset scalati di conseguenza, altrimenti le tre
       // icone piu' piccole finirebbero staccate l'una dall'altra invece che
       // ravvicinate come nell'originale.
+      // [Nuova funzionalita', richiesta dall'autore: "altri sprite da
+      // vettorializzare?"] "demoback"/"demoyesse" non servono piu' come
+      // sprite: `_f: tagPillFrame(...)` e' la stessa pillola procedurale dei
+      // cartellini di costo (sopra), tinta rossa/verde con `_tint` — un
+      // campo gia' supportato dalla pipeline generica di `dynamic` (vedi
+      // per esempio le scintille colorate/le auto, piu' sotto), quindi il
+      // BOTTONE (sfondo + hit-test, `picked.obj==="ruspaYes"/"ruspaNo"`
+      // sotto legge ancora `_f` per l'AABB) resta nella stessa pipeline di
+      // sempre — solo il TESTO ("Yes!"/"No", niente piu' cotto nel PNG) e
+      // il cartellino del costo si disegnano a parte, insieme al resto dei
+      // cartellini in spazio mondo piu' sotto (drawCostTagWorld()): un DOM
+      // overlay non fa parte di `dynamic`/frameList, quel batch resta solo
+      // per gli sprite veri.
       if (ruspaPending?.buildingId === b.id) {
-        dynamic.push({ obj: "ruspaNo", ref: b, x: b.x + 16 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: frameFor("demoback"), _selfLit: true, _scale: UI_SCALE });
-        dynamic.push({ obj: "ruspaYes", ref: b, x: b.x + 177 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: frameFor("demoyesse"), _selfLit: true, _scale: UI_SCALE });
-        // [I] Segnalato dall'autore: il cartellino del costo (a differenza dei
-        // due bottoni sopra) restava troppo grande su desktop a UI_SCALE
-        // (0.7) — ridotto a COST_TAG_SCALE (sopra, vicino a UI_SCALE — la
-        // stessa gia' in uso per il cartellino del segnale di potenziamento)
-        // mantenendo pero' l'offset a UI_SCALE, cosi' il cartellino piu'
-        // piccolo resta comunque ancorato vicino ai due bottoni invece di
-        // scostarsi.
-        dynamic.push({ obj: "decor", x: b.x + 157 * UI_SCALE, y: b.y - 185 * UI_SCALE, depth: UPSIGN_DEPTH, _f: frameFor(`c${ruspaPending.cost}`), _selfLit: true, _scale: COST_TAG_SCALE });
+        dynamic.push({ obj: "ruspaNo", ref: b, x: b.x + 16 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: tagPillFrame(RUSPA_BTN_W, RUSPA_BTN_H), _selfLit: true, _tint: 0xef5350, _scale: UI_SCALE });
+        dynamic.push({ obj: "ruspaYes", ref: b, x: b.x + 177 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: tagPillFrame(RUSPA_BTN_W, RUSPA_BTN_H), _selfLit: true, _tint: 0x43a047, _scale: UI_SCALE });
       }
     }
     for (const d of decorEntities) dynamic.push(d);
@@ -6146,76 +6587,129 @@ export async function mountMatch(ctx, params = {}) {
       const rainFrame = { ...solidFrame(white, RAIN_STREAK_WIDTH, RAIN_STREAK_LENGTH), ox: RAIN_STREAK_WIDTH / 2, oy: RAIN_STREAK_LENGTH / 2 };
       for (const d of weatherState.drops.active) drawRotated(rainFrame, d.x, d.y, rainDropAngle(d), 1, RAIN_TINT, RAIN_ALPHA);
     }
-    // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che
-    // cresce e sfuma sul punto della moneta appena presa, in primo piano come
-    // le monete stesse — niente tinta ambientale, per lo stesso motivo di
+    // Le "bolle" di raccolta moneta/cassa (coinPops sopra): un cerchio che
+    // cresce e sfuma sul punto della moneta/cassa appena presa, in primo
+    // piano come loro — niente tinta ambientale, per lo stesso motivo di
     // `_selfLit` qui sopra. Segnalato dall'autore ("troppo piccola"): la testa
     // del pin "soldico" e' un cerchio di ~60px di diametro (STUDIO.md,
     // coins.js) — la bolla partiva a 20px e finiva a 66px, appena piu' grande
     // dell'icona invece di avvolgerla con margine. Range raddoppiato (36..130).
+    // Colore per particella (`p.color`, COIN_POP_COLOR/LOOT_POP_COLOR sopra):
+    // azzurro di default (monete/biotech/gemme), verde per l'oil e giallo per
+    // l'elettricita' — vedi collectLootAt() sopra.
     for (const p of coinPops) {
       const k = p.t / COIN_POP_LIFE;
       const size = 36 + k * 94;
-      r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, 0x4fc3f7, (1 - k) * 0.85);
+      r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, p.color ?? COIN_POP_COLOR, (1 - k) * 0.85);
+    }
+    // Lampo dei fari accesi (faroFlashes sopra, "se riesci integra un
+    // sistema di particelle coerente col colore del flash..."): stessa
+    // "bolla" di coinPops sopra ma piu' grande/lenta e rosa (FARO_FLASH_COLOR
+    // = #ff80ff, dal colore originale action_effect() — vedi il commento
+    // sopra) invece di azzurra, coerente con un bagliore di segnalazione
+    // notturna invece che con la raccolta di una moneta. Nessuna tinta
+    // ambientale (come coinPops/_selfLit sopra): e' un effetto luminoso, non
+    // un pezzo di scena che si scurisce di notte — anzi e' visibile SOLO di
+    // notte, come il bagliore f1lux da cui nasce.
+    for (const p of faroFlashes) {
+      const k = p.t / FARO_FLASH_LIFE;
+      const size = 40 + k * 260;
+      r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, FARO_FLASH_COLOR, (1 - k) * 0.6);
     }
     // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva
     // quando l'autodifesa scala i soldi al giocatore — l'icona blu dei
-    // soldi con un colorize rosso, fade out, sale verso l'alto"]
-    // `costFloaters` (sopra, spawnati dal loop di simulazione quando
-    // stepAutoDefenseUpkeep() segnala un prelievo — buildings.js): la
-    // stessa icona "soldico" (coins.js, il pin blu della raccolta tasse)
-    // ma in colorize mode — un pin blu MOLTIPLICATO per un tint non
-    // darebbe mai un rosso leggibile (il blu ha poco rosso da moltiplicare
-    // per), colorize sostituisce l'RGB con `tint` usando solo l'alpha
-    // della texture come sagoma, stessa tecnica gia' in uso per le icone
-    // nere della UI (`iconsDark`/`setColorize()`, sopra). Sale e sfuma
-    // invece di crescere sul posto come le bolle di raccolta appena sopra:
-    // coerente con un COSTO, non un guadagno. `p.t < 0` (il secondo
-    // floater del livello 3, spawnato con un ritardo negativo apposta —
-    // vedi il commento sul loop di simulazione) non e' ancora "nato":
-    // saltato senza disegnare nulla, mai tolto dall'array (stepCostFloaters,
-    // sopra: l'invecchiamento normale lo fa comunque avanzare verso 0).
-    // [Bug corretto, segnalato dall'autore: "grandi come le gocce blu sugli
-    // edifici"] Scala 1 (nativa), non piu' 0.55: le monete VERE (coins.js,
-    // dynamic.push({obj:"coin",...}) piu' sopra) disegnano lo stesso
-    // "soldico" senza alcuna `_scale` — quindi a scala 1, il default del
-    // ciclo mondo — mentre questo floater lo rimpiccioliva SOLO qui, senza
-    // un motivo dichiarato: risultava percettibilmente piu' piccolo delle
-    // gocce blu vere invece di leggersi come "la stessa icona, colorata
-    // diversa". Colore in attesa di un asset dedicato disegnato a mano
-    // dall'autore (pin rosso con la moneta visibile in bianco dentro —
-    // irraggiungibile col solo colorize su un unico sprite piatto, pin e
-    // monete nella stessa immagine): resta il colorize rosso pieno per ora,
-    // da sostituire quando l'asset arriva.
-    const costFloaterFrame = frameFor("soldico");
-    if (costFloaterFrame && costFloaters.length) {
-      r.setColorize(true);
+    // soldi con un colorize rosso, fade out, sale verso l'alto"] +
+    // [Nuova funzionalita', richiesta dall'autore: "stessa icona anche sul
+    // placeholder quando il giocatore prova a costruire senza abbastanza
+    // soldi"] `costFloaters` (sopra, spawnati sia dal loop di simulazione
+    // quando stepAutoDefenseUpkeep() segnala un prelievo — buildings.js —
+    // sia da onTap/onPointerDown piu' sotto quando placeAt()/armPlacement()
+    // rifiutano un piazzamento per fondi insufficienti): `costWarningIconFrame`
+    // (sopra — vedi li' la nota su "ricostruita, non il file originale") e'
+    // l'asset dedicato, pin rosso con la moneta gia' in bianco dentro la
+    // stessa immagine, niente piu' bisogno del colorize provvisorio che
+    // sostituiva l'RGB di "soldico" (l'icona blu della raccolta tasse,
+    // coins.js) con un tint rosso pieno. Sale e sfuma invece di crescere sul
+    // posto come le bolle di raccolta appena sopra: coerente con un COSTO,
+    // non un guadagno. `p.t < 0` (il secondo
+    // floater del livello 3 dell'autodifesa, spawnato con un ritardo
+    // negativo apposta — vedi il commento sul loop di simulazione) non e'
+    // ancora "nato": saltato senza disegnare nulla, mai tolto dall'array
+    // (l'invecchiamento normale lo fa comunque avanzare verso 0). Scala 1
+    // (nativa): l'icona e' gia' stata disegnata alla stessa taglia di
+    // "soldico" (60x88, STUDIO.md) per restare grande come le gocce blu
+    // vere sugli edifici (coins.js, dynamic.push({obj:"coin",...}) piu'
+    // sopra, anche loro senza `_scale`).
+    if (costFloaters.length) {
       for (const p of costFloaters) {
         if (p.t < 0) continue;
         const k = p.t / COST_FLOAT_LIFE;
-        r.draw(costFloaterFrame, p.x, p.y - k * COST_FLOAT_RISE, 1, 0xe53935, (1 - k) * 0.9);
+        r.draw(costWarningIconFrame, p.x, p.y - k * COST_FLOAT_RISE, 1, 0xffffff, (1 - k) * 0.9);
       }
-      r.setColorize(false);
     }
     // Linguetta di prezzo sul segnale di potenziamento (upsign) al passaggio
-    // del mouse — [C] upsign12|23|45s|45d/Mouse_MouseEnter.gml, vedi
-    // costTagSprite() in buildings.js. Solo mouse (come la raccolta monete
-    // sopra): il touch non ha un vero hover senza contatto.
+    // del mouse — [C] upsign12|23|45s|45d/Mouse_MouseEnter.gml. Solo mouse
+    // (come la raccolta monete sopra): il touch non ha un vero hover senza
+    // contatto — vedi il tap to reveal mobile subito sotto.
     if (input.hover && input.hoverPointerType === "mouse") {
       const hw = cam.screenToWorld(input.hover.x, input.hover.y);
       const upicoFrame = frameFor("upico");
       if (upicoFrame) for (const b of buildings) {
         if (b.construction || !upgradeUnlocked(b, r12, buildings)) continue;
         if (!inFrameRect(hw.x, hw.y, b.x, b.y, upicoFrame)) continue;
-        const tagFrame = frameFor(costTagSprite(b.type, b.level - 1));
-        if (tagFrame) {
+        const text = costText(nextUpgrade(b)?.cost);
+        if (text) {
           // [C] upsign12/Mouse_MouseEnter.gml: offset -50 dal segnale — qui
           // dal bordo superiore vero dell'icona "upico" (`upicoFrame.oy`,
           // l'origine e' quasi in basso al centro), non da un numero fisso
           // scollegato dalla sua altezza reale.
-          r.draw(tagFrame, b.x - (tagFrame.w * COST_TAG_SCALE) / 2, b.y - upicoFrame.oy - 15, COST_TAG_SCALE, 0xffffff, 1);
+          drawCostTagWorld(text, b.x, b.y - upicoFrame.oy - 15);
         }
         break;
+      }
+      // **[Gap colmato]** Stesso cartellino, stessa logica, sui sei pulsanti
+      // cliccabili della catena fari->ponti (game/src/platform.js,
+      // FARO_SIGN_OBJS/FARO_SIGN_COST sopra) — questi non hanno un
+      // Mouse_MouseEnter.gml originale da cui l'idea sia partita (i
+      // cartellini di prezzo dei fari non esistono affatto nel decompilato,
+      // gia' allora un pulsante muto), ma restare senza alcun feedback del
+      // costo — a differenza di OGNI altro acquisto del gioco, upsign
+      // incluso — era l'unica vera lacuna rimasta della catena, notata solo
+      // ripercorrendola punto per punto: [I] nuova funzionalita' coerente
+      // con lo stile del resto del motore.
+      for (const it of frameList) {
+        if (!FARO_SIGN_OBJS.has(it.obj) || !it._f) continue;
+        if (!inFrameRect(hw.x, hw.y, it.x, it.y, it._f)) continue;
+        const text = costText(FARO_SIGN_COST[it.obj]);
+        if (text) drawCostTagWorld(text, it.x, it.y - it._f.oy - 15);
+        break;
+      }
+    }
+    // [Nuova funzionalita', richiesta dall'autore: "come vogliamo gestire
+    // la visibilita' del costo di upgrade su mobile? facciamo tap to
+    // reveal, solo su mobile"] Stesso cartellino di sopra, ma pilotato dal
+    // tap invece che dall'hover (attemptUpgradeTap()/upgradeTagBuildingId,
+    // sopra) — stessa dissolvenza GRID_TAP_SHOW_MS/GRID_TAP_FADE_MS gia'
+    // usata dal cartellino del menu costruzioni. Cerca l'edificio per id
+    // invece di tenerne un riferimento diretto: sopravvive a un giro di
+    // salvataggio/caricamento fra il tap e la dissolvenza (`buildings`
+    // viene sempre ricreato da doLoad()) senza puntare a un'istanza ormai
+    // orfana — se non lo trova piu' (demolito, o la partita e' stata
+    // ricaricata) il timer si azzera subito invece di restare armato a
+    // vuoto fino al prossimo timeout naturale.
+    if (isMobile && upgradeTagBuildingId != null) {
+      const elapsed = performance.now() - upgradeTagAt;
+      const total = GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
+      const b = elapsed < total ? buildings.find((bb) => bb.id === upgradeTagBuildingId) : null;
+      if (!b) {
+        upgradeTagBuildingId = null;
+      } else if (!b.construction && upgradeUnlocked(b, r12, buildings)) {
+        const upicoFrame = frameFor("upico");
+        const text = upicoFrame && costText(nextUpgrade(b)?.cost);
+        if (text) {
+          const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
+          drawCostTagWorld(text, b.x, b.y - upicoFrame.oy - 15, { alpha });
+        }
       }
     }
     // Cartellino costo sui lotti-rudere del tutorial (game/src/tutorial.js),
@@ -6223,9 +6717,25 @@ export async function mountMatch(ctx, params = {}) {
     // Mouse_MouseEnter.gml: `action_create_object(cc500|cc2000, 0, -50)`.
     if (tutorialState) for (const lot of ruinLots) {
       if (!lot._hovered) continue;
-      const tagFrame = frameFor(`c${lot.cost}`);
-      if (tagFrame) r.draw(tagFrame, lot.x - (tagFrame.w * COST_TAG_SCALE) / 2, lot.y - 50, COST_TAG_SCALE, 0xffffff, 1);
+      drawCostTagWorld(costText({ mon: lot.cost }), lot.x, lot.y - 50);
       break;
+    }
+    // Testo "Yes!"/"No" dei due bottoni conferma ruspa (dynamic.push({obj:
+    // "ruspaYes"/"ruspaNo",...}) sopra: sfondo/hit-test restano li', questo
+    // e' solo il testo — drawHtmlText() non fa parte di quel batch) + il
+    // cartellino del costo (drawCostTagWorld(), stessi offset di sempre —
+    // vedi il commento sopra su dynamic.push({obj:"ruspaNo"...})).
+    if (ruspaPending) {
+      const b = buildings.find((bb) => bb.id === ruspaPending.buildingId);
+      if (b) {
+        const noX = b.x + 16 * UI_SCALE, noY = b.y - 16 * UI_SCALE;
+        const yesX = b.x + 177 * UI_SCALE, yesY = b.y - 16 * UI_SCALE;
+        const s1 = cam.worldToScreen(noX + (RUSPA_BTN_W * UI_SCALE) / 2, noY + (RUSPA_BTN_H * UI_SCALE) / 2);
+        drawHtmlText("No", s1.x, s1.y, { size: 17, color: "#ffffff" });
+        const s2 = cam.worldToScreen(yesX + (RUSPA_BTN_W * UI_SCALE) / 2, yesY + (RUSPA_BTN_H * UI_SCALE) / 2);
+        drawHtmlText("Yes!", s2.x, s2.y, { size: 17, color: "#ffffff" });
+        drawCostTagWorld(costText({ mon: ruspaPending.cost }), b.x + 157 * UI_SCALE, b.y - 185 * UI_SCALE);
+      }
     }
     drawBeams();
     r.flush();
@@ -6587,6 +7097,31 @@ export async function mountMatch(ctx, params = {}) {
       r.setColorize(false);
       if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), crysTextPos.x, crysTextPos.y, { size: 15, align: "left", color: barTextColor });
     }
+    // Biotech (r12.biotech: coins.js, la moneta "bioico" delle ville, ava==0
+    // — vedi il commento su STAR_BUILDINGS.grattacielo in questo file) —
+    // stesso trattamento/stessa soglia "> 0" di crys_ico appena sopra: nuovo
+    // indicatore, richiesto dall'autore ("aggiungiamo anche il counter
+    // nella GUI come per le gemme") ora che biotech ha uno scopo vero da
+    // mostrare (prima non aveva senso: un numero senza alcun collegamento
+    // visibile in gioco). `biot_ico`, non `crys_ico`: icona nera dedicata,
+    // stessa famiglia/taglia (data/sprites.json). **[Da verificare a
+    // schermo]** posizione/scala qui accanto a `crysPos` per coerenza, MAI
+    // vista a schermo da questa sessione (l'atlas coi due sprite nuovi,
+    // `bioico`/`biot_ico`, non e' stato ancora ricostruito — vedi il
+    // commit sui pannelli prestiti/scambi per il motivo, 24_blit.ps1 e'
+    // Windows-only): a differenza di `crysPos`, "misurato pixel per pixel"
+    // dall'autore in precedenza, questa e' una prima stima da rifinire a
+    // vista una volta ricostruito l'atlas.
+    if (r12.biotech > 0) {
+      const bioFrame = frameFor("biot_ico");
+      const bioPos = isMobile ? { x: barX + 180, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 650, y: barY - 4 };
+      const bioScale = isMobile ? 0.9 : 0.75;
+      const bioTextPos = isMobile ? { x: barX + 220, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 686, y: barY + 19 };
+      r.setColorize(iconsDark);
+      if (!hideResourceIcons && bioFrame) r.draw(bioFrame, bioPos.x, bioPos.y, bioScale, 0xffffff, 1);
+      r.setColorize(false);
+      if (!hideResourceText) drawHtmlText(String(Math.round(r12.biotech)), bioTextPos.x, bioTextPos.y, { size: 15, align: "left", color: barTextColor });
+    }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
     // ancora ricostruita (STUDIO.md §6/§9), e replica la struttura a tre
@@ -6800,8 +7335,8 @@ export async function mountMatch(ctx, params = {}) {
       ? { x0: 0, y0: rowTop, x1: canvas.clientWidth, y1: canvas.clientHeight }
       : null;
 
-    // Linguetta di prezzo (o "Level N to unlock", bottone ancora bloccato —
-    // vedi il commento su unlockTagSprite() sopra) sui bottoni edificio al
+    // Linguetta di prezzo (o "Unlock at level N", bottone ancora bloccato —
+    // vedi il commento su unlockTagText() sopra) sui bottoni edificio al
     // passaggio del mouse — [C] pu1..pumediat/Mouse_MouseEnter.gml. Solo
     // mouse (come la raccolta monete/il segnale di potenziamento sotto): il
     // touch non ha un vero hover senza contatto, e qui coprirebbe comunque
@@ -6813,9 +7348,9 @@ export async function mountMatch(ctx, params = {}) {
         && input.hover.x >= btn.x && input.hover.x <= btn.x + btn.w
         && input.hover.y >= btn.y && input.hover.y <= btn.y + btn.h);
       const locked = hb && buildingLocked(hb.type);
-      const tagFrame = hb && frameFor(locked ? unlockTagSprite(hb.type) : costTagSprite(hb.type, null));
-      if (tagFrame) {
-        r.draw(tagFrame, hb.x + hb.w / 2 - (tagFrame.w * COST_TAG_SCALE) / 2, hb.y - 8, COST_TAG_SCALE, 0xffffff, 1);
+      const text = hb && (locked ? unlockTagText(hb.type) : costText(BUILDING_TYPES[hb.type]?.placeCost));
+      if (text) {
+        drawCostTagScreen(text, hb.x + hb.w / 2, hb.y - 8);
       }
     }
 
@@ -6912,9 +7447,11 @@ export async function mountMatch(ctx, params = {}) {
         // [Bug corretto, segnalato dall'autore: "la freccia punta a caso
         // invece che puntare le monete"] Le tre fasi che parlano di una
         // risorsa specifica della barra in alto (6: denaro appena
-        // raccolto, 11: energia/centrali, 25: olio/consumo — indice
-        // spostato di uno da 24: tutorial.js, TUTORIAL_TEXTS, il messaggio
-        // sul lanciarazzi spezzato in due) puntavano tutte
+        // raccolto, 11: energia/centrali, 26: olio/consumo — indice
+        // spostato prima di uno da 24 a 25 (tutorial.js, TUTORIAL_TEXTS, il
+        // messaggio sul lanciarazzi spezzato in due), poi ancora di uno a 26
+        // (il nuovo messaggio sul tocco prolungato su qualunque edificio,
+        // inserito subito dopo quello sull'autodifesa)) puntavano tutte
         // allo stesso bersaglio sbagliato — il CENTRO dell'intero schermo a
         // y=100, un punto nel bel mezzo della mappa di gioco, non vicino
         // alla barra risorse (che vive in alto a sinistra, `barX`/`barY`
@@ -6925,7 +7462,7 @@ export async function mountMatch(ctx, params = {}) {
         // decompilato per disegnare i numeri, sotto), dal basso verso
         // l'alto (`angle:90`, gia' la convenzione per "punta alla barra
         // risorse in alto" — solo le coordinate erano sbagliate).
-        case 6: case 11: case 25: {
+        case 6: case 11: case 26: {
           const resX = tutorialState.phase === 6 ? 340 : tutorialState.phase === 11 ? 228 : 142;
           target = { x: barX + resX, y: barY + 43, angle: 90 };
           break;
@@ -7152,83 +7689,13 @@ export async function mountMatch(ctx, params = {}) {
     if (r12.tincomT > 0 && !paused && Math.floor((TINCOM_DURATION - r12.tincomT) / 0.5) % 2 === 0) {
       drawBannerLines(["THUNDERSTORM", "INCOMING"], 48);
     }
-    // Il pannello prestiti (bankPanelOpen, state.js LOANS) — vero modale in
-    // spazio schermo (vedi il commento su bankPanelOpen piu' sopra per il
-    // perche'), disegnato per ultimo cosi' resta sempre sopra a tutto il
-    // resto della GUI. `loanscr`/`getlo1..4` hanno gia' l'origine al centro
-    // (data/sprites.json), quindi il centro schermo e' gia' il punto giusto.
-    // Scala calcolata invece di UI_SCALE fisso: "loanscr"
-    // (540x1086) e' grande quanto un'intera view, UI_SCALE (pensata per le
-    // iconcine da ~100px del resto della barra) lo lascerebbe enorme o
-    // minuscolo a seconda dello schermo — qui si adatta sempre a circa l'85%
-    // del piu' piccolo fra larghezza/altezza disponibili.
-    bankButtons = [];
-    if (bankPanelOpen) {
-      const bankScale = Math.min(canvas.clientWidth / 540, canvas.clientHeight / 1086) * 0.85;
-      const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
-      const panelFrame = frameFor("loanscr");
-      if (panelFrame) r.draw(panelFrame, cx, cy, bankScale, 0xffffff, 1);
-      // [I] I quattro bottoni nel decompilato stavano a (270,-200..-50) da
-      // `bankbuttoner`, 50px di distanza fra un centro e l'altro — meno dei
-      // loro stessi 88px di altezza, quindi si sovrapporrebbero. Qui invece
-      // impilati senza sovrapposizioni (110px fra un centro e l'altro,
-      // 22px di margine reale) nell'area vuota del pannello fra il titolo
-      // e la nota sul tasso.
-      // [Bug corretto, segnalato dall'autore: "il primo pulsante va sopra
-      // la scritta"] Il blocco era centrato sul centro GEOMETRICO dello
-      // sprite "loanscr" (offset 0 = l'origine del disegno, data/
-      // sprites.json: origin_y 543 su un canvas 1086 alto) — ma il testo
-      // "GET A LOAN"/"20% interest rate" non e' distribuito simmetricamente
-      // intorno a quel punto: misurato pixel per pixel sulla texture vera
-      // (assets/textures/page_022.png, il frame di "loanscr"), il titolo
-      // finisce a y=335 e la nota sul tasso inizia a y=847 nello stesso
-      // sistema di coordinate del canvas — il centro VERO dell'area vuota
-      // e' quindi a y=(335+847)/2=591, cioe' 48px SOTTO l'origine (543), non
-      // sull'origine stessa. Spostando l'intero blocco di +48 (stessa
-      // distanza reciproca fra i bottoni, invariata) il primo bottone
-      // scende sotto il titolo (47px di margine reale, prima ne aveva 0 —
-      // il suo bordo superiore coincideva quasi esattamente col confine
-      // dell'area vuota) e l'ultimo resta comunque 47px sopra la nota sul
-      // tasso: margini uguali sopra e sotto, non piu' solo "centrato sulla
-      // carta" ma centrato su cio' che si vede davvero.
-      const BANK_BUTTONS_Y_BIAS = 48;
-      const offsets = [-165, -55, 55, 165].map((o) => o + BANK_BUTTONS_Y_BIAS);
-      for (let i = 0; i < LOANS.length; i++) {
-        const f = frameFor(`getlo${i + 1}`);
-        if (!f) continue;
-        const bx = cx, by = cy + offsets[i] * bankScale;
-        r.draw(f, bx, by, bankScale, 0xffffff, 1);
-        bankButtons.push({ x: bx - (f.w * bankScale) / 2, y: by - (f.h * bankScale) / 2, w: f.w * bankScale, h: f.h * bankScale, index: i });
-      }
-    }
-    // Il pannello scambi (tradePanelOpen, state.js TRADES) — stesso schema
-    // di bankPanelOpen appena sopra: "tradescr" (540x1086, la stessa taglia
-    // di "loanscr") ha origine al centro (data/sprites.json) e un solo
-    // titolo disegnato dentro ("TRADE RESOURCES", verificato pixel per
-    // pixel sulla texture vera — assets/textures/page_021.png, il frame di
-    // "tradescr": finisce a y=335 nello stesso sistema di coordinate di
-    // "loanscr" sopra), nessuna seconda riga di testo sotto: l'intera area
-    // fra il titolo e il fondo del pannello resta libera per i 4 bottoni,
-    // niente bias da calcolare come per "loanscr". Offset dei bottoni
-    // (-134/0/122/245) letti diretti da get1..4/Step.gml (`action_move_to
-    // (tradoscrino.x, tradoscrino.y + N * global.sca)`), non re-inventati:
-    // gia' abbastanza distanziati (loro stessi 88px di altezza, margini
-    // reali fra i 12 e i 46px) da non sovrapporsi.
-    tradeButtons = [];
-    if (tradePanelOpen) {
-      const tradeScale = Math.min(canvas.clientWidth / 540, canvas.clientHeight / 1086) * 0.85;
-      const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
-      const panelFrame = frameFor("tradescr");
-      if (panelFrame) r.draw(panelFrame, cx, cy, tradeScale, 0xffffff, 1);
-      const offsets = [-134, 0, 122, 245];
-      for (let i = 0; i < TRADES.length; i++) {
-        const f = frameFor(`get1${i + 1}`);
-        if (!f) continue;
-        const bx = cx, by = cy + offsets[i] * tradeScale;
-        r.draw(f, bx, by, tradeScale, 0xffffff, 1);
-        tradeButtons.push({ x: bx - (f.w * tradeScale) / 2, y: by - (f.h * tradeScale) / 2, w: f.w * tradeScale, h: f.h * tradeScale, index: i });
-      }
-    }
+    // Pannello prestiti (bankPanelOpen) e pannello scambi (tradePanelOpen):
+    // drawBankPanel()/drawTradePanel(), vicino a drawBuildingInfoPanel()
+    // sopra — spostati li' (da qui, dove disegnavano direttamente nel batch
+    // GUI ancora aperto) per lo stesso "vetro smerigliato" degli altri
+    // modali, vedi il commento su drawBankPanel() per il perche'. Restano
+    // comunque nella stessa catena if/else-if del resto dei modali, piu'
+    // sotto dopo il flush.
     // Bottone di pausa — sempre presente (l'unico modo di entrare/uscire dal
     // menu di pausa, vedi drawPauseOverlay() sotto e onTap sopra), in basso a
     // destra, ultimo disegnato in questo batch cosi' resta sempre sopra a
@@ -7289,6 +7756,8 @@ export async function mountMatch(ctx, params = {}) {
       else if (pauseSubmenu === "confirmReset") drawConfirmResetOverlay();
       else drawPauseOverlay();
     }
+    else if (bankPanelOpen) drawBankPanel();
+    else if (tradePanelOpen) drawTradePanel();
     else if (buildingInfoPanel) drawBuildingInfoPanel();
     else if (buildMenuOpen) drawBuildMenuOverlay();
 

@@ -1578,11 +1578,15 @@ paragrafo 8.
   tap) ma il cui `Mouse_MouseEnter.gml` assegna `r12.biotech += 1`, non
   `mon`. `biotech` era dichiarato in `state.js` fin dall'inizio (STUDIO.md
   §6 "cosa non so ancora") ma MAI scritto da nessuna regola: e' la prima
-  volta che diventa un numero vero. **[C]** `soldbio` non ha ne'
-  `Create.gml` ne' `Alarm_0.gml` propri nel decompilato — a differenza di
-  `sold1..5` (che LO diventano "soldfade" e si autoriscuotono con una
-  chies di livello 3) resta sempre "soldico", ferma, finche' non viene
-  toccata. Agli stadi successivi (`ava` 1..4) villa riusa GLI STESSI
+  volta che diventa un numero vero — il suo SCOPO pero' resta ignoto qui
+  (chiarito solo molte sessioni dopo, vedi in fondo a questo diario "Il
+  grattacielo si sblocca DAVVERO a biotech>=100"). **[C]** `soldbio` non ha
+  ne' `Create.gml` ne' `Alarm_0.gml` propri nel decompilato — a differenza
+  di `sold1..5` (che LO diventano "soldfade" e si autoriscuotono con una
+  chies di livello 3) resta sempre ferma finche' non viene toccata (sprite
+  proprio, "bioico" — non "soldico" come una prima versione di questo
+  motore disegnava per errore, vedi di nuovo la voce in fondo al diario).
+  Agli stadi successivi (`ava` 1..4) villa riusa GLI STESSI
   oggetti gia' letti per casa1 (`sold2`.."sold5", 40/60/80/100 mon — non
   una coincidenza, gli oggetti sono condivisi) ma **[C]** a `ava>=5`
   (crescita completa) crea `sold1` (20 mon) — la PIU' BASSA delle sei, non
@@ -3891,7 +3895,10 @@ paragrafo 8.
     un intero ciclo vero: guadagnato all'hover su `soldbio`
     (`Mouse_MouseEnter.gml`, +1), mostrato in `crysrepre/DrawGUI.gml`
     (barra risorse), consumato/azzerato da `stella3/Step.gml` (un
-    edificio "stella", `game/src/buildings.js` STAR_BUILDINGS), letto da
+    edificio "stella" — a quel tempo gia' individuato ma non ancora
+    davvero collegato in `game/src/main.js` STAR_BUILDINGS: fatto solo
+    molte sessioni dopo, vedi in fondo a questo diario "Il grattacielo si
+    sblocca DAVVERO a biotech>=100"), letto da
     `iconic_box`/`crysmenu` per la UI hover — mentre `autocore` non ha
     NESSUNO di questi: nessun oggetto lo incrementa, nessuna barra lo
     mostra, nessun edificio lo consuma. Cercato anche ogni sprite/oggetto/
@@ -4057,3 +4064,141 @@ paragrafo 8.
     gitignored in questo checkout, la title screen non carica qui — da
     controllare in un ambiente con gli asset veri prima di fidarsi ciecamente
     dei numeri sopra su un device reale.
+
+- **Il grattacielo si sblocca DAVVERO a biotech>=100 — un requisito reale
+  rimasto fuori dal port, mai notato perche' lega tre sblocchi a cascata
+  dietro un oggetto "segreto".** Richiesto dall'autore: "possibile che le
+  ville creassero una seconda risorsa a forma di elica del DNA, non
+  ricordo se fosse legata al grattacielo?" — sì, ed e' proprio `biotech`
+  (§"Il pulsante blu della moneta esiste anche per villa" e la voce
+  successiva su `autocore` vs `biotech`, sopra: il ciclo di raccolta era
+  gia' documentato, il suo SCOPO no).
+  **[C] La catena vera, letta da `stella3` (l'oggetto "terza stella" —
+  §"quattordicesimo e quindicesimo edificio" sopra copre solo
+  monumento/banca, mai stella3 nel dettaglio):**
+  `stella3/Mouse_LeftPressed.gml` arma `r12.selec=82` (grattacielo) SOLO
+  se `unlocinque==1` (variabile locale di `stella3` — nome generico, `pu7`/
+  `pu5prov` hanno una LORO copia completamente separata con lo stesso
+  nome, mai uno stato condiviso). `stella3/Step.gml` scrive `unlocinque`
+  in due blocchi sequenziali: se gia' sbloccato E `instance_count(m3cant)
+  >0` → ri-blocca (`selec=0`, `unlocinque=0`); se ANCORA bloccato E
+  `instance_count(m3cant)>0` E `r12.biotech>=100` → azzera `biotech` e
+  sblocca (`unlocinque=1`). `m3cant` non e' un cantiere temporaneo: **[C]**
+  `eoliplacer/Alarm_1.gml` lo crea SOLO al piazzamento vero e pagato
+  (-200000 mon, `places>=4`), e il suo stesso `Step.gml`/`Alarm_0.gml` (13
+  fasi di sprite, mai un `action_kill_object`) non si distrugge mai —
+  resta l'istanza del grattacielo finito per il resto della partita,
+  consumando energia in eterno. Quindi `instance_count(m3cant)>0`
+  equivale esattamente al nostro `buildings.some(b=>b.type==="grattacielo")`.
+  **[Bug del gioco originale, non di lettura]** Il secondo blocco (quello
+  che DOVREBBE sbloccare la stella la prima volta) richiede che il
+  grattacielo esista GIA' — circolare: impossibile selezionarlo prima di
+  sbloccarlo, impossibile costruirlo prima di selezionarlo. Verificato con
+  cura prima di concludere che fosse davvero cosi' e non un errore di
+  lettura: operatore 2 confermato ">" (stesso schema gia' verificato per
+  `tier1`/`tier2` piattaforma, §"Terza stella" nel port — vedi
+  `game/src/main.js` STAR_BUILDINGS), nessuna istanza `m3cant` pre-piazzata
+  in `src/rooms/match(_easy).json` (zero in entrambe), nessun'altra riga in
+  tutto `src/objects/` che scriva `r12.selec=82` a parte proprio
+  `stella3/Mouse_LeftPressed.gml`. Quindi il ramo che dovrebbe accendere
+  `unlocinque` per la prima volta non si attiva MAI in una partita reale —
+  quasi certamente un refuso del developer originale (il secondo blocco
+  doveva probabilmente leggere `instance_count(m3cant)==0`, simmetrico al
+  primo invece che identico), mai emerso perche' nessun giocatore ha mai
+  guardato il codice di un edificio che non si sblocca mai per davvero.
+  **Implementato nel port** (`game/src/state.js`/`main.js`/`coins.js`):
+  `r12.grattacieloUnlocked`, un latch permanente scritto una sola volta nel
+  loop di simulazione quando `biotech>=100` (azzerandolo) — non una soglia
+  ricontrollata ogni frame, coerente con l'evento "discreto" dell'originale
+  (`biotech` puo' risalire dopo senza ri-bloccare nulla). Aggiunto come
+  QUARTO requisito di `STAR_BUILDINGS.grattacielo.unlocked()` (accanto a
+  banca + entrambe le espansioni piattaforma gia' presenti), omesso il
+  requisito circolare su `m3cant`/grattacielo-gia'-esistente — il gate "un
+  solo grattacielo per partita" resta comunque garantito dal
+  `!buildings.some(...)` gia' in testa a quella funzione. Corretto anche lo
+  sprite della moneta: `coins.js` disegnava "soldico" (il pin blu normale)
+  per la moneta biotech di villa — il decompilato specifica invece
+  `bioico`, un pin con la doppia elica del DNA (`soldbio/_object.json`),
+  mai usato finora nel motore.
+  **Nuovo contatore in barra risorse**, richiesto dall'autore ("come
+  abbiamo fatto per le gemme"): stesso trattamento di `crys_ico`/`r12.crys`
+  (icona nera dedicata `biot_ico`, stessa famiglia/taglia — visibile solo
+  con `biotech>0`), posizionato accanto al contatore cristalli. A
+  differenza di quello, MAI verificato a schermo in questa sessione: sia
+  `bioico` (60x88, il pin di mondo) che `biot_ico` (32x32, l'icona di
+  barra) sono stati aggiunti a `tools/23_atlas.py` ma l'atlas compilato
+  (`game/data/match.atlas.json` + le pagine `.webp`) non e' stato
+  rigenerato — il rebuild vero passa da `24_blit.ps1` (GDI+, Windows-only,
+  non eseguibile dalle sessioni di questo tipo che hanno lavorato agli
+  ultimi punti di questo diario). Fino al prossimo rebuild i due sprite non
+  compaiono in gioco; posizione/scala del nuovo contatore sono una prima
+  stima da rifinire a vista una volta visibili davvero.
+
+- **Catena fari->ponti (game/src/platform.js): verificata contro il
+  decompilato, un solo gap reale trovato — nessun cartellino di prezzo sui
+  sei pulsanti cliccabili — colmato, piu' un lampo colorato aggiunto ai fari
+  accesi.** Richiesto dall'autore dopo il punto sul grattacielo sopra
+  ("verificami anche il funzionamento dei fari che fanno l'upgrade ai
+  ponti... ho l'impressione che ci siano parti ancora da implementare").
+  Riletti riga per riga contro `src/objects/faro1|faro2|faro3/`,
+  `upfaro1|upfaro3/`, `wavesig1|wavesig3/`, `dockersig1|dockersig3/`,
+  `farolux|farolux3/` (Create/Step/Alarm_*, + i relativi `*_killer`): le due
+  catene (tier1: `faro1`+`faro2` gemelli -> `r32`+ponti; tier2: `faro3` ->
+  `r22`+nave cargo, sbloccato solo a `r32` gia' espansa) risultano complete
+  — costi (`clickFaroButton` 2000 mon, `clickWaveSignal` 20 crys,
+  `clickDockerSignal` 5000 mon+9000 oil, `clickFaro3Button` 5000 mon,
+  `clickWaveSignal3` 50 crys, `clickDockerSignal3` 15000 mon+27000 oil),
+  vincolo "il segnale si attiva solo di notte" (`isNight`), animazione delle
+  nuvole durante l'attracco (gia' corretta in una sessione precedente, vedi
+  sopra), traffico/ponti levatoi/nave una volta espansa: tutti presenti e
+  corrispondenti riga per riga. L'unico scarto reale: i sei pulsanti
+  (`faroButton`/`faroWaveSignal`/`faroDockerSignal`/`faro3Button`/
+  `faro3WaveSignal`/`faro3DockerSignal`, `FARO_SIGN_OBJS` in `main.js`) non
+  mostravano MAI il proprio costo al passaggio del mouse — a differenza di
+  OGNI altro acquisto del gioco (upsign, lotti-rudere del tutorial, griglia
+  di costruzione, ruspa): un'assenza notata solo ripercorrendo la catena
+  punto per punto, non un bug del decompilato (i pulsanti originali sono
+  muti anche li', GameMaker non ha hover reali fuori da `Mouse_MouseEnter`
+  e questi oggetti non lo implementano) ma un'incoerenza con lo stile del
+  resto del port. **Colmato**: nuova mappa `FARO_SIGN_COST` in `main.js`
+  (duplica i sei costi sopra — `platform.js` non esporta costanti dedicate,
+  solo letterali dentro le funzioni `click*`, quindi vanno tenute allineate
+  a mano) e un nuovo blocco hover (solo mouse, stesso principio di upsign
+  sopra — il touch non ha un vero hover) che scorre `frameList` cercando le
+  entry con `obj` in `FARO_SIGN_OBJS`, in un semplice hit-test/cartellino
+  (`drawCostTagWorld`), nessun tap-to-reveal mobile aggiunto (non richiesto
+  per questo gap specifico).
+  **Sistema di particelle** (richiesta facoltativa dell'autore: "se riesci
+  integra un sistema di particelle coerente col colore del 'flash' che
+  emette e con la funzione di beacon"). [C] `farolux|farolux3/Alarm_0.gml`:
+  appena il faro si accende (`clickWaveSignal`/`clickWaveSignal3`,
+  `stage="lit"`) nasce un'istanza `farolux` che, ogni 40 tick finche' vive
+  (si autodistrugge di giorno, `Step.gml`: `with(aura) if(!night)
+  action_kill_object()`), lancia `action_effect(1, 0, -280, 2, 16744703,
+  0)` — in GameMaker: tipo 1 = `ef_ring` (un lampo/anello), offset (0,-280)
+  relativo all'istanza (280px sopra il faro, verso l'alto), size 2 (grande),
+  colore 16744703 come intero BGR decimale -> `#ff80ff` (rosa magenta),
+  ultimo parametro 0 = non "below" (disegnato sopra, non sotto la scena).
+  Nessun motore di particelle esiste in questo port (stesso limite gia'
+  segnalato per la scintilla di raccolta moneta e il fumo di industria);
+  qui una versione minima nello stile gia' in uso per `coinPops` (main.js:
+  un array `{x,y,t}`, un cerchio morbido `bubbleTex` che cresce e sfuma,
+  disegnato senza tinta ambientale — un effetto luminoso, non un pezzo di
+  scena). Nuovo array `faroFlashes`, spawnato da un timer nel loop di
+  simulazione (subito dopo `stepFaroChain()`) con lo stesso periodo
+  dell'originale (40 tick = `FARO_FLASH_PERIOD`), attivo esattamente nelle
+  stesse condizioni di stage con cui `platform.js` disegna gia' il bagliore
+  fisso "f1lux" (`stage==="lit"||"expanding"`) — tier1 lampeggia su
+  ENTRAMBI i fari gemelli (`FARO1`+`FARO2`, ora esportate da `platform.js`
+  invece di restare private al modulo), tier2 solo su `FARO3`. Colore
+  `FARO_FLASH_COLOR = 0xff80ff` fedele all'originale, dimensione/durata
+  (40->300px in 0.7s, alpha in discesa) una scelta di stile [I] — l'originale
+  non specifica la progressione visiva di `ef_ring`, solo tipo/size/colore.
+  **Non toccato** (fuori dallo scopo della richiesta, gia' presente prima di
+  questa sessione): `Step.gml` spegne davvero il bagliore f1lux/il lampo a
+  giorno nell'originale (l'istanza farolux muore), ma `faro1Decor()`/
+  `faro3Decor()` nel port disegnano f1lux in modo continuo, senza gating
+  giorno/notte — una semplificazione [I] preesistente, non una regressione
+  di questa modifica (il nuovo lampo *e'* invece gia' implicitamente
+  "sempre acceso" come f1lux, non stagionato day/night: stessa
+  semplificazione, non introdotta ora ma ereditata).
