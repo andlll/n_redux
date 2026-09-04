@@ -1942,6 +1942,46 @@ export async function mountMatch(ctx, params = {}) {
     return err;
   }
 
+  // [Nuova funzionalita', richiesta dall'autore: "come vogliamo gestire la
+  // visibilita' del costo di upgrade su mobile? su desktop si vede con
+  // l'hover, su mobile non e' contemplato" — "facciamo tap to reveal, solo
+  // su mobile, mi sembra l'opzione piu' pulita"] Stesso principio del
+  // cartellino del menu costruzioni (gridTapTagType/gridTapTagAt, sopra: la
+  // stessa dissolvenza GRID_TAP_SHOW_MS/GRID_TAP_FADE_MS), ma qui il PRIMO
+  // tap non conferma mai — a differenza di li' (comment su gridTapTagType,
+  // sopra: selezionare un tipo e' un'azione gratuita/reversibile, un
+  // secondo tap di conferma ci era sembrato solo confusione in piu'), un
+  // upgrade vero scala soldi per davvero al tap, quindi qui vale l'opposto:
+  // un tap su un edificio con l'upgrade sbloccato (`upsign` visibile, o un
+  // tocco diretto sull'edificio con un altro attrezzo armato — entrambi i
+  // chiamanti sotto, onTap) mostra SOLO il cartellino prezzo la prima
+  // volta; il secondo tap sullo STESSO edificio, entro quella stessa
+  // finestra di dissolvenza, conferma davvero l'upgrade (stesso
+  // `startUpgrade()` di sempre). Su desktop invariato — il prezzo si vede
+  // gia' in hover PRIMA di decidere di toccare (main.js, il cartellino
+  // "upsign" piu' sotto), un tap di conferma in piu' sarebbe solo un
+  // doppione inutile.
+  // Ritorna `undefined` quando questo tap ha SOLO rivelato il cartellino
+  // (il chiamante non deve mostrare nessun messaggio quel giro), altrimenti
+  // lo stesso valore di startUpgrade() (null = avviato, stringa = motivo
+  // del rifiuto) — i due esiti si distinguono cosi' invece che con `null`
+  // per entrambi, che avrebbe fatto leggere "construction started" anche
+  // quando non e' partito nulla.
+  let upgradeTagBuildingId = null;
+  let upgradeTagAt = 0;
+  function attemptUpgradeTap(b) {
+    if (isMobile && upgradeUnlocked(b, r12, buildings)) {
+      const peeking = upgradeTagBuildingId === b.id
+        && performance.now() - upgradeTagAt < GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
+      if (!peeking) {
+        upgradeTagBuildingId = b.id;
+        upgradeTagAt = performance.now();
+        return undefined;
+      }
+    }
+    return startUpgrade(b);
+  }
+
   /** Stessa correzione di startUpgrade() sopra, per il cantiere riavviato
    * dalla ruspa (tryRuspaRebuild() — un impalcatura torna comunque sopra
    * all'edificio, con lo stesso decoro vecchio da spegnere subito). */
@@ -5039,9 +5079,8 @@ export async function mountMatch(ctx, params = {}) {
         // pannello qui li intercetterebbe prima e romperebbe quel tocco.
         buildingInfoPanel = b;
       } else {
-        const err = startUpgrade(b);
-        message = err ?? "construction started";
-        messageT = 3;
+        const err = attemptUpgradeTap(b);
+        if (err !== undefined) { message = err ?? "construction started"; messageT = 3; }
       }
     } else if (picked.obj === "ruspaYes") {
       // [C] demoiessa/Mouse_LeftReleased.gml: `iessa=1`, letto dalla
@@ -5086,10 +5125,11 @@ export async function mountMatch(ctx, params = {}) {
       // [C] upsign12|23/Mouse_LeftPressed.gml: la stessa cosa che "building"
       // gia' fa tap-ovunque-sull'edificio (tryStartUpgrade gia' controlla
       // soglia e costo) — qui e' solo il bersaglio VISIBILE e prioritario
-      // quando il potenziamento e' davvero pronto.
-      const err = startUpgrade(picked.ref);
-      message = err ?? "construction started";
-      messageT = 3;
+      // quando il potenziamento e' davvero pronto. attemptUpgradeTap()
+      // (sopra): su mobile il primo tap qui rivela solo il cartellino
+      // prezzo, non avvia ancora niente.
+      const err = attemptUpgradeTap(picked.ref);
+      if (err !== undefined) { message = err ?? "construction started"; messageT = 3; }
       picked = null;
     } else if (picked.obj === "bankIcon") {
       // [C] bankbuttoner/Mouse_LeftPressed.gml: apre il pannello solo se
@@ -6392,6 +6432,33 @@ export async function mountMatch(ctx, params = {}) {
           r.draw(tagFrame, b.x - (tagFrame.w * COST_TAG_SCALE) / 2, b.y - upicoFrame.oy - 15, COST_TAG_SCALE, 0xffffff, 1);
         }
         break;
+      }
+    }
+    // [Nuova funzionalita', richiesta dall'autore: "come vogliamo gestire
+    // la visibilita' del costo di upgrade su mobile? facciamo tap to
+    // reveal, solo su mobile"] Stesso cartellino di sopra, ma pilotato dal
+    // tap invece che dall'hover (attemptUpgradeTap()/upgradeTagBuildingId,
+    // sopra) — stessa dissolvenza GRID_TAP_SHOW_MS/GRID_TAP_FADE_MS gia'
+    // usata dal cartellino del menu costruzioni. Cerca l'edificio per id
+    // invece di tenerne un riferimento diretto: sopravvive a un giro di
+    // salvataggio/caricamento fra il tap e la dissolvenza (`buildings`
+    // viene sempre ricreato da doLoad()) senza puntare a un'istanza ormai
+    // orfana — se non lo trova piu' (demolito, o la partita e' stata
+    // ricaricata) il timer si azzera subito invece di restare armato a
+    // vuoto fino al prossimo timeout naturale.
+    if (isMobile && upgradeTagBuildingId != null) {
+      const elapsed = performance.now() - upgradeTagAt;
+      const total = GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
+      const b = elapsed < total ? buildings.find((bb) => bb.id === upgradeTagBuildingId) : null;
+      if (!b) {
+        upgradeTagBuildingId = null;
+      } else if (!b.construction && upgradeUnlocked(b, r12, buildings)) {
+        const upicoFrame = frameFor("upico");
+        const tagFrame = upicoFrame && frameFor(costTagSprite(b.type, b.level - 1));
+        if (tagFrame) {
+          const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
+          r.draw(tagFrame, b.x - (tagFrame.w * COST_TAG_SCALE) / 2, b.y - upicoFrame.oy - 15, COST_TAG_SCALE, 0xffffff, alpha);
+        }
       }
     }
     // Cartellino costo sui lotti-rudere del tutorial (game/src/tutorial.js),
