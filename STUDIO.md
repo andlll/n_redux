@@ -1578,11 +1578,15 @@ paragrafo 8.
   tap) ma il cui `Mouse_MouseEnter.gml` assegna `r12.biotech += 1`, non
   `mon`. `biotech` era dichiarato in `state.js` fin dall'inizio (STUDIO.md
   §6 "cosa non so ancora") ma MAI scritto da nessuna regola: e' la prima
-  volta che diventa un numero vero. **[C]** `soldbio` non ha ne'
-  `Create.gml` ne' `Alarm_0.gml` propri nel decompilato — a differenza di
-  `sold1..5` (che LO diventano "soldfade" e si autoriscuotono con una
-  chies di livello 3) resta sempre "soldico", ferma, finche' non viene
-  toccata. Agli stadi successivi (`ava` 1..4) villa riusa GLI STESSI
+  volta che diventa un numero vero — il suo SCOPO pero' resta ignoto qui
+  (chiarito solo molte sessioni dopo, vedi in fondo a questo diario "Il
+  grattacielo si sblocca DAVVERO a biotech>=100"). **[C]** `soldbio` non ha
+  ne' `Create.gml` ne' `Alarm_0.gml` propri nel decompilato — a differenza
+  di `sold1..5` (che LO diventano "soldfade" e si autoriscuotono con una
+  chies di livello 3) resta sempre ferma finche' non viene toccata (sprite
+  proprio, "bioico" — non "soldico" come una prima versione di questo
+  motore disegnava per errore, vedi di nuovo la voce in fondo al diario).
+  Agli stadi successivi (`ava` 1..4) villa riusa GLI STESSI
   oggetti gia' letti per casa1 (`sold2`.."sold5", 40/60/80/100 mon — non
   una coincidenza, gli oggetti sono condivisi) ma **[C]** a `ava>=5`
   (crescita completa) crea `sold1` (20 mon) — la PIU' BASSA delle sei, non
@@ -3891,7 +3895,10 @@ paragrafo 8.
     un intero ciclo vero: guadagnato all'hover su `soldbio`
     (`Mouse_MouseEnter.gml`, +1), mostrato in `crysrepre/DrawGUI.gml`
     (barra risorse), consumato/azzerato da `stella3/Step.gml` (un
-    edificio "stella", `game/src/buildings.js` STAR_BUILDINGS), letto da
+    edificio "stella" — a quel tempo gia' individuato ma non ancora
+    davvero collegato in `game/src/main.js` STAR_BUILDINGS: fatto solo
+    molte sessioni dopo, vedi in fondo a questo diario "Il grattacielo si
+    sblocca DAVVERO a biotech>=100"), letto da
     `iconic_box`/`crysmenu` per la UI hover — mentre `autocore` non ha
     NESSUNO di questi: nessun oggetto lo incrementa, nessuna barra lo
     mostra, nessun edificio lo consuma. Cercato anche ogni sprite/oggetto/
@@ -4057,3 +4064,72 @@ paragrafo 8.
     gitignored in questo checkout, la title screen non carica qui — da
     controllare in un ambiente con gli asset veri prima di fidarsi ciecamente
     dei numeri sopra su un device reale.
+
+- **Il grattacielo si sblocca DAVVERO a biotech>=100 — un requisito reale
+  rimasto fuori dal port, mai notato perche' lega tre sblocchi a cascata
+  dietro un oggetto "segreto".** Richiesto dall'autore: "possibile che le
+  ville creassero una seconda risorsa a forma di elica del DNA, non
+  ricordo se fosse legata al grattacielo?" — sì, ed e' proprio `biotech`
+  (§"Il pulsante blu della moneta esiste anche per villa" e la voce
+  successiva su `autocore` vs `biotech`, sopra: il ciclo di raccolta era
+  gia' documentato, il suo SCOPO no).
+  **[C] La catena vera, letta da `stella3` (l'oggetto "terza stella" —
+  §"quattordicesimo e quindicesimo edificio" sopra copre solo
+  monumento/banca, mai stella3 nel dettaglio):**
+  `stella3/Mouse_LeftPressed.gml` arma `r12.selec=82` (grattacielo) SOLO
+  se `unlocinque==1` (variabile locale di `stella3` — nome generico, `pu7`/
+  `pu5prov` hanno una LORO copia completamente separata con lo stesso
+  nome, mai uno stato condiviso). `stella3/Step.gml` scrive `unlocinque`
+  in due blocchi sequenziali: se gia' sbloccato E `instance_count(m3cant)
+  >0` → ri-blocca (`selec=0`, `unlocinque=0`); se ANCORA bloccato E
+  `instance_count(m3cant)>0` E `r12.biotech>=100` → azzera `biotech` e
+  sblocca (`unlocinque=1`). `m3cant` non e' un cantiere temporaneo: **[C]**
+  `eoliplacer/Alarm_1.gml` lo crea SOLO al piazzamento vero e pagato
+  (-200000 mon, `places>=4`), e il suo stesso `Step.gml`/`Alarm_0.gml` (13
+  fasi di sprite, mai un `action_kill_object`) non si distrugge mai —
+  resta l'istanza del grattacielo finito per il resto della partita,
+  consumando energia in eterno. Quindi `instance_count(m3cant)>0`
+  equivale esattamente al nostro `buildings.some(b=>b.type==="grattacielo")`.
+  **[Bug del gioco originale, non di lettura]** Il secondo blocco (quello
+  che DOVREBBE sbloccare la stella la prima volta) richiede che il
+  grattacielo esista GIA' — circolare: impossibile selezionarlo prima di
+  sbloccarlo, impossibile costruirlo prima di selezionarlo. Verificato con
+  cura prima di concludere che fosse davvero cosi' e non un errore di
+  lettura: operatore 2 confermato ">" (stesso schema gia' verificato per
+  `tier1`/`tier2` piattaforma, §"Terza stella" nel port — vedi
+  `game/src/main.js` STAR_BUILDINGS), nessuna istanza `m3cant` pre-piazzata
+  in `src/rooms/match(_easy).json` (zero in entrambe), nessun'altra riga in
+  tutto `src/objects/` che scriva `r12.selec=82` a parte proprio
+  `stella3/Mouse_LeftPressed.gml`. Quindi il ramo che dovrebbe accendere
+  `unlocinque` per la prima volta non si attiva MAI in una partita reale —
+  quasi certamente un refuso del developer originale (il secondo blocco
+  doveva probabilmente leggere `instance_count(m3cant)==0`, simmetrico al
+  primo invece che identico), mai emerso perche' nessun giocatore ha mai
+  guardato il codice di un edificio che non si sblocca mai per davvero.
+  **Implementato nel port** (`game/src/state.js`/`main.js`/`coins.js`):
+  `r12.grattacieloUnlocked`, un latch permanente scritto una sola volta nel
+  loop di simulazione quando `biotech>=100` (azzerandolo) — non una soglia
+  ricontrollata ogni frame, coerente con l'evento "discreto" dell'originale
+  (`biotech` puo' risalire dopo senza ri-bloccare nulla). Aggiunto come
+  QUARTO requisito di `STAR_BUILDINGS.grattacielo.unlocked()` (accanto a
+  banca + entrambe le espansioni piattaforma gia' presenti), omesso il
+  requisito circolare su `m3cant`/grattacielo-gia'-esistente — il gate "un
+  solo grattacielo per partita" resta comunque garantito dal
+  `!buildings.some(...)` gia' in testa a quella funzione. Corretto anche lo
+  sprite della moneta: `coins.js` disegnava "soldico" (il pin blu normale)
+  per la moneta biotech di villa — il decompilato specifica invece
+  `bioico`, un pin con la doppia elica del DNA (`soldbio/_object.json`),
+  mai usato finora nel motore.
+  **Nuovo contatore in barra risorse**, richiesto dall'autore ("come
+  abbiamo fatto per le gemme"): stesso trattamento di `crys_ico`/`r12.crys`
+  (icona nera dedicata `biot_ico`, stessa famiglia/taglia — visibile solo
+  con `biotech>0`), posizionato accanto al contatore cristalli. A
+  differenza di quello, MAI verificato a schermo in questa sessione: sia
+  `bioico` (60x88, il pin di mondo) che `biot_ico` (32x32, l'icona di
+  barra) sono stati aggiunti a `tools/23_atlas.py` ma l'atlas compilato
+  (`game/data/match.atlas.json` + le pagine `.webp`) non e' stato
+  rigenerato — il rebuild vero passa da `24_blit.ps1` (GDI+, Windows-only,
+  non eseguibile dalle sessioni di questo tipo che hanno lavorato agli
+  ultimi punti di questo diario). Fino al prossimo rebuild i due sprite non
+  compaiono in gioco; posizione/scala del nuovo contatore sono una prima
+  stima da rifinire a vista una volta visibili davvero.
