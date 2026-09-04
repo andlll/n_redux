@@ -3246,6 +3246,123 @@ export async function mountMatch(ctx, params = {}) {
     r.flush();
   }
 
+  /**
+   * Pannello prestiti (bankPanelOpen, state.js LOANS) — [Bug corretto,
+   * segnalato dall'autore: "sfondo con blur come gli altri pulsanti"]
+   * stesso "vetro smerigliato" di drawBuildingInfoPanel() appena sopra
+   * (blur del mondo gia' disegnato + un oscuramento leggero) invece di
+   * disegnare "loanscr" a piena texture DIRETTAMENTE sopra il mondo ancora
+   * vivo sotto, senza alcuno sfondo — cosi' com'era prima di questo fix.
+   * `pauseBlur.blurScreen()` fresca ad ogni frame, NON la cache-una-volta
+   * di `getCachedPauseBlur()` (drawPauseOverlay() sopra): quella cache
+   * presume il mondo sotto DAVVERO congelato per l'intera "sessione" di
+   * pausa (`frozen`, il loop di simulazione piu' sotto) — bankPanelOpen non
+   * ferma niente (non e' nell'elenco che decide `frozen`), la simulazione
+   * continua a girare sotto il pannello esattamente come sotto
+   * buildingInfoPanel, quindi la cattura va rifatta ogni frame per
+   * riflettere un mondo che si muove ancora.
+   * Spostato qui (prima disegnava inline nel batch GUI ancora aperto, prima
+   * del bottone di pausa) proprio per poter catturare quel batch gia'
+   * chiuso col resto della UI dentro — e per vivere nella stessa catena
+   * if/else-if degli altri modali piu' sotto (mai due aperti insieme, vedi
+   * i guard `bankPanelOpen || tradePanelOpen || buildingInfoPanel || ...`
+   * sparsi per il file): un tocco sul bottone di pausa (sempre prioritario,
+   * onTap sopra) ora sfuma via anche questo pannello esattamente come gia'
+   * faceva con buildingInfoPanel, invece di lasciarlo visibile un istante
+   * sotto un pannello di pausa comunque gia' opaco.
+   */
+  function drawBankPanel() {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
+    r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+
+    // `loanscr`/`getlo1..4` hanno gia' l'origine al centro (data/
+    // sprites.json), quindi il centro schermo e' gia' il punto giusto.
+    // Scala calcolata invece di UI_SCALE fisso: "loanscr" (540x1086) e'
+    // grande quanto un'intera view, UI_SCALE (pensata per le iconcine da
+    // ~100px del resto della barra) lo lascerebbe enorme o minuscolo a
+    // seconda dello schermo — qui si adatta sempre a circa l'85% del piu'
+    // piccolo fra larghezza/altezza disponibili.
+    const bankScale = Math.min(canvas.clientWidth / 540, canvas.clientHeight / 1086) * 0.85;
+    const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
+    const panelFrame = frameFor("loanscr");
+    if (panelFrame) r.draw(panelFrame, cx, cy, bankScale, 0xffffff, 1);
+    // [I] I quattro bottoni nel decompilato stavano a (270,-200..-50) da
+    // `bankbuttoner`, 50px di distanza fra un centro e l'altro — meno dei
+    // loro stessi 88px di altezza, quindi si sovrapporrebbero. Qui invece
+    // impilati senza sovrapposizioni (110px fra un centro e l'altro,
+    // 22px di margine reale) nell'area vuota del pannello fra il titolo
+    // e la nota sul tasso.
+    // [Bug corretto, segnalato dall'autore: "il primo pulsante va sopra
+    // la scritta"] Il blocco era centrato sul centro GEOMETRICO dello
+    // sprite "loanscr" (offset 0 = l'origine del disegno, data/
+    // sprites.json: origin_y 543 su un canvas 1086 alto) — ma il testo
+    // "GET A LOAN"/"20% interest rate" non e' distribuito simmetricamente
+    // intorno a quel punto: misurato pixel per pixel sulla texture vera
+    // (assets/textures/page_022.png, il frame di "loanscr"), il titolo
+    // finisce a y=335 e la nota sul tasso inizia a y=847 nello stesso
+    // sistema di coordinate del canvas — il centro VERO dell'area vuota
+    // e' quindi a y=(335+847)/2=591, cioe' 48px SOTTO l'origine (543), non
+    // sull'origine stessa. Spostando l'intero blocco di +48 (stessa
+    // distanza reciproca fra i bottoni, invariata) il primo bottone
+    // scende sotto il titolo (47px di margine reale, prima ne aveva 0 —
+    // il suo bordo superiore coincideva quasi esattamente col confine
+    // dell'area vuota) e l'ultimo resta comunque 47px sopra la nota sul
+    // tasso: margini uguali sopra e sotto, non piu' solo "centrato sulla
+    // carta" ma centrato su cio' che si vede davvero.
+    const BANK_BUTTONS_Y_BIAS = 48;
+    const offsets = [-165, -55, 55, 165].map((o) => o + BANK_BUTTONS_Y_BIAS);
+    bankButtons = [];
+    for (let i = 0; i < LOANS.length; i++) {
+      const f = frameFor(`getlo${i + 1}`);
+      if (!f) continue;
+      const bx = cx, by = cy + offsets[i] * bankScale;
+      r.draw(f, bx, by, bankScale, 0xffffff, 1);
+      bankButtons.push({ x: bx - (f.w * bankScale) / 2, y: by - (f.h * bankScale) / 2, w: f.w * bankScale, h: f.h * bankScale, index: i });
+    }
+    r.flush();
+  }
+
+  /**
+   * Pannello scambi (tradePanelOpen, state.js TRADES) — stesso trattamento
+   * di drawBankPanel() appena sopra (blur fresco ad ogni frame + oscuramento,
+   * stesso motivo: la simulazione continua a girare sotto anche questo
+   * pannello). "tradescr" (540x1086, la stessa taglia di "loanscr") ha
+   * origine al centro (data/sprites.json) e un solo titolo disegnato dentro
+   * ("TRADE RESOURCES", verificato pixel per pixel sulla texture vera —
+   * assets/textures/page_021.png, il frame di "tradescr": finisce a y=335
+   * nello stesso sistema di coordinate di "loanscr" sopra), nessuna seconda
+   * riga di testo sotto: l'intera area fra il titolo e il fondo del
+   * pannello resta libera per i 4 bottoni, niente bias da calcolare come
+   * per "loanscr". Offset dei bottoni (-134/0/122/245) letti diretti da
+   * get1..4/Step.gml (`action_move_to(tradoscrino.x, tradoscrino.y + N *
+   * global.sca)`), non re-inventati: gia' abbastanza distanziati (loro
+   * stessi 88px di altezza, margini reali fra i 12 e i 46px) da non
+   * sovrapporsi.
+   */
+  function drawTradePanel() {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+    r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
+    r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+
+    const tradeScale = Math.min(canvas.clientWidth / 540, canvas.clientHeight / 1086) * 0.85;
+    const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
+    const panelFrame = frameFor("tradescr");
+    if (panelFrame) r.draw(panelFrame, cx, cy, tradeScale, 0xffffff, 1);
+    const offsets = [-134, 0, 122, 245];
+    tradeButtons = [];
+    for (let i = 0; i < TRADES.length; i++) {
+      const f = frameFor(`get1${i + 1}`);
+      if (!f) continue;
+      const bx = cx, by = cy + offsets[i] * tradeScale;
+      r.draw(f, bx, by, tradeScale, 0xffffff, 1);
+      tradeButtons.push({ x: bx - (f.w * tradeScale) / 2, y: by - (f.h * tradeScale) / 2, w: f.w * tradeScale, h: f.h * tradeScale, index: i });
+    }
+    r.flush();
+  }
+
   // Overlay costruzioni mobile (buildMenuOpen, sopra) — griglia 4 colonne
   // richiesta dall'autore: riga 1 casa/industria/parco/lanciarazzi, riga 2
   // palazzo/fotovoltaico/club/gatling, riga 3 villa/eolico/mediateca/laser.
@@ -4415,7 +4532,10 @@ export async function mountMatch(ctx, params = {}) {
     // "modale" di bankPanelOpen sotto, controllato PRIMA di lui apposta:
     // se il pannello prestiti fosse gia' aperto quando si preme pausa,
     // restare bloccati su quello invece che sul menu di pausa sarebbe
-    // confuso (e comunque quel pannello non e' piu' disegnato sopra il blur).
+    // confuso (e comunque `paused` ha gia' priorita' su `bankPanelOpen`
+    // nella catena if/else-if di drawBankPanel()/drawPauseOverlay() piu'
+    // sotto: quel pannello smette proprio di disegnarsi finche' `paused`
+    // resta vero, non solo di restare sopra).
     if (paused) {
       const hit = pauseMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       // "Saving options" (pauseSubmenu, sopra): stesso array `pauseMenuButtons`
@@ -7226,83 +7346,13 @@ export async function mountMatch(ctx, params = {}) {
     if (r12.tincomT > 0 && !paused && Math.floor((TINCOM_DURATION - r12.tincomT) / 0.5) % 2 === 0) {
       drawBannerLines(["THUNDERSTORM", "INCOMING"], 48);
     }
-    // Il pannello prestiti (bankPanelOpen, state.js LOANS) — vero modale in
-    // spazio schermo (vedi il commento su bankPanelOpen piu' sopra per il
-    // perche'), disegnato per ultimo cosi' resta sempre sopra a tutto il
-    // resto della GUI. `loanscr`/`getlo1..4` hanno gia' l'origine al centro
-    // (data/sprites.json), quindi il centro schermo e' gia' il punto giusto.
-    // Scala calcolata invece di UI_SCALE fisso: "loanscr"
-    // (540x1086) e' grande quanto un'intera view, UI_SCALE (pensata per le
-    // iconcine da ~100px del resto della barra) lo lascerebbe enorme o
-    // minuscolo a seconda dello schermo — qui si adatta sempre a circa l'85%
-    // del piu' piccolo fra larghezza/altezza disponibili.
-    bankButtons = [];
-    if (bankPanelOpen) {
-      const bankScale = Math.min(canvas.clientWidth / 540, canvas.clientHeight / 1086) * 0.85;
-      const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
-      const panelFrame = frameFor("loanscr");
-      if (panelFrame) r.draw(panelFrame, cx, cy, bankScale, 0xffffff, 1);
-      // [I] I quattro bottoni nel decompilato stavano a (270,-200..-50) da
-      // `bankbuttoner`, 50px di distanza fra un centro e l'altro — meno dei
-      // loro stessi 88px di altezza, quindi si sovrapporrebbero. Qui invece
-      // impilati senza sovrapposizioni (110px fra un centro e l'altro,
-      // 22px di margine reale) nell'area vuota del pannello fra il titolo
-      // e la nota sul tasso.
-      // [Bug corretto, segnalato dall'autore: "il primo pulsante va sopra
-      // la scritta"] Il blocco era centrato sul centro GEOMETRICO dello
-      // sprite "loanscr" (offset 0 = l'origine del disegno, data/
-      // sprites.json: origin_y 543 su un canvas 1086 alto) — ma il testo
-      // "GET A LOAN"/"20% interest rate" non e' distribuito simmetricamente
-      // intorno a quel punto: misurato pixel per pixel sulla texture vera
-      // (assets/textures/page_022.png, il frame di "loanscr"), il titolo
-      // finisce a y=335 e la nota sul tasso inizia a y=847 nello stesso
-      // sistema di coordinate del canvas — il centro VERO dell'area vuota
-      // e' quindi a y=(335+847)/2=591, cioe' 48px SOTTO l'origine (543), non
-      // sull'origine stessa. Spostando l'intero blocco di +48 (stessa
-      // distanza reciproca fra i bottoni, invariata) il primo bottone
-      // scende sotto il titolo (47px di margine reale, prima ne aveva 0 —
-      // il suo bordo superiore coincideva quasi esattamente col confine
-      // dell'area vuota) e l'ultimo resta comunque 47px sopra la nota sul
-      // tasso: margini uguali sopra e sotto, non piu' solo "centrato sulla
-      // carta" ma centrato su cio' che si vede davvero.
-      const BANK_BUTTONS_Y_BIAS = 48;
-      const offsets = [-165, -55, 55, 165].map((o) => o + BANK_BUTTONS_Y_BIAS);
-      for (let i = 0; i < LOANS.length; i++) {
-        const f = frameFor(`getlo${i + 1}`);
-        if (!f) continue;
-        const bx = cx, by = cy + offsets[i] * bankScale;
-        r.draw(f, bx, by, bankScale, 0xffffff, 1);
-        bankButtons.push({ x: bx - (f.w * bankScale) / 2, y: by - (f.h * bankScale) / 2, w: f.w * bankScale, h: f.h * bankScale, index: i });
-      }
-    }
-    // Il pannello scambi (tradePanelOpen, state.js TRADES) — stesso schema
-    // di bankPanelOpen appena sopra: "tradescr" (540x1086, la stessa taglia
-    // di "loanscr") ha origine al centro (data/sprites.json) e un solo
-    // titolo disegnato dentro ("TRADE RESOURCES", verificato pixel per
-    // pixel sulla texture vera — assets/textures/page_021.png, il frame di
-    // "tradescr": finisce a y=335 nello stesso sistema di coordinate di
-    // "loanscr" sopra), nessuna seconda riga di testo sotto: l'intera area
-    // fra il titolo e il fondo del pannello resta libera per i 4 bottoni,
-    // niente bias da calcolare come per "loanscr". Offset dei bottoni
-    // (-134/0/122/245) letti diretti da get1..4/Step.gml (`action_move_to
-    // (tradoscrino.x, tradoscrino.y + N * global.sca)`), non re-inventati:
-    // gia' abbastanza distanziati (loro stessi 88px di altezza, margini
-    // reali fra i 12 e i 46px) da non sovrapporsi.
-    tradeButtons = [];
-    if (tradePanelOpen) {
-      const tradeScale = Math.min(canvas.clientWidth / 540, canvas.clientHeight / 1086) * 0.85;
-      const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
-      const panelFrame = frameFor("tradescr");
-      if (panelFrame) r.draw(panelFrame, cx, cy, tradeScale, 0xffffff, 1);
-      const offsets = [-134, 0, 122, 245];
-      for (let i = 0; i < TRADES.length; i++) {
-        const f = frameFor(`get1${i + 1}`);
-        if (!f) continue;
-        const bx = cx, by = cy + offsets[i] * tradeScale;
-        r.draw(f, bx, by, tradeScale, 0xffffff, 1);
-        tradeButtons.push({ x: bx - (f.w * tradeScale) / 2, y: by - (f.h * tradeScale) / 2, w: f.w * tradeScale, h: f.h * tradeScale, index: i });
-      }
-    }
+    // Pannello prestiti (bankPanelOpen) e pannello scambi (tradePanelOpen):
+    // drawBankPanel()/drawTradePanel(), vicino a drawBuildingInfoPanel()
+    // sopra — spostati li' (da qui, dove disegnavano direttamente nel batch
+    // GUI ancora aperto) per lo stesso "vetro smerigliato" degli altri
+    // modali, vedi il commento su drawBankPanel() per il perche'. Restano
+    // comunque nella stessa catena if/else-if del resto dei modali, piu'
+    // sotto dopo il flush.
     // Bottone di pausa — sempre presente (l'unico modo di entrare/uscire dal
     // menu di pausa, vedi drawPauseOverlay() sotto e onTap sopra), in basso a
     // destra, ultimo disegnato in questo batch cosi' resta sempre sopra a
@@ -7363,6 +7413,8 @@ export async function mountMatch(ctx, params = {}) {
       else if (pauseSubmenu === "confirmReset") drawConfirmResetOverlay();
       else drawPauseOverlay();
     }
+    else if (bankPanelOpen) drawBankPanel();
+    else if (tradePanelOpen) drawTradePanel();
     else if (buildingInfoPanel) drawBuildingInfoPanel();
     else if (buildMenuOpen) drawBuildMenuOverlay();
 
