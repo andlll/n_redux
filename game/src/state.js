@@ -22,11 +22,11 @@ import { DEBUG_INFINITE_RESOURCES, sandbox } from "./buildings.js";
 export function createR12(isMatch = false) {
   return {
     oil: isMatch ? 7500 : 5000,   // [C] r12/Create.gml
-    mon: 5500,         // [C]
+    mon: 7500,
     // [TEST] DEBUG_INFINITE_RESOURCES sopra: il valore genuino, tracciato a
     // parte da clampR12() — inutile finche' il flag e' spento (resta uguale
     // a oil/mon).
-    oilReal: isMatch ? 7500 : 5000, monReal: 5500,
+    oilReal: isMatch ? 7500 : 5000, monReal: 7500,
     pop: 0,             // [C]
     ele: 200,           // [C]
     time: 2914,         // [C] orologio di gioco, non il ciclo giorno/notte visivo — l'ANNO (vedi stepCalendar sotto)

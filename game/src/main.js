@@ -1087,7 +1087,7 @@ export async function mountMatch(ctx, params = {}) {
   // [Nuova funzionalita', richiesta dall'autore: "in tutorial partiamo con
   // 10000 soldi in piu', altrimenti rischiano di non bastare"] Il tutorial fa
   // costruire ruderi/case/centrale/parco/missile ben prima che le tasse
-  // raccolte bastino da sole: i 5500 di partenza di createR12() (state.js,
+  // raccolte bastino da sole: i 7500 di partenza di createR12() (state.js,
   // uguali su ogni room) a volte non reggono l'intera sequenza guidata.
   // `monReal` aggiornato insieme (state.js/clampR12, DEBUG_INFINITE_RESOURCES):
   // resta il valore genuino "usabile" anche se il debug/sandbox e' spento.

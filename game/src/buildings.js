@@ -32,7 +32,7 @@ export const BUILDING_TYPES = {
     // beneficio all'utente e rischierebbe di disallineare i commenti [C] dal
     // vero nome degli oggetti GameMaker che documentano.
     label: "City center",
-    placeCost: { mon: 5000 },                    // [I] sotto la dote iniziale (5500): la ruota reale apriva a 6000
+    placeCost: { mon: 5000 },                    // [I] sotto la dote iniziale (7500): la ruota reale apriva a 6000
     baseSprite: "crc", baseLife: 1000,             // [C] chies/Create.gml
     baseDecor: ["crcl"],                           // [C] chies/Create.gml: action_create_object(cddvd, 0, 0)
     // [C] chies/Step.gml, ramo `life<=0`: a differenza di ogni altro
@@ -335,7 +335,7 @@ export const BUILDING_TYPES = {
   // nel decompilato).
   casa: {
     label: "House",
-    placeCost: { mon: 100 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==1
+    placeCost: { mon: 500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==1
     // [C] casa1/Alarm_2.gml: `ava` (0..5) e' lo stadio di crescita. Il primo
     // intervallo dopo la nascita e' fisso (`action_set_alarm(2000,2)` in
     // Create.gml, uguale per tutti e tre i livelli); da li' in poi ogni
