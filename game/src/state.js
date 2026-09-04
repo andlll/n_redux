@@ -58,6 +58,27 @@ export function createR12(isMatch = false) {
     // un'istanza vera, STUDIO.md §5.4) per lo stesso motivo di onda/bombn/
     // diron sopra.
     distrutti: 0,
+    // [C] stella3/Step.gml: `unlocinque` nel decompilato (un nome generico,
+    // riusato per lo stesso scopo anche da `pu7`/`pu5prov` — istanze
+    // completamente separate nell'originale, mai un vero stato condiviso).
+    // Latch permanente (mai ricontrollato una volta vero, STAR_BUILDINGS.
+    // grattacielo in main.js): sblocca la stella quando `biotech` raggiunge
+    // 100 per la prima volta, azzerandolo — un evento discreto e "speso" una
+    // sola volta, non una soglia ricontrollata ad ogni frame (`biotech` puo'
+    // benissimo tornare a salire dopo, non deve ri-bloccare la stella).
+    // [Bug corretto sul decompilato stesso] La riga originale che compie
+    // questo sblocco richiede anche `instance_count(m3cant)>0` — cioe' che
+    // il grattacielo esista GIA' — un requisito circolare (impossibile
+    // selezionarlo prima di sbloccarlo, impossibile costruirlo prima di
+    // selezionarlo): quasi certamente un bug del gioco originale mai
+    // notato dai giocatori (un edificio "segreto" chiuso dietro tre
+    // sblocchi a cascata, mai raggiunto abbastanza spesso da qualcuno che
+    // guardasse il codice). Qui la soglia biotech>=100 resta l'UNICO
+    // requisito in piu' (nessun controllo su `m3cant`/grattacielo gia'
+    // esistente): il gate "solo un grattacielo per partita" e' gia'
+    // garantito altrove (STAR_BUILDINGS.grattacielo.unlocked() controlla
+    // gia' `!buildings.some(b => b.type === "grattacielo")`).
+    grattacieloUnlocked: false,
     // [C] r12/Create.gml: onda/ondan/arma partono a 0, spy a 0 (si sblocca
     // dopo 29000 tick, r12/Alarm_8.gml) — usati dalle mongolfiere di
     // risorse/spia, game/src/balloons.js. `arma` resta dichiarato per

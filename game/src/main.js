@@ -4538,13 +4538,23 @@ export async function mountMatch(ctx, params = {}) {
     // semplicemente "costruisci una banca" — e su `match_easy`, che non ha
     // mai una piattaforma da espandere, resta percio' irraggiungibile
     // (fedele, non un buco: `platformState` e' `null` li').
+    // [Nuova funzionalita', richiesta dall'autore: indagare se le ville
+    // producessero una seconda risorsa a forma di elica del DNA legata al
+    // grattacielo] Confermato e aggiunto un quarto requisito, mancante
+    // finora: `r12.grattacieloUnlocked` (state.js — il latch a
+    // `biotech>=100`, azzerato all'atto, impostato nel loop di simulazione
+    // sopra — [C] stella3/Step.gml). Le ville lo producevano gia' nel
+    // motore (coins.js, la moneta "biotech") ma nessuno lo leggeva ancora:
+    // il grattacielo si sbloccava con banca+piattaforma senza mai chiedere
+    // biotech, un requisito reale dell'originale rimasto fuori.
     {
       type: "grattacielo", selec: 82, spr: "sta3", tint: 0x82824f, label: "Skyscraper", cost: 200000,
       // `sandbox.on ||` bypassa anche il vincolo "solo su `match`" (sopra:
-      // `platformState` e' `null` su `match_easy`) — coerente con "tutto
-      // sbloccato", non piu' fedele all'originale a quel punto.
+      // `platformState` e' `null` su `match_easy`) e il requisito biotech —
+      // coerente con "tutto sbloccato", non piu' fedele all'originale a
+      // quel punto.
       unlocked: () => !buildings.some((b) => b.type === "grattacielo") && (sandbox.on || (buildings.some((b) => b.type === "banca")
-        && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded")),
+        && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded" && r12.grattacieloUnlocked)),
     },
   ];
   for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; BUILDING_LABEL[b.type] = b.label; }
@@ -5730,6 +5740,25 @@ export async function mountMatch(ctx, params = {}) {
       // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
       stepCoinSpawner(buildings, coins, dt, r12);
       stepCoins(coins, dt, r12);
+      // [Nuova funzionalita', richiesta dall'autore: indagare se le ville
+      // producessero una seconda risorsa a forma di elica del DNA legata al
+      // grattacielo — confermato: `biotech` (r12, sopra — le monete "bioico"
+      // di villa, coins.js) e' proprio il carburante della terza stella.
+      // [C] stella3/Step.gml: a 100 si azzera e sblocca — qui un latch
+      // permanente (r12.grattacieloUnlocked, state.js) invece di una soglia
+      // ricontrollata ogni frame, coerente con l'originale (un evento
+      // discreto e "speso" una volta, non una condizione che si ri-blocca
+      // se `biotech` scende sotto 100 di nuovo dopo). **[Bug corretto sul
+      // decompilato]** l'originale richiede anche `instance_count(m3cant)
+      // >0` (il grattacielo gia' esistente) per questo stesso sblocco — un
+      // requisito circolare mai raggiungibile per davvero (vedi il
+      // commento su `grattacieloUnlocked`, state.js): qui omesso, il gate
+      // "un solo grattacielo per partita" resta comunque garantito da
+      // `STAR_BUILDINGS.grattacielo.unlocked()` sotto.
+      if (!r12.grattacieloUnlocked && r12.biotech >= 100) {
+        r12.biotech = 0;
+        r12.grattacieloUnlocked = true;
+      }
       if (platformState) {
         const chiesLevel = buildings.find((b) => b.type === "chies")?.level ?? 0;
         stepFaroChain(platformState, r12, balloons, cars, smoke, dt, chiesLevel, night);
@@ -6954,6 +6983,31 @@ export async function mountMatch(ctx, params = {}) {
       if (!hideResourceIcons && crysFrame) r.draw(crysFrame, crysPos.x, crysPos.y, crysScale, 0xffffff, 1);
       r.setColorize(false);
       if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), crysTextPos.x, crysTextPos.y, { size: 15, align: "left", color: barTextColor });
+    }
+    // Biotech (r12.biotech: coins.js, la moneta "bioico" delle ville, ava==0
+    // — vedi il commento su STAR_BUILDINGS.grattacielo in questo file) —
+    // stesso trattamento/stessa soglia "> 0" di crys_ico appena sopra: nuovo
+    // indicatore, richiesto dall'autore ("aggiungiamo anche il counter
+    // nella GUI come per le gemme") ora che biotech ha uno scopo vero da
+    // mostrare (prima non aveva senso: un numero senza alcun collegamento
+    // visibile in gioco). `biot_ico`, non `crys_ico`: icona nera dedicata,
+    // stessa famiglia/taglia (data/sprites.json). **[Da verificare a
+    // schermo]** posizione/scala qui accanto a `crysPos` per coerenza, MAI
+    // vista a schermo da questa sessione (l'atlas coi due sprite nuovi,
+    // `bioico`/`biot_ico`, non e' stato ancora ricostruito — vedi il
+    // commit sui pannelli prestiti/scambi per il motivo, 24_blit.ps1 e'
+    // Windows-only): a differenza di `crysPos`, "misurato pixel per pixel"
+    // dall'autore in precedenza, questa e' una prima stima da rifinire a
+    // vista una volta ricostruito l'atlas.
+    if (r12.biotech > 0) {
+      const bioFrame = frameFor("biot_ico");
+      const bioPos = isMobile ? { x: barX + 180, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 650, y: barY - 4 };
+      const bioScale = isMobile ? 0.9 : 0.75;
+      const bioTextPos = isMobile ? { x: barX + 220, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 686, y: barY + 19 };
+      r.setColorize(iconsDark);
+      if (!hideResourceIcons && bioFrame) r.draw(bioFrame, bioPos.x, bioPos.y, bioScale, 0xffffff, 1);
+      r.setColorize(false);
+      if (!hideResourceText) drawHtmlText(String(Math.round(r12.biotech)), bioTextPos.x, bioTextPos.y, { size: 15, align: "left", color: barTextColor });
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non

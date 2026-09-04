@@ -382,6 +382,13 @@ GAMEPLAY_SPRITES = {
     "gui": [
         "icone_oriz",          # sfondo barra risorse (repre/DrawGUI.gml)
         "crys_ico",            # icona nera dei cristalli (main.js, riga GUI sotto la barra risorse)
+        # [Nuova funzionalita', richiesta dall'autore: "il grattacielo si
+        # sblocca davvero a biotech>=100 (stella3/Step.gml, mai portato
+        # prima) — aggiungiamo anche il contatore in barra, come i
+        # cristalli"] "biot_ico" e' l'icona nera dedicata (stessa famiglia/
+        # taglia di "crys_ico" sopra — data/sprites.json le elenca vicine),
+        # per il contatore biotech nella barra risorse.
+        "biot_ico",
         # Icona "salvataggio in corso" (src/objects/savvvvvco, sprite
         # "savicona" — [C] r12/Alarm_10.gml: autosalvataggio ogni 1800 tick
         # (30s) + reversi/Mouse_LeftPressed.gml: salvataggio all'uscita,
@@ -613,8 +620,11 @@ GAMEPLAY_SPRITES = {
     # 23|upind12|23 — tutti la stessa icona "upico", game/src/main.js
     # renderUpgradeSign()). "soldico" e' il pin statico (nessun chies di
     # livello 3), "soldfade" la stessa icona con la dissolvenza a 20 frame
-    # usata quando invece si autoriscuote.
-    "coins": ["soldico", "soldfade", "upico"],
+    # usata quando invece si autoriscuote. "bioico" e' lo stesso pin ma per
+    # "soldbio" (villa, ava==0, game/src/coins.js) — un pin con la doppia
+    # elica del DNA al posto delle monete, per la risorsa `biotech` invece
+    # di `mon` (mai usato prima d'ora: soldbio riusava per errore "soldico").
+    "coins": ["soldico", "soldfade", "upico", "bioico"],
     # Il fumo decorativo delle centrali (src/objects/smoke_ind|smoke_ind_2,
     # game/src/smoke.js): un solo sbuffo per famiglia ("cc1" il default,
     # "cc2"/"cc3" le due varianti a dado di Create.gml — non serve
