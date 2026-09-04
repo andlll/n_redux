@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -73,14 +73,15 @@ export async function mountMatch(ctx, params = {}) {
   // (dynamic.push() piu' sopra nel ciclo di frame, molto prima della sezione
   // che disegna i bottoni) puo' riusarla invece di un secondo numero scollegato.
   const UI_SCALE = isMobile ? 0.6 : 0.7;
-  // [I] Segnalato dall'autore: le etichette dei PREZZI (i cartellini "cN"/
-  // "cfree", costTagSprite() in buildings.js) restavano comunque troppo
-  // grandi su desktop anche a UI_SCALE (0.7) — a differenza dei bottoni/
-  // popup sopra, un cartellino e' un dettaglio testuale che deve leggersi
-  // in un angolo, non occupare quasi quanto l'icona che descrive. Scala
-  // dedicata, unica per ogni cartellino di prezzo del motore (popup ruspa,
-  // segnale di potenziamento, lotto-rudere del tutorial, selettore edificio).
-  const COST_TAG_SCALE = 0.5;
+  // [I] Segnalato dall'autore: le etichette dei PREZZI restavano comunque
+  // troppo grandi su desktop anche a UI_SCALE (0.7) — a differenza dei
+  // bottoni/popup sopra, un cartellino e' un dettaglio testuale che deve
+  // leggersi in un angolo, non occupare quasi quanto l'icona che descrive.
+  // Taglia dedicata (TAG_PILL_H, sotto — 44px, meta' degli 88 nativi dei
+  // vecchi sprite "cN"/"cfree" rimossi), unica per ogni cartellino di
+  // prezzo del motore (popup ruspa, segnale di potenziamento, lotto-rudere
+  // del tutorial, selettore edificio) — vedi drawCostTagScreen()/
+  // drawCostTagWorld() piu' sotto.
 
   // ---------------------------------------------------------------- room
   // Quale room caricare — [C] `standma`/`easma`/`me3` (src/objects, la room
@@ -3523,42 +3524,42 @@ export async function mountMatch(ctx, params = {}) {
       r.draw(f, iconX, iconY, scale, isSelected ? (icon?.tint ?? 0xffffff) : 0xffffff, locked ? LOCKED_BUTTON_ALPHA : 1);
       r.setColorize(false);
     }
-    // Cartellino prezzo/"Level N to unlock" (unlockTagSprite()/
-    // costTagSprite(), sopra) — l'equivalente touch dell'hover mouse della
-    // riga scorrevole desktop (drawUiRow() piu' sotto, stesso schema).
-    // `input.hover` segue anche un dito che scorre senza sollevarsi
-    // (Input._move(), input.js): un "pan" sopra un bottone lo rivela in
-    // diretta, aggiornando anche `buildMenuTagType`/`Until` cosi' che
-    // sollevare il dito subito dopo lasci il cartellino ancora un attimo.
-    // Nessun controllo su `hoverPointerType`: questo overlay esiste solo su
-    // mobile (isMobile, buildMenuOpen sopra), il touch e' l'unico caso reale.
+    // Cartellino prezzo/"Unlock at level N" (unlockTagText()/costText(),
+    // sopra) — l'equivalente touch dell'hover mouse della riga scorrevole
+    // desktop (drawUiRow() piu' sotto, stesso schema). `input.hover` segue
+    // anche un dito che scorre senza sollevarsi (Input._move(), input.js):
+    // un "pan" sopra un bottone lo rivela in diretta, aggiornando anche
+    // `buildMenuTagType`/`Until` cosi' che sollevare il dito subito dopo
+    // lasci il cartellino ancora un attimo. Nessun controllo su
+    // `hoverPointerType`: questo overlay esiste solo su mobile (isMobile,
+    // buildMenuOpen sopra), il touch e' l'unico caso reale.
     const hoveredTagBtn = input.hover && buildMenuButtons.find((b) => b.type
       && input.hover.x >= b.x && input.hover.x <= b.x + b.w
       && input.hover.y >= b.y && input.hover.y <= b.y + b.h);
     if (hoveredTagBtn) { buildMenuTagType = hoveredTagBtn.type; buildMenuTagUntil = performance.now() + 2500; }
     const tagBtn = hoveredTagBtn
       ?? (buildMenuTagType && performance.now() < buildMenuTagUntil ? buildMenuButtons.find((b) => b.type === buildMenuTagType) : null);
-    function drawMenuTag(btn, spr, alpha) {
-      const tagFrame = frameFor(spr);
-      if (!tagFrame) return;
-      // Clampato dentro lo schermo (min/max sotto): un bottone sul bordo
-      // sinistro/destro della griglia spingerebbe altrimenti il cartellino
-      // (piu' largo di una singola cella) oltre il bordo del canvas.
-      const tx = Math.min(Math.max(btn.x + btn.w / 2 - (tagFrame.w * COST_TAG_SCALE) / 2, 4), cw - tagFrame.w * COST_TAG_SCALE - 4);
+    // Clampato dentro lo schermo (min/max sotto): un bottone sul bordo
+    // sinistro/destro della griglia spingerebbe altrimenti il cartellino
+    // (piu' largo di una singola cella) oltre il bordo del canvas.
+    function drawMenuTag(btn, text, alpha) {
+      if (!text) return;
+      const w = tagWidth(text);
+      const tx = Math.min(Math.max(btn.x + btn.w / 2, 4 + w / 2), cw - w / 2 - 4);
       const ty = Math.max(btn.y - 8, 4);
-      r.draw(tagFrame, tx, ty, COST_TAG_SCALE, 0xffffff, alpha);
+      drawCostTagScreen(text, tx, ty, { alpha });
     }
     if (tagBtn) {
       const locked = buildingLocked(tagBtn.type);
-      drawMenuTag(tagBtn, locked ? unlockTagSprite(tagBtn.type) : costTagSprite(tagBtn.type, null), 1);
+      drawMenuTag(tagBtn, locked ? unlockTagText(tagBtn.type) : costText(BUILDING_TYPES[tagBtn.type]?.placeCost), 1);
     }
     // [Bug corretto/Nuova funzionalita', vedi il commento su gridTapTagType/
     // At sopra] Un tap secco su QUALUNQUE bottone (bloccato o no) lo arma
     // con un timestamp assoluto invece del "linger" di `buildMenuTagType`/
     // `Until` (pensato per un dito che scorre e si solleva, non per questo
     // caso) — pieno per GRID_TAP_SHOW_MS, poi dissolto in GRID_TAP_FADE_MS
-    // invece di sparire di scatto. Stesso sprite scelto dal resto della
-    // funzione (locked ? unlockTagSprite : costTagSprite, sopra).
+    // invece di sparire di scatto. Stesso testo scelto dal resto della
+    // funzione (locked ? unlockTagText : costText, sopra).
     if (gridTapTagType) {
       const elapsed = performance.now() - gridTapTagAt;
       const total = GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
@@ -3566,7 +3567,7 @@ export async function mountMatch(ctx, params = {}) {
       if (btn) {
         const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
         const locked = buildingLocked(btn.type);
-        drawMenuTag(btn, locked ? unlockTagSprite(btn.type) : costTagSprite(btn.type, null), alpha);
+        drawMenuTag(btn, locked ? unlockTagText(btn.type) : costText(BUILDING_TYPES[btn.type]?.placeCost), alpha);
       } else {
         // Il cartellino e' svanito del tutto: se era quello di un bottone
         // GIA' selezionato al tap (input.onTap sopra: un bloccato non
@@ -3862,6 +3863,107 @@ export async function mountMatch(ctx, params = {}) {
   }
   const pausePanelFrame = makeRoundRectCache(20);
   const pauseButtonFrame = makeRoundRectCache(14);
+
+  /**
+   * [Nuova funzionalita', richiesta dall'autore: "altri sprite da
+   * sostituire con grafica vettoriale per risparmiare spazio? facciamolo"]
+   * "Cartellini" (pillola arrotondata + testo) — sostituiscono gli sprite
+   * decompilati pre-renderizzati `costTagSprite()`/`unlockTagSprite()`
+   * (buildings.js/main.js: "c100".."c200000", "cfree", "c12aa"/"c23aa",
+   * "unlocklvl2"/"unlocklvl3") e i due bottoni conferma ruspa
+   * ("demoyesse"/"demoback") — ~20 sprite, tutti la stessa identica
+   * ricetta visiva (pillola nera o colorata, testo bianco bold, a volte
+   * una mini-icona), usati da CINQUE punti diversi del file (hover
+   * desktop/tap mobile sul menu costruzioni, popup ruspa, hover/tap
+   * upgrade edificio, lotti-rudere del tutorial).
+   * A differenza di `pausePanelFrame`/`pauseButtonFrame` sopra (un solo
+   * pannello alla volta, uno slot di cache basta) qui piu' cartellini di
+   * taglia DIVERSA possono comparire nello stesso frame — un upgrade
+   * pronto qui, un bottone bloccato li' — quindi uno slot singolo li
+   * farebbe rigenerare in continuazione. Le taglie realmente in gioco
+   * restano comunque pochissime (sempre un numero o una frase breve, mai
+   * testo libero): un Map senza scadenza basta, non serve un'eviction vera.
+   */
+  const tagPillCache = new Map();
+  function tagPillFrame(w, h) {
+    const key = w + "x" + h;
+    let tex = tagPillCache.get(key);
+    if (!tex) { tex = makeRoundedRectTexture(gl, w, h, h / 2); tagPillCache.set(key, tex); }
+    return solidFrame(tex, w, h);
+  }
+  const TAG_PILL_H = 44;      // stessa taglia (88px nativi degli sprite rimossi * COST_TAG_SCALE, sopra)
+  const TAG_TEXT_SIZE = 15;
+  const TAG_CHAR_W = 9.2;     // larghezza approssimata di un carattere Montserrat bold a TAG_TEXT_SIZE
+  const TAG_PAD = 26;         // margine orizzontale pieno (dentro la pillola) attorno al testo
+  // Pillola fissa dei due bottoni conferma ruspa (dynamic.push({obj:
+  // "ruspaYes"/"ruspaNo",...}) piu' sotto) — testo sempre breve ("Yes!"/
+  // "No", mai un numero variabile come le altre pillole), quindi una taglia
+  // fissa basta invece di ricalcolarla dal testo come TAG_PAD/TAG_CHAR_W
+  // sopra. Vicina alla taglia nativa dei vecchi sprite "demoyesse"/
+  // "demoback" (139x60, data/sprites.json) per restare proporzionata agli
+  // altri elementi del popup ruspa.
+  const RUSPA_BTN_W = 120, RUSPA_BTN_H = 56;
+  /** Larghezza della pillola per un dato testo — condivisa fra drawCostTagAt()
+   * sotto (che ne ha bisogno per centrare/posizionare il quad) e i chiamanti
+   * che devono clampare la posizione DENTRO lo schermo PRIMA di disegnare
+   * (drawMenuTag() piu' sotto): un solo posto che decide la formula, mai
+   * due calcoli che potrebbero disallinearsi. */
+  function tagWidth(text) {
+    return Math.round(text.length * TAG_CHAR_W + TAG_PAD);
+  }
+  /** Nucleo comune di drawCostTagScreen()/drawCostTagWorld() sotto: `pillX,
+   * pillY` e' il centro-alto della pillola nello spazio in cui `r` sta gia'
+   * disegnando in questo momento (mondo o schermo — la pillola e' un quad
+   * come un altro, segue la proiezione ATTIVA); `textX,textY` e' lo STESSO
+   * punto ma sempre in pixel schermo veri, perche' drawHtmlText() e' un
+   * overlay DOM che non sa nulla della matrice camera.
+   * `alpha` (default 1, per la dissolvenza dei cartellini "a tap" — build
+   * menu/upgrade edificio, sotto): drawHtmlText() non ha un parametro
+   * alpha proprio (`color`, sempre opaco altrove — nessun altro testo HTML
+   * di questo motore sfuma mai), quindi qui si compone un `rgba(...)`
+   * esplicito da `textRgb` invece di passare una stringa CSS gia' pronta
+   * come fa ogni altro chiamante di drawHtmlText(): l'unico punto che deve
+   * sapere fondere colore e trasparenza in un'unica stringa. */
+  function drawCostTagAt(text, pillX, pillY, textX, textY, { tint = 0x000000, textRgb = [255, 255, 255], alpha = 1 } = {}) {
+    const w = tagWidth(text);
+    const h = TAG_PILL_H;
+    r.draw(tagPillFrame(w, h), pillX - w / 2, pillY, 1, tint, alpha);
+    const [tr, tg, tb] = textRgb;
+    drawHtmlText(text, textX, textY + h / 2, { size: TAG_TEXT_SIZE, color: `rgba(${tr},${tg},${tb},${alpha})`, maxWidth: w - 10 });
+  }
+  /** Cartellino in spazio SCHERMO (menu costruzioni, riga scorrevole
+   * desktop): `topCenterX,topCenterY` sono gia' pixel schermo, nessuna
+   * conversione. */
+  function drawCostTagScreen(text, topCenterX, topCenterY, opts) {
+    drawCostTagAt(text, topCenterX, topCenterY, topCenterX, topCenterY, opts);
+  }
+  /** Cartellino ancorato a un punto del MONDO (popup ruspa, cartellino
+   * upgrade sull'edificio, lotti-rudere del tutorial): la pillola segue la
+   * camera come ogni altro sprite di mondo, il testo (DOM, sempre schermo)
+   * usa cam.worldToScreen() sullo stesso punto. */
+  function drawCostTagWorld(text, wx, wy, opts) {
+    const s = cam.worldToScreen(wx, wy);
+    drawCostTagAt(text, wx, wy, s.x, s.y, opts);
+  }
+  /** Testo di un costo (mon/oil/ele...) — stessa formattazione gia' usata
+   * da tryStartUpgrade()/drawTradePanel() per un rifiuto/scambio multi-
+   * risorsa ("need 2000 mon, 500 oil"), qui senza il "need": un cartellino
+   * mostra il prezzo, non un rifiuto. `null`/`undefined` (nessun costo
+   * applicabile: es. un tipo non ancora ricostruito, o un livello di
+   * potenziamento che non esiste) restano "niente cartellino", come il
+   * vecchio costTagSprite() — un oggetto vuoto (`{}`, es. `placeCost`
+   * della banca) e' un caso DIVERSO, un vero costo di zero. A differenza
+   * del vecchio costTagSprite() (buildings.js — tornava `null` anche per
+   * qualunque costo che non fosse SOLO `mon`) funziona per qualunque
+   * combinazione di risorse: nessun caso speciale per chies (prima
+   * l'unico tipo con due sprite dedicati, "c12aa"/"c23aa", per il suo
+   * costo doppio mon+oil).
+   */
+  function costText(cost) {
+    if (!cost) return null;
+    const entries = Object.entries(cost);
+    return entries.length ? entries.map(([k, v]) => `${v} ${k}`).join(", ") : "It's free!";
+  }
 
   /**
    * [Nuova funzionalita', richiesta dall'autore: "la barra della vita deve
@@ -4327,7 +4429,7 @@ export async function mountMatch(ctx, params = {}) {
   for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
   const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
   const CHIES_UNLOCK_BY_TYPE = Object.fromEntries(OTHER_BUILDINGS.filter((b) => b.chiesUnlock).map((b) => [b.type, b.chiesUnlock]));
-  /** Lo sprite del cartellino "Level N to unlock" per un bottone edificio
+  /** Il testo del cartellino "Unlock at level N" per un bottone edificio
    * ancora bloccato (`buildingLocked()`, sotto) — **[C]** `pu6|pudj|
    * pugatling|pusolare/Mouse_MouseEnter.gml` (chiesUnlock:2) creano
    * `level2club|gatling|palazz|sol`, tutti lo stesso sprite reale
@@ -4335,16 +4437,19 @@ export async function mountMatch(ctx, params = {}) {
    * (chiesUnlock:3) creano `leve3tounlo4|5|villa`/`level3tounlomedia`,
    * tutti "unlocklvl3" — un solo banner generico per soglia, non uno per
    * edificio (verificato: ogni oggetto sopra referenzia lo stesso sprite,
-   * mai uno dedicato). Stesso posto/occasione del cartellino prezzo vero
-   * (`costTagSprite()`, buildings.js) quando il bottone e' gia' sbloccato —
-   * vedi il commento su come i due si alternano piu' sotto (drawUiRow()/
-   * drawBuildMenuOverlay()). `null` per `parco` (`pu7`, sotto un flag
-   * diverso da `chies` — `unlocinque`, mai portato qui, STUDIO.md: nessun
-   * gate nel nostro port) o qualunque tipo senza `chiesUnlock`.
+   * mai uno dedicato) — **[Nuova funzionalita', richiesta dall'autore:
+   * "altri sprite da vettorializzare?"]** quei due sprite dedicati non
+   * servono piu': drawCostTagScreen()/drawCostTagWorld() (sopra) disegnano
+   * questo stesso testo su una pillola procedurale. Stesso posto/occasione
+   * del cartellino prezzo vero (`costText()`, sopra) quando il bottone e'
+   * gia' sbloccato — vedi il commento su come i due si alternano piu' sotto
+   * (drawUiRow()/drawBuildMenuOverlay()). `null` per `parco` (`pu7`, sotto
+   * un flag diverso da `chies` — `unlocinque`, mai portato qui, STUDIO.md:
+   * nessun gate nel nostro port) o qualunque tipo senza `chiesUnlock`.
    */
-  function unlockTagSprite(type) {
+  function unlockTagText(type) {
     const need = CHIES_UNLOCK_BY_TYPE[type];
-    return need === 2 ? "unlocklvl2" : need === 3 ? "unlocklvl3" : null;
+    return need != null ? `Unlock at level ${need}` : null;
   }
   /** [C] vedi il commento su `chiesUnlock` sopra: `true` finche' `chies`
    * (l'unica istanza, STUDIO.md §5.3) non ha raggiunto il livello richiesto —
@@ -4781,7 +4886,7 @@ export async function mountMatch(ctx, params = {}) {
         else if (btn.kind === "building") {                              // casa/industria/...
           // Stesso gate della griglia mobile qui sopra, per lo stesso
           // bottone visto nella riga scorrevole desktop (buildingLocked()).
-          // Il cartellino vero (unlockTagSprite(), sopra) e' gia' visibile
+          // Il cartellino vero (unlockTagText(), sopra) e' gia' visibile
           // all'hover su questa riga (drawUiRow() sotto): il messaggio resta
           // solo come rinforzo testuale del click stesso.
           if (buildingLocked(btn.type)) {
@@ -5915,26 +6020,30 @@ export async function mountMatch(ctx, params = {}) {
       // Popup si'/no della ruspa (ruspaPending, armato da input.onTap sotto)
       // — [C] demobasia/Create.gml: demobachia (annulla, sprite "demoback")
       // offset (16,-16), demoiessa (conferma, "demoyesse") offset (177,-16),
-      // disegnaprezzo (il costo, qui il cartellino gia' generico "cN" invece
-      // di un font disegnato a runtime — stesso riuso di costTagSprite())
-      // offset (157,-185), tutti relativi alla posizione dell'edificio
+      // disegnaprezzo (il costo, il cartellino "cN" — vedi drawCostTagWorld()
+      // sopra) offset (157,-185), tutti relativi alla posizione dell'edificio
       // (demobasia stesso nasce li', offset (0,0)). [I] Segnalato dall'autore:
       // a piena grandezza (scale 1) il popup risultava molto piu' grande dei
       // bottoni gia' rimpiccioliti — disegnato a UI_SCALE (sopra, la stessa
       // dei bottoni) con gli offset scalati di conseguenza, altrimenti le tre
       // icone piu' piccole finirebbero staccate l'una dall'altra invece che
       // ravvicinate come nell'originale.
+      // [Nuova funzionalita', richiesta dall'autore: "altri sprite da
+      // vettorializzare?"] "demoback"/"demoyesse" non servono piu' come
+      // sprite: `_f: tagPillFrame(...)` e' la stessa pillola procedurale dei
+      // cartellini di costo (sopra), tinta rossa/verde con `_tint` — un
+      // campo gia' supportato dalla pipeline generica di `dynamic` (vedi
+      // per esempio le scintille colorate/le auto, piu' sotto), quindi il
+      // BOTTONE (sfondo + hit-test, `picked.obj==="ruspaYes"/"ruspaNo"`
+      // sotto legge ancora `_f` per l'AABB) resta nella stessa pipeline di
+      // sempre — solo il TESTO ("Yes!"/"No", niente piu' cotto nel PNG) e
+      // il cartellino del costo si disegnano a parte, insieme al resto dei
+      // cartellini in spazio mondo piu' sotto (drawCostTagWorld()): un DOM
+      // overlay non fa parte di `dynamic`/frameList, quel batch resta solo
+      // per gli sprite veri.
       if (ruspaPending?.buildingId === b.id) {
-        dynamic.push({ obj: "ruspaNo", ref: b, x: b.x + 16 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: frameFor("demoback"), _selfLit: true, _scale: UI_SCALE });
-        dynamic.push({ obj: "ruspaYes", ref: b, x: b.x + 177 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: frameFor("demoyesse"), _selfLit: true, _scale: UI_SCALE });
-        // [I] Segnalato dall'autore: il cartellino del costo (a differenza dei
-        // due bottoni sopra) restava troppo grande su desktop a UI_SCALE
-        // (0.7) — ridotto a COST_TAG_SCALE (sopra, vicino a UI_SCALE — la
-        // stessa gia' in uso per il cartellino del segnale di potenziamento)
-        // mantenendo pero' l'offset a UI_SCALE, cosi' il cartellino piu'
-        // piccolo resta comunque ancorato vicino ai due bottoni invece di
-        // scostarsi.
-        dynamic.push({ obj: "decor", x: b.x + 157 * UI_SCALE, y: b.y - 185 * UI_SCALE, depth: UPSIGN_DEPTH, _f: frameFor(`c${ruspaPending.cost}`), _selfLit: true, _scale: COST_TAG_SCALE });
+        dynamic.push({ obj: "ruspaNo", ref: b, x: b.x + 16 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: tagPillFrame(RUSPA_BTN_W, RUSPA_BTN_H), _selfLit: true, _tint: 0xef5350, _scale: UI_SCALE });
+        dynamic.push({ obj: "ruspaYes", ref: b, x: b.x + 177 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: tagPillFrame(RUSPA_BTN_W, RUSPA_BTN_H), _selfLit: true, _tint: 0x43a047, _scale: UI_SCALE });
       }
     }
     for (const d of decorEntities) dynamic.push(d);
@@ -6414,22 +6523,22 @@ export async function mountMatch(ctx, params = {}) {
       }
     }
     // Linguetta di prezzo sul segnale di potenziamento (upsign) al passaggio
-    // del mouse — [C] upsign12|23|45s|45d/Mouse_MouseEnter.gml, vedi
-    // costTagSprite() in buildings.js. Solo mouse (come la raccolta monete
-    // sopra): il touch non ha un vero hover senza contatto.
+    // del mouse — [C] upsign12|23|45s|45d/Mouse_MouseEnter.gml. Solo mouse
+    // (come la raccolta monete sopra): il touch non ha un vero hover senza
+    // contatto — vedi il tap to reveal mobile subito sotto.
     if (input.hover && input.hoverPointerType === "mouse") {
       const hw = cam.screenToWorld(input.hover.x, input.hover.y);
       const upicoFrame = frameFor("upico");
       if (upicoFrame) for (const b of buildings) {
         if (b.construction || !upgradeUnlocked(b, r12, buildings)) continue;
         if (!inFrameRect(hw.x, hw.y, b.x, b.y, upicoFrame)) continue;
-        const tagFrame = frameFor(costTagSprite(b.type, b.level - 1));
-        if (tagFrame) {
+        const text = costText(nextUpgrade(b)?.cost);
+        if (text) {
           // [C] upsign12/Mouse_MouseEnter.gml: offset -50 dal segnale — qui
           // dal bordo superiore vero dell'icona "upico" (`upicoFrame.oy`,
           // l'origine e' quasi in basso al centro), non da un numero fisso
           // scollegato dalla sua altezza reale.
-          r.draw(tagFrame, b.x - (tagFrame.w * COST_TAG_SCALE) / 2, b.y - upicoFrame.oy - 15, COST_TAG_SCALE, 0xffffff, 1);
+          drawCostTagWorld(text, b.x, b.y - upicoFrame.oy - 15);
         }
         break;
       }
@@ -6454,10 +6563,10 @@ export async function mountMatch(ctx, params = {}) {
         upgradeTagBuildingId = null;
       } else if (!b.construction && upgradeUnlocked(b, r12, buildings)) {
         const upicoFrame = frameFor("upico");
-        const tagFrame = upicoFrame && frameFor(costTagSprite(b.type, b.level - 1));
-        if (tagFrame) {
+        const text = upicoFrame && costText(nextUpgrade(b)?.cost);
+        if (text) {
           const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
-          r.draw(tagFrame, b.x - (tagFrame.w * COST_TAG_SCALE) / 2, b.y - upicoFrame.oy - 15, COST_TAG_SCALE, 0xffffff, alpha);
+          drawCostTagWorld(text, b.x, b.y - upicoFrame.oy - 15, { alpha });
         }
       }
     }
@@ -6466,9 +6575,25 @@ export async function mountMatch(ctx, params = {}) {
     // Mouse_MouseEnter.gml: `action_create_object(cc500|cc2000, 0, -50)`.
     if (tutorialState) for (const lot of ruinLots) {
       if (!lot._hovered) continue;
-      const tagFrame = frameFor(`c${lot.cost}`);
-      if (tagFrame) r.draw(tagFrame, lot.x - (tagFrame.w * COST_TAG_SCALE) / 2, lot.y - 50, COST_TAG_SCALE, 0xffffff, 1);
+      drawCostTagWorld(costText({ mon: lot.cost }), lot.x, lot.y - 50);
       break;
+    }
+    // Testo "Yes!"/"No" dei due bottoni conferma ruspa (dynamic.push({obj:
+    // "ruspaYes"/"ruspaNo",...}) sopra: sfondo/hit-test restano li', questo
+    // e' solo il testo — drawHtmlText() non fa parte di quel batch) + il
+    // cartellino del costo (drawCostTagWorld(), stessi offset di sempre —
+    // vedi il commento sopra su dynamic.push({obj:"ruspaNo"...})).
+    if (ruspaPending) {
+      const b = buildings.find((bb) => bb.id === ruspaPending.buildingId);
+      if (b) {
+        const noX = b.x + 16 * UI_SCALE, noY = b.y - 16 * UI_SCALE;
+        const yesX = b.x + 177 * UI_SCALE, yesY = b.y - 16 * UI_SCALE;
+        const s1 = cam.worldToScreen(noX + (RUSPA_BTN_W * UI_SCALE) / 2, noY + (RUSPA_BTN_H * UI_SCALE) / 2);
+        drawHtmlText("No", s1.x, s1.y, { size: 17, color: "#ffffff" });
+        const s2 = cam.worldToScreen(yesX + (RUSPA_BTN_W * UI_SCALE) / 2, yesY + (RUSPA_BTN_H * UI_SCALE) / 2);
+        drawHtmlText("Yes!", s2.x, s2.y, { size: 17, color: "#ffffff" });
+        drawCostTagWorld(costText({ mon: ruspaPending.cost }), b.x + 157 * UI_SCALE, b.y - 185 * UI_SCALE);
+      }
     }
     drawBeams();
     r.flush();
@@ -7043,8 +7168,8 @@ export async function mountMatch(ctx, params = {}) {
       ? { x0: 0, y0: rowTop, x1: canvas.clientWidth, y1: canvas.clientHeight }
       : null;
 
-    // Linguetta di prezzo (o "Level N to unlock", bottone ancora bloccato —
-    // vedi il commento su unlockTagSprite() sopra) sui bottoni edificio al
+    // Linguetta di prezzo (o "Unlock at level N", bottone ancora bloccato —
+    // vedi il commento su unlockTagText() sopra) sui bottoni edificio al
     // passaggio del mouse — [C] pu1..pumediat/Mouse_MouseEnter.gml. Solo
     // mouse (come la raccolta monete/il segnale di potenziamento sotto): il
     // touch non ha un vero hover senza contatto, e qui coprirebbe comunque
@@ -7056,9 +7181,9 @@ export async function mountMatch(ctx, params = {}) {
         && input.hover.x >= btn.x && input.hover.x <= btn.x + btn.w
         && input.hover.y >= btn.y && input.hover.y <= btn.y + btn.h);
       const locked = hb && buildingLocked(hb.type);
-      const tagFrame = hb && frameFor(locked ? unlockTagSprite(hb.type) : costTagSprite(hb.type, null));
-      if (tagFrame) {
-        r.draw(tagFrame, hb.x + hb.w / 2 - (tagFrame.w * COST_TAG_SCALE) / 2, hb.y - 8, COST_TAG_SCALE, 0xffffff, 1);
+      const text = hb && (locked ? unlockTagText(hb.type) : costText(BUILDING_TYPES[hb.type]?.placeCost));
+      if (text) {
+        drawCostTagScreen(text, hb.x + hb.w / 2, hb.y - 8);
       }
     }
 

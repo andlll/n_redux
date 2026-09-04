@@ -293,30 +293,23 @@ GAMEPLAY_SPRITES = {
         # dedicato (asimmetria reale: l'acceso e' "med2x"/"med2dx" stesso).
         "med1", "med1l", "med2", "med2x",
         "med1d", "med1dl", "med2d", "med2dx",
-        # Linguette di prezzo all'hover (STUDIO.md §5.4, gia' documentate ma
-        # mai ricostruite — game/src/buildings.js, costTagSprite()): sprite
-        # pre-renderizzati col numero gia' dentro, un taglio per ogni costo
-        # reale di placeCost/upgrades[].cost in questo file. "c12aa"/"c23aa"
-        # sono i due banner dedicati di chies (mon+oil insieme, nessun taglio
-        # a valuta singola gli si addice).
-        "c100", "c500", "c1000", "c2000", "c3500", "c5000", "c6000", "c7500",
-        "c10000", "c20000", "c35000", "c50000", "c100000", "c200000", "c12aa", "c23aa",
-        "cfree",   # [C] ccfree/Create.gml: l'unico edificio davvero gratis (banca) ha il proprio cartellino dedicato
-        # Banner "Level N to unlock" all'hover/tap su un bottone edificio
-        # ancora bloccato sotto il livello chiesa (STUDIO.md, `chiesUnlock` —
-        # game/src/main.js, unlockTagSprite()): [C] pu6|pudj|pugatling|
-        # pusolare/Mouse_MouseEnter.gml creano level2club|gatling|palazz|sol,
-        # tutti questo stesso sprite reale ("unlocklvl2"); pu4prov|pu5prov|
-        # puvillone|pumediat/Mouse_MouseEnter.gml creano leve3tounlo4|5|villa/
-        # level3tounlomedia, tutti "unlocklvl3" — un solo banner per soglia,
-        # mai uno dedicato per edificio.
-        "unlocklvl2", "unlocklvl3",
-        # Popup si'/no della ruspa (STUDIO.md, "demolizione/riparazione" —
-        # game/src/buildings.js tryRuspaRebuild()/ruspaDemolish, main.js
-        # ruspaPending): "demoback" (annulla, src/objects/demobachia) e
-        # "demoyesse" (conferma, src/objects/demoiessa). Il cartellino di
-        # prezzo del popup riusa i "cN" sopra, nessuno sprite in piu'.
-        "demoback", "demoyesse",
+        # [Nuova funzionalita', richiesta dall'autore: "altri sprite da
+        # sostituire con grafica vettoriale per risparmiare spazio?"] Le
+        # linguette di prezzo all'hover (STUDIO.md §5.4) NON servono piu'
+        # come sprite pre-renderizzati — "c100".."c200000" (un taglio per
+        # ogni costo reale di placeCost/upgrades[].cost in questo file),
+        # "c12aa"/"c23aa" (i due banner dedicati di chies, mon+oil insieme),
+        # "cfree" (l'unico edificio davvero gratis, banca), "unlocklvl2"/
+        # "unlocklvl3" (banner "Level N to unlock" sui bottoni edificio
+        # ancora bloccati) e i due bottoni conferma ruspa "demoback"/
+        # "demoyesse" — diciotto sprite in tutto, la stessa identica ricetta
+        # visiva (pillola nera o colorata, testo bianco bold). Sostituiti da
+        # drawCostTagScreen()/drawCostTagWorld()/costText()/unlockTagText()
+        # (game/src/main.js): stessa pillola arrotondata ma procedurale
+        # (riusata dalla cache di pausePanelFrame()/pauseButtonFrame(),
+        # nessuna texture nuova) + testo HTML vero generato a runtime da
+        # placeCost/upgrades[].cost/CHIES_UNLOCK_BY_TYPE direttamente,
+        # invece di un ritaglio dedicato per ogni combinazione possibile.
         # monumento/banca: quattordicesimo e quindicesimo edificio, i primi
         # due "a stella" (STUDIO.md, ricompense di traguardo mai nel menu
         # base — game/src/buildings.js BUILDING_TYPES.monum/banca). Stesso

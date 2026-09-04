@@ -1670,7 +1670,7 @@ export const BUILDING_TYPES = {
   // `r12.mon = ...` — davvero gratis, non solo senza controllo di
   // affordability come il monumento. `placeCost: {}` (nessuna chiave) basta
   // da solo: `canAfford()`/il ciclo di scalo su un oggetto vuoto sono gia'
-  // no-op, `costTagSprite()` sopra lo riconosce e mostra `cfree`.
+  // no-op, `costText()` (main.js) lo riconosce e mostra "It's free!".
   // Stesso cantiere `ir1x`/`if1x` di monum (verificato: anche banca spawna
   // le stesse 4 "gru" al passo 3 e lo stesso "toppers" al passo finale —
   // **[I]** una fonte secondaria online per questo gioco descrive il
@@ -2120,38 +2120,27 @@ export function nextUpgrade(b) {
 }
 
 /**
- * Lo sprite della "linguetta" di prezzo che compare all'hover su un
- * bottone edificio (`upgradeIndex` null: `def.placeCost`) o su un segnale
- * di potenziamento (`upgradeIndex`: indice in `def.upgrades`) — `null` se
- * quel costo non ha una linguetta nota.
+ * [Rimossa, richiesto dall'autore: "altri sprite da sostituire con
+ * grafica vettoriale per risparmiare spazio?"] Questa funzione risolveva
+ * la "linguetta" di prezzo che compare all'hover su un bottone edificio
+ * o su un segnale di potenziamento allo sprite PRE-RENDERIZZATO giusto
+ * (`c100`, `c500`, ... — un taglio per ogni costo reale in `placeCost`/
+ * `upgrades[].cost` qui sopra, verificato uno per uno, con due sprite
+ * dedicati per `chies` — costa mon+oil insieme, niente taglio a valuta
+ * singola — e uno per `banca`, l'unico edificio DAVVERO gratis). Sostituita
+ * da `costText()` (game/src/main.js, vicino a drawCostTagScreen()/
+ * drawCostTagWorld()): stessa idea ma testo vero generato a runtime da
+ * `placeCost`/`upgrades[].cost` direttamente, su una pillola procedurale
+ * invece di uno sprite per ogni taglio possibile — funziona gia' per
+ * qualunque combinazione di risorse, niente piu' casi speciali per chies/
+ * banca.
  *
  * **[C]** src/objects/pu1..pumediat/Mouse_MouseEnter|Leave.gml (bottoni) e
  * upsign12|23|45s|45d/Mouse_MouseEnter|Leave.gml (segnali): al passaggio
- * del mouse creano un'istanza `cc<valore>` (`STUDIO.md §5.4`, gia'
- * documentato ma mai ricostruito — a quel tempo `input.js` non aveva
- * ancora un vero hover) posizionata sopra il bottone/segnale, distrutta
- * al MouseLeave. Non e' testo disegnato a runtime: ogni `cc*` mostra uno
- * sprite PRE-RENDERIZZATO col numero gia' dentro (`c100`, `c500`, `c1000`,
- * `c2000`, `c3500`, `c5000`, `c6000`, `c7500`, `c10000`, `c20000`,
- * `c35000`, `c50000` — un taglio per ogni costo reale gia' in
- * `placeCost`/`upgrades[].cost` qui sopra, verificato uno per uno). `chies`
- * (`upcrc12`/`upcrc23`) e' l'unica eccezione: costa mon+oil insieme, niente
- * taglio `cXXXX` a valuta singola gli si addice — usa due sprite dedicati
- * gia' pronti nel decompilato, `c12aa`/`c23aa` (506x88, "banner" largo il
- * doppio dei tagli normali). `banca` e' l'unico edificio DAVVERO gratis
- * (`placeCost: {}`, nessuna riga di scalo in Mouse_LeftReleased.gml) — usa
- * il terzo cartellino dedicato del decompilato, `cfree` (stella2/
- * Mouse_MouseEnter.gml: `action_create_object(ccfree, 0, 0)`).
+ * del mouse creavano un'istanza `cc<valore>` (`STUDIO.md §5.4`) posizionata
+ * sopra il bottone/segnale, distrutta al MouseLeave — la fonte originale
+ * di questa meccanica, per chi cerca la controparte decompilata.
  */
-export function costTagSprite(type, upgradeIndex) {
-  if (type === "chies") return upgradeIndex === 0 ? "c12aa" : upgradeIndex === 1 ? "c23aa" : null;
-  const def = BUILDING_TYPES[type];
-  const cost = upgradeIndex == null ? def?.placeCost : def?.upgrades?.[upgradeIndex]?.cost;
-  const keys = cost ? Object.keys(cost) : [];
-  if (keys.length === 0) return upgradeIndex == null && def?.placeCost ? "cfree" : null;
-  if (keys.length !== 1 || keys[0] !== "mon") return null;
-  return `c${cost.mon}`;
-}
 
 /**
  * La soglia di sblocco di un potenziamento e' una fra tre, mutuamente
