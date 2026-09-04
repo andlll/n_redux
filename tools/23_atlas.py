@@ -424,19 +424,26 @@ GAMEPLAY_SPRITES = {
         "reset",                # pureset
         # Prestiti bancari (src/objects/bankbuttoner|loanoscrino|get_loan1..4):
         # "bancobutt" e' l'iconcina persistente ancorata alla banca (creata
-        # da banca1/Create.gml, sempre visibile una volta costruita), "loanscr"
-        # il pannello di sfondo ("GET A LOAN" + "20% interest rate"), "getlo1..4"
-        # i quattro bottoni prestito (25000/50000/100000/250000, gia' col
-        # testo pre-renderizzato).
-        "bancobutt", "loanscr", "getlo1", "getlo2", "getlo3", "getlo4",
+        # da banca1/Create.gml, sempre visibile una volta costruita) — resta.
+        # [Nuova funzionalita', richiesta dall'autore: "menu 'non raster' per
+        # risparmiare texture, come gli altri pannelli"] "loanscr" (il
+        # pannello di sfondo, "GET A LOAN" + "20% interest rate") e
+        # "getlo1..4" (i quattro bottoni prestito, gia' col testo
+        # pre-renderizzato) NON servono piu': game/src/main.js/drawBankPanel()
+        # li ha sostituiti con lo stesso pannello/bottoni procedurali gia'
+        # in uso per pausa/info edificio/vittoria (pausePanelFrame()/
+        # pauseButtonFrame(), nessuna texture nuova) + testo HTML vero
+        # (drawHtmlText()) — dieci sprite in meno da impacchettare qui
+        # diventano cinque, ~1.5 milioni di pixel RGBA risparmiati fra
+        # questo gruppo e quello scambi sotto.
+        "bancobutt",
         # Scambio risorse (src/objects/tradebuttoner|tradoscrino|get1..4,
         # game/src/main.js/state.js TRADES): stessa idea dei prestiti sopra,
         # sbloccato da chies a livello 2 invece che da un edificio dedicato.
-        # "tradobutt" e' l'iconcina persistente accanto a chies, "tradescr"
-        # il pannello di sfondo ("TRADE RESOURCES", nessuna seconda riga),
-        # "get11..14" i quattro bottoni scambio (gia' col testo/le icone
-        # risorsa pre-renderizzati, come "getlo1..4").
-        "tradobutt", "tradescr", "get11", "get12", "get13", "get14",
+        # "tradobutt" e' l'iconcina persistente accanto a chies — resta.
+        # "tradescr"/"get11..14" NON servono piu' per lo stesso motivo di
+        # "loanscr"/"getlo1..4" sopra: game/src/main.js/drawTradePanel().
+        "tradobutt",
         # Gli altri bottoni del pannello (src/objects/handbutton|buildbutton|
         # backobutton): nell'originale aprivano/chiudevano le righe del menu
         # (STUDIO.md §9 "menoo", tre pannelli alternati) — qui restano solo

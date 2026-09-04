@@ -1,7 +1,7 @@
 import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
-import { createR12, clampR12, stepWeather, stepCalendar, LOANS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
+import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, costTagSprite, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
@@ -3247,29 +3247,31 @@ export async function mountMatch(ctx, params = {}) {
   }
 
   /**
-   * Pannello prestiti (bankPanelOpen, state.js LOANS) — [Bug corretto,
-   * segnalato dall'autore: "sfondo con blur come gli altri pulsanti"]
-   * stesso "vetro smerigliato" di drawBuildingInfoPanel() appena sopra
-   * (blur del mondo gia' disegnato + un oscuramento leggero) invece di
-   * disegnare "loanscr" a piena texture DIRETTAMENTE sopra il mondo ancora
-   * vivo sotto, senza alcuno sfondo — cosi' com'era prima di questo fix.
-   * `pauseBlur.blurScreen()` fresca ad ogni frame, NON la cache-una-volta
-   * di `getCachedPauseBlur()` (drawPauseOverlay() sopra): quella cache
-   * presume il mondo sotto DAVVERO congelato per l'intera "sessione" di
-   * pausa (`frozen`, il loop di simulazione piu' sotto) — bankPanelOpen non
-   * ferma niente (non e' nell'elenco che decide `frozen`), la simulazione
-   * continua a girare sotto il pannello esattamente come sotto
-   * buildingInfoPanel, quindi la cattura va rifatta ogni frame per
-   * riflettere un mondo che si muove ancora.
-   * Spostato qui (prima disegnava inline nel batch GUI ancora aperto, prima
-   * del bottone di pausa) proprio per poter catturare quel batch gia'
-   * chiuso col resto della UI dentro — e per vivere nella stessa catena
-   * if/else-if degli altri modali piu' sotto (mai due aperti insieme, vedi
-   * i guard `bankPanelOpen || tradePanelOpen || buildingInfoPanel || ...`
-   * sparsi per il file): un tocco sul bottone di pausa (sempre prioritario,
-   * onTap sopra) ora sfuma via anche questo pannello esattamente come gia'
-   * faceva con buildingInfoPanel, invece di lasciarlo visibile un istante
-   * sotto un pannello di pausa comunque gia' opaco.
+   * Pannello prestiti (bankPanelOpen, state.js LOANS) — [Nuova
+   * funzionalita', richiesta dall'autore: "menu 'non raster' per
+   * risparmiare texture, come gli altri pannelli"] Non piu' i vecchi sprite
+   * decompilati "loanscr" (540x1086 — quasi tutto vuoto: solo un titolo e
+   * la nota sul tasso, verificato pixel per pixel sulla texture vera,
+   * assets/textures/page_022.png) e "getlo1..4" (506x88 l'uno, una pillola
+   * nera con testo/icona GIA' cotti nel PNG) — dieci sprite, ~1.5 milioni
+   * di pixel RGBA in tutto solo per una manciata di numeri su sfondo per
+   * lo piu' bianco. Stesso "vetro smerigliato" (blur fresco ad ogni frame,
+   * vedi il commento su drawBuildingInfoPanel() sopra per il perche' NON e'
+   * la cache di `getCachedPauseBlur()`) ma pannello/bottoni PROCEDURALI
+   * (`pausePanelFrame()`/`pauseButtonFrame()`, gia' in uso per pausa/info
+   * edificio/vittoria — nessuna texture NUOVA, solo le due gia' in cache)
+   * e testo HTML vero (`drawHtmlText()`) al posto dei numeri cotti nel PNG:
+   * stesso layout "titolo, nota, quattro bottoni impilati" del vecchio
+   * sprite, stesso identico contenuto testuale (l'importo, "in 3 anni",
+   * "20% interest rate" — LOAN_MONTHS/12, state.js), ma ricalcolato a
+   * runtime invece che letto da un'immagine fissa: si aggiorna da solo se
+   * `LOANS` cambia, non serve piu' un giro di re-export dall'originale per
+   * ogni ritocco ai numeri. Spostato qui (prima disegnava inline nel batch
+   * GUI ancora aperto, prima del bottone di pausa) per poter catturare quel
+   * batch gia' chiuso col resto della UI dentro — e per vivere nella stessa
+   * catena if/else-if degli altri modali piu' sotto (mai due aperti
+   * insieme, vedi i guard `bankPanelOpen || tradePanelOpen ||
+   * buildingInfoPanel || ...` sparsi per il file).
    */
   function drawBankPanel() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
@@ -3277,69 +3279,43 @@ export async function mountMatch(ctx, params = {}) {
     r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
-    // `loanscr`/`getlo1..4` hanno gia' l'origine al centro (data/
-    // sprites.json), quindi il centro schermo e' gia' il punto giusto.
-    // Scala calcolata invece di UI_SCALE fisso: "loanscr" (540x1086) e'
-    // grande quanto un'intera view, UI_SCALE (pensata per le iconcine da
-    // ~100px del resto della barra) lo lascerebbe enorme o minuscolo a
-    // seconda dello schermo — qui si adatta sempre a circa l'85% del piu'
-    // piccolo fra larghezza/altezza disponibili.
-    const bankScale = Math.min(canvas.clientWidth / 540, canvas.clientHeight / 1086) * 0.85;
-    const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
-    const panelFrame = frameFor("loanscr");
-    if (panelFrame) r.draw(panelFrame, cx, cy, bankScale, 0xffffff, 1);
-    // [I] I quattro bottoni nel decompilato stavano a (270,-200..-50) da
-    // `bankbuttoner`, 50px di distanza fra un centro e l'altro — meno dei
-    // loro stessi 88px di altezza, quindi si sovrapporrebbero. Qui invece
-    // impilati senza sovrapposizioni (110px fra un centro e l'altro,
-    // 22px di margine reale) nell'area vuota del pannello fra il titolo
-    // e la nota sul tasso.
-    // [Bug corretto, segnalato dall'autore: "il primo pulsante va sopra
-    // la scritta"] Il blocco era centrato sul centro GEOMETRICO dello
-    // sprite "loanscr" (offset 0 = l'origine del disegno, data/
-    // sprites.json: origin_y 543 su un canvas 1086 alto) — ma il testo
-    // "GET A LOAN"/"20% interest rate" non e' distribuito simmetricamente
-    // intorno a quel punto: misurato pixel per pixel sulla texture vera
-    // (assets/textures/page_022.png, il frame di "loanscr"), il titolo
-    // finisce a y=335 e la nota sul tasso inizia a y=847 nello stesso
-    // sistema di coordinate del canvas — il centro VERO dell'area vuota
-    // e' quindi a y=(335+847)/2=591, cioe' 48px SOTTO l'origine (543), non
-    // sull'origine stessa. Spostando l'intero blocco di +48 (stessa
-    // distanza reciproca fra i bottoni, invariata) il primo bottone
-    // scende sotto il titolo (47px di margine reale, prima ne aveva 0 —
-    // il suo bordo superiore coincideva quasi esattamente col confine
-    // dell'area vuota) e l'ultimo resta comunque 47px sopra la nota sul
-    // tasso: margini uguali sopra e sotto, non piu' solo "centrato sulla
-    // carta" ma centrato su cio' che si vede davvero.
-    const BANK_BUTTONS_Y_BIAS = 48;
-    const offsets = [-165, -55, 55, 165].map((o) => o + BANK_BUTTONS_Y_BIAS);
+    const panelW = Math.min(360, cw - 40);
+    const titleH = 34, subH = 26, gap1 = 6, gap2 = 20, padTop = 30, padBottom = 26;
+    const btnW = panelW - 60, btnH = 52, btnGap = 12;
+    const btnsH = LOANS.length * btnH + (LOANS.length - 1) * btnGap;
+    const panelH = padTop + titleH + gap1 + subH + gap2 + btnsH + padBottom;
+    const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+    r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
+
+    let ty = py + padTop;
+    drawHtmlText("GET A LOAN", px + panelW / 2, ty + titleH / 2, { size: 22 });
+    ty += titleH + gap1;
+    drawHtmlText("20% interest rate", px + panelW / 2, ty + subH / 2, { size: 13 });
+    ty += subH + gap2;
+
+    const years = LOAN_MONTHS / 12;
     bankButtons = [];
     for (let i = 0; i < LOANS.length; i++) {
-      const f = frameFor(`getlo${i + 1}`);
-      if (!f) continue;
-      const bx = cx, by = cy + offsets[i] * bankScale;
-      r.draw(f, bx, by, bankScale, 0xffffff, 1);
-      bankButtons.push({ x: bx - (f.w * bankScale) / 2, y: by - (f.h * bankScale) / 2, w: f.w * bankScale, h: f.h * bankScale, index: i });
+      const bx = px + (panelW - btnW) / 2;
+      r.draw(pauseButtonFrame(btnW, btnH), bx, ty, 1, BUTTON_TINT, BUTTON_ALPHA);
+      drawHtmlText(`${LOANS[i].amount} mon in ${years} years`, bx + btnW / 2, ty + btnH / 2, { size: 16, maxWidth: btnW - 20 });
+      bankButtons.push({ x: bx, y: ty, w: btnW, h: btnH, index: i });
+      ty += btnH + btnGap;
     }
     r.flush();
   }
 
   /**
    * Pannello scambi (tradePanelOpen, state.js TRADES) — stesso trattamento
-   * di drawBankPanel() appena sopra (blur fresco ad ogni frame + oscuramento,
-   * stesso motivo: la simulazione continua a girare sotto anche questo
-   * pannello). "tradescr" (540x1086, la stessa taglia di "loanscr") ha
-   * origine al centro (data/sprites.json) e un solo titolo disegnato dentro
-   * ("TRADE RESOURCES", verificato pixel per pixel sulla texture vera —
-   * assets/textures/page_021.png, il frame di "tradescr": finisce a y=335
-   * nello stesso sistema di coordinate di "loanscr" sopra), nessuna seconda
-   * riga di testo sotto: l'intera area fra il titolo e il fondo del
-   * pannello resta libera per i 4 bottoni, niente bias da calcolare come
-   * per "loanscr". Offset dei bottoni (-134/0/122/245) letti diretti da
-   * get1..4/Step.gml (`action_move_to(tradoscrino.x, tradoscrino.y + N *
-   * global.sca)`), non re-inventati: gia' abbastanza distanziati (loro
-   * stessi 88px di altezza, margini reali fra i 12 e i 46px) da non
-   * sovrapporsi.
+   * "non raster" di drawBankPanel() appena sopra (stesso motivo: gli
+   * sprite decompilati "tradescr"/"get1..4" erano lo stesso genere di
+   * spreco — vedi il commento li'), niente titolo/nota da leggere da una
+   * texture: "TRADE RESOURCES" e le quattro righe scambio sono generate
+   * direttamente da `TRADES` (state.js) — `${t.takeAmount} ${t.take} for
+   * ${t.giveAmount} ${t.give}`, le stesse sigle risorsa gia' usate da ogni
+   * altro messaggio del gioco ("need X mon", "insufficient energy" — mai
+   * un'icona dedicata, coerente con quello stile invece che con le
+   * iconcine cotte nel vecchio "get1..4").
    */
   function drawTradePanel() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
@@ -3347,18 +3323,26 @@ export async function mountMatch(ctx, params = {}) {
     r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
-    const tradeScale = Math.min(canvas.clientWidth / 540, canvas.clientHeight / 1086) * 0.85;
-    const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
-    const panelFrame = frameFor("tradescr");
-    if (panelFrame) r.draw(panelFrame, cx, cy, tradeScale, 0xffffff, 1);
-    const offsets = [-134, 0, 122, 245];
+    const panelW = Math.min(360, cw - 40);
+    const titleH = 34, gap1 = 20, padTop = 30, padBottom = 26;
+    const btnW = panelW - 60, btnH = 52, btnGap = 12;
+    const btnsH = TRADES.length * btnH + (TRADES.length - 1) * btnGap;
+    const panelH = padTop + titleH + gap1 + btnsH + padBottom;
+    const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+    r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
+
+    let ty = py + padTop;
+    drawHtmlText("TRADE RESOURCES", px + panelW / 2, ty + titleH / 2, { size: 22 });
+    ty += titleH + gap1;
+
     tradeButtons = [];
     for (let i = 0; i < TRADES.length; i++) {
-      const f = frameFor(`get1${i + 1}`);
-      if (!f) continue;
-      const bx = cx, by = cy + offsets[i] * tradeScale;
-      r.draw(f, bx, by, tradeScale, 0xffffff, 1);
-      tradeButtons.push({ x: bx - (f.w * tradeScale) / 2, y: by - (f.h * tradeScale) / 2, w: f.w * tradeScale, h: f.h * tradeScale, index: i });
+      const t = TRADES[i];
+      const bx = px + (panelW - btnW) / 2;
+      r.draw(pauseButtonFrame(btnW, btnH), bx, ty, 1, BUTTON_TINT, BUTTON_ALPHA);
+      drawHtmlText(`Get ${t.takeAmount} ${t.take} for ${t.giveAmount} ${t.give}`, bx + btnW / 2, ty + btnH / 2, { size: 15, maxWidth: btnW - 20 });
+      tradeButtons.push({ x: bx, y: ty, w: btnW, h: btnH, index: i });
+      ty += btnH + btnGap;
     }
     r.flush();
   }

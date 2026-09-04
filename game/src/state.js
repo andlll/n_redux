@@ -102,7 +102,7 @@ export const LOANS = [
   { key: "loanTre", amount: 100000, payment: 3333 },
   { key: "loanQuattro", amount: 250000, payment: 8400 },
 ];
-const LOAN_MONTHS = 36;
+export const LOAN_MONTHS = 36;
 
 /** [C] bankbuttoner/Mouse_LeftPressed.gml: il pannello prestiti si apre
  * solo se NESSUN prestito e' gia' attivo — `bankbuttoner.loaned` nel
