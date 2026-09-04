@@ -3590,7 +3590,7 @@ export async function mountMatch(ctx, params = {}) {
       const title = "CONGRATULATIONS!";
       const subtitle = "The Skyscraper stands complete, the tallest building this " +
         "city has ever raised. From now on, enemies will no longer attack the " +
-        "city — keep building, there's no limit from here.";
+        "city. Keep building, there's no limit from here.";
       const rows = [{ label: "Keep playing", action: "continue" }];
 
       const panelW = Math.min(360, cw - 40);
