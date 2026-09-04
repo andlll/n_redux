@@ -23,7 +23,7 @@ import {
   applyMatchPlatform, createFaroState, stepFaroChain, faroDecor, r120MotorDecor,
   clickFaroButton, clickWaveSignal, clickDockerSignal,
   clickFaro3Button, clickWaveSignal3, clickDockerSignal3,
-  isPlaceholderActive,
+  isPlaceholderActive, FARO1, FARO2, FARO3,
 } from "./platform.js";
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
@@ -976,6 +976,24 @@ export async function mountMatch(ctx, params = {}) {
   // collectCoinAt() piu' sotto e disegnate/scartate nel loop principale.
   let coinPops = [];
   const COIN_POP_LIFE = 0.4;
+  // **[Nuova funzionalita', richiesta dall'autore: "se riesci integra un
+  // sistema di particelle coerente col colore del 'flash' che emette e con
+  // la funzione di beacon"]** [C] farolux|farolux3/Alarm_0.gml:
+  // `action_effect(1, 0, -280, 2, 16744703, 0)` riarmato ogni 40 tick
+  // finche' l'istanza vive — un lampo (GameMaker `ef_ring`, tipo 1) 280px
+  // sopra il faro, colore 16744703 = BGR -> #ff80ff (rosa magenta). Nessun
+  // sistema di particelle esiste in questo motore (stesso gap gia'
+  // dichiarato per la scintilla di sold*/Mouse_MouseEnter.gml e il fumo di
+  // industria): qui una versione minima, stessa forma di `coinPops` sopra
+  // (`{x,y,t}`, un cerchio morbido — `bubbleTex` — che cresce e sfuma),
+  // spawnata a intervalli regolari finche' il faro e' acceso (stage "lit"/
+  // "expanding" — le stesse condizioni con cui game/src/platform.js disegna
+  // gia' il bagliore "f1lux") invece che a ogni singolo tick del giocatore.
+  let faroFlashes = [];
+  const FARO_FLASH_PERIOD = 40 / 60;   // [C] farolux|farolux3/Alarm_0.gml: action_set_alarm(40, 0)
+  const FARO_FLASH_LIFE = 0.7;
+  const FARO_FLASH_COLOR = 0xff80ff;   // [C] action_effect(...): colore 16744703 (BGR) -> #ff80ff
+  let faroFlashT1 = 0, faroFlashT2 = 0;
   // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva quando
   // l'autodifesa scala i soldi — l'icona rossa dei soldi (costWarningIconFrame,
   // sopra), fade out, sale verso l'alto: una per il livello 2, due in
@@ -2566,6 +2584,19 @@ export async function mountMatch(ctx, params = {}) {
     "faroButton", "faroWaveSignal", "faroDockerSignal",
     "faro3Button", "faro3WaveSignal", "faro3DockerSignal",
   ]);
+  // Costi della catena fari, duplicati qui per il cartellino hover sotto
+  // (game/src/platform.js: clickFaroButton/clickWaveSignal/clickDockerSignal/
+  // clickFaro3Button/clickWaveSignal3/clickDockerSignal3) — platform.js non
+  // esporta costanti di costo, solo letterali dentro quelle funzioni: se
+  // cambiano la', vanno aggiornati anche qui.
+  const FARO_SIGN_COST = {
+    faroButton: { mon: 2000 },
+    faroWaveSignal: { crys: 20 },
+    faroDockerSignal: { mon: 5000, oil: 9000 },
+    faro3Button: { mon: 5000 },
+    faro3WaveSignal: { crys: 50 },
+    faro3DockerSignal: { mon: 15000, oil: 27000 },
+  };
   function stepLights(entities, dt, night, r12) {
     // [C] cddvd/Step.gml: sotto questa soglia di elettricita' la luce non si
     // accende (o si spegne di colpo se lo era gia', "bout" nel decompilato —
@@ -5762,6 +5793,31 @@ export async function mountMatch(ctx, params = {}) {
       if (platformState) {
         const chiesLevel = buildings.find((b) => b.type === "chies")?.level ?? 0;
         stepFaroChain(platformState, r12, balloons, cars, smoke, dt, chiesLevel, night);
+        // Lampo periodico dei fari accesi (faroFlashes/FARO_FLASH_* sopra) —
+        // stesse condizioni di stage con cui faro1Decor()/faro3Decor()
+        // (game/src/platform.js) disegnano gia' "f1lux": tier1 accende
+        // ENTRAMBI i fari gemelli (FARO1 e FARO2), tier2 solo FARO3.
+        const tier1Lit = platformState.tier1.stage === "lit" || platformState.tier1.stage === "expanding";
+        const tier2Lit = platformState.tier2.stage === "lit" || platformState.tier2.stage === "expanding";
+        if (tier1Lit) {
+          faroFlashT1 += dt;
+          while (faroFlashT1 >= FARO_FLASH_PERIOD) {
+            faroFlashT1 -= FARO_FLASH_PERIOD;
+            faroFlashes.push({ x: FARO1.x, y: FARO1.y - 280, t: 0 });
+            faroFlashes.push({ x: FARO2.x, y: FARO2.y - 280, t: 0 });
+          }
+        } else faroFlashT1 = 0;
+        if (tier2Lit) {
+          faroFlashT2 += dt;
+          while (faroFlashT2 >= FARO_FLASH_PERIOD) {
+            faroFlashT2 -= FARO_FLASH_PERIOD;
+            faroFlashes.push({ x: FARO3.x, y: FARO3.y - 280, t: 0 });
+          }
+        } else faroFlashT2 = 0;
+        for (let i = faroFlashes.length - 1; i >= 0; i--) {
+          faroFlashes[i].t += dt;
+          if (faroFlashes[i].t >= FARO_FLASH_LIFE) faroFlashes.splice(i, 1);
+        }
       }
       // Raccolta al passaggio del mouse — [C] sold*/soldbio/Mouse_MouseEnter.gml
       // usa davvero un hover, non un click (coins.js, collectCoin() sopra il tap
@@ -6520,6 +6576,20 @@ export async function mountMatch(ctx, params = {}) {
       const size = 36 + k * 94;
       r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, 0x4fc3f7, (1 - k) * 0.85);
     }
+    // Lampo dei fari accesi (faroFlashes sopra, "se riesci integra un
+    // sistema di particelle coerente col colore del flash..."): stessa
+    // "bolla" di coinPops sopra ma piu' grande/lenta e rosa (FARO_FLASH_COLOR
+    // = #ff80ff, dal colore originale action_effect() — vedi il commento
+    // sopra) invece di azzurra, coerente con un bagliore di segnalazione
+    // notturna invece che con la raccolta di una moneta. Nessuna tinta
+    // ambientale (come coinPops/_selfLit sopra): e' un effetto luminoso, non
+    // un pezzo di scena che si scurisce di notte — anzi e' visibile SOLO di
+    // notte, come il bagliore f1lux da cui nasce.
+    for (const p of faroFlashes) {
+      const k = p.t / FARO_FLASH_LIFE;
+      const size = 40 + k * 260;
+      r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, FARO_FLASH_COLOR, (1 - k) * 0.6);
+    }
     // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva
     // quando l'autodifesa scala i soldi al giocatore — l'icona blu dei
     // soldi con un colorize rosso, fade out, sale verso l'alto"] +
@@ -6569,6 +6639,23 @@ export async function mountMatch(ctx, params = {}) {
           // scollegato dalla sua altezza reale.
           drawCostTagWorld(text, b.x, b.y - upicoFrame.oy - 15);
         }
+        break;
+      }
+      // **[Gap colmato]** Stesso cartellino, stessa logica, sui sei pulsanti
+      // cliccabili della catena fari->ponti (game/src/platform.js,
+      // FARO_SIGN_OBJS/FARO_SIGN_COST sopra) — questi non hanno un
+      // Mouse_MouseEnter.gml originale da cui l'idea sia partita (i
+      // cartellini di prezzo dei fari non esistono affatto nel decompilato,
+      // gia' allora un pulsante muto), ma restare senza alcun feedback del
+      // costo — a differenza di OGNI altro acquisto del gioco, upsign
+      // incluso — era l'unica vera lacuna rimasta della catena, notata solo
+      // ripercorrendola punto per punto: [I] nuova funzionalita' coerente
+      // con lo stile del resto del motore.
+      for (const it of frameList) {
+        if (!FARO_SIGN_OBJS.has(it.obj) || !it._f) continue;
+        if (!inFrameRect(hw.x, hw.y, it.x, it.y, it._f)) continue;
+        const text = costText(FARO_SIGN_COST[it.obj]);
+        if (text) drawCostTagWorld(text, it.x, it.y - it._f.oy - 15);
         break;
       }
     }

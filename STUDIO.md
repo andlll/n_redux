@@ -4133,3 +4133,72 @@ paragrafo 8.
   ultimi punti di questo diario). Fino al prossimo rebuild i due sprite non
   compaiono in gioco; posizione/scala del nuovo contatore sono una prima
   stima da rifinire a vista una volta visibili davvero.
+
+- **Catena fari->ponti (game/src/platform.js): verificata contro il
+  decompilato, un solo gap reale trovato — nessun cartellino di prezzo sui
+  sei pulsanti cliccabili — colmato, piu' un lampo colorato aggiunto ai fari
+  accesi.** Richiesto dall'autore dopo il punto sul grattacielo sopra
+  ("verificami anche il funzionamento dei fari che fanno l'upgrade ai
+  ponti... ho l'impressione che ci siano parti ancora da implementare").
+  Riletti riga per riga contro `src/objects/faro1|faro2|faro3/`,
+  `upfaro1|upfaro3/`, `wavesig1|wavesig3/`, `dockersig1|dockersig3/`,
+  `farolux|farolux3/` (Create/Step/Alarm_*, + i relativi `*_killer`): le due
+  catene (tier1: `faro1`+`faro2` gemelli -> `r32`+ponti; tier2: `faro3` ->
+  `r22`+nave cargo, sbloccato solo a `r32` gia' espansa) risultano complete
+  — costi (`clickFaroButton` 2000 mon, `clickWaveSignal` 20 crys,
+  `clickDockerSignal` 5000 mon+9000 oil, `clickFaro3Button` 5000 mon,
+  `clickWaveSignal3` 50 crys, `clickDockerSignal3` 15000 mon+27000 oil),
+  vincolo "il segnale si attiva solo di notte" (`isNight`), animazione delle
+  nuvole durante l'attracco (gia' corretta in una sessione precedente, vedi
+  sopra), traffico/ponti levatoi/nave una volta espansa: tutti presenti e
+  corrispondenti riga per riga. L'unico scarto reale: i sei pulsanti
+  (`faroButton`/`faroWaveSignal`/`faroDockerSignal`/`faro3Button`/
+  `faro3WaveSignal`/`faro3DockerSignal`, `FARO_SIGN_OBJS` in `main.js`) non
+  mostravano MAI il proprio costo al passaggio del mouse — a differenza di
+  OGNI altro acquisto del gioco (upsign, lotti-rudere del tutorial, griglia
+  di costruzione, ruspa): un'assenza notata solo ripercorrendo la catena
+  punto per punto, non un bug del decompilato (i pulsanti originali sono
+  muti anche li', GameMaker non ha hover reali fuori da `Mouse_MouseEnter`
+  e questi oggetti non lo implementano) ma un'incoerenza con lo stile del
+  resto del port. **Colmato**: nuova mappa `FARO_SIGN_COST` in `main.js`
+  (duplica i sei costi sopra — `platform.js` non esporta costanti dedicate,
+  solo letterali dentro le funzioni `click*`, quindi vanno tenute allineate
+  a mano) e un nuovo blocco hover (solo mouse, stesso principio di upsign
+  sopra — il touch non ha un vero hover) che scorre `frameList` cercando le
+  entry con `obj` in `FARO_SIGN_OBJS`, in un semplice hit-test/cartellino
+  (`drawCostTagWorld`), nessun tap-to-reveal mobile aggiunto (non richiesto
+  per questo gap specifico).
+  **Sistema di particelle** (richiesta facoltativa dell'autore: "se riesci
+  integra un sistema di particelle coerente col colore del 'flash' che
+  emette e con la funzione di beacon"). [C] `farolux|farolux3/Alarm_0.gml`:
+  appena il faro si accende (`clickWaveSignal`/`clickWaveSignal3`,
+  `stage="lit"`) nasce un'istanza `farolux` che, ogni 40 tick finche' vive
+  (si autodistrugge di giorno, `Step.gml`: `with(aura) if(!night)
+  action_kill_object()`), lancia `action_effect(1, 0, -280, 2, 16744703,
+  0)` — in GameMaker: tipo 1 = `ef_ring` (un lampo/anello), offset (0,-280)
+  relativo all'istanza (280px sopra il faro, verso l'alto), size 2 (grande),
+  colore 16744703 come intero BGR decimale -> `#ff80ff` (rosa magenta),
+  ultimo parametro 0 = non "below" (disegnato sopra, non sotto la scena).
+  Nessun motore di particelle esiste in questo port (stesso limite gia'
+  segnalato per la scintilla di raccolta moneta e il fumo di industria);
+  qui una versione minima nello stile gia' in uso per `coinPops` (main.js:
+  un array `{x,y,t}`, un cerchio morbido `bubbleTex` che cresce e sfuma,
+  disegnato senza tinta ambientale — un effetto luminoso, non un pezzo di
+  scena). Nuovo array `faroFlashes`, spawnato da un timer nel loop di
+  simulazione (subito dopo `stepFaroChain()`) con lo stesso periodo
+  dell'originale (40 tick = `FARO_FLASH_PERIOD`), attivo esattamente nelle
+  stesse condizioni di stage con cui `platform.js` disegna gia' il bagliore
+  fisso "f1lux" (`stage==="lit"||"expanding"`) — tier1 lampeggia su
+  ENTRAMBI i fari gemelli (`FARO1`+`FARO2`, ora esportate da `platform.js`
+  invece di restare private al modulo), tier2 solo su `FARO3`. Colore
+  `FARO_FLASH_COLOR = 0xff80ff` fedele all'originale, dimensione/durata
+  (40->300px in 0.7s, alpha in discesa) una scelta di stile [I] — l'originale
+  non specifica la progressione visiva di `ef_ring`, solo tipo/size/colore.
+  **Non toccato** (fuori dallo scopo della richiesta, gia' presente prima di
+  questa sessione): `Step.gml` spegne davvero il bagliore f1lux/il lampo a
+  giorno nell'originale (l'istanza farolux muore), ma `faro1Decor()`/
+  `faro3Decor()` nel port disegnano f1lux in modo continuo, senza gating
+  giorno/notte — una semplificazione [I] preesistente, non una regressione
+  di questa modifica (il nuovo lampo *e'* invece gia' implicitamente
+  "sempre acceso" come f1lux, non stagionato day/night: stessa
+  semplificazione, non introdotta ora ma ereditata).
