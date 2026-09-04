@@ -976,6 +976,14 @@ export async function mountMatch(ctx, params = {}) {
   // collectCoinAt() piu' sotto e disegnate/scartate nel loop principale.
   let coinPops = [];
   const COIN_POP_LIFE = 0.4;
+  const COIN_POP_COLOR = 0x4fc3f7;   // default: monete/biotech/gemme — invariato
+  // [Nota dell'autore: "per ora sono state fatte blu ovunque, falle invece
+  // verdi per i barili di oil e gialle per i container elettrici che
+  // droppano le mongolfiere"] Solo le due casse citate cambiano colore
+  // (`loot.key`, balloons.js: "oil" = barus/barus_giga, "ele" = mong) — mon
+  // (monss) e crys (monviola) restano blu come le monete vere, non
+  // menzionati dalla richiesta.
+  const LOOT_POP_COLOR = { oil: 0x66bb6a, ele: 0xffca28 };
   // **[Nuova funzionalita', richiesta dall'autore: "se riesci integra un
   // sistema di particelle coerente col colore del 'flash' che emette e con
   // la funzione di beacon"]** [C] farolux|farolux3/Alarm_0.gml:
@@ -4625,18 +4633,21 @@ export async function mountMatch(ctx, params = {}) {
   }
 
   /** Raccoglie una cassa di risorse lasciata da una mongolfiera (balloons.js)
-   * e fa partire la stessa "bolla" blu della raccolta monete (coinPops sopra,
+   * e fa partire la stessa "bolla" della raccolta monete (coinPops sopra,
    * collectCoinAt()) — segnalato dall'autore: un effetto visivo simile a
-   * quello dei soldi, non uno tutto suo. A differenza del pin delle monete la
-   * cassa e' un semplice box (nessuna "testa" separata dal resto dello
-   * sprite), quindi la bolla centra l'intero frame invece del solo cerchio
-   * superiore. Punto d'ingresso condiviso da input.onTap (sotto) e dalla
-   * raccolta al passaggio del mouse (hover, nel loop principale) — vedi il
-   * commento li' per il perche' in piu' del solo tap. */
+   * quello dei soldi, non uno tutto suo. Colore diverso per barile di oil
+   * (verde) e container elettrico (giallo) — LOOT_POP_COLOR sopra, richiesta
+   * successiva dell'autore ("erano state fatte blu ovunque"); mon/crys
+   * restano blu. A differenza del pin delle monete la cassa e' un semplice
+   * box (nessuna "testa" separata dal resto dello sprite), quindi la bolla
+   * centra l'intero frame invece del solo cerchio superiore. Punto
+   * d'ingresso condiviso da input.onTap (sotto) e dalla raccolta al
+   * passaggio del mouse (hover, nel loop principale) — vedi il commento
+   * li' per il perche' in piu' del solo tap. */
   function collectLootAt(item) {
     const f = frameFor(item.spr);
     const bubbleY = f ? item.y - f.oy + f.h / 2 : item.y;
-    coinPops.push({ x: item.x, y: bubbleY, t: 0 });
+    coinPops.push({ x: item.x, y: bubbleY, t: 0, color: LOOT_POP_COLOR[item.key] ?? COIN_POP_COLOR });
     collectLoot(loot, item, r12);
   }
 
@@ -6564,17 +6575,20 @@ export async function mountMatch(ctx, params = {}) {
       const rainFrame = { ...solidFrame(white, RAIN_STREAK_WIDTH, RAIN_STREAK_LENGTH), ox: RAIN_STREAK_WIDTH / 2, oy: RAIN_STREAK_LENGTH / 2 };
       for (const d of weatherState.drops.active) drawRotated(rainFrame, d.x, d.y, rainDropAngle(d), 1, RAIN_TINT, RAIN_ALPHA);
     }
-    // Le "bolle" di raccolta moneta (coinPops sopra): un cerchio azzurro che
-    // cresce e sfuma sul punto della moneta appena presa, in primo piano come
-    // le monete stesse — niente tinta ambientale, per lo stesso motivo di
+    // Le "bolle" di raccolta moneta/cassa (coinPops sopra): un cerchio che
+    // cresce e sfuma sul punto della moneta/cassa appena presa, in primo
+    // piano come loro — niente tinta ambientale, per lo stesso motivo di
     // `_selfLit` qui sopra. Segnalato dall'autore ("troppo piccola"): la testa
     // del pin "soldico" e' un cerchio di ~60px di diametro (STUDIO.md,
     // coins.js) — la bolla partiva a 20px e finiva a 66px, appena piu' grande
     // dell'icona invece di avvolgerla con margine. Range raddoppiato (36..130).
+    // Colore per particella (`p.color`, COIN_POP_COLOR/LOOT_POP_COLOR sopra):
+    // azzurro di default (monete/biotech/gemme), verde per l'oil e giallo per
+    // l'elettricita' — vedi collectLootAt() sopra.
     for (const p of coinPops) {
       const k = p.t / COIN_POP_LIFE;
       const size = 36 + k * 94;
-      r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, 0x4fc3f7, (1 - k) * 0.85);
+      r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, p.color ?? COIN_POP_COLOR, (1 - k) * 0.85);
     }
     // Lampo dei fari accesi (faroFlashes sopra, "se riesci integra un
     // sistema di particelle coerente col colore del flash..."): stessa
