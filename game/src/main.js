@@ -409,21 +409,34 @@ export async function mountMatch(ctx, params = {}) {
     left -= pad; top -= pad; right += pad; bottom += pad;
     return { ox: -left, oy: -top, w: right - left, h: bottom - top };
   }
-  /** Torretta (missile/gatling/laser) sotto un punto schermo, o `null` —
-   * usata SOLO dal tocco prolungato (input.onLongPress, sotto: apre il
-   * pannello stats/autodifesa) invece del picking generico di onTap
-   * (troppo, per un caso che riguarda solo tre tipi di edificio: niente
-   * placeholder/casse/monete/popup da concorrere). Stessa area di tocco
-   * allargata (`turretHitBox()`, sopra) e stessa convenzione "ultimo
-   * disegnato vince" del secondo giro di picking di onTap (frameList e'
-   * gia' back-to-front, l'ultimo che combacia e' il piu' vicino alla
-   * telecamera). */
-  function turretAt(sx, sy) {
+  /** Edificio finito sotto un punto schermo, o `null` — usata SOLO dal
+   * tocco prolungato (input.onLongPress, sotto: apre il pannello stats/
+   * eventuale autodifesa) invece del picking generico di onTap (troppo,
+   * per un caso che riguarda solo gli edifici: niente placeholder/casse/
+   * monete/popup da concorrere).
+   * [Nuova funzionalita', richiesta dall'autore: "il tocco prolungato per
+   * aprire i sottomenu degli edifici deve funzionare su TUTTI gli edifici,
+   * anche quelli non difensivi"] Prima limitata alle sole torrette
+   * (missile/gatling/laser): sul tap NORMALE quelle hanno gia' un
+   * comportamento diverso (sparo manuale, vedi manualFire piu' sotto) da
+   * quello degli edifici comuni (apertura diretta dello stesso pannello),
+   * quindi restano l'unico caso che ha davvero bisogno del tocco prolungato
+   * come gesto ALTERNATIVO al tap — ma il gesto in se' ora riconosce
+   * qualunque edificio, cosi' che main.js possa in futuro estendere questo
+   * stesso pannello ad altri edifici senza dover toccare di nuovo il
+   * picking. Stessa area di tocco allargata delle torrette
+   * (`turretHitBox()`, sopra) per quelle tre, sagoma vera (`it._f`) per
+   * ogni altro edificio — stessa convenzione "ultimo disegnato vince" del
+   * secondo giro di picking di onTap (frameList e' gia' back-to-front,
+   * l'ultimo che combacia e' il piu' vicino alla telecamera). */
+  function buildingAt(sx, sy) {
     const w = cam.screenToWorld(sx, sy);
     for (let i = frameList.length - 1; i >= 0; i--) {
       const it = frameList[i];
-      if (it.obj !== "building" || !BUILDING_TYPES[it.ref.type]?.turret) continue;
-      if (inFrameRect(w.x, w.y, it.x, it.y, turretHitBox(it.ref.type))) return it.ref;
+      if (it.obj !== "building") continue;
+      const isTurret = !!BUILDING_TYPES[it.ref.type]?.turret;
+      const box = isTurret ? turretHitBox(it.ref.type) : it._f;
+      if (box && inFrameRect(w.x, w.y, it.x, it.y, box)) return it.ref;
     }
     return null;
   }
@@ -3773,19 +3786,22 @@ export async function mountMatch(ctx, params = {}) {
     messageT = 3;
   };
   input.onPointerUp = (sx, sy) => { if (!paused) resolvePlacement(sx, sy); };
-  // Tocco prolungato su una torretta finita (turretAt(), sopra) con la mano
-  // selezionata: apre lo stesso pannello informativo degli altri edifici
-  // (buildingInfoPanel, drawBuildingInfoPanel() sotto — qui in piu' mostra
-  // il toggle di autodifesa, solo per missile/gatling/laser). Il tap
-  // NORMALE sulle torrette resta invariato (spara subito, vedi onTap sotto,
-  // ramo `manualFire`): i due gesti non si sovrappongono mai per lo stesso
-  // tocco (game/src/input.js, LONG_PRESS_MS > TAP_MS). Ignorato durante
-  // ogni altro modale/overlay gia' aperto — stessi guard dell'apertura
-  // "normale" del pannello su un edificio non difensivo (onTap sotto).
+  // Tocco prolungato su un edificio finito (buildingAt(), sopra) con la
+  // mano selezionata: apre il pannello informativo dell'edificio
+  // (buildingInfoPanel, drawBuildingInfoPanel() sotto — con in piu' il
+  // toggle di autodifesa per le sole missile/gatling/laser). Per una
+  // torretta e' l'UNICO modo di arrivarci: il tap normale su di lei resta
+  // invariato (spara subito, vedi onTap sotto, ramo `manualFire`) — i due
+  // gesti non si sovrappongono mai per lo stesso tocco (`longPressFired` in
+  // game/src/input.js). Per ogni altro edificio il tap normale apre gia' lo
+  // stesso pannello (onTap sotto): il tocco prolungato qui e' semplicemente
+  // un modo equivalente e piu' rapido di arrivarci, coerente su tutti gli
+  // edifici. Ignorato durante ogni altro modale/overlay gia' aperto —
+  // stessi guard dell'apertura "normale" del pannello (onTap sotto).
   input.onLongPress = (sx, sy) => {
     if (paused || outcome || bankPanelOpen || tradePanelOpen || buildingInfoPanel
       || buildMenuOpen || tutorialState?.cutscene || r12.selec !== 0) return;
-    const b = turretAt(sx, sy);
+    const b = buildingAt(sx, sy);
     if (!b || b.construction) return;
     buildingInfoPanel = b;
   };
@@ -6912,9 +6928,11 @@ export async function mountMatch(ctx, params = {}) {
         // [Bug corretto, segnalato dall'autore: "la freccia punta a caso
         // invece che puntare le monete"] Le tre fasi che parlano di una
         // risorsa specifica della barra in alto (6: denaro appena
-        // raccolto, 11: energia/centrali, 25: olio/consumo — indice
-        // spostato di uno da 24: tutorial.js, TUTORIAL_TEXTS, il messaggio
-        // sul lanciarazzi spezzato in due) puntavano tutte
+        // raccolto, 11: energia/centrali, 26: olio/consumo — indice
+        // spostato prima di uno da 24 a 25 (tutorial.js, TUTORIAL_TEXTS, il
+        // messaggio sul lanciarazzi spezzato in due), poi ancora di uno a 26
+        // (il nuovo messaggio sul tocco prolungato su qualunque edificio,
+        // inserito subito dopo quello sull'autodifesa)) puntavano tutte
         // allo stesso bersaglio sbagliato — il CENTRO dell'intero schermo a
         // y=100, un punto nel bel mezzo della mappa di gioco, non vicino
         // alla barra risorse (che vive in alto a sinistra, `barX`/`barY`
@@ -6925,7 +6943,7 @@ export async function mountMatch(ctx, params = {}) {
         // decompilato per disegnare i numeri, sotto), dal basso verso
         // l'alto (`angle:90`, gia' la convenzione per "punta alla barra
         // risorse in alto" — solo le coordinate erano sbagliate).
-        case 6: case 11: case 25: {
+        case 6: case 11: case 26: {
           const resX = tutorialState.phase === 6 ? 340 : tutorialState.phase === 11 ? 228 : 142;
           target = { x: barX + resX, y: barY + 43, angle: 90 };
           break;
