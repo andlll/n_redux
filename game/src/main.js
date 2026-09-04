@@ -976,14 +976,24 @@ export async function mountMatch(ctx, params = {}) {
   // collectCoinAt() piu' sotto e disegnate/scartate nel loop principale.
   let coinPops = [];
   const COIN_POP_LIFE = 0.4;
-  const COIN_POP_COLOR = 0x4fc3f7;   // default: monete/biotech/gemme — invariato
+  const COIN_POP_COLOR = 0x4fc3f7;   // default: monete/mon — invariato
   // [Nota dell'autore: "per ora sono state fatte blu ovunque, falle invece
   // verdi per i barili di oil e gialle per i container elettrici che
-  // droppano le mongolfiere"] Solo le due casse citate cambiano colore
-  // (`loot.key`, balloons.js: "oil" = barus/barus_giga, "ele" = mong) — mon
-  // (monss) e crys (monviola) restano blu come le monete vere, non
-  // menzionati dalla richiesta.
-  const LOOT_POP_COLOR = { oil: 0x66bb6a, ele: 0xffca28 };
+  // droppano le mongolfiere"] Colore per cassa (`loot.key`, balloons.js:
+  // "oil" = barus/barus_giga, "ele" = mong, "crys" = monviola) — "mon"
+  // (monss) resta blu come le monete vere, non menzionato dalla richiesta.
+  // [Nota successiva dell'autore: "cristalli viola seguendo la stessa
+  // logica" (del biotech sotto, BIOTECH_POP_COLOR) — 0x6d5289, campionato
+  // dal colore vero dei cristalli viola dentro "monviola_bar" (la cassa che
+  // il giocatore raccoglie davvero, data/sprites.json tex=46 x=906 y=270
+  // 65x81), non un viola generico.
+  const LOOT_POP_COLOR = { oil: 0x66bb6a, ele: 0xffca28, crys: 0x6d5289 };
+  // [Nota dell'autore: "biotech falle ocra come il colore di sfondo della
+  // goccia"] `bioico` (la "goccia"/pin di soldbio, coins.js) e' quasi
+  // interamente in tinta unita — 0x93812b, campionato dal pin vero
+  // (data/sprites.json tex=18 x=1982 y=1746 60x88): non un'approssimazione,
+  // il colore dominante di quel pin (>85% dei pixel opachi).
+  const BIOTECH_POP_COLOR = 0x93812b;
   // **[Nuova funzionalita', richiesta dall'autore: "se riesci integra un
   // sistema di particelle coerente col colore del 'flash' che emette e con
   // la funzione di beacon"]** [C] farolux|farolux3/Alarm_0.gml:
@@ -4628,7 +4638,9 @@ export async function mountMatch(ctx, params = {}) {
     // quindi a meta' larghezza sopra l'ancora, non sull'ancora stessa.
     const f = frameFor(item.spr);
     const bubbleY = f ? item.y - (f.oy - f.w / 2) : item.y;
-    coinPops.push({ x: item.x, y: bubbleY, t: 0 });
+    // BIOTECH_POP_COLOR sopra: solo "soldbio" (item.kind === "biotech",
+    // coins.js) cambia colore — sold1..18/sold19..30 (kind "mon") restano blu.
+    coinPops.push({ x: item.x, y: bubbleY, t: 0, color: item.kind === "biotech" ? BIOTECH_POP_COLOR : COIN_POP_COLOR });
     collectCoin(coins, item, r12);
   }
 
