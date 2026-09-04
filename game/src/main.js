@@ -255,6 +255,33 @@ export async function mountMatch(ctx, params = {}) {
   // necessaria la cache per gli atlas (assets.js).
   const pauseIconTex = await loadTexture(gl, "./pause-button.png");
   const pauseIconFrame = { tex: pauseIconTex.tex, u0: 0, v0: 0, u1: 1, v1: 1, w: pauseIconTex.width, h: pauseIconTex.height, ox: 0, oy: 0 };
+  // Icona del "fumetto costo" (costFloaters, sotto) — stesso trattamento di
+  // pauseIconTex appena sopra: un PNG a se stante (game/cost-warning-icon.png),
+  // non materiale del decompilato ne' da impacchettare nell'atlas. E' l'asset
+  // "pin rosso con la moneta in bianco dentro" a lungo atteso dal commento su
+  // costFloaterFrame piu' sotto — pin e monete nella stessa immagine, colori
+  // veri, niente piu' bisogno del colorize rosso usato finora su "soldico"
+  // (l'icona blu della raccolta tasse, coins.js) come sostituto provvisorio.
+  // [NOTA] L'autore ha condiviso l'icona vera solo come immagine incollata in
+  // chat, non come file: questa sessione non ha modo di salvare a disco
+  // un'immagine incollata (nessuno strumento per farlo, a differenza di
+  // pause-button.png sopra — quello sì un file vero ricevuto e committato
+  // cosi' com'e', "senza nessuna modifica offline"). Il PNG qui e' quindi una
+  // RICOSTRUZIONE fatta a partire dalla descrizione/dallo screenshot (stesso
+  // stile: pin rosso, pila di monete bianca dentro, stessa sagoma/misura di
+  // "soldico" sotto) — da sostituire con l'immagine originale appena
+  // disponibile come file vero: stesso path/nome basta a farla entrare senza
+  // toccare altro codice. `ox`/`oy` = centro in basso (la punta del pin, come
+  // l'origine 30,88 di "soldico" nel suo stesso atlas — STUDIO.md): e' il
+  // punto che finisce sulle coordinate passate a r.draw(), cosi' il pin
+  // "punta" verso l'ancora e si apre verso l'alto, esattamente come ogni
+  // altro pin del gioco.
+  const costWarningIconTex = await loadTexture(gl, "./cost-warning-icon.png");
+  const costWarningIconFrame = {
+    tex: costWarningIconTex.tex, u0: 0, v0: 0, u1: 1, v1: 1,
+    w: costWarningIconTex.width, h: costWarningIconTex.height,
+    ox: costWarningIconTex.width / 2, oy: costWarningIconTex.height,
+  };
   // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
   // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed eviction"]
   // Il tier "combat" (sotto, dentro `if (skyAlive)`) si avvia normalmente
@@ -949,19 +976,35 @@ export async function mountMatch(ctx, params = {}) {
   let coinPops = [];
   const COIN_POP_LIFE = 0.4;
   // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva quando
-  // l'autodifesa scala i soldi — l'icona blu dei soldi con un colorize
-  // rosso, fade out, sale verso l'alto: una per il livello 2, due in
+  // l'autodifesa scala i soldi — l'icona rossa dei soldi (costWarningIconFrame,
+  // sopra), fade out, sale verso l'alto: una per il livello 2, due in
   // sequenza per il livello 3"] Stesso principio di `coinPops` sopra (un
   // array di `{x,y,t}`, spawnati altrove e invecchiati/disegnati nel loop
   // principale) ma un'animazione diversa — sale e sfuma invece di crescere
-  // sul posto, coerente con un COSTO invece di un guadagno. Spawnati da
-  // stepAutoDefenseUpkeep() (buildings.js): quella funzione resta pura
-  // simulazione (nessun accesso a sprite/atlas/render), quindi ritorna solo
-  // le richieste di spawn ({x,y,type,count} per torretta appena "scattata")
-  // — il loop principale le traduce in floater veri, sapendo gia' come
-  // leggere `turretHitBox()` per ancorarli sopra la torretta giusta.
+  // sul posto, coerente con un COSTO invece di un guadagno. Due sorgenti:
+  // stepAutoDefenseUpkeep() (buildings.js — pura simulazione, nessun accesso
+  // a sprite/atlas/render: ritorna solo le richieste di spawn
+  // {x,y,type,count} per torretta appena "scattata", il loop principale le
+  // traduce in floater veri sapendo gia' come leggere `turretHitBox()` per
+  // ancorarli sopra la torretta giusta), e spawnInsufficientFundsWarning()
+  // sotto — [Nuova funzionalita', richiesta dall'autore: "la stessa icona
+  // anche sul placeholder quando si prova a costruire senza abbastanza
+  // soldi"] — chiamata da onTap/onPointerDown quando placeAt()/
+  // armPlacement() rifiutano un piazzamento proprio per fondi insufficienti.
   let costFloaters = [];
   const COST_FLOAT_LIFE = 1.0, COST_FLOAT_RISE = 56;
+  /** Spawna un costFloater (sopra) ancorato sopra un placeholder — stessa
+   * icona/animazione del prelievo autodifesa, per segnalare un tentativo di
+   * piazzamento fallito per fondi insufficienti. `f` e' il frame del
+   * placeholder (`ph._f`, sempre presente: frameFor("phold") non fallisce
+   * mai) — `f.oy` e' la distanza in pixel dall'ancora al bordo SUPERIORE
+   * vero dello sprite (stessa convenzione di `turretHitBox().oy` gia' usata
+   * per le torrette, vedi il loop di simulazione sotto), il piccolo "-6" e'
+   * lo stesso margine cosmetico usato li' per non far nascere l'icona
+   * incollata al pixel del bordo. */
+  function spawnInsufficientFundsWarning(x, y, f) {
+    costFloaters.push({ x, y: y - f.oy - 6, t: 0 });
+  }
   // Il fumo decorativo delle centrali (game/src/smoke.js): una o due ciminiere
   // per `industria` in piedi, mai in cantiere — vedi stepSmokeSpawner() piu'
   // sotto.
@@ -3782,6 +3825,14 @@ export async function mountMatch(ctx, params = {}) {
     const ph = placeholders.find((p) => !p.consumed && inFrameDiamond(w.x, w.y, p.x, p.y, p._f));
     if (!ph) return;
     const err = armPlacement(ph, selectedType);
+    // Stesso avviso visivo di placeAt() sotto (onTap, `spawnInsufficientFundsWarning()`
+    // sopra): qui l'unico modo di riconoscere PROPRIO il rifiuto per fondi
+    // insufficienti (armPlacement() puo' fallire anche per altri motivi —
+    // piattaforma non ancora attiva, nessun lotto diagonale libero) e'
+    // ripetere lo stesso controllo che la funzione ha gia' fatto al suo
+    // interno: economico (canAfford e' una pura lettura di r12), niente
+    // parsing del messaggio d'errore.
+    if (err && !canAfford(r12, def.placeCost)) spawnInsufficientFundsWarning(ph.x, ph.y, ph._f);
     message = err ?? "drag to a free adjacent lot";
     messageT = 3;
   };
@@ -4794,6 +4845,19 @@ export async function mountMatch(ctx, params = {}) {
         message = `${BUILDING_LABEL[selectedType] ?? selectedType}: not rebuilt yet`;
       } else {
         const err = placeAt(picked, selectedType);
+        // [Nuova funzionalita', richiesta dall'autore: "la stessa icona del
+        // costo dell'autodifesa deve comparire anche sul placeholder quando
+        // si prova a costruire senza abbastanza soldi"] `spawnInsufficientFundsWarning()`,
+        // sopra — stesso avviso, stesso "sale e sfuma verso l'alto". placeAt()
+        // (sopra) puo' rifiutare anche per altri motivi (piattaforma non
+        // ancora attiva, torretta troppo vicina, nessun'area libera per un
+        // multi-tile): qui l'unico modo di riconoscere PROPRIO il rifiuto per
+        // fondi insufficienti e' ripetere lo stesso controllo che la funzione
+        // ha gia' fatto al suo interno (identico a `def.noAffordCheck`
+        // incluso), non un parsing del messaggio d'errore.
+        if (err && !def.noAffordCheck && !canAfford(r12, def.placeCost)) {
+          spawnInsufficientFundsWarning(picked.x, picked.y, picked._f);
+        }
         message = err ?? `${def.label.toLowerCase()} placed (-${def.placeCost.mon} mon)`;
       }
       messageT = 3;
@@ -6176,42 +6240,34 @@ export async function mountMatch(ctx, params = {}) {
     }
     // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva
     // quando l'autodifesa scala i soldi al giocatore — l'icona blu dei
-    // soldi con un colorize rosso, fade out, sale verso l'alto"]
-    // `costFloaters` (sopra, spawnati dal loop di simulazione quando
-    // stepAutoDefenseUpkeep() segnala un prelievo — buildings.js): la
-    // stessa icona "soldico" (coins.js, il pin blu della raccolta tasse)
-    // ma in colorize mode — un pin blu MOLTIPLICATO per un tint non
-    // darebbe mai un rosso leggibile (il blu ha poco rosso da moltiplicare
-    // per), colorize sostituisce l'RGB con `tint` usando solo l'alpha
-    // della texture come sagoma, stessa tecnica gia' in uso per le icone
-    // nere della UI (`iconsDark`/`setColorize()`, sopra). Sale e sfuma
-    // invece di crescere sul posto come le bolle di raccolta appena sopra:
-    // coerente con un COSTO, non un guadagno. `p.t < 0` (il secondo
-    // floater del livello 3, spawnato con un ritardo negativo apposta —
-    // vedi il commento sul loop di simulazione) non e' ancora "nato":
-    // saltato senza disegnare nulla, mai tolto dall'array (stepCostFloaters,
-    // sopra: l'invecchiamento normale lo fa comunque avanzare verso 0).
-    // [Bug corretto, segnalato dall'autore: "grandi come le gocce blu sugli
-    // edifici"] Scala 1 (nativa), non piu' 0.55: le monete VERE (coins.js,
-    // dynamic.push({obj:"coin",...}) piu' sopra) disegnano lo stesso
-    // "soldico" senza alcuna `_scale` — quindi a scala 1, il default del
-    // ciclo mondo — mentre questo floater lo rimpiccioliva SOLO qui, senza
-    // un motivo dichiarato: risultava percettibilmente piu' piccolo delle
-    // gocce blu vere invece di leggersi come "la stessa icona, colorata
-    // diversa". Colore in attesa di un asset dedicato disegnato a mano
-    // dall'autore (pin rosso con la moneta visibile in bianco dentro —
-    // irraggiungibile col solo colorize su un unico sprite piatto, pin e
-    // monete nella stessa immagine): resta il colorize rosso pieno per ora,
-    // da sostituire quando l'asset arriva.
-    const costFloaterFrame = frameFor("soldico");
-    if (costFloaterFrame && costFloaters.length) {
-      r.setColorize(true);
+    // soldi con un colorize rosso, fade out, sale verso l'alto"] +
+    // [Nuova funzionalita', richiesta dall'autore: "stessa icona anche sul
+    // placeholder quando il giocatore prova a costruire senza abbastanza
+    // soldi"] `costFloaters` (sopra, spawnati sia dal loop di simulazione
+    // quando stepAutoDefenseUpkeep() segnala un prelievo — buildings.js —
+    // sia da onTap/onPointerDown piu' sotto quando placeAt()/armPlacement()
+    // rifiutano un piazzamento per fondi insufficienti): `costWarningIconFrame`
+    // (sopra — vedi li' la nota su "ricostruita, non il file originale") e'
+    // l'asset dedicato, pin rosso con la moneta gia' in bianco dentro la
+    // stessa immagine, niente piu' bisogno del colorize provvisorio che
+    // sostituiva l'RGB di "soldico" (l'icona blu della raccolta tasse,
+    // coins.js) con un tint rosso pieno. Sale e sfuma invece di crescere sul
+    // posto come le bolle di raccolta appena sopra: coerente con un COSTO,
+    // non un guadagno. `p.t < 0` (il secondo
+    // floater del livello 3 dell'autodifesa, spawnato con un ritardo
+    // negativo apposta — vedi il commento sul loop di simulazione) non e'
+    // ancora "nato": saltato senza disegnare nulla, mai tolto dall'array
+    // (l'invecchiamento normale lo fa comunque avanzare verso 0). Scala 1
+    // (nativa): l'icona e' gia' stata disegnata alla stessa taglia di
+    // "soldico" (60x88, STUDIO.md) per restare grande come le gocce blu
+    // vere sugli edifici (coins.js, dynamic.push({obj:"coin",...}) piu'
+    // sopra, anche loro senza `_scale`).
+    if (costFloaters.length) {
       for (const p of costFloaters) {
         if (p.t < 0) continue;
         const k = p.t / COST_FLOAT_LIFE;
-        r.draw(costFloaterFrame, p.x, p.y - k * COST_FLOAT_RISE, 1, 0xe53935, (1 - k) * 0.9);
+        r.draw(costWarningIconFrame, p.x, p.y - k * COST_FLOAT_RISE, 1, 0xffffff, (1 - k) * 0.9);
       }
-      r.setColorize(false);
     }
     // Linguetta di prezzo sul segnale di potenziamento (upsign) al passaggio
     // del mouse — [C] upsign12|23|45s|45d/Mouse_MouseEnter.gml, vedi
