@@ -405,17 +405,18 @@ export async function mountMatch(ctx, params = {}) {
     if (!bounds || !full) return null;
     return subFrameRight(subFrameLeft(full, bounds[1]), bounds[0]);
   }
-  // Larghezza vera di un testo HTML (drawIconLine() sotto ne ha bisogno per
-  // mettere in fila testo/icone senza sovrapposizioni ne' buchi): un
-  // `canvas.measureText()` su un canvas 2D fuori dal DOM, non un
-  // `getBoundingClientRect()` su un elemento vero — costa quanto una
-  // chiamata Canvas2D, non un reflow di pagina, e a differenza della stima a
-  // carattere fisso di tagWidth() (TAG_CHAR_W qui sopra, tarata per il solo
-  // uso "pillola arrotondata") resta esatta qualunque sia il mix di lettere/
-  // cifre. Stesso font/peso di `.gameText` (index.html): se differisse la
-  // misura non corrisponderebbe al testo che drawHtmlText() renderizza
-  // davvero. Cache per stringa+taglia: le righe di banca/scambi ripetono
-  // sempre le stesse poche combinazioni frame dopo frame.
+  // Larghezza vera di un testo HTML: un `canvas.measureText()` su un canvas
+  // 2D fuori dal DOM, non un `getBoundingClientRect()` su un elemento vero —
+  // costa quanto una chiamata Canvas2D, non un reflow di pagina, e a
+  // differenza di una stima a carattere fisso resta esatta qualunque sia il
+  // mix di lettere/cifre. Stesso font/peso di `.gameText` (index.html): se
+  // differisse la misura non corrisponderebbe al testo che drawHtmlText()
+  // renderizza davvero. Cache per stringa+taglia: le poche chiamanti sotto
+  // (drawIconLine()/tagWidth()/bannerFontSize()) ripetono sempre le stesse
+  // combinazioni frame dopo frame. Unico punto di misura: prima ognuna delle
+  // tre aveva la propria stima a carattere fisso tarata a occhio (TAG_CHAR_W,
+  // l'euristica `len*0.62` di bannerFontSize) — imprecise ciascuna a modo
+  // suo, mai riconciliate fra loro.
   const measureCtx = document.createElement("canvas").getContext("2d");
   const textWidthCache = new Map();
   function htmlTextWidth(text, size) {
@@ -431,10 +432,10 @@ export async function mountMatch(ctx, params = {}) {
   /** Riga centrata che alterna testo HTML vero (drawHtmlText()) e iconcine
    * WebGL (resourceIconFrame() sopra) — usata da drawBankPanel()/
    * drawTradePanel() per disegnare "500 [icona] in 3 years" invece di "500
-   * mon in 3 years". Ogni pezzo di testo usa htmlTextWidth() sopra (non la
-   * stima a carattere fisso di tagWidth(): con due icone per riga come nel
-   * pannello scambi un piccolo errore per pezzo si accumulava pezzo dopo
-   * pezzo, spingendo la seconda icona sempre piu' a destra del previsto).
+   * mon in 3 years". Ogni pezzo di testo usa htmlTextWidth() sopra: con due
+   * icone per riga come nel pannello scambi un piccolo errore di stima per
+   * pezzo si accumulava pezzo dopo pezzo, spingendo la seconda icona sempre
+   * piu' a destra del previsto — la misura reale non ha questo problema.
    */
   function drawIconLine(parts, cx, cy, { size = 16, iconH = size * 1.35, gap = 6 } = {}) {
     const resolved = parts.map((p) => {
@@ -4017,23 +4018,29 @@ export async function mountMatch(ctx, params = {}) {
   }
   const TAG_PILL_H = 44;      // stessa taglia (88px nativi degli sprite rimossi * COST_TAG_SCALE, sopra)
   const TAG_TEXT_SIZE = 15;
-  const TAG_CHAR_W = 9.2;     // larghezza approssimata di un carattere Montserrat bold a TAG_TEXT_SIZE
   const TAG_PAD = 26;         // margine orizzontale pieno (dentro la pillola) attorno al testo
   // Pillola fissa dei due bottoni conferma ruspa (dynamic.push({obj:
   // "ruspaYes"/"ruspaNo",...}) piu' sotto) — testo sempre breve ("Yes!"/
   // "No", mai un numero variabile come le altre pillole), quindi una taglia
-  // fissa basta invece di ricalcolarla dal testo come TAG_PAD/TAG_CHAR_W
-  // sopra. Vicina alla taglia nativa dei vecchi sprite "demoyesse"/
-  // "demoback" (139x60, data/sprites.json) per restare proporzionata agli
-  // altri elementi del popup ruspa.
+  // fissa basta invece di ricalcolarla dal testo come tagWidth() sopra.
+  // Vicina alla taglia nativa dei vecchi sprite "demoyesse"/"demoback"
+  // (139x60, data/sprites.json) per restare proporzionata agli altri
+  // elementi del popup ruspa.
   const RUSPA_BTN_W = 120, RUSPA_BTN_H = 56;
   /** Larghezza della pillola per un dato testo — condivisa fra drawCostTagAt()
    * sotto (che ne ha bisogno per centrare/posizionare il quad) e i chiamanti
    * che devono clampare la posizione DENTRO lo schermo PRIMA di disegnare
    * (drawMenuTag() piu' sotto): un solo posto che decide la formula, mai
-   * due calcoli che potrebbero disallinearsi. */
+   * due calcoli che potrebbero disallinearsi. [Bug corretto, segnalato
+   * dall'autore insieme a quello analogo di drawIconLine()] Usava una stima
+   * a carattere fisso (`text.length * 9.2 + TAG_PAD`, tarata a occhio) — ora
+   * htmlTextWidth() (sopra) per la larghezza VERA del testo che
+   * drawHtmlText() renderizza, cosi' la pillola non e' mai ne' troppo larga
+   * (spazio vuoto ai lati) ne' cosi' stretta da far scattare l'ellissi su
+   * testi piu' lunghi della norma.
+   */
   function tagWidth(text) {
-    return Math.round(text.length * TAG_CHAR_W + TAG_PAD);
+    return Math.round(htmlTextWidth(text, TAG_TEXT_SIZE) + TAG_PAD);
   }
   /** Nucleo comune di drawCostTagScreen()/drawCostTagWorld() sotto: `pillX,
    * pillY` e' il centro-alto della pillola nello spazio in cui `r` sta gia'
@@ -7736,18 +7743,26 @@ export async function mountMatch(ctx, params = {}) {
     // troncate in '...'"] `bannerFontSize()` dimensionava il font sulla
     // frase intera ("THUNDERSTORM INCOMING", 22 caratteri) — su schermi
     // stretti il risultato tocca il minimo di 14px ben prima che la frase
-    // ci stia davvero (l'euristica `avail/(len*0.62)` e' una stima, non una
-    // misura reale del font Montserrat) e `drawHtmlText()` senza `wrap`
-    // (nowrap + text-overflow:ellipsis) mostra i puntini invece di
-    // sforare. Due righe, una parola ciascuna, invece di spingere la frase
-    // intera su una riga sola: `bannerFontSize()` ora dimensiona sulla
-    // parola piu' lunga fra le due righe ("THUNDERSTORM", 12 caratteri)
-    // invece che sulla frase intera, quindi il font resta leggibile anche
-    // dove prima sarebbe finito troncato.
+    // ci stia davvero, e `drawHtmlText()` senza `wrap` (nowrap + text-
+    // overflow:ellipsis) mostra i puntini invece di sforare. Due righe, una
+    // parola ciascuna, invece di spingere la frase intera su una riga sola:
+    // `bannerFontSize()` ora dimensiona sulla parola piu' lunga fra le due
+    // righe ("THUNDERSTORM", 12 caratteri) invece che sulla frase intera,
+    // quindi il font resta leggibile anche dove prima sarebbe finito
+    // troncato. [Bug corretto, segnalato dall'autore insieme a quello
+    // analogo di drawIconLine()/tagWidth()] La formula restava comunque una
+    // stima a carattere fisso (`avail/(len*0.62)`, mai una misura reale del
+    // font Montserrat): ora usa htmlTextWidth() (sopra) — misura la parola
+    // piu' lunga a una taglia di riferimento e scala in proporzione, la
+    // larghezza di un font scala linearmente con la sua taglia — cosi' il
+    // banner riempie lo spazio disponibile con precisione invece di
+    // fermarsi un po' prima (o un po' dopo) per un errore di stima.
     function bannerFontSize(words, maxSize) {
       const avail = canvas.clientWidth - 40;
       const longest = words.reduce((a, b) => (b.length > a.length ? b : a));
-      return Math.max(14, Math.min(maxSize, avail / (longest.length * 0.62)));
+      const refSize = 100;
+      const widthAtRef = htmlTextWidth(longest, refSize);
+      return Math.max(14, Math.min(maxSize, (avail / widthAtRef) * refSize));
     }
     function drawBannerLines(words, maxSize) {
       const size = bannerFontSize(words, maxSize);
