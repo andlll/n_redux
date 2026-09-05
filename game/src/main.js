@@ -429,27 +429,42 @@ export async function mountMatch(ctx, params = {}) {
     }
     return w;
   }
-  /** Riga centrata che alterna testo HTML vero (drawHtmlText()) e iconcine
-   * WebGL (resourceIconFrame() sopra) — usata da drawBankPanel()/
-   * drawTradePanel() per disegnare "500 [icona] in 3 years" invece di "500
-   * mon in 3 years". Ogni pezzo di testo usa htmlTextWidth() sopra: con due
-   * icone per riga come nel pannello scambi un piccolo errore di stima per
-   * pezzo si accumulava pezzo dopo pezzo, spingendo la seconda icona sempre
-   * piu' a destra del previsto — la misura reale non ha questo problema.
+  /** Risolve una riga "testo/icona" (`{text}`/`{icon}` — icon e' una delle
+   * chiavi di RESOURCE_ICON_X sopra) in pezzi pesati (larghezza vera di
+   * ognuno, htmlTextWidth()/resourceIconFrame()) piu' la larghezza TOTALE
+   * della riga (pezzi + `gap` fra un pezzo e il successivo) — condiviso fra
+   * drawIconLine() sotto (riga singola, un solo punto di ancoraggio) e
+   * drawCostTagAt() piu' sotto (la pillola dei cartellini di costo, che ha
+   * bisogno della stessa larghezza sia per dimensionare il quad di sfondo
+   * sia per posizionare testo/icone al suo interno).
    */
-  function drawIconLine(parts, cx, cy, { size = 16, iconH = size * 1.35, gap = 6 } = {}) {
+  function layoutIconParts(parts, size, gap) {
+    const iconH = size * 1.35;
     const resolved = parts.map((p) => {
       if (p.icon) {
         const frame = resourceIconFrame(p.icon);
         const scale = frame ? iconH / frame.h : 0;
-        return { frame, scale, w: frame ? frame.w * scale : 0 };
+        return { frame, scale, iconH, w: frame ? frame.w * scale : 0 };
       }
       return { text: p.text, w: htmlTextWidth(p.text, size) };
     });
-    const total = resolved.reduce((sum, p) => sum + p.w, 0) + gap * (resolved.length - 1);
+    const total = resolved.reduce((sum, p) => sum + p.w, 0) + gap * Math.max(0, resolved.length - 1);
+    return { resolved, total };
+  }
+  /** Riga centrata che alterna testo HTML vero (drawHtmlText()) e iconcine
+   * WebGL (resourceIconFrame() sopra) — usata da drawBankPanel()/
+   * drawTradePanel() per disegnare "500 [icona] in 3 years" invece di "500
+   * mon in 3 years". Ogni pezzo di testo usa htmlTextWidth() (dentro
+   * layoutIconParts() sopra): con due icone per riga come nel pannello
+   * scambi un piccolo errore di stima per pezzo si accumulava pezzo dopo
+   * pezzo, spingendo la seconda icona sempre piu' a destra del previsto —
+   * la misura reale non ha questo problema.
+   */
+  function drawIconLine(parts, cx, cy, { size = 16, gap = 6 } = {}) {
+    const { resolved, total } = layoutIconParts(parts, size, gap);
     let x = cx - total / 2;
     for (const p of resolved) {
-      if (p.frame) r.draw(p.frame, x, cy - iconH / 2, p.scale, 0xffffff, 1);
+      if (p.frame) r.draw(p.frame, x, cy - p.iconH / 2, p.scale, 0xffffff, 1);
       else if (p.text) drawHtmlText(p.text, x, cy, { size, align: "left" });
       x += p.w + gap;
     }
@@ -3649,7 +3664,7 @@ export async function mountMatch(ctx, params = {}) {
       r.draw(f, iconX, iconY, scale, isSelected ? (icon?.tint ?? 0xffffff) : 0xffffff, locked ? LOCKED_BUTTON_ALPHA : 1);
       r.setColorize(false);
     }
-    // Cartellino prezzo/"Unlock at level N" (unlockTagText()/costText(),
+    // Cartellino prezzo/"Unlock at level N" (unlockTagText()/costParts(),
     // sopra) — l'equivalente touch dell'hover mouse della riga scorrevole
     // desktop (drawUiRow() piu' sotto, stesso schema). `input.hover` segue
     // anche un dito che scorre senza sollevarsi (Input._move(), input.js):
@@ -3667,16 +3682,16 @@ export async function mountMatch(ctx, params = {}) {
     // Clampato dentro lo schermo (min/max sotto): un bottone sul bordo
     // sinistro/destro della griglia spingerebbe altrimenti il cartellino
     // (piu' largo di una singola cella) oltre il bordo del canvas.
-    function drawMenuTag(btn, text, alpha) {
-      if (!text) return;
-      const w = tagWidth(text);
+    function drawMenuTag(btn, tag, alpha) {
+      if (!tag) return;
+      const w = tagWidth(tag);
       const tx = Math.min(Math.max(btn.x + btn.w / 2, 4 + w / 2), cw - w / 2 - 4);
       const ty = Math.max(btn.y - 8, 4);
-      drawCostTagScreen(text, tx, ty, { alpha });
+      drawCostTagScreen(tag, tx, ty, { alpha });
     }
     if (tagBtn) {
       const locked = buildingLocked(tagBtn.type);
-      drawMenuTag(tagBtn, locked ? unlockTagText(tagBtn.type) : costText(BUILDING_TYPES[tagBtn.type]?.placeCost), 1);
+      drawMenuTag(tagBtn, locked ? unlockTagText(tagBtn.type) : costParts(BUILDING_TYPES[tagBtn.type]?.placeCost), 1);
     }
     // [Bug corretto/Nuova funzionalita', vedi il commento su gridTapTagType/
     // At sopra] Un tap secco su QUALUNQUE bottone (bloccato o no) lo arma
@@ -3684,7 +3699,7 @@ export async function mountMatch(ctx, params = {}) {
     // `Until` (pensato per un dito che scorre e si solleva, non per questo
     // caso) — pieno per GRID_TAP_SHOW_MS, poi dissolto in GRID_TAP_FADE_MS
     // invece di sparire di scatto. Stesso testo scelto dal resto della
-    // funzione (locked ? unlockTagText : costText, sopra).
+    // funzione (locked ? unlockTagText : costParts, sopra).
     if (gridTapTagType) {
       const elapsed = performance.now() - gridTapTagAt;
       const total = GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
@@ -3692,7 +3707,7 @@ export async function mountMatch(ctx, params = {}) {
       if (btn) {
         const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
         const locked = buildingLocked(btn.type);
-        drawMenuTag(btn, locked ? unlockTagText(btn.type) : costText(BUILDING_TYPES[btn.type]?.placeCost), alpha);
+        drawMenuTag(btn, locked ? unlockTagText(btn.type) : costParts(BUILDING_TYPES[btn.type]?.placeCost), alpha);
       } else {
         // Il cartellino e' svanito del tutto: se era quello di un bottone
         // GIA' selezionato al tap (input.onTap sopra: un bloccato non
@@ -4019,6 +4034,7 @@ export async function mountMatch(ctx, params = {}) {
   const TAG_PILL_H = 44;      // stessa taglia (88px nativi degli sprite rimossi * COST_TAG_SCALE, sopra)
   const TAG_TEXT_SIZE = 15;
   const TAG_PAD = 26;         // margine orizzontale pieno (dentro la pillola) attorno al testo
+  const TAG_GAP = 4;          // spazio fra un pezzo testo/icona e il successivo (costParts() sotto)
   // Pillola fissa dei due bottoni conferma ruspa (dynamic.push({obj:
   // "ruspaYes"/"ruspaNo",...}) piu' sotto) — testo sempre breve ("Yes!"/
   // "No", mai un numero variabile come le altre pillole), quindi una taglia
@@ -4027,59 +4043,97 @@ export async function mountMatch(ctx, params = {}) {
   // (139x60, data/sprites.json) per restare proporzionata agli altri
   // elementi del popup ruspa.
   const RUSPA_BTN_W = 120, RUSPA_BTN_H = 56;
-  /** Larghezza della pillola per un dato testo — condivisa fra drawCostTagAt()
+  // Un "tag" e' o una stringa semplice (unlockTagText() sotto — "Unlock at
+  // level 3", nessuna risorsa da rimpiazzare con un'icona) o un array di
+  // pezzi testo/icona (costParts() sotto — "500 [icona] mon"): tagWidth()/
+  // drawCostTagAt() sotto accettano entrambi, normalizzati qui in un unico
+  // formato in modo che il resto del codice non debba mai distinguere i due
+  // casi. [Nuova funzionalita', richiesta dall'autore: "anche su questi
+  // cartellini sostituiamo mon/oil/ele con l'icona, come nei pannelli
+  // banca/scambi"]
+  function normalizeTag(tag) {
+    return Array.isArray(tag) ? tag : [{ text: tag }];
+  }
+  /** Larghezza della pillola per un dato tag — condivisa fra drawCostTagAt()
    * sotto (che ne ha bisogno per centrare/posizionare il quad) e i chiamanti
    * che devono clampare la posizione DENTRO lo schermo PRIMA di disegnare
    * (drawMenuTag() piu' sotto): un solo posto che decide la formula, mai
    * due calcoli che potrebbero disallinearsi. [Bug corretto, segnalato
    * dall'autore insieme a quello analogo di drawIconLine()] Usava una stima
    * a carattere fisso (`text.length * 9.2 + TAG_PAD`, tarata a occhio) — ora
-   * htmlTextWidth() (sopra) per la larghezza VERA del testo che
-   * drawHtmlText() renderizza, cosi' la pillola non e' mai ne' troppo larga
-   * (spazio vuoto ai lati) ne' cosi' stretta da far scattare l'ellissi su
-   * testi piu' lunghi della norma.
+   * layoutIconParts()/htmlTextWidth() (sopra) per la larghezza VERA del
+   * contenuto che drawCostTagAt() renderizza davvero, cosi' la pillola non
+   * e' mai ne' troppo larga (spazio vuoto ai lati) ne' cosi' stretta da far
+   * scattare l'ellissi su testi piu' lunghi della norma.
    */
-  function tagWidth(text) {
-    return Math.round(htmlTextWidth(text, TAG_TEXT_SIZE) + TAG_PAD);
+  function tagWidth(tag) {
+    const { total } = layoutIconParts(normalizeTag(tag), TAG_TEXT_SIZE, TAG_GAP);
+    return Math.round(total + TAG_PAD);
   }
   /** Nucleo comune di drawCostTagScreen()/drawCostTagWorld() sotto: `pillX,
    * pillY` e' il centro-alto della pillola nello spazio in cui `r` sta gia'
-   * disegnando in questo momento (mondo o schermo — la pillola e' un quad
-   * come un altro, segue la proiezione ATTIVA); `textX,textY` e' lo STESSO
-   * punto ma sempre in pixel schermo veri, perche' drawHtmlText() e' un
-   * overlay DOM che non sa nulla della matrice camera.
+   * disegnando in questo momento (mondo o schermo — la pillola E le
+   * eventuali iconcine sono quad come un altro, seguono la proiezione
+   * ATTIVA); `textX,textY` e' lo STESSO punto ma sempre in pixel schermo
+   * veri, perche' drawHtmlText() e' un overlay DOM che non sa nulla della
+   * matrice camera. Il tag e' centrato due volte con lo stesso identico
+   * `total` (layoutIconParts()): una volta nello spazio del quad (icone +
+   * pillola), una nello spazio schermo (testo) — corrispondono perche' in
+   * questo motore un'unita' mondo e un pixel schermo sono sempre la stessa
+   * cosa (nessuno zoom camera, STUDIO.md).
    * `alpha` (default 1, per la dissolvenza dei cartellini "a tap" — build
    * menu/upgrade edificio, sotto): drawHtmlText() non ha un parametro
    * alpha proprio (`color`, sempre opaco altrove — nessun altro testo HTML
    * di questo motore sfuma mai), quindi qui si compone un `rgba(...)`
    * esplicito da `textRgb` invece di passare una stringa CSS gia' pronta
    * come fa ogni altro chiamante di drawHtmlText(): l'unico punto che deve
-   * sapere fondere colore e trasparenza in un'unica stringa. */
-  function drawCostTagAt(text, pillX, pillY, textX, textY, { tint = 0x000000, textRgb = [255, 255, 255], alpha = 1 } = {}) {
-    const w = tagWidth(text);
+   * sapere fondere colore e trasparenza in un'unica stringa.
+   * [Bug corretto: le iconcine (resourceIconFrame(), sopra) sono sagome
+   * NERE su trasparente — pensate per un fondo chiaro come i pannelli
+   * banca/scambi (drawIconLine()). Questa pillola invece e' nera con testo
+   * bianco (`textRgb`): disegnata con l'RGB proprio della texture (nero)
+   * finiva nera su nero, invisibile. `r.setColorize(true)` (gl.js) sostituisce
+   * l'RGB della texture con la tinta passata usando solo l'alpha come
+   * sagoma — lo stesso trucco gia' usato per sbiancare le icone della barra
+   * risorse di notte (`iconsDark` piu' sotto) — qui tinta con lo stesso
+   * `textRgb` del testo, cosi' icona e numero restano dello stesso colore
+   * qualunque esso sia.] */
+  function drawCostTagAt(tag, pillX, pillY, textX, textY, { tint = 0x000000, textRgb = [255, 255, 255], alpha = 1 } = {}) {
+    const { resolved, total } = layoutIconParts(normalizeTag(tag), TAG_TEXT_SIZE, TAG_GAP);
     const h = TAG_PILL_H;
+    const w = Math.round(total + TAG_PAD);
     r.draw(tagPillFrame(w, h), pillX - w / 2, pillY, 1, tint, alpha);
     const [tr, tg, tb] = textRgb;
-    drawHtmlText(text, textX, textY + h / 2, { size: TAG_TEXT_SIZE, color: `rgba(${tr},${tg},${tb},${alpha})`, maxWidth: w - 10 });
+    const iconTint = (tr << 16) | (tg << 8) | tb;
+    const hasIcon = resolved.some((p) => p.frame);
+    if (hasIcon) r.setColorize(true);
+    let px = pillX - total / 2, tx = textX - total / 2;
+    for (const p of resolved) {
+      if (p.frame) r.draw(p.frame, px, pillY + (h - p.iconH) / 2, p.scale, iconTint, alpha);
+      else drawHtmlText(p.text, tx, textY + h / 2, { size: TAG_TEXT_SIZE, align: "left", color: `rgba(${tr},${tg},${tb},${alpha})` });
+      px += p.w + TAG_GAP;
+      tx += p.w + TAG_GAP;
+    }
+    if (hasIcon) r.setColorize(false);
   }
   /** Cartellino in spazio SCHERMO (menu costruzioni, riga scorrevole
    * desktop): `topCenterX,topCenterY` sono gia' pixel schermo, nessuna
    * conversione. */
-  function drawCostTagScreen(text, topCenterX, topCenterY, opts) {
-    drawCostTagAt(text, topCenterX, topCenterY, topCenterX, topCenterY, opts);
+  function drawCostTagScreen(tag, topCenterX, topCenterY, opts) {
+    drawCostTagAt(tag, topCenterX, topCenterY, topCenterX, topCenterY, opts);
   }
   /** Cartellino ancorato a un punto del MONDO (popup ruspa, cartellino
    * upgrade sull'edificio, lotti-rudere del tutorial): la pillola segue la
    * camera come ogni altro sprite di mondo, il testo (DOM, sempre schermo)
    * usa cam.worldToScreen() sullo stesso punto. */
-  function drawCostTagWorld(text, wx, wy, opts) {
+  function drawCostTagWorld(tag, wx, wy, opts) {
     const s = cam.worldToScreen(wx, wy);
-    drawCostTagAt(text, wx, wy, s.x, s.y, opts);
+    drawCostTagAt(tag, wx, wy, s.x, s.y, opts);
   }
-  /** Testo di un costo (mon/oil/ele...) — stessa formattazione gia' usata
-   * da tryStartUpgrade()/drawTradePanel() per un rifiuto/scambio multi-
-   * risorsa ("need 2000 mon, 500 oil"), qui senza il "need": un cartellino
-   * mostra il prezzo, non un rifiuto. `null`/`undefined` (nessun costo
+  /** Pezzi testo/icona di un costo (mon/oil/ele...), stesso formato di
+   * drawIconLine() sopra — un cartellino mostra il prezzo con l'icona vera
+   * della risorsa ("500 [icona]") invece della sigla testuale ("500 mon"),
+   * come nei pannelli banca/scambi. `null`/`undefined` (nessun costo
    * applicabile: es. un tipo non ancora ricostruito, o un livello di
    * potenziamento che non esiste) restano "niente cartellino", come il
    * vecchio costTagSprite() — un oggetto vuoto (`{}`, es. `placeCost`
@@ -4088,12 +4142,22 @@ export async function mountMatch(ctx, params = {}) {
    * qualunque costo che non fosse SOLO `mon`) funziona per qualunque
    * combinazione di risorse: nessun caso speciale per chies (prima
    * l'unico tipo con due sprite dedicati, "c12aa"/"c23aa", per il suo
-   * costo doppio mon+oil).
+   * costo doppio mon+oil). Una risorsa senza icona nota (RESOURCE_ICON_X,
+   * sopra) resta testo puro ("500 xyz"): non puo' capitare oggi (mon/oil/
+   * ele coprono ogni chiave di costo del gioco) ma degrada senza rompersi
+   * se in futuro se ne aggiungesse una nuova.
    */
-  function costText(cost) {
+  function costParts(cost) {
     if (!cost) return null;
     const entries = Object.entries(cost);
-    return entries.length ? entries.map(([k, v]) => `${v} ${k}`).join(", ") : "It's free!";
+    if (!entries.length) return [{ text: "It's free!" }];
+    const parts = [];
+    entries.forEach(([k, v], i) => {
+      if (i > 0) parts.push({ text: ", " });
+      if (RESOURCE_ICON_X[k]) parts.push({ text: `${v} ` }, { icon: k });
+      else parts.push({ text: `${v} ${k}` });
+    });
+    return parts;
   }
 
   /**
@@ -4572,7 +4636,7 @@ export async function mountMatch(ctx, params = {}) {
    * "altri sprite da vettorializzare?"]** quei due sprite dedicati non
    * servono piu': drawCostTagScreen()/drawCostTagWorld() (sopra) disegnano
    * questo stesso testo su una pillola procedurale. Stesso posto/occasione
-   * del cartellino prezzo vero (`costText()`, sopra) quando il bottone e'
+   * del cartellino prezzo vero (`costParts()`, sopra) quando il bottone e'
    * gia' sbloccato — vedi il commento su come i due si alternano piu' sotto
    * (drawUiRow()/drawBuildMenuOverlay()). `null` per `parco` (`pu7`, sotto
    * un flag diverso da `chies` — `unlocinque`, mai portato qui, STUDIO.md:
@@ -6739,13 +6803,13 @@ export async function mountMatch(ctx, params = {}) {
       if (upicoFrame) for (const b of buildings) {
         if (b.construction || !upgradeUnlocked(b, r12, buildings)) continue;
         if (!inFrameRect(hw.x, hw.y, b.x, b.y, upicoFrame)) continue;
-        const text = costText(nextUpgrade(b)?.cost);
-        if (text) {
+        const tag = costParts(nextUpgrade(b)?.cost);
+        if (tag) {
           // [C] upsign12/Mouse_MouseEnter.gml: offset -50 dal segnale — qui
           // dal bordo superiore vero dell'icona "upico" (`upicoFrame.oy`,
           // l'origine e' quasi in basso al centro), non da un numero fisso
           // scollegato dalla sua altezza reale.
-          drawCostTagWorld(text, b.x, b.y - upicoFrame.oy - 15);
+          drawCostTagWorld(tag, b.x, b.y - upicoFrame.oy - 15);
         }
         break;
       }
@@ -6762,8 +6826,8 @@ export async function mountMatch(ctx, params = {}) {
       for (const it of frameList) {
         if (!FARO_SIGN_OBJS.has(it.obj) || !it._f) continue;
         if (!inFrameRect(hw.x, hw.y, it.x, it.y, it._f)) continue;
-        const text = costText(FARO_SIGN_COST[it.obj]);
-        if (text) drawCostTagWorld(text, it.x, it.y - it._f.oy - 15);
+        const tag = costParts(FARO_SIGN_COST[it.obj]);
+        if (tag) drawCostTagWorld(tag, it.x, it.y - it._f.oy - 15);
         break;
       }
     }
@@ -6787,10 +6851,10 @@ export async function mountMatch(ctx, params = {}) {
         upgradeTagBuildingId = null;
       } else if (!b.construction && upgradeUnlocked(b, r12, buildings)) {
         const upicoFrame = frameFor("upico");
-        const text = upicoFrame && costText(nextUpgrade(b)?.cost);
-        if (text) {
+        const tag = upicoFrame && costParts(nextUpgrade(b)?.cost);
+        if (tag) {
           const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
-          drawCostTagWorld(text, b.x, b.y - upicoFrame.oy - 15, { alpha });
+          drawCostTagWorld(tag, b.x, b.y - upicoFrame.oy - 15, { alpha });
         }
       }
     }
@@ -6799,7 +6863,7 @@ export async function mountMatch(ctx, params = {}) {
     // Mouse_MouseEnter.gml: `action_create_object(cc500|cc2000, 0, -50)`.
     if (tutorialState) for (const lot of ruinLots) {
       if (!lot._hovered) continue;
-      drawCostTagWorld(costText({ mon: lot.cost }), lot.x, lot.y - 50);
+      drawCostTagWorld(costParts({ mon: lot.cost }), lot.x, lot.y - 50);
       break;
     }
     // Testo "Yes!"/"No" dei due bottoni conferma ruspa (dynamic.push({obj:
@@ -6816,7 +6880,7 @@ export async function mountMatch(ctx, params = {}) {
         drawHtmlText("No", s1.x, s1.y, { size: 17, color: "#ffffff" });
         const s2 = cam.worldToScreen(yesX + (RUSPA_BTN_W * UI_SCALE) / 2, yesY + (RUSPA_BTN_H * UI_SCALE) / 2);
         drawHtmlText("Yes!", s2.x, s2.y, { size: 17, color: "#ffffff" });
-        drawCostTagWorld(costText({ mon: ruspaPending.cost }), b.x + 157 * UI_SCALE, b.y - 185 * UI_SCALE);
+        drawCostTagWorld(costParts({ mon: ruspaPending.cost }), b.x + 157 * UI_SCALE, b.y - 185 * UI_SCALE);
       }
     }
     drawBeams();
@@ -7430,9 +7494,9 @@ export async function mountMatch(ctx, params = {}) {
         && input.hover.x >= btn.x && input.hover.x <= btn.x + btn.w
         && input.hover.y >= btn.y && input.hover.y <= btn.y + btn.h);
       const locked = hb && buildingLocked(hb.type);
-      const text = hb && (locked ? unlockTagText(hb.type) : costText(BUILDING_TYPES[hb.type]?.placeCost));
-      if (text) {
-        drawCostTagScreen(text, hb.x + hb.w / 2, hb.y - 8);
+      const tag = hb && (locked ? unlockTagText(hb.type) : costParts(BUILDING_TYPES[hb.type]?.placeCost));
+      if (tag) {
+        drawCostTagScreen(tag, hb.x + hb.w / 2, hb.y - 8);
       }
     }
 
