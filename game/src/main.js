@@ -405,26 +405,45 @@ export async function mountMatch(ctx, params = {}) {
     if (!bounds || !full) return null;
     return subFrameRight(subFrameLeft(full, bounds[1]), bounds[0]);
   }
+  // Larghezza vera di un testo HTML (drawIconLine() sotto ne ha bisogno per
+  // mettere in fila testo/icone senza sovrapposizioni ne' buchi): un
+  // `canvas.measureText()` su un canvas 2D fuori dal DOM, non un
+  // `getBoundingClientRect()` su un elemento vero — costa quanto una
+  // chiamata Canvas2D, non un reflow di pagina, e a differenza della stima a
+  // carattere fisso di tagWidth() (TAG_CHAR_W qui sopra, tarata per il solo
+  // uso "pillola arrotondata") resta esatta qualunque sia il mix di lettere/
+  // cifre. Stesso font/peso di `.gameText` (index.html): se differisse la
+  // misura non corrisponderebbe al testo che drawHtmlText() renderizza
+  // davvero. Cache per stringa+taglia: le righe di banca/scambi ripetono
+  // sempre le stesse poche combinazioni frame dopo frame.
+  const measureCtx = document.createElement("canvas").getContext("2d");
+  const textWidthCache = new Map();
+  function htmlTextWidth(text, size) {
+    const key = size + "|" + text;
+    let w = textWidthCache.get(key);
+    if (w === undefined) {
+      measureCtx.font = `700 ${size}px Montserrat, sans-serif`;
+      w = measureCtx.measureText(text).width;
+      textWidthCache.set(key, w);
+    }
+    return w;
+  }
   /** Riga centrata che alterna testo HTML vero (drawHtmlText()) e iconcine
    * WebGL (resourceIconFrame() sopra) — usata da drawBankPanel()/
    * drawTradePanel() per disegnare "500 [icona] in 3 years" invece di "500
-   * mon in 3 years". Nessuna misura DOM reale (costerebbe un reflow per
-   * frame): ogni pezzo di testo usa la stessa stima a carattere fisso di
-   * tagWidth() qui sopra (TAG_CHAR_W, calibrata sullo stesso Montserrat
-   * grassetto di ogni drawHtmlText(), .gameText in index.html) scalata alla
-   * taglia richiesta — l'insieme puo' risultare leggermente fuori centro per
-   * stringhe lunghe, stesso compromesso gia' accettato la' per le pillole di
-   * costo.
+   * mon in 3 years". Ogni pezzo di testo usa htmlTextWidth() sopra (non la
+   * stima a carattere fisso di tagWidth(): con due icone per riga come nel
+   * pannello scambi un piccolo errore per pezzo si accumulava pezzo dopo
+   * pezzo, spingendo la seconda icona sempre piu' a destra del previsto).
    */
-  function drawIconLine(parts, cx, cy, { size = 16, iconH = size * 1.35, gap = 4 } = {}) {
-    const charW = (TAG_CHAR_W / TAG_TEXT_SIZE) * size;
+  function drawIconLine(parts, cx, cy, { size = 16, iconH = size * 1.35, gap = 6 } = {}) {
     const resolved = parts.map((p) => {
       if (p.icon) {
         const frame = resourceIconFrame(p.icon);
         const scale = frame ? iconH / frame.h : 0;
         return { frame, scale, w: frame ? frame.w * scale : 0 };
       }
-      return { text: p.text, w: p.text.length * charW };
+      return { text: p.text, w: htmlTextWidth(p.text, size) };
     });
     const total = resolved.reduce((sum, p) => sum + p.w, 0) + gap * (resolved.length - 1);
     let x = cx - total / 2;
