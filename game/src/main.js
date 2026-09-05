@@ -386,6 +386,54 @@ export async function mountMatch(ctx, params = {}) {
     const frac = pxFromLeft / f.w;
     return { tex: f.tex, v0: f.v0, v1: f.v1, u0: f.u0 + (f.u1 - f.u0) * frac, u1: f.u1, w: f.w - pxFromLeft, h: f.h, ox: 0, oy: 0 };
   }
+  // [Nuova funzionalita', richiesta dall'autore: "nei pannelli della banca
+  // sostituiamo la sigla testuale delle risorse con l'iconcina, come nella
+  // barra in alto"] `icone_oriz` cuoce le quattro icone (persona/pompa di
+  // benzina/fulmine/monete) in un'unica immagine, senza un frame a parte per
+  // "solo l'icona dei soldi" (vedi il commento su barRowFrame piu' sotto) —
+  // bordi qui misurati a mano sulla texture sorgente originale
+  // (assets/textures/page_002.png, frame a x=546,y=1994 secondo
+  // data/sprites.json): il pittogramma del petrolio (pompa di benzina) cade
+  // su [90,126), quello dell'energia (fulmine) su [195,211), quello dei
+  // soldi (pila di monete) su [287,323), tutti alti quanto l'intera striscia
+  // (36px). Solo le tre risorse scambiabili in TRADES/LOANS (state.js) hanno
+  // una voce qui: la popolazione non compare mai in un costo.
+  const RESOURCE_ICON_X = { oil: [90, 126], ele: [195, 211], mon: [287, 323] };
+  function resourceIconFrame(kind) {
+    const bounds = RESOURCE_ICON_X[kind];
+    const full = frameFor("icone_oriz");
+    if (!bounds || !full) return null;
+    return subFrameRight(subFrameLeft(full, bounds[1]), bounds[0]);
+  }
+  /** Riga centrata che alterna testo HTML vero (drawHtmlText()) e iconcine
+   * WebGL (resourceIconFrame() sopra) — usata da drawBankPanel()/
+   * drawTradePanel() per disegnare "500 [icona] in 3 years" invece di "500
+   * mon in 3 years". Nessuna misura DOM reale (costerebbe un reflow per
+   * frame): ogni pezzo di testo usa la stessa stima a carattere fisso di
+   * tagWidth() qui sopra (TAG_CHAR_W, calibrata sullo stesso Montserrat
+   * grassetto di ogni drawHtmlText(), .gameText in index.html) scalata alla
+   * taglia richiesta — l'insieme puo' risultare leggermente fuori centro per
+   * stringhe lunghe, stesso compromesso gia' accettato la' per le pillole di
+   * costo.
+   */
+  function drawIconLine(parts, cx, cy, { size = 16, iconH = size * 1.35, gap = 4 } = {}) {
+    const charW = (TAG_CHAR_W / TAG_TEXT_SIZE) * size;
+    const resolved = parts.map((p) => {
+      if (p.icon) {
+        const frame = resourceIconFrame(p.icon);
+        const scale = frame ? iconH / frame.h : 0;
+        return { frame, scale, w: frame ? frame.w * scale : 0 };
+      }
+      return { text: p.text, w: p.text.length * charW };
+    });
+    const total = resolved.reduce((sum, p) => sum + p.w, 0) + gap * (resolved.length - 1);
+    let x = cx - total / 2;
+    for (const p of resolved) {
+      if (p.frame) r.draw(p.frame, x, cy - iconH / 2, p.scale, 0xffffff, 1);
+      else if (p.text) drawHtmlText(p.text, x, cy, { size, align: "left" });
+      x += p.w + gap;
+    }
+  }
   // [Bug corretto, segnalato dall'autore: "l'area di tap delle strutture di
   // difesa deve coprire tutto l'oggetto (un rettangolo grande come tutte le
   // coordinate dello sprite)"] Il tap sulle torrette (missile/gatling/laser)
@@ -3388,7 +3436,8 @@ export async function mountMatch(ctx, params = {}) {
     for (let i = 0; i < LOANS.length; i++) {
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, ty, 1, BUTTON_TINT, BUTTON_ALPHA);
-      drawHtmlText(`${LOANS[i].amount} mon in ${years} years`, bx + btnW / 2, ty + btnH / 2, { size: 16, maxWidth: btnW - 20 });
+      drawIconLine([{ text: `${LOANS[i].amount} ` }, { icon: "mon" }, { text: ` in ${years} years` }],
+        bx + btnW / 2, ty + btnH / 2, { size: 16 });
       bankButtons.push({ x: bx, y: ty, w: btnW, h: btnH, index: i });
       ty += btnH + btnGap;
     }
@@ -3401,11 +3450,15 @@ export async function mountMatch(ctx, params = {}) {
    * sprite decompilati "tradescr"/"get1..4" erano lo stesso genere di
    * spreco — vedi il commento li'), niente titolo/nota da leggere da una
    * texture: "TRADE RESOURCES" e le quattro righe scambio sono generate
-   * direttamente da `TRADES` (state.js) — `${t.takeAmount} ${t.take} for
-   * ${t.giveAmount} ${t.give}`, le stesse sigle risorsa gia' usate da ogni
-   * altro messaggio del gioco ("need X mon", "insufficient energy" — mai
-   * un'icona dedicata, coerente con quello stile invece che con le
-   * iconcine cotte nel vecchio "get1..4").
+   * direttamente da `TRADES` (state.js). [Nuova funzionalita', richiesta
+   * dall'autore: "sostituiamo la sigla testuale delle risorse con
+   * l'iconcina, come nella barra in alto"] Non piu' `${t.takeAmount}
+   * ${t.take} for ${t.giveAmount} ${t.give}` (la sigla testuale usata da
+   * ogni altro messaggio del gioco, "need X mon"/"insufficient energy" —
+   * quella resta invariata altrove): qui `drawIconLine()` (sopra) intercala
+   * il pittogramma vero di `t.take`/`t.give` al testo, come le iconcine
+   * cotte nel vecchio "get1..4" ma ricavate da `icone_oriz` invece che da
+   * uno sprite dedicato.
    */
   function drawTradePanel() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
@@ -3430,7 +3483,10 @@ export async function mountMatch(ctx, params = {}) {
       const t = TRADES[i];
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, ty, 1, BUTTON_TINT, BUTTON_ALPHA);
-      drawHtmlText(`Get ${t.takeAmount} ${t.take} for ${t.giveAmount} ${t.give}`, bx + btnW / 2, ty + btnH / 2, { size: 15, maxWidth: btnW - 20 });
+      drawIconLine([
+        { text: `Get ${t.takeAmount} ` }, { icon: t.take },
+        { text: ` for ${t.giveAmount} ` }, { icon: t.give },
+      ], bx + btnW / 2, ty + btnH / 2, { size: 15 });
       tradeButtons.push({ x: bx, y: ty, w: btnW, h: btnH, index: i });
       ty += btnH + btnGap;
     }
