@@ -21,6 +21,7 @@ import { Renderer, makeSolidTexture, PauseBlur } from "./gl.js";
 import { Input } from "./input.js";
 import { evictUnneededRoomAtlases, atlasKeyFor } from "./assets.js";
 import { RenderScale } from "./renderscale.js";
+import { t } from "./i18n.js";
 
 const canvas = document.getElementById("view");
 const loading = document.getElementById("loading");
@@ -64,10 +65,10 @@ if (r.isSoftwareRendering) {
     "background:rgba(120,20,20,0.92);color:#fff;padding:10px 40px 10px 14px;" +
     "font:13px/1.4 system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;" +
     "text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.3);";
-  banner.textContent = "Hardware acceleration unavailable on this device/browser — performance may be very limited. Try updating your browser or switching to Chrome.";
+  banner.textContent = t("hwWarning.text");
   const dismiss = document.createElement("button");
   dismiss.textContent = "×";
-  dismiss.setAttribute("aria-label", "Dismiss");
+  dismiss.setAttribute("aria-label", t("hwWarning.dismiss"));
   dismiss.style.cssText = "position:absolute;right:8px;top:50%;transform:translateY(-50%);" +
     "background:none;border:none;color:#fff;font-size:20px;line-height:1;cursor:pointer;padding:4px 8px;";
   dismiss.addEventListener("click", () => banner.remove());
@@ -137,9 +138,8 @@ function hideLoading() {
 const progressFills = [loading, levelLoading].map((el) => el.querySelector(".fill"));
 const progressPcts = [loading, levelLoading].map((el) => el.querySelector(".progressPct"));
 const progressLabels = [loading, levelLoading].map((el) => el.querySelector(".progressLabel"));
-const DEFAULT_PROGRESS_LABEL = "loading";
 function resetProgress() {
-  setLoadingProgressUI(0, DEFAULT_PROGRESS_LABEL);
+  setLoadingProgressUI(0, t("loading.default"));
 }
 function setLoadingProgressUI(frac, label) {
   const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
@@ -147,7 +147,7 @@ function setLoadingProgressUI(frac, label) {
   for (const pctEl of progressPcts) pctEl.textContent = pct + "%";
   for (const labelEl of progressLabels) labelEl.textContent = label;
 }
-function reportProgress(key, loaded, total, label = DEFAULT_PROGRESS_LABEL) {
+function reportProgress(key, loaded, total, label = t("loading.default")) {
   setLoadingProgressUI(total > 0 ? loaded / total : 0, label);
 }
 

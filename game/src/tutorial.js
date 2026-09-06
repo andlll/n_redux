@@ -50,8 +50,16 @@
 // niente fase vuota — un dettaglio cosmetico, non l'esito finale (comunque
 // "il prossimo messaggio ad ogni tocco").
 import { spawnThreat } from "./threats.js";
+import { getLang } from "./i18n.js";
 
-export const TUTORIAL_TEXTS = [
+// Un array per lingua, stesso ordine/lunghezza (35 fasi, vedi il commento
+// storico sopra): stepTutorialAuto()/HIDE_ADVANCE_BUTTON sotto indicizzano
+// per NUMERO di fase, mai per testo, quindi le due lingue possono vivere
+// fianco a fianco senza toccare nessun'altra logica di avanzamento —
+// tutorialText() sotto sceglie l'array giusto in base a getLang() (i18n.js),
+// riletta ad ogni frame da main.js: un cambio lingua dal menu di pausa si
+// vede gia' al balloon successivo, anche a tutorial in corso.
+const TUTORIAL_TEXTS_EN = [
   "Damn! It looks like they destroyed half of the city! As new mayor you must rebuild it before they come back!",
   "First off, you should demolish those ruins, so that we can build new houses there.",
   "Select the scraper shaped button then click on the ruins to delete them!",
@@ -88,6 +96,51 @@ export const TUTORIAL_TEXTS = [
   "You can also use the right mouse button to move the view and the mouse wheel for the zoom controls! On mobile, swipe with your finger to move the view of the map.",
   "Well, it looks like you know how to know how to move around now! Good luck with your own NIMBUS platform!",
 ];
+
+const TUTORIAL_TEXTS_IT = [
+  "Accidenti! Sembra che abbiano distrutto metà della città! Come nuovo sindaco devi ricostruirla prima che tornino!",
+  "Per prima cosa, dovresti demolire quelle rovine, così potremo costruirci nuove case.",
+  "Seleziona il bottone a forma di ruspa, poi clicca sulle rovine per eliminarle!",
+  "Quando stai per eliminare una rovina, il costo dell'operazione appare sopra di essa!",
+  "Costruire e demolire costano denaro, ovviamente. Devi anche pagare le impalcature finché l'operazione è in corso!",
+  "Raccogliamo denaro tassando i cittadini. Puoi riscuotere le tasse passando il mouse sopra quelle iconcine blu!",
+  "Quando riscuoti le tasse vedi salire la quantità di denaro. La barra in alto mostra in generale la quantità di risorse che possiedi.",
+  "La barra in basso invece è la Barra delle Azioni. Usa il bottone a forma di mano per selezionare gli strumenti",
+  "Il bottone accanto è il bottone Costruisci. Selezionalo e poi scegli il bottone della casa, il primo!",
+  "Ora costruisci cinque case in cinque lotti vuoti! Dobbiamo far crescere la popolazione in questi tempi di guerra!",
+  "Non appena una casa è completata la popolazione cresce subito, ma anche il consumo di energia! La popolazione delle case continua a crescere nel tempo",
+  "Per fornire energia alla città costruiamo delle industrie. Se l'energia scende sotto zero, i nostri cittadini smetteranno di pagare le tasse!",
+  "Ora costruisci un'industria in un lotto vuoto! Ricorda che il consumo di energia dipende dalla popolazione, quindi continuerà a crescere",
+  "Dobbiamo anche garantire loro un po' di aria pulita e svago, e per farlo puoi costruire dei parchi",
+  "Nota che più crescono popolazione e industrie, più avranno bisogno di parchi!",
+  "Nota anche che di notte gli edifici consumano molta più energia!",
+  "Ora costruisci un parco in un lotto vuoto. Ricorda che i parchi sono economici e veloci da costruire ma molto costosi da mantenere!",
+  "Se hai abbastanza parchi vedrai una faccina felice accanto al conteggio delle risorse, altrimenti sì, smetteranno di pagare le tasse!",
+  "La difesa della città è un altro punto cruciale. Come puoi vedere usiamo artiglieria pesante per tenere al sicuro la città!",
+  "Costruisci un lanciamissili in un lotto vuoto. Ricorda che non puoi costruirli troppo vicini tra loro, sarebbe troppo pericoloso!",
+  "Usiamo le armi anche per sottrarre risorse al nemico, che le trasporta in quelle enormi mongolfiere che vedi volare sopra di noi!",
+  "Consiglio: seleziona lo strumento mano, poi tieni premuto su un'arma per aprire il suo pannello e attivare l'Autodifesa, così abbatterà da sola mongolfiere spia e aerei (piccolo costo al minuto)!",
+  "Consiglio: funziona su qualsiasi edificio, non solo sulle armi! Con lo strumento mano selezionato, tieni premuto su un edificio per vedere il suo pannello statistiche.",
+  "Sì, so cosa stai pensando, e sì, NIMBUS è cresciuta rubando petrolio a nazioni straniere, ma cosa ci vuoi fare?",
+  "Quando una mongolfiera si avvicina, clicca sull'arma più vicina per distruggerla, poi raccogli in fretta la risorsa che cade dal cielo!",
+  "Le mongolfiere verdi sono quelle che trasportano petrolio. Sono le più comuni!",
+  "Le industrie e i motori della città bruciano petrolio per funzionare. Più la città pesa, più consuma petrolio!",
+  "Quindi ricorda di non costruire cose inutili o troppe industrie, o la città cadrà al suolo!",
+  "Le mongolfiere gialle trasportano batterie per l'energia e quelle blu depositi di denaro.",
+  "Le mongolfiere rosse sono inviate dal nemico per spiarci, quindi devi assolutamente distruggerle!",
+  "Se non lo fai chiameranno rinforzi e subirai un attacco come quello che hai visto prima!",
+  "Credo che non si fermeranno finché non costruiremo qualcosa di enorme per dimostrargli che questo posto è nostro!",
+  "Col tempo la tua città diventerà più grande e sarà difficile controllarla tutta con un'occhiata!",
+  "Puoi anche usare il tasto destro del mouse per spostare la visuale e la rotellina per lo zoom! Su mobile, scorri con il dito per muovere la visuale della mappa.",
+  "Bene, sembra che ora tu sappia come muoverti! Buona fortuna con la tua piattaforma NIMBUS!",
+];
+
+export const TUTORIAL_TEXTS = TUTORIAL_TEXTS_EN;   // lunghezza (LAST_PHASE sotto): identica nelle due lingue
+
+export function tutorialText(phase) {
+  const arr = getLang() === "it" ? TUTORIAL_TEXTS_IT : TUTORIAL_TEXTS_EN;
+  return arr[phase] ?? "";
+}
 
 // [C] freccia_tutorial/EndStep.gml: la tabella fase -> bersaglio del
 // decompilato punta a coordinate fisse del layout GameMaker originale, gia'

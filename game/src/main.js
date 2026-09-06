@@ -31,8 +31,9 @@ import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmok
 import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
-  TUTORIAL_TEXTS, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN, seaScrollOffset,
+  tutorialText, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN, seaScrollOffset,
 } from "./tutorial.js";
+import { t, toggleLang, getLang, buildingLabel } from "./i18n.js";
 
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
 // export mountMatch(ctx, params) invece di uno script a livello di modulo —
@@ -241,7 +242,7 @@ export async function mountMatch(ctx, params = {}) {
   // resto (scene.json, la logica di gioco sotto), solo la cache/il fetch
   // dell'atlas passano dalla chiave condivisa.
   const { atlas, pageTex } = await loadRoomAtlas(gl, atlasKeyFor(roomName), {
-    onProgress: (loaded, total) => reportProgress(roomName, loaded, total, "loading city"),
+    onProgress: (loaded, total) => reportProgress(roomName, loaded, total, t("loading.city")),
   });
   // Icona del bottone di pausa (drawPauseButton() sotto) — fornita
   // dall'autore come PNG a parte (game/pause-button.png, committato accanto
@@ -609,7 +610,7 @@ export async function mountMatch(ctx, params = {}) {
   // [C] repre/DrawGUI.gml: dodici `action_draw_text` letterali, uno per ogni
   // valore di `repre.mon` (il mese, 1..12 — state.js, r12.month) — mai una
   // tabella nel decompilato, ricostruita qui come tale.
-  const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthName = (n) => t(`month.${n}`);
 
   // -------------------------------------------------------- piazzabili e edifici
   // I `placeholder` della room sono "gli spazi vuoti dove il giocatore piazza
@@ -1676,7 +1677,7 @@ export async function mountMatch(ctx, params = {}) {
     // sono disponibili da subito anche se le espansioni non sono state
     // costruite").
     if (!isPlaceholderActive(placeholder.x, placeholder.y, platformState)) {
-      return "this area isn't part of the platform yet";
+      return t("msg.notPartOfPlatform");
     }
     // [C] placeholder/Mouse_LeftReleased.gml, selec==3: il piazzamento vero e
     // proprio richiede anche `close==0` (nessun'altra torretta troppo vicina,
@@ -1684,7 +1685,7 @@ export async function mountMatch(ctx, params = {}) {
     // del costo, come nel decompilato (il blocco intero e' innestato dentro
     // quel controllo, non dopo aver gia' scalato i mon).
     if (def.turret && tooCloseToTurret(buildings, placeholder.x, placeholder.y)) {
-      return "too close to another defense turret";
+      return t("msg.tooCloseToTurret");
     }
     // [C] placeholder/Mouse_LeftReleased.gml, ramo selec==71 (monum): scala
     // 20000 mon senza controllare prima `mon>=20000`, a differenza di OGNI
@@ -1692,7 +1693,7 @@ export async function mountMatch(ctx, params = {}) {
     // questa asimmetria (buildings.js, BUILDING_TYPES.monum) invece di
     // "correggerla" silenziosamente: puo' davvero portare mon sotto zero.
     if (!def.noAffordCheck && !canAfford(r12, def.placeCost)) {
-      return `need ${def.placeCost.mon} mon (have ${r12.mon.toFixed(0)})`;
+      return t("msg.needMonHave", { cost: def.placeCost.mon, have: r12.mon.toFixed(0) });
     }
     // `eolico`/`grattacielo` (def.multiTile.anchorOffset): il centro visivo
     // e' il placeholder TOCCATO piu' l'offset FISSO letto dal decompilato
@@ -1710,7 +1711,7 @@ export async function mountMatch(ctx, params = {}) {
     let cluster = [placeholder];
     if (def.multiTile) {
       cluster = findWindCluster(placeholder);
-      if (!cluster) return `need a free area of ${def.multiTile.count} adjacent lots (a rectangle)`;
+      if (!cluster) return t("msg.needFreeArea", { count: def.multiTile.count });
     }
     for (const k in def.placeCost) r12[k] -= def.placeCost[k];
     // [C] `impavent`, una volta nato, uccide con la propria maschera ogni
@@ -1797,9 +1798,9 @@ export async function mountMatch(ctx, params = {}) {
     // pagando 1000 mon ogni volta — segnalato dall'autore giocando. `parco`
     // resta un solo `oversolar` booleano (nessuna lista): un secondo tocco
     // con un pannello gia' presente non deve costare ne' creare nulla.
-    if (parco.oversolar) return "there's already a solar panel on this park";
+    if (parco.oversolar) return t("msg.alreadySolarOnPark");
     const def = BUILDING_TYPES.solare;
-    if (!canAfford(r12, def.placeCost)) return `need ${def.placeCost.mon} mon (have ${r12.mon.toFixed(0)})`;
+    if (!canAfford(r12, def.placeCost)) return t("msg.needMonHave", { cost: def.placeCost.mon, have: r12.mon.toFixed(0) });
     for (const k in def.placeCost) r12[k] -= def.placeCost[k];
     const b = placeBuilding("solare", parco.x, parco.y, 0);
     b.overpark = true;
@@ -1881,17 +1882,17 @@ export async function mountMatch(ctx, params = {}) {
     // Stesso gate di placeAt() sopra (platform.js, isPlaceholderActive()): un
     // lotto non ancora su un pezzo di piattaforma esistente non arma niente.
     if (!isPlaceholderActive(origin.x, origin.y, platformState)) {
-      return "this area isn't part of the platform yet";
+      return t("msg.notPartOfPlatform");
     }
     if (!canAfford(r12, def.placeCost)) {
-      return `need ${def.placeCost.mon} mon (have ${r12.mon.toFixed(0)})`;
+      return t("msg.needMonHave", { cost: def.placeCost.mon, have: r12.mon.toFixed(0) });
     }
     const targets = findDiagonalTargets(origin);
     // [I] l'originale arma comunque (crea cre1..cre4 a vuoto) anche con zero
     // lotti liberi vicini, lasciando il giocatore trascinare per niente: qui,
     // come gia' scelto per eolico, un messaggio chiaro subito invece di un
     // gesto che puo' solo fallire.
-    if (targets.length === 0) return "need a free lot diagonally adjacent";
+    if (targets.length === 0) return t("msg.needFreeDiagonalLot");
     armedPlacement = { type, origin, targets };
     origin._armed = true;
     return null;
@@ -1928,7 +1929,7 @@ export async function mountMatch(ctx, params = {}) {
     const hit = targets.find((t) => inFrameDiamond(w.x, w.y, t.placeholder.x, t.placeholder.y, t.placeholder._f));
     if (!hit) {
       cancelPlacement();
-      message = "placement cancelled";
+      message = t("msg.placementCancelled");
       messageT = 3;
       return;
     }
@@ -1968,7 +1969,7 @@ export async function mountMatch(ctx, params = {}) {
     if (b.level >= 1) spawnDecor(b, currentDecor(b));
     constructionBalloons.push(spawnConstructionBalloon(buildSite.x, buildSite.y));
     armedPlacement = null;
-    message = `${def.label.toLowerCase()} placed (-${def.placeCost.mon} mon)`;
+    message = t("msg.built", { label: def.label, cost: def.placeCost.mon });
     messageT = 3;
   }
 
@@ -2221,22 +2222,22 @@ export async function mountMatch(ctx, params = {}) {
     // state.js `createR12()`).
     const cap = oilCap(buildings);
     const oilThreshold = Number.isFinite(cap) ? cap * 0.1 : 500;
-    if (r12.oil <= oilThreshold) return { kind: "oil", text: "oil is almost depleted" };
-    if (r12.storm) return { kind: "attack", text: "a storm is hitting the city" };
-    if (r12.alertT > 0) return { kind: "attack", text: "an attack is incoming" };
+    if (r12.oil <= oilThreshold) return { kind: "oil", text: t("msg.oilAlmostDepleted") };
+    if (r12.storm) return { kind: "attack", text: t("msg.stormHitting") };
+    if (r12.alertT > 0) return { kind: "attack", text: t("msg.attackIncoming") };
     if (chiesScene) {
       const r2 = CRITICAL_THREAT_RADIUS * CRITICAL_THREAT_RADIUS;
       const near = threats.some((th) => (th.x - chiesScene.x) ** 2 + (th.y - chiesScene.y) ** 2 < r2);
-      if (near) return { kind: "attack", text: "a threat is near the city" };
+      if (near) return { kind: "attack", text: t("msg.threatNear") };
     }
     return null;
   }
 
   function doSave() {
     const reason = criticalSaveReason();
-    if (reason) { message = "You can't save right now: " + reason.text; messageT = 3; return; }
+    if (reason) { message = t("msg.cantSaveNow", { reason: reason.text }); messageT = 3; return; }
     save(scene.name, r12, buildings, ruins, blockedSlots, platformState);
-    message = "game saved"; messageT = 3;
+    message = t("msg.gameSaved"); messageT = 3;
     showSaveIcon();
   }
   // Applica un salvataggio gia' letto/parsato (da localStorage O da file,
@@ -2320,17 +2321,17 @@ export async function mountMatch(ctx, params = {}) {
   // messaggio "a fuoco e dimentica" del motore.
   async function doSaveToFile() {
     const reason = criticalSaveReason();
-    if (reason) { message = "You can't save right now: " + reason.text; messageT = 3; return; }
+    if (reason) { message = t("msg.cantSaveNow", { reason: reason.text }); messageT = 3; return; }
     const data = serializeSave(scene.name, r12, buildings, ruins, blockedSlots, platformState);
     try {
       const h = await saveToFile(data, fileHandle);
       if (h === undefined) return;   // dialog annullato dall'utente, nessun messaggio
       if (h) fileHandle = h;
-      message = "game saved to file"; messageT = 3;
+      message = t("msg.gameSavedToFile"); messageT = 3;
       showSaveIcon();
     } catch (err) {
       console.error("nimbus: salvataggio su file fallito", err);
-      message = "save to file failed"; messageT = 3;
+      message = t("msg.saveToFileFailed"); messageT = 3;
     }
   }
   async function doLoadFromFile() {
@@ -2339,7 +2340,7 @@ export async function mountMatch(ctx, params = {}) {
       result = await loadFromFile();
     } catch (err) {
       console.error("nimbus: caricamento da file fallito", err);
-      message = "load from file failed"; messageT = 3;
+      message = t("msg.loadFromFileFailed"); messageT = 3;
       return;
     }
     if (!result) return;   // dialog annullato dall'utente, nessun messaggio
@@ -2348,7 +2349,7 @@ export async function mountMatch(ctx, params = {}) {
     // il checksum non combacia (modificato a mano, save.js/verify()). A
     // differenza del dialog annullato (sopra) qui vale la pena dirlo.
     if (result === "invalid") {
-      message = "invalid or modified file"; messageT = 3;
+      message = t("msg.invalidFile"); messageT = 3;
       return;
     }
     // Un file salvato per un'ALTRA room (es. si apre un salvataggio di
@@ -2363,7 +2364,7 @@ export async function mountMatch(ctx, params = {}) {
     if (result.handle) fileHandle = result.handle;
     applyLoadedData(result.data);
     picked = null;
-    message = "game loaded from file"; messageT = 3;
+    message = t("msg.gameLoadedFromFile"); messageT = 3;
     // Valore di ritorno (`true`/`undefined`): il chiamante dal menu di pausa
     // lo ignora (fuoco e dimentica, come sempre), ma la schermata di game
     // over (input.onTap, sotto) ne ha bisogno per sapere QUANDO chiudersi —
@@ -3128,12 +3129,13 @@ export async function mountMatch(ctx, params = {}) {
     // apre il sotto-pannello dell'autosalvataggio (drawSavingOptionsOverlay(),
     // pauseSubmenu sopra) per chi vuole spegnerlo/regolarlo.
     const rows = [
-      { label: "Resume", action: "resume" },
-      { label: "Save to file", action: "saveFile" },
-      { label: "Load from file", action: "loadFile" },
-      { label: "Saving options", action: "savingOptions" },
-      { label: "Reset game", action: "resetGame" },
-      { label: "Back to menu", action: "title" },
+      { label: t("pause.resume"), action: "resume" },
+      { label: t("pause.saveToFile"), action: "saveFile" },
+      { label: t("pause.loadFromFile"), action: "loadFile" },
+      { label: t("pause.savingOptions"), action: "savingOptions" },
+      { label: t("pause.language", { lang: getLang().toUpperCase() }), action: "toggleLang" },
+      { label: t("pause.resetGame"), action: "resetGame" },
+      { label: t("pause.backToMenu"), action: "title" },
     ];
     const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
@@ -3147,7 +3149,7 @@ export async function mountMatch(ctx, params = {}) {
     // Montserrat vero (drawHtmlText(), sopra) invece del font bitmap
     // "gotham" di prima — nitido a qualunque dimensione, niente piu'
     // scala intera/fitTextScale() da calcolare.
-    const title = "PAUSE";
+    const title = t("pause.title");
     drawHtmlText(title, px + panelW / 2, py + 34, { size: 26 });
 
     pauseMenuButtons = [];
@@ -3180,12 +3182,13 @@ export async function mountMatch(ctx, params = {}) {
     r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
+    const onOff = (v) => (v ? t("common.on") : t("common.off"));
     const rows = [
-      { label: `Autosave: ${autosave.enabled ? "ON" : "OFF"}`, action: "toggleEnabled" },
-      { label: `Interval: ${autosave.intervalMin} min`, action: "cycleInterval" },
-      { label: `Save during attacks: ${autosave.duringAttacks ? "ON" : "OFF"}`, action: "toggleAttacks" },
-      { label: `Save with low oil: ${autosave.duringLowOil ? "ON" : "OFF"}`, action: "toggleLowOil" },
-      { label: "Back", action: "back" },
+      { label: t("savingOptions.autosave", { state: onOff(autosave.enabled) }), action: "toggleEnabled" },
+      { label: t("savingOptions.interval", { min: autosave.intervalMin }), action: "cycleInterval" },
+      { label: t("savingOptions.duringAttacks", { state: onOff(autosave.duringAttacks) }), action: "toggleAttacks" },
+      { label: t("savingOptions.duringLowOil", { state: onOff(autosave.duringLowOil) }), action: "toggleLowOil" },
+      { label: t("savingOptions.back"), action: "back" },
     ];
     // 360 fisso di nuovo (com'era prima del fix su "gotham"): Montserrat,
     // proporzionale, ci sta comoda anche sulla riga piu' lunga ("Save
@@ -3196,7 +3199,7 @@ export async function mountMatch(ctx, params = {}) {
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
-    const title = "SAVING OPTIONS";
+    const title = t("savingOptions.title");
     drawHtmlText(title, px + panelW / 2, py + 38, { size: 22, maxWidth: panelW - 24 });
 
     pauseMenuButtons = [];
@@ -3227,8 +3230,8 @@ export async function mountMatch(ctx, params = {}) {
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
     const rows = [
-      { label: "Cancel", action: "cancelReset" },
-      { label: "Reset game", action: "confirmReset" },
+      { label: t("confirmReset.cancel"), action: "cancelReset" },
+      { label: t("pause.resetGame"), action: "confirmReset" },
     ];
     const panelW = Math.min(360, cw - 40);
     const warnH = 70;
@@ -3236,10 +3239,10 @@ export async function mountMatch(ctx, params = {}) {
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
-    const title = "RESET GAME";
+    const title = t("confirmReset.title");
     drawHtmlText(title, px + panelW / 2, py + 34, { size: 24 });
     drawHtmlText(
-      "This will restart the level from scratch. This action cannot be undone.",
+      t("confirmReset.warning"),
       px + 30, py + 60, { size: 14, maxWidth: panelW - 60, wrap: true },
     );
 
@@ -3302,12 +3305,9 @@ export async function mountMatch(ctx, params = {}) {
    * nuovo costo senza dover riaprire il pannello).
    */
   const AUTO_DEFENSE_LEVELS = [
-    { name: "Real threats only",
-      desc: "Automatically engages planes and airships in range. Always on, no extra cost." },
-    { name: "+ Spy patrol",
-      desc: "Also shoots down red spy balloons and recon planes on sight." },
-    { name: "Full auto",
-      desc: "Fires at anything in range — spies and resource balloons alike (loot still drops)." },
+    { get name() { return t("autoDefense.level1.name"); }, get desc() { return t("autoDefense.level1.desc"); } },
+    { get name() { return t("autoDefense.level2.name"); }, get desc() { return t("autoDefense.level2.desc"); } },
+    { get name() { return t("autoDefense.level3.name"); }, get desc() { return t("autoDefense.level3.desc"); } },
   ];
   function drawBuildingInfoPanel() {
     const b = buildingInfoPanel;
@@ -3326,8 +3326,8 @@ export async function mountMatch(ctx, params = {}) {
     // BUILDING_TYPES senza dover ricostruire nulla, buildings.js.
     const production = !b.construction ? def.production?.[b.level - 1] : null;
     const statLines = [];
-    if (residents != null) statLines.push(`Residents: ${Math.round(residents)}`);
-    if (production) statLines.push(`Energy: +${production.ele}/cycle (uses ${production.oil} oil)`);
+    if (residents != null) statLines.push(t("buildingInfo.residents", { n: Math.round(residents) }));
+    if (production) statLines.push(t("buildingInfo.energy", { ele: production.ele, oil: production.oil }));
 
     const autoDefenseCosts = AUTO_DEFENSE_COST_PER_MIN[b.type];
     const showControl = !b.construction && autoDefenseCosts != null;
@@ -3343,17 +3343,17 @@ export async function mountMatch(ctx, params = {}) {
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
-    const title = def.label + (maxLevel > 1 && !b.construction ? ` — Level ${b.level}/${maxLevel}` : "");
+    const title = def.label + (maxLevel > 1 && !b.construction ? t("buildingInfo.levelSuffix", { level: b.level, max: maxLevel }) : "");
     drawHtmlText(title, px + panelW / 2, py + 32, { size: 20, maxWidth: panelW - 30 });
 
     buildingInfoSegRect = null;
     let cy = py + headerH;
     if (b.construction) {
-      drawHtmlText("Under construction…", px + panelW / 2, cy + 10, { size: 15, maxWidth: panelW - 30 });
+      drawHtmlText(t("buildingInfo.underConstruction"), px + panelW / 2, cy + 10, { size: 15, maxWidth: panelW - 30 });
       cy += bodyH;
     } else {
       const ratio = maxLife > 0 ? Math.max(0, Math.min(1, b.life / maxLife)) : 0;
-      drawHtmlText(`Health: ${Math.max(0, Math.round(b.life))} / ${Math.round(maxLife)}`, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
+      drawHtmlText(t("buildingInfo.health", { cur: Math.max(0, Math.round(b.life)), max: Math.round(maxLife) }), px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
       cy += 22;
       const barX = px + 20, barW = panelW - 40;
       drawPillBar(barX, cy, barW, barH, 0x000000, 0.12);
@@ -3402,7 +3402,7 @@ export async function mountMatch(ctx, params = {}) {
         cy += 20;
         drawHtmlText(info.desc, barX, cy, { size: 12.5, maxWidth: barW, wrap: true, align: "center" });
         cy += 50;
-        const costText = level === 1 ? "Free — always on" : `-${autoDefenseCosts[level]} mon/min`;
+        const costText = level === 1 ? t("autoDefense.freeAlwaysOn") : t("autoDefense.costPerMin", { cost: autoDefenseCosts[level] });
         drawHtmlText(costText, px + panelW / 2, cy, { size: 14, maxWidth: panelW - 30, color: level > 1 ? "#c65050" : undefined });
         cy += 22;
       }
@@ -3414,7 +3414,7 @@ export async function mountMatch(ctx, params = {}) {
 
     const btnW = panelW - 60, bx = px + (panelW - btnW) / 2, by = py + panelH - 20 - btnH;
     r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
-    drawHtmlText("Close", bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
+    drawHtmlText(t("buildingInfo.close"), bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
 
     r.flush();
   }
@@ -3461,9 +3461,9 @@ export async function mountMatch(ctx, params = {}) {
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
     let ty = py + padTop;
-    drawHtmlText("GET A LOAN", px + panelW / 2, ty + titleH / 2, { size: 22 });
+    drawHtmlText(t("bank.title"), px + panelW / 2, ty + titleH / 2, { size: 22 });
     ty += titleH + gap1;
-    drawHtmlText("20% interest rate", px + panelW / 2, ty + subH / 2, { size: 13 });
+    drawHtmlText(t("bank.subtitle"), px + panelW / 2, ty + subH / 2, { size: 13 });
     ty += subH + gap2;
 
     const years = LOAN_MONTHS / 12;
@@ -3471,7 +3471,7 @@ export async function mountMatch(ctx, params = {}) {
     for (let i = 0; i < LOANS.length; i++) {
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, ty, 1, BUTTON_TINT, BUTTON_ALPHA);
-      drawIconLine([{ text: `${LOANS[i].amount} ` }, { icon: "mon" }, { text: ` in ${years} years` }],
+      drawIconLine([{ text: `${LOANS[i].amount} ` }, { icon: "mon" }, { text: t("bank.inYears", { years }) }],
         bx + btnW / 2, ty + btnH / 2, { size: 16 });
       bankButtons.push({ x: bx, y: ty, w: btnW, h: btnH, index: i });
       ty += btnH + btnGap;
@@ -3510,17 +3510,17 @@ export async function mountMatch(ctx, params = {}) {
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
     let ty = py + padTop;
-    drawHtmlText("TRADE RESOURCES", px + panelW / 2, ty + titleH / 2, { size: 22 });
+    drawHtmlText(t("trade.title"), px + panelW / 2, ty + titleH / 2, { size: 22 });
     ty += titleH + gap1;
 
     tradeButtons = [];
     for (let i = 0; i < TRADES.length; i++) {
-      const t = TRADES[i];
+      const trade = TRADES[i];
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, ty, 1, BUTTON_TINT, BUTTON_ALPHA);
       drawIconLine([
-        { text: `Get ${t.takeAmount} ` }, { icon: t.take },
-        { text: ` for ${t.giveAmount} ` }, { icon: t.give },
+        { text: t("trade.getPrefix", { amount: trade.takeAmount }) }, { icon: trade.take },
+        { text: t("trade.forMiddle", { amount: trade.giveAmount }) }, { icon: trade.give },
       ], bx + btnW / 2, ty + btnH / 2, { size: 15 });
       tradeButtons.push({ x: bx, y: ty, w: btnW, h: btnH, index: i });
       ty += btnH + btnGap;
@@ -3816,15 +3816,15 @@ export async function mountMatch(ctx, params = {}) {
       // sopra, contorno bianco/interno trasparente) invece di un riempimento
       // — stesso principio "testo nudo su nero", il nero di fondo resta
       // visibile anche dentro il bottone.
-      const title = "GAME OVER";
+      const title = t("gameOver.title");
       const subtitle = outcome.reason === "chies"
-        ? "The City center, the city's historic building, has been destroyed."
-        : "The oil has run out: the rotors have stopped and the platform has crashed.";
+        ? t("gameOver.reasonChies")
+        : t("gameOver.reasonOil");
       const rows = [
-        { label: "Load last save", action: "load" },
-        { label: "Load from file", action: "loadFile" },
-        { label: "Restart level", action: "resetGame" },
-        { label: "Back to menu", action: "title" },
+        { label: t("gameOver.loadLastSave"), action: "load" },
+        { label: t("pause.loadFromFile"), action: "loadFile" },
+        { label: t("gameOver.restartLevel"), action: "resetGame" },
+        { label: t("pause.backToMenu"), action: "title" },
       ];
 
       const contentW = Math.min(360, cw - 40);
@@ -3869,11 +3869,9 @@ export async function mountMatch(ctx, params = {}) {
       // messaggio con wrap: l'unico paragrafo di piu' di due righe fra i
       // pannelli HTML, un blocco di testo piu' ordinato da leggere con
       // entrambi i margini dritti.
-      const title = "CONGRATULATIONS!";
-      const subtitle = "The Skyscraper stands complete, the tallest building this " +
-        "city has ever raised. From now on, enemies will no longer attack the " +
-        "city. Keep building, there's no limit from here.";
-      const rows = [{ label: "Keep playing", action: "continue" }];
+      const title = t("congrats.title");
+      const subtitle = t("congrats.subtitle");
+      const rows = [{ label: t("congrats.keepPlaying"), action: "continue" }];
 
       const panelW = Math.min(360, cw - 40);
       const subH = 130;
@@ -4150,7 +4148,7 @@ export async function mountMatch(ctx, params = {}) {
   function costParts(cost) {
     if (!cost) return null;
     const entries = Object.entries(cost);
-    if (!entries.length) return [{ text: "It's free!" }];
+    if (!entries.length) return [{ text: t("msg.itsFree") }];
     const parts = [];
     entries.forEach(([k, v], i) => {
       if (i > 0) parts.push({ text: ", " });
@@ -4271,7 +4269,7 @@ export async function mountMatch(ctx, params = {}) {
     // interno: economico (canAfford e' una pura lettura di r12), niente
     // parsing del messaggio d'errore.
     if (err && !canAfford(r12, def.placeCost)) spawnInsufficientFundsWarning(ph.x, ph.y, ph._f);
-    message = err ?? "drag to a free adjacent lot";
+    message = err ?? t("msg.dragToFreeLot");
     messageT = 3;
   };
   input.onPointerUp = (sx, sy) => { if (!paused) resolvePlacement(sx, sy); };
@@ -4355,9 +4353,7 @@ export async function mountMatch(ctx, params = {}) {
     if (chiesTapCount < CHIES_TAP_TARGET) return false;
     chiesTapCount = 0;
     sandbox.on = !sandbox.on;
-    message = sandbox.on
-      ? "sandbox mode ON: infinite resources, everything unlocked"
-      : "sandbox mode OFF";
+    message = sandbox.on ? t("msg.sandboxOn") : t("msg.sandboxOff");
     messageT = 4;
     return true;
   }
@@ -4597,8 +4593,8 @@ export async function mountMatch(ctx, params = {}) {
   // `parco`/`missile`/`ruspa` non lo dichiarano — mai stati bloccati
   // nel decompilato (pu3/pu7/Step.gml, nessun `unlosei`/`chies` gate).
   const OTHER_BUILDINGS = [
-    { type: "parco", selec: 7, spr: "p7", tint: 0x139f13, label: "Park", cost: 500 },
-    { type: "missile", selec: 3, spr: "p3", tint: 0x892020, label: "Missile Launcher", cost: 5000 },
+    { type: "parco", selec: 7, spr: "p7", tint: 0x139f13, cost: 500 },
+    { type: "missile", selec: 3, spr: "p3", tint: 0x892020, cost: 5000 },
     // "Grattacielo" era il nome (mai verificato) di una versione precedente
     // di questa riga: **[C]** src/objects/level2palazz (il popup "livello 2
     // sbloccato" agganciato a `pu6/Mouse_MouseEnter.gml`, stesso schema di
@@ -4608,21 +4604,21 @@ export async function mountMatch(ctx, params = {}) {
     // `BUILDING_TYPES.grattacielo` (STAR_BUILDINGS sotto, la terza stella),
     // un edificio completamente diverso da questo — nessuna relazione se non
     // l'omonimia mai risolta a suo tempo.
-    { type: "palazzo", selec: 6, spr: "p6", tint: 0x114f18, label: "Building", cost: 6000, chiesUnlock: 2 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
-    { type: "solare", selec: 61, spr: "psolare", tint: 0xb57008, label: "Solar Panels", cost: 1000, chiesUnlock: 2 },
-    { type: "club", selec: 60, spr: "pdj", tint: 0xc24398, label: "Club", cost: 3500, chiesUnlock: 2 },   // ora vero, BUILDING_TYPES.club
-    { type: "gatling", selec: 62, spr: "pgatling", tint: 0x8b0808, label: "Gatling Gun", cost: 10000, chiesUnlock: 2 },
-    { type: "villa", selec: 63, spr: "pvilla", tint: 0x1e666b, label: "Villa", cost: 7500, chiesUnlock: 3 },
-    { type: "eolico", selec: 4, spr: "p4", tint: 0x8b6c17, label: "Wind Turbine", cost: 50000, chiesUnlock: 3 },   // ora vero, BUILDING_TYPES.eolico
-    { type: "museo", selec: 70, spr: "pmuseo", tint: 0xa47f7f, label: "Museum", cost: 35000, chiesUnlock: 3 },   // ora vero, BUILDING_TYPES.museo — piazzamento a trascinamento, vedi armPlacement()
-    { type: "laser", selec: 5, spr: "p5", tint: 0x5c0d64, label: "Laser", cost: 20000, chiesUnlock: 3 },
+    { type: "palazzo", selec: 6, spr: "p6", tint: 0x114f18, cost: 6000, chiesUnlock: 2 },   // ora vero, BUILDING_TYPES.palazzo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "solare", selec: 61, spr: "psolare", tint: 0xb57008, cost: 1000, chiesUnlock: 2 },
+    { type: "club", selec: 60, spr: "pdj", tint: 0xc24398, cost: 3500, chiesUnlock: 2 },   // ora vero, BUILDING_TYPES.club
+    { type: "gatling", selec: 62, spr: "pgatling", tint: 0x8b0808, cost: 10000, chiesUnlock: 2 },
+    { type: "villa", selec: 63, spr: "pvilla", tint: 0x1e666b, cost: 7500, chiesUnlock: 3 },
+    { type: "eolico", selec: 4, spr: "p4", tint: 0x8b6c17, cost: 50000, chiesUnlock: 3 },   // ora vero, BUILDING_TYPES.eolico
+    { type: "museo", selec: 70, spr: "pmuseo", tint: 0xa47f7f, cost: 35000, chiesUnlock: 3 },   // ora vero, BUILDING_TYPES.museo — piazzamento a trascinamento, vedi armPlacement()
+    { type: "laser", selec: 5, spr: "p5", tint: 0x5c0d64, cost: 20000, chiesUnlock: 3 },
     // [C] STUDIO.md "cosa manca": lo strumento vero di demolizione/
     // riparazione (selec==11), mai ricostruito — la distruzione oggi e'
     // immediata (destroyBuilding()) invece di passare da questo strumento.
-    { type: "ruspa", selec: 11, spr: "ru", tint: 0xe00000, label: "Bulldozer", cost: null },
+    { type: "ruspa", selec: 11, spr: "ru", tint: 0xe00000, cost: null },
   ];
   for (const b of OTHER_BUILDINGS) SELEC_BY_TYPE[b.type] = b.selec;
-  const BUILDING_LABEL = Object.fromEntries(OTHER_BUILDINGS.map((b) => [b.type, b.label]));
+  // BUILDING_LABEL: rimosso, i messaggi sotto usano direttamente buildingLabel(type) (i18n.js).
   const CHIES_UNLOCK_BY_TYPE = Object.fromEntries(OTHER_BUILDINGS.filter((b) => b.chiesUnlock).map((b) => [b.type, b.chiesUnlock]));
   /** Il testo del cartellino "Unlock at level N" per un bottone edificio
    * ancora bloccato (`buildingLocked()`, sotto) — **[C]** `pu6|pudj|
@@ -4644,7 +4640,7 @@ export async function mountMatch(ctx, params = {}) {
    */
   function unlockTagText(type) {
     const need = CHIES_UNLOCK_BY_TYPE[type];
-    return need != null ? `Unlock at level ${need}` : null;
+    return need != null ? t("unlock.atLevel", { level: need }) : null;
   }
   /** [C] vedi il commento su `chiesUnlock` sopra: `true` finche' `chies`
    * (l'unica istanza, STUDIO.md §5.3) non ha raggiunto il livello richiesto —
@@ -4687,7 +4683,7 @@ export async function mountMatch(ctx, params = {}) {
   // gia' un edificio di quel tipo.
   const STAR_BUILDINGS = [
     {
-      type: "monum", selec: 71, spr: "sta1", tint: 0x82824f, label: "Monument", cost: 20000,
+      type: "monum", selec: 71, spr: "sta1", tint: 0x82824f, cost: 20000,
       // `sandbox.on ||` (buildings.js, sopra): bypassa la soglia vera, non
       // il guard "gia' costruito" subito dopo — un secondo tap sul
       // monumento gia' in piedi non deve far ricomparire il bottone nemmeno
@@ -4695,7 +4691,7 @@ export async function mountMatch(ctx, params = {}) {
       unlocked: () => (sandbox.on || (r12.distrutti ?? 0) > 49) && !buildings.some((b) => b.type === "monum"),
     },
     {
-      type: "banca", selec: 72, spr: "sta2", tint: 0x82824f, label: "Bank", cost: 0,
+      type: "banca", selec: 72, spr: "sta2", tint: 0x82824f, cost: 0,
       // [Bug corretto, segnalato dall'autore: "lo sblocco della banca
       // dovrebbe essere subordinato... alla creazione del monumento"]
       // **[C]** `pu1/Step.gml`: la create di `stella2` e' annidata dentro
@@ -4743,7 +4739,7 @@ export async function mountMatch(ctx, params = {}) {
     // il grattacielo si sbloccava con banca+piattaforma senza mai chiedere
     // biotech, un requisito reale dell'originale rimasto fuori.
     {
-      type: "grattacielo", selec: 82, spr: "sta3", tint: 0x82824f, label: "Skyscraper", cost: 200000,
+      type: "grattacielo", selec: 82, spr: "sta3", tint: 0x82824f, cost: 200000,
       // `sandbox.on ||` bypassa anche il vincolo "solo su `match`" (sopra:
       // `platformState` e' `null` su `match_easy`) e il requisito biotech —
       // coerente con "tutto sbloccato", non piu' fedele all'originale a
@@ -4752,7 +4748,7 @@ export async function mountMatch(ctx, params = {}) {
         && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded" && r12.grattacieloUnlocked)),
     },
   ];
-  for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; BUILDING_LABEL[b.type] = b.label; }
+  for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; }
 
   /** Sprite/tint del bottone di un tipo edificio, per tipo — usato dal
    * badge "edificio selezionato" sulla barra mobile (drawUiRow(), sotto:
@@ -4842,7 +4838,7 @@ export async function mountMatch(ctx, params = {}) {
       if (hit?.action === "load") {
         const ok = doLoad();
         if (ok) { picked = null; outcome = null; crashVSpeed = 0; crashFallY = 0; }
-        message = ok ? "game loaded" : "no save found";
+        message = ok ? t("msg.gameLoaded") : t("msg.noSaveFound");
         messageT = 3;
       } else if (hit?.action === "loadFile") {
         doLoadFromFile().then((ok) => {
@@ -4925,6 +4921,8 @@ export async function mountMatch(ctx, params = {}) {
         doLoadFromFile();   // async, idem
       } else if (hit?.action === "savingOptions") {
         pauseSubmenu = "saving";
+      } else if (hit?.action === "toggleLang") {
+        toggleLang();
       } else if (hit?.action === "resetGame") {
         pauseSubmenu = "confirmReset";   // un tap solo non basta: prima la conferma (irreversibile)
       } else if (hit?.action === "title") {
@@ -4952,7 +4950,7 @@ export async function mountMatch(ctx, params = {}) {
       const hit = bankButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       if (hit) {
         takeLoan(r12, hit.index);
-        message = `loan of ${LOANS[hit.index].amount} mon obtained`;
+        message = t("msg.loanObtained", { amount: LOANS[hit.index].amount });
       } else {
         message = "";
       }
@@ -4970,10 +4968,10 @@ export async function mountMatch(ctx, params = {}) {
     if (tradePanelOpen) {
       const hit = tradeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       if (hit) {
-        const t = TRADES[hit.index];
+        const trade = TRADES[hit.index];
         if (canTrade(r12, hit.index)) {
           applyTrade(r12, hit.index);
-          message = `traded ${t.giveAmount} ${t.give} for ${t.takeAmount} ${t.take}`;
+          message = t("msg.traded", { giveAmount: trade.giveAmount, give: trade.give, takeAmount: trade.takeAmount, take: trade.take });
           // [C] get1..4/Mouse_LeftPressed.gml: armano tradebuttoner/Alarm_2.gml
           // (400 tick) solo su uno scambio RIUSCITO — il bottone del mondo
           // resta comunque nascosto finche' il pannello e' aperto (vedi il
@@ -4981,7 +4979,7 @@ export async function mountMatch(ctx, params = {}) {
           // si chiude.
           tradeCooldownT = TRADE_COOLDOWN;
         } else {
-          message = `need ${t.giveAmount} ${t.give} (have ${(r12[t.give] ?? 0).toFixed(0)})`;
+          message = t("msg.needResourceHave", { amount: trade.giveAmount, resource: trade.give, have: (r12[trade.give] ?? 0).toFixed(0) });
         }
         messageT = 3;
       } else {
@@ -5100,7 +5098,7 @@ export async function mountMatch(ctx, params = {}) {
           // all'hover su questa riga (drawUiRow() sotto): il messaggio resta
           // solo come rinforzo testuale del click stesso.
           if (buildingLocked(btn.type)) {
-            message = `${BUILDING_LABEL[btn.type] ?? btn.type}: level ${CHIES_UNLOCK_BY_TYPE[btn.type]} to unlock`;
+            message = t("msg.levelToUnlock", { label: buildingLabel(btn.type), level: CHIES_UNLOCK_BY_TYPE[btn.type] });
             messageT = 3;
           } else {
             selectedType = btn.type;
@@ -5297,11 +5295,11 @@ export async function mountMatch(ctx, params = {}) {
       if (!selectedType) {
         // [C] handbutton/Mouse_LeftPressed.gml: `r12.selec = 0`, nessun
         // edificio armato — la modalita' di default prima di aprire il menu.
-        message = "no building selected — open the menu with the crane";
+        message = t("msg.noBuildingSelected");
       } else if (!def) {
         // Uno degli `OTHER_BUILDINGS` sopra: nel menu, ma non in
         // BUILDING_TYPES — nessuna catena di piazzamento ricostruita.
-        message = `${BUILDING_LABEL[selectedType] ?? selectedType}: not rebuilt yet`;
+        message = t("msg.notRebuiltYet", { label: buildingLabel(selectedType) });
       } else {
         const err = placeAt(picked, selectedType);
         // [Nuova funzionalita', richiesta dall'autore: "la stessa icona del
@@ -5338,7 +5336,7 @@ export async function mountMatch(ctx, params = {}) {
       // collisione: e' l'UNICO modo in cui potrebbero mai toccarsi).
       if (!b.construction && b.type === "parco" && r12.selec === 61) {
         const err = placeSolarOverPark(b);
-        message = err ?? "solar panels placed on the park (-1000 mon)";
+        message = err ?? t("msg.solarPlaced");
         messageT = 3;
         return;
       }
@@ -5351,12 +5349,12 @@ export async function mountMatch(ctx, params = {}) {
       // arriva dal tocco su "ruspaYes" sotto.
       if (r12.selec === 11) {
         const cost = ruspaCostFor(b);
-        if (b.construction) message = "construction already in progress";
-        else if (cost == null) message = `${BUILDING_LABEL[b.type] ?? b.type}: not demolishable/repairable with the bulldozer`;
-        else if (!canAfford(r12, { mon: cost })) message = `need ${cost} mon (have ${r12.mon.toFixed(0)})`;
+        if (b.construction) message = t("msg.constructionInProgress");
+        else if (cost == null) message = t("msg.notDemolishable", { label: buildingLabel(b.type) });
+        else if (!canAfford(r12, { mon: cost })) message = t("msg.needMonHave", { cost, have: r12.mon.toFixed(0) });
         else {
           ruspaPending = { buildingId: b.id, cost };
-          message = `demolish/repair: tap "yes" to confirm (-${cost} mon)`;
+          message = t("msg.confirmDemolish", { cost });
         }
         messageT = 3;
         return;
@@ -5374,10 +5372,10 @@ export async function mountMatch(ctx, params = {}) {
       // edificio (che gia' risponderebbe da solo "cantiere gia' in corso").
       if (!b.construction && BUILDING_TYPES[b.type]?.manualFire) {
         const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails, beams, balloons, loot);
-        message = fired ? "fire!"
-          : !b.aimTarget ? "no target in range"
-          : b.type === "laser" && r12.ele < 200 ? "insufficient energy"
-          : "cannon reloading";
+        message = fired ? t("msg.fire")
+          : !b.aimTarget ? t("msg.noTargetInRange")
+          : b.type === "laser" && r12.ele < 200 ? t("msg.insufficientEnergy")
+          : t("msg.cannonReloading");
         messageT = 3;
       } else if (r12.selec === 0 && !BUILDING_TYPES[b.type]?.turret) {
         // [Nuova funzionalita', richiesta dall'autore: "quando la mano e'
@@ -5395,7 +5393,7 @@ export async function mountMatch(ctx, params = {}) {
         buildingInfoPanel = b;
       } else {
         const err = attemptUpgradeTap(b);
-        if (err !== undefined) { message = err ?? "construction started"; messageT = 3; }
+        if (err !== undefined) { message = err ?? t("msg.constructionStarted"); messageT = 3; }
       }
     } else if (picked.obj === "ruspaYes") {
       // [C] demoiessa/Mouse_LeftReleased.gml: `iessa=1`, letto dalla
@@ -5407,15 +5405,15 @@ export async function mountMatch(ctx, params = {}) {
       if (def?.construct?.ruspaDemolish) {
         const cost = ruspaCostFor(b);
         if (!canAfford(r12, { mon: cost })) {
-          message = `need ${cost} mon (have ${r12.mon.toFixed(0)})`;
+          message = t("msg.needMonHave", { cost, have: r12.mon.toFixed(0) });
         } else {
           r12.mon -= cost;
           demolishMultiTile(b);
-          message = "demolished — lots free";
+          message = t("msg.demolishedLotsFree");
         }
       } else {
         const err = ruspaRebuild(b);
-        message = err ?? "construction started (bulldozer)";
+        message = err ?? t("msg.constructionStartedBulldozer");
       }
       ruspaPending = null;
       messageT = 3;
@@ -5444,14 +5442,14 @@ export async function mountMatch(ctx, params = {}) {
       // (sopra): su mobile il primo tap qui rivela solo il cartellino
       // prezzo, non avvia ancora niente.
       const err = attemptUpgradeTap(picked.ref);
-      if (err !== undefined) { message = err ?? "construction started"; messageT = 3; }
+      if (err !== undefined) { message = err ?? t("msg.constructionStarted"); messageT = 3; }
       picked = null;
     } else if (picked.obj === "bankIcon") {
       // [C] bankbuttoner/Mouse_LeftPressed.gml: apre il pannello solo se
       // NESSUN prestito e' gia' attivo (`loaned==0` nel decompilato, qui
       // `loanActive()` — vedi il commento li' per il perche').
       if (loanActive(r12)) {
-        message = "loan already active";
+        message = t("msg.loanAlreadyActive");
       } else {
         bankPanelOpen = true;
       }
@@ -7157,7 +7155,7 @@ export async function mountMatch(ctx, params = {}) {
     // era `barY+5`, quasi al livello del solo mese).
     const hapPos = isMobile ? { x: barX + 84, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
     if (!hideResourceText) {
-      drawHtmlText(MONTH_NAMES[(r12.month ?? 1) - 1] ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(monthName(r12.month ?? 1) ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
     }
     r.setColorize(iconsDark);
     if (!hideResourceIcons && clockFrame) r.draw(clockFrame, clockPos.x, clockPos.y, clockScale, 0xffffff, 1);
@@ -7728,7 +7726,7 @@ export async function mountMatch(ctx, params = {}) {
       // (vedi sotto) invece che di fianco: non serve piu' alcun vuoto qui.
       const boxLeft = 30, boxRight = canvas.clientWidth - 30;
       const textW = boxRight - boxLeft - pad * 2;
-      const textEl = drawHtmlText(TUTORIAL_TEXTS[Math.floor(tutorialState.phase)] ?? "", boxLeft + pad, 0,
+      const textEl = drawHtmlText(tutorialText(Math.floor(tutorialState.phase)), boxLeft + pad, 0,
         { size: 16, maxWidth: textW, wrap: true });
       const boxH = textEl.getBoundingClientRect().height + pad * 2;
       const boxBottom = canvas.clientHeight - tutorialState.uiGap;

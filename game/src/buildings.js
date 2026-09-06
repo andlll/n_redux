@@ -1,4 +1,5 @@
 import { BALLOON_TYPES } from "./balloons.js";
+import { t, buildingLabel } from "./i18n.js";
 
 // Edifici come dati, non come codice (STUDIO.md §7.3): la catena di
 // cantiere di `chies` (upcrc12/upcrc23, decompilati da
@@ -31,7 +32,7 @@ export const BUILDING_TYPES = {
     // rinominati: cambiarli in giro per il codice non porterebbe nessun
     // beneficio all'utente e rischierebbe di disallineare i commenti [C] dal
     // vero nome degli oggetti GameMaker che documentano.
-    label: "City center",
+    get label() { return buildingLabel("chies"); },
     placeCost: { mon: 5000 },                    // [I] sotto la dote iniziale (7500): la ruota reale apriva a 6000
     baseSprite: "crc", baseLife: 1000,             // [C] chies/Create.gml
     baseDecor: ["crcl"],                           // [C] chies/Create.gml: action_create_object(cddvd, 0, 0)
@@ -114,7 +115,7 @@ export const BUILDING_TYPES = {
   // pulsare fuoco) mai armata da Create ne' dalla scala tic: codice morto
   // nell'originale, non riletto qui.
   industria: {
-    label: "Industry",
+    get label() { return buildingLabel("industria"); },
     placeCost: { mon: 2000 },    // [C] placeholder/Mouse_LeftReleased.gml, selec==2
     // Produzione elettrica reale per livello (1-indicizzata: production[0]
     // e' il livello 1). [C] industria1|2|3/Alarm_2.gml: ogni 120 tick, se
@@ -334,7 +335,7 @@ export const BUILDING_TYPES = {
   // e' (vedi `hap` su industria/parco sopra, l'unico effetto reale letto
   // nel decompilato).
   casa: {
-    label: "House",
+    get label() { return buildingLabel("casa"); },
     placeCost: { mon: 500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==1
     // [C] casa1/Alarm_2.gml: `ava` (0..5) e' lo stadio di crescita. Il primo
     // intervallo dopo la nascita e' fisso (`action_set_alarm(2000,2)` in
@@ -560,7 +561,7 @@ export const BUILDING_TYPES = {
   // nuovo — stesso gap gia' dichiarato per industria/casa (STUDIO.md
   // "cosa manca"), non riletto qui.
   missile: {
-    label: "Missile Launcher",
+    get label() { return buildingLabel("missile"); },
     placeCost: { mon: 5000 },    // [C] placeholder/Mouse_LeftReleased.gml, selec==3
     // [I] `close` nell'originale e' vera collisione fisica fra la maschera
     // di missile/gatling/laser (`placeholder/Collision_impamissr|
@@ -630,7 +631,7 @@ export const BUILDING_TYPES = {
   // Placement cost **[C]** trovato nello stesso posto dei costi di
   // industria/casa: `placeholder/Mouse_LeftReleased.gml`, `selec==61`.
   solare: {
-    label: "Solar Panels",
+    get label() { return buildingLabel("solare"); },
     placeCost: { mon: 1000 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==61
     // [C] sooool/Alarm_4.gml, ogni 30 tick: sempre -5 mon; ele -1 di notte,
     // +5 all'alba, +9 altrimenti (giorno/tramonto) — vedi stepSolarProduction().
@@ -681,7 +682,7 @@ export const BUILDING_TYPES = {
   // `spawnDecor()` intercetta `b.type === "parco"` invece di leggere
   // `decor` qui sotto (lasciato vuoto apposta, mai letto per questo tipo).
   parco: {
-    label: "Park",
+    get label() { return buildingLabel("parco"); },
     placeCost: { mon: 500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==7
     // [I] Segnalato dall'autore: un parco e' scenografia bassa e piatta (lo
     // scatter di alberi/lampioni di spawnParcoScatter(), non un edificio
@@ -743,7 +744,7 @@ export const BUILDING_TYPES = {
   // sprite, non di oggetto, stesso schema di `variants` gia' letto per
   // casa/parco sopra) — stessa macchina generica in stepConstructions().
   club: {
-    label: "Club",
+    get label() { return buildingLabel("club"); },
     placeCost: { mon: 3500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==60
     storm: [{ dice: 200, loss: 50, dy: -20 }],   // [C] club1/Alarm_5.gml
     // [C] club1/Destroy.gml: hap +50 alla morte, nessun costo alla nascita —
@@ -798,7 +799,7 @@ export const BUILDING_TYPES = {
   // industria/missile/club) — stessi numeri, verificato passo per passo su
   // impavil_r/Create.gml + Alarm_0/1/2/3.
   villa: {
-    label: "Villa",
+    get label() { return buildingLabel("villa"); },
     placeCost: { mon: 7500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==63
     storm: [{ dice: 180, loss: 20 }],   // [C] villa1/Alarm_5.gml — dado/danno diversi da club (200/50)
     // [C] villa1/Alarm_2.gml: stessi 4 intervalli di casa1 (STUDIO.md sopra,
@@ -878,7 +879,7 @@ export const BUILDING_TYPES = {
   // game/src/projectiles.js per il fuoco vero (bocca doppia, un colpo da
   // ciascuna canna per scarica).
   gatling: {
-    label: "Gatling Gun",
+    get label() { return buildingLabel("gatling"); },
     placeCost: { mon: 10000 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==62
     turret: true,
     // [C] `gatlinggun/Mouse_LeftPressed.gml` nel decompilato non spara
@@ -938,7 +939,7 @@ export const BUILDING_TYPES = {
   // ("a bruciapelo") e un costo per colpo in energia invece che in denaro —
   // vedi game/src/projectiles.js.
   laser: {
-    label: "Laser",
+    get label() { return buildingLabel("laser"); },
     placeCost: { mon: 20000 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==5
     turret: true,
     // [C] lasergun/Mouse_LeftPressed.gml spara per davvero al tocco, stessa
@@ -1051,7 +1052,7 @@ export const BUILDING_TYPES = {
   // maschera, `grattacielo` sotto incluso: cambia solo la sua ancora
   // visiva, non i lotti).
   eolico: {
-    label: "Wind Turbine",
+    get label() { return buildingLabel("eolico"); },
     placeCost: { mon: 50000 },   // [C] eoliplacer/Alarm_1.gml, ramo selec==4
     // [C] placeholder/Mouse_LeftReleased.gml: `anchorOffset` e' l'offset FISSO
     // (98, 0) di eoliplacer dal placeholder toccato, vedi il commento sopra.
@@ -1221,7 +1222,7 @@ export const BUILDING_TYPES = {
   // `atAva` — stesso genere di gate gia' scelto per `chies` stessa
   // (`atPop`), solo su un edificio diverso da se stesso.
   palazzo: {
-    label: "Building",
+    get label() { return buildingLabel("palazzo"); },
     placeCost: { mon: 6000 },   // [C] placeholder/Mouse_LeftPressed.gml, ramo selec==6
     diagonalPlacement: true,
     construct: {                 // livello 0 -> 1, impa4r/impa4f -> casa4s (asse "r", dir1/dir3)
@@ -1380,7 +1381,7 @@ export const BUILDING_TYPES = {
   // dal menu (non in OTHER_BUILDINGS): main.js, resolvePlacement() la
   // materializza solo quando il trascinamento cade su dir2/dir4.
   palazzoRd: {
-    label: "Building",
+    get label() { return buildingLabel("palazzoRd"); },
     placeCost: { mon: 6000 },
     diagonalPlacement: true,
     construct: {
@@ -1518,7 +1519,7 @@ export const BUILDING_TYPES = {
   // tic, oltre a ele — mai visto in nessun altro edificio con
   // `consumption`: vedi `rate.mon` in stepConsumption() sopra.
   museo: {
-    label: "Museum",
+    get label() { return buildingLabel("museo"); },
     placeCost: { mon: 35000 },   // [C] placeholder/Mouse_LeftPressed.gml, ramo selec==70
     diagonalPlacement: true,
     construct: {                 // media1s (asse "r", dir1/dir3) — [C] impamediaR/impamediaF: stessa sequenza sr*/sf* di palazzo, solo il drain cambia
@@ -1570,7 +1571,7 @@ export const BUILDING_TYPES = {
   // palazzo/palazzoRd. Solo gli sprite (cantiere rd*/fd*, varianti
   // med1d/med2d) e il costo di trascinamento (dir2/dir4) cambiano.
   museoRd: {
-    label: "Museum",
+    get label() { return buildingLabel("museoRd"); },
     placeCost: { mon: 35000 },
     diagonalPlacement: true,
     construct: {
@@ -1634,7 +1635,7 @@ export const BUILDING_TYPES = {
   // palazzo) e il topper finale (`tops3`, sprite reale gia' "toppers": lo
   // stesso oggetto di villa/club/missile/laser, nessuno sprite in piu').
   monum: {
-    label: "Monument",
+    get label() { return buildingLabel("monum"); },
     placeCost: { mon: 20000 },   // [C] placeholder/Mouse_LeftReleased.gml, ramo selec==71
     noAffordCheck: true,
     construct: {
@@ -1689,7 +1690,7 @@ export const BUILDING_TYPES = {
   // 4 prestiti a interesse) e' un intero sotto-sistema economico a parte —
   // **[I] gap dichiarato**, fuori scopo per questo giro (STUDIO.md sotto).
   banca: {
-    label: "Bank",
+    get label() { return buildingLabel("banca"); },
     placeCost: {},
     construct: {
       drain: { mon: 3, every: 20 },               // [C] impaBANKr/Alarm_10.gml
@@ -1819,7 +1820,7 @@ export const BUILDING_TYPES = {
   // cima) non si dissolve mai nel decompilato — scatta di colpo — quindi
   // `fadeTicks: 0`.
   grattacielo: {
-    label: "Skyscraper",
+    get label() { return buildingLabel("grattacielo"); },
     placeCost: { mon: 200000 },   // [C] eoliplacer/Alarm_1.gml, ramo selec==82
     // Stessa maschera fissa "phold" di eolico (STUDIO.md, `eoliplacer`
     // condiviso dai due rami selec==4/82): i 4 lotti di TERRENO consumati
@@ -2190,23 +2191,23 @@ export function upgradeUnlocked(b, r12, buildings) {
  * motivo per cui no.
  */
 export function tryStartUpgrade(b, r12, buildings) {
-  if (b.construction) return "construction already in progress";
+  if (b.construction) return t("msg.constructionInProgress");
   const up = nextUpgrade(b);
-  if (!up) return "max level";
+  if (!up) return t("upgrade.maxLevel");
   if (!sandbox.on) {
     const p = upgradeProgress(b, up, r12);
     if (p.done < p.needed) {
-      if (p.kind === "makee") return `need ${p.needed} production cycles (now ${p.done})`;
-      if (p.kind === "ava") return `need full growth (${p.done}/${p.needed})`;
-      return `need population ${p.needed} (now ${p.done.toFixed(0)})`;
+      if (p.kind === "makee") return t("upgrade.needProductionCycles", { needed: p.needed, done: p.done });
+      if (p.kind === "ava") return t("upgrade.needFullGrowth", { done: p.done, needed: p.needed });
+      return t("upgrade.needPopulation", { needed: p.needed, done: p.done.toFixed(0) });
     }
     if (up.requiresChiesLevel != null && maxChiesLevel(buildings) < up.requiresChiesLevel) {
-      return `requires the city center at level ${up.requiresChiesLevel}`;
+      return t("upgrade.requiresChiesLevel", { level: up.requiresChiesLevel });
     }
   }
   if (!canAfford(r12, up.cost)) {
     const need = Object.entries(up.cost).map(([k, v]) => `${v} ${k}`).join(", ");
-    return `need ${need}`;
+    return t("upgrade.needResources", { list: need });
   }
   pay(r12, up.cost);
   b.construction = { upgradeIndex: b.level - 1, stepIndex: 0, t: 0 };
@@ -2283,10 +2284,10 @@ export function ruspaCostFor(b) {
  * davvero — vedi il commento su `c.rebuilding` li'.
  */
 export function tryRuspaRebuild(b, r12) {
-  if (b.construction) return "construction already in progress";
+  if (b.construction) return t("msg.constructionInProgress");
   const cost = ruspaCostFor(b);
-  if (cost == null) return "not rebuildable with the bulldozer";
-  if (!canAfford(r12, { mon: cost })) return `need ${cost} mon (have ${r12.mon.toFixed(0)})`;
+  if (cost == null) return t("upgrade.notRebuildable");
+  if (!canAfford(r12, { mon: cost })) return t("msg.needMonHave", { cost, have: r12.mon.toFixed(0) });
   r12.mon -= cost;
   b.level -= 1;
   b.construction = { upgradeIndex: b.level - 1, stepIndex: 0, t: 0, rebuilding: true };
