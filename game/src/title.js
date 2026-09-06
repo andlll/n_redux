@@ -49,6 +49,7 @@ import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
 import {
   stepThreatSpawner, stepThreats, stepExplosions, EXPLOSION_FRAME_COUNT,
 } from "./threats.js";
+import { t } from "./i18n.js";
 
 const TICK = 1 / 60;
 
@@ -65,7 +66,7 @@ export async function mountTitle(ctx) {
   // atlas da liberare quando si lascia il menu (game/src/app.js,
   // neededRoomsFor()).
   const { atlas, pageTex } = await loadRoomAtlas(gl, "title", {
-    onProgress: (loaded, total) => reportProgress("title", loaded, total, "loading interface"),
+    onProgress: (loaded, total) => reportProgress("title", loaded, total, t("loading.interface")),
   });
   // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
   // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed
@@ -577,7 +578,7 @@ export async function mountTitle(ctx) {
   // loadFromFile()) e' fuori dal layer WebGL apposta: main.js non sa ancora
   // quale room montare finche' il file scelto non rivela `data.scene`.
   const loadFileBtn = document.createElement("button");
-  loadFileBtn.textContent = "Load game";
+  loadFileBtn.textContent = t("title.loadGame");
   loadFileBtn.style.cssText = "position:fixed;left:24px;bottom:24px;z-index:5;" +
     "font:700 14px/1 system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;" +
     "letter-spacing:0.08em;text-transform:uppercase;color:#fff;" +
@@ -601,7 +602,7 @@ export async function mountTitle(ctx) {
       // checksum non combacia — modificato a mano, save.js/verify()): qui
       // SI vale la pena dirlo, a differenza del dialog annullato.
       if (result === "invalid") {
-        message = "invalid or modified file"; messageT = 3;
+        message = t("msg.invalidFile"); messageT = 3;
       } else if (result) {
         navigateTo = {
           room: result.data.scene ?? "match_easy", autoload: false,
@@ -611,7 +612,7 @@ export async function mountTitle(ctx) {
       }
     } catch (err) {
       console.error("nimbus: caricamento da file fallito", err);
-      message = "load from file failed"; messageT = 3;
+      message = t("msg.loadFromFileFailed"); messageT = 3;
     } finally {
       loadingFile = false;
       loadFileBtn.disabled = false;
