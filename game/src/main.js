@@ -33,7 +33,7 @@ import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   tutorialText, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN, seaScrollOffset,
 } from "./tutorial.js";
-import { t, toggleLang, getLang, buildingLabel } from "./i18n.js";
+import { t, cycleLang, getLang, buildingLabel } from "./i18n.js";
 
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
 // export mountMatch(ctx, params) invece di uno script a livello di modulo —
@@ -3133,7 +3133,7 @@ export async function mountMatch(ctx, params = {}) {
       { label: t("pause.saveToFile"), action: "saveFile" },
       { label: t("pause.loadFromFile"), action: "loadFile" },
       { label: t("pause.savingOptions"), action: "savingOptions" },
-      { label: t("pause.language", { lang: getLang().toUpperCase() }), action: "toggleLang" },
+      { label: t("pause.language", { lang: getLang().toUpperCase() }), action: "cycleLang" },
       { label: t("pause.resetGame"), action: "resetGame" },
       { label: t("pause.backToMenu"), action: "title" },
     ];
@@ -4945,8 +4945,8 @@ export async function mountMatch(ctx, params = {}) {
         doLoadFromFile();   // async, idem
       } else if (hit?.action === "savingOptions") {
         pauseSubmenu = "saving";
-      } else if (hit?.action === "toggleLang") {
-        toggleLang();
+      } else if (hit?.action === "cycleLang") {
+        cycleLang();
       } else if (hit?.action === "resetGame") {
         pauseSubmenu = "confirmReset";   // un tap solo non basta: prima la conferma (irreversibile)
       } else if (hit?.action === "title") {

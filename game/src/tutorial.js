@@ -135,10 +135,49 @@ const TUTORIAL_TEXTS_IT = [
   "Bene, sembra che ora tu sappia come muoverti! Buona fortuna con la tua piattaforma NIMBUS!",
 ];
 
-export const TUTORIAL_TEXTS = TUTORIAL_TEXTS_EN;   // lunghezza (LAST_PHASE sotto): identica nelle due lingue
+const TUTORIAL_TEXTS_ES = [
+  "¡Vaya! ¡Parece que han destruido media ciudad! Como nuevo alcalde debes reconstruirla antes de que vuelvan!",
+  "Antes de nada, deberías demoler esas ruinas, así podremos construir casas nuevas ahí.",
+  "¡Selecciona el botón con forma de excavadora y luego pulsa sobre las ruinas para eliminarlas!",
+  "¡Cuando vas a eliminar una ruina, el coste de la operación aparece sobre ella!",
+  "Construir y demoler cuesta dinero, claro. ¡También tienes que pagar los andamios mientras la obra está en curso!",
+  "Recaudamos dinero cobrando impuestos a los ciudadanos. ¡Puedes cobrar los impuestos pasando el ratón sobre esos iconos azules!",
+  "Cuando cobras impuestos, ves subir la cantidad de dinero. La barra superior te muestra en general la cantidad de recursos que tienes.",
+  "La barra inferior, en cambio, es la Barra de Acciones. Usa el botón de la mano para seleccionar herramientas",
+  "El botón de al lado es el botón Construir. Selecciónalo y luego elige el botón de la casa, ¡el primero!",
+  "¡Ahora construye cinco casas en cinco parcelas vacías! ¡Necesitamos hacer crecer la población en estos tiempos de guerra!",
+  "En cuanto una casa se completa la población crece enseguida, ¡pero también el consumo de energía! La población de las casas sigue creciendo con el tiempo",
+  "Para dar energía a la ciudad construimos industrias. Si la energía baja de cero, ¡nuestros ciudadanos dejarán de pagar impuestos!",
+  "¡Ahora construye una industria en una parcela vacía! Recuerda que el consumo de energía depende de la población, así que seguirá creciendo",
+  "También tenemos que darles algo de aire limpio y diversión, y para eso puedes construir parques",
+  "¡Fíjate en que cuanto más crecen la población y las industrias, más parques necesitarán!",
+  "¡Fíjate también en que de noche los edificios consumen mucha más energía!",
+  "Ahora construye un parque en una parcela vacía. ¡Recuerda que los parques son baratos y rápidos de construir pero muy caros de mantener!",
+  "Si tienes suficientes parques verás una carita feliz junto al contador de recursos, si no, sí, ¡dejarán de pagar impuestos!",
+  "La defensa de la ciudad es otro punto crucial. ¡Como puedes ver usamos artillería pesada para mantener la ciudad a salvo!",
+  "Construye un lanzamisiles en una parcela vacía. ¡Recuerda que no puedes construirlos demasiado cerca entre sí, sería demasiado peligroso!",
+  "¡También usamos las armas para quitarle recursos al enemigo, que los transporta en esos globos enormes que ves volar sobre nosotros!",
+  "Consejo: selecciona la herramienta mano, luego mantén pulsada un arma para abrir su panel y activar la Autodefensa, así derribará ella sola globos espía y aviones (pequeño coste por minuto)!",
+  "Consejo: ¡eso funciona en cualquier edificio, no solo en las armas! Con la herramienta mano seleccionada, mantén pulsado un edificio para ver su panel de estadísticas.",
+  "Sí, sé lo que estás pensando, y sí, NIMBUS creció robando petróleo a naciones extranjeras, pero ¿qué le vamos a hacer?",
+  "Cuando un globo se acerque, pulsa sobre el arma más cercana para destruirlo, ¡luego recoge rápido el recurso que cae del cielo!",
+  "Los globos verdes son los que transportan petróleo. ¡Son los más comunes!",
+  "Las industrias y los motores de la ciudad queman petróleo para funcionar. ¡Cuanto más pesa la ciudad, más petróleo consume!",
+  "Así que recuerda no construir cosas innecesarias ni demasiadas industrias, o la ciudad caerá al suelo!",
+  "Los globos amarillos transportan baterías de energía y los azules depósitos de dinero.",
+  "Los globos rojos los envía el enemigo para espiarnos, así que tienes que destruirlos sin falta!",
+  "Si no lo haces, pedirán refuerzos y sufrirás un ataque como el que viste antes!",
+  "Creo que no se detendrán hasta que construyamos algo enorme para demostrarles que este sitio es nuestro!",
+  "Con el tiempo tu ciudad se hará más grande y será difícil controlarla toda de un vistazo!",
+  "También puedes usar el botón derecho del ratón para mover la vista y la rueda para el zoom! En móvil, desliza el dedo para mover la vista del mapa.",
+  "¡Bien, parece que ya sabes moverte! ¡Buena suerte con tu propia plataforma NIMBUS!",
+];
+
+export const TUTORIAL_TEXTS = TUTORIAL_TEXTS_EN;   // lunghezza (LAST_PHASE sotto): identica in tutte le lingue
 
 export function tutorialText(phase) {
-  const arr = getLang() === "it" ? TUTORIAL_TEXTS_IT : TUTORIAL_TEXTS_EN;
+  const lang = getLang();
+  const arr = lang === "it" ? TUTORIAL_TEXTS_IT : lang === "es" ? TUTORIAL_TEXTS_ES : TUTORIAL_TEXTS_EN;
   return arr[phase] ?? "";
 }
 

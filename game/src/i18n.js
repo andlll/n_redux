@@ -1,18 +1,28 @@
-// Lingua dell'interfaccia (EN/IT) — stato globale condiviso da title.js/
+// Lingua dell'interfaccia (EN/IT/ES) — stato globale condiviso da title.js/
 // main.js/app.js/buildings.js/tutorial.js, persistito in localStorage cosi'
 // la scelta sopravvive a un refresh/ritorno al menu. Il cambio lingua non
 // richiede nessun remount: ogni chiamante legge `t()`/`buildingLabel()` di
 // nuovo ad ogni frame (drawHtmlText() e' gia' ridisegnato 60 volte al
 // secondo), quindi un tap sul bottone "Language" nel menu di pausa si vede
 // gia' dal frame successivo.
+//
+// Aggiungere una lingua: 1) aggiungerne il codice a SUPPORTED sotto (l'ordine
+// e' quello in cui cycleLang() la propone); 2) aggiungere il ramo relativo in
+// detectDefault() se ha senso auto-rilevarla da navigator.language; 3)
+// aggiungere la chiave mancante ad OGNI entry di STRINGS sotto (t() ricade su
+// FALLBACK/EN se manca, quindi una lingua a meta' non rompe nulla, mostra
+// solo inglese dove manca); 4) tutorial.js ha un secondo dizionario a parte
+// (TUTORIAL_TEXTS_*, un array parallelo per lingua) perche' il balloon del
+// tutorial non passa da t() — va esteso li' separatamente.
 const STORAGE_KEY = "nimbus_lang";
-const SUPPORTED = ["en", "it"];
+const SUPPORTED = ["en", "it", "es"];
 const FALLBACK = "en";
 
 function detectDefault() {
   try {
     const nav = (navigator.language || navigator.userLanguage || "").toLowerCase();
     if (nav.startsWith("it")) return "it";
+    if (nav.startsWith("es")) return "es";
   } catch { /* navigator non disponibile (SSR/test) */ }
   return FALLBACK;
 }
@@ -32,214 +42,238 @@ export function setLang(next) {
   return lang;
 }
 
-export function toggleLang() { return setLang(lang === "en" ? "it" : "en"); }
+// Un solo bottone nel menu di pausa (t("pause.language"), main.js) propone
+// SEMPRE la lingua SUCCESSIVA in SUPPORTED, tornando in testa dopo l'ultima
+// — stesso bottone/stessa azione di quando le lingue erano solo due (era un
+// vero toggle EN<->IT), ora generalizzato a un ciclo cosi' aggiungere una
+// lingua a SUPPORTED (sopra) basta a renderla raggiungibile, senza toccare
+// main.js.
+export function cycleLang() {
+  const idx = SUPPORTED.indexOf(lang);
+  return setLang(SUPPORTED[(idx + 1) % SUPPORTED.length]);
+}
 
-// Dizionario piatto: ogni voce { en, it }. Le stringhe con segnaposto usano
-// `{nome}` (t() sotto li sostituisce con String(vars.nome)) invece di
+// Dizionario piatto: ogni voce { en, it, es }. Le stringhe con segnaposto
+// usano `{nome}` (t() sotto li sostituisce con String(vars.nome)) invece di
 // template literal per poter vivere nello stesso dizionario data-driven
 // delle frasi fisse.
 const STRINGS = {
   // ------------------------------------------------------------ menu di pausa
-  "pause.title": { en: "PAUSE", it: "PAUSA" },
-  "pause.resume": { en: "Resume", it: "Riprendi" },
-  "pause.saveToFile": { en: "Save to file", it: "Salva su file" },
-  "pause.loadFromFile": { en: "Load from file", it: "Carica da file" },
-  "pause.savingOptions": { en: "Saving options", it: "Opzioni di salvataggio" },
-  "pause.resetGame": { en: "Reset game", it: "Ricomincia partita" },
-  "pause.backToMenu": { en: "Back to menu", it: "Torna al menu" },
-  "pause.language": { en: "Language: {lang}", it: "Lingua: {lang}" },
+  "pause.title": { en: "PAUSE", it: "PAUSA", es: "PAUSA" },
+  "pause.resume": { en: "Resume", it: "Riprendi", es: "Reanudar" },
+  "pause.saveToFile": { en: "Save to file", it: "Salva su file", es: "Guardar en archivo" },
+  "pause.loadFromFile": { en: "Load from file", it: "Carica da file", es: "Cargar desde archivo" },
+  "pause.savingOptions": { en: "Saving options", it: "Opzioni di salvataggio", es: "Opciones de guardado" },
+  "pause.resetGame": { en: "Reset game", it: "Ricomincia partita", es: "Reiniciar partida" },
+  "pause.backToMenu": { en: "Back to menu", it: "Torna al menu", es: "Volver al menú" },
+  "pause.language": { en: "Language: {lang}", it: "Lingua: {lang}", es: "Idioma: {lang}" },
 
-  "savingOptions.title": { en: "SAVING OPTIONS", it: "OPZIONI DI SALVATAGGIO" },
-  "savingOptions.autosave": { en: "Autosave: {state}", it: "Salvataggio automatico: {state}" },
-  "savingOptions.interval": { en: "Interval: {min} min", it: "Intervallo: {min} min" },
-  "savingOptions.duringAttacks": { en: "Save during attacks: {state}", it: "Salva durante gli attacchi: {state}" },
-  "savingOptions.duringLowOil": { en: "Save with low oil: {state}", it: "Salva con petrolio scarso: {state}" },
-  "savingOptions.back": { en: "Back", it: "Indietro" },
-  "common.on": { en: "ON", it: "ON" },
-  "common.off": { en: "OFF", it: "OFF" },
+  "savingOptions.title": { en: "SAVING OPTIONS", it: "OPZIONI DI SALVATAGGIO", es: "OPCIONES DE GUARDADO" },
+  "savingOptions.autosave": { en: "Autosave: {state}", it: "Salvataggio automatico: {state}", es: "Guardado automático: {state}" },
+  "savingOptions.interval": { en: "Interval: {min} min", it: "Intervallo: {min} min", es: "Intervalo: {min} min" },
+  "savingOptions.duringAttacks": { en: "Save during attacks: {state}", it: "Salva durante gli attacchi: {state}", es: "Guardar durante los ataques: {state}" },
+  "savingOptions.duringLowOil": { en: "Save with low oil: {state}", it: "Salva con petrolio scarso: {state}", es: "Guardar con petróleo escaso: {state}" },
+  "savingOptions.back": { en: "Back", it: "Indietro", es: "Atrás" },
+  "common.on": { en: "ON", it: "ON", es: "ON" },
+  "common.off": { en: "OFF", it: "OFF", es: "OFF" },
 
-  "confirmReset.title": { en: "RESET GAME", it: "RICOMINCIA PARTITA" },
+  "confirmReset.title": { en: "RESET GAME", it: "RICOMINCIA PARTITA", es: "REINICIAR PARTIDA" },
   "confirmReset.warning": {
     en: "This will restart the level from scratch. This action cannot be undone.",
     it: "Il livello ricomincerà da zero. Questa azione non si può annullare.",
+    es: "El nivel se reiniciará desde cero. Esta acción no se puede deshacer.",
   },
-  "confirmReset.cancel": { en: "Cancel", it: "Annulla" },
+  "confirmReset.cancel": { en: "Cancel", it: "Annulla", es: "Cancelar" },
 
   // ---------------------------------------------------------- pannello edificio
-  "buildingInfo.underConstruction": { en: "Under construction…", it: "In costruzione…" },
-  "buildingInfo.health": { en: "Health: {cur} / {max}", it: "Salute: {cur} / {max}" },
-  "buildingInfo.residents": { en: "Residents: {n}", it: "Abitanti: {n}" },
-  "buildingInfo.energy": { en: "Energy: +{ele}/cycle (uses {oil} oil)", it: "Energia: +{ele}/ciclo (consuma {oil} petrolio)" },
-  "buildingInfo.levelSuffix": { en: " — Level {level}/{max}", it: " — Livello {level}/{max}" },
-  "buildingInfo.close": { en: "Close", it: "Chiudi" },
+  "buildingInfo.underConstruction": { en: "Under construction…", it: "In costruzione…", es: "En construcción…" },
+  "buildingInfo.health": { en: "Health: {cur} / {max}", it: "Salute: {cur} / {max}", es: "Salud: {cur} / {max}" },
+  "buildingInfo.residents": { en: "Residents: {n}", it: "Abitanti: {n}", es: "Habitantes: {n}" },
+  "buildingInfo.energy": { en: "Energy: +{ele}/cycle (uses {oil} oil)", it: "Energia: +{ele}/ciclo (consuma {oil} petrolio)", es: "Energía: +{ele}/ciclo (consume {oil} petróleo)" },
+  "buildingInfo.levelSuffix": { en: " — Level {level}/{max}", it: " — Livello {level}/{max}", es: " — Nivel {level}/{max}" },
+  "buildingInfo.close": { en: "Close", it: "Chiudi", es: "Cerrar" },
 
-  "autoDefense.level1.name": { en: "Real threats only", it: "Solo minacce reali" },
+  "autoDefense.level1.name": { en: "Real threats only", it: "Solo minacce reali", es: "Solo amenazas reales" },
   "autoDefense.level1.desc": {
     en: "Automatically engages planes and airships in range. Always on, no extra cost.",
     it: "Ingaggia automaticamente aerei e dirigibili a portata. Sempre attivo, nessun costo extra.",
+    es: "Ataca automáticamente aviones y dirigibles a su alcance. Siempre activo, sin coste extra.",
   },
-  "autoDefense.level2.name": { en: "+ Spy patrol", it: "+ Pattuglia antispie" },
+  "autoDefense.level2.name": { en: "+ Spy patrol", it: "+ Pattuglia antispie", es: "+ Patrulla antiespías" },
   "autoDefense.level2.desc": {
     en: "Also shoots down red spy balloons and recon planes on sight.",
     it: "Abbatte a vista anche le mongolfiere spia rosse e gli aerei da ricognizione.",
+    es: "También derriba en cuanto los ve los globos espía rojos y los aviones de reconocimiento.",
   },
-  "autoDefense.level3.name": { en: "Full auto", it: "Automatico totale" },
+  "autoDefense.level3.name": { en: "Full auto", it: "Automatico totale", es: "Automático total" },
   "autoDefense.level3.desc": {
     en: "Fires at anything in range — spies and resource balloons alike (loot still drops).",
     it: "Spara a tutto ciò che è a portata — spie e mongolfiere di risorse allo stesso modo (il bottino cade comunque).",
+    es: "Dispara a todo lo que esté a su alcance — tanto a espías como a globos de recursos (el botín cae igualmente).",
   },
-  "autoDefense.freeAlwaysOn": { en: "Free — always on", it: "Gratis — sempre attivo" },
-  "autoDefense.costPerMin": { en: "-{cost} mon/min", it: "-{cost} mon/min" },
+  "autoDefense.freeAlwaysOn": { en: "Free — always on", it: "Gratis — sempre attivo", es: "Gratis — siempre activo" },
+  "autoDefense.costPerMin": { en: "-{cost} mon/min", it: "-{cost} mon/min", es: "-{cost} mon/min" },
 
   // ---------------------------------------------------------- banca/scambi
-  "bank.title": { en: "GET A LOAN", it: "RICHIEDI UN PRESTITO" },
-  "bank.subtitle": { en: "20% interest rate", it: "Tasso d'interesse 20%" },
-  "bank.inYears": { en: " in {years} years", it: " in {years} anni" },
-  "trade.title": { en: "TRADE RESOURCES", it: "SCAMBIA RISORSE" },
-  "trade.getPrefix": { en: "Get {amount} ", it: "Ottieni {amount} " },
-  "trade.forMiddle": { en: " for {amount} ", it: " per {amount} " },
+  "bank.title": { en: "GET A LOAN", it: "RICHIEDI UN PRESTITO", es: "SOLICITAR UN PRÉSTAMO" },
+  "bank.subtitle": { en: "20% interest rate", it: "Tasso d'interesse 20%", es: "Tasa de interés del 20%" },
+  "bank.inYears": { en: " in {years} years", it: " in {years} anni", es: " en {years} años" },
+  "trade.title": { en: "TRADE RESOURCES", it: "SCAMBIA RISORSE", es: "INTERCAMBIAR RECURSOS" },
+  "trade.getPrefix": { en: "Get {amount} ", it: "Ottieni {amount} ", es: "Obtén {amount} " },
+  "trade.forMiddle": { en: " for {amount} ", it: " per {amount} ", es: " por {amount} " },
 
   // ---------------------------------------------------------- game over/vittoria
-  "gameOver.title": { en: "GAME OVER", it: "GAME OVER" },
+  "gameOver.title": { en: "GAME OVER", it: "GAME OVER", es: "GAME OVER" },
   "gameOver.reasonChies": {
     en: "The City center, the city's historic building, has been destroyed.",
     it: "Il Municipio, l'edificio storico della città, è stato distrutto.",
+    es: "El Ayuntamiento, el edificio histórico de la ciudad, ha sido destruido.",
   },
   "gameOver.reasonOil": {
     en: "The oil has run out: the rotors have stopped and the platform has crashed.",
     it: "Il petrolio è finito: i rotori si sono fermati e la piattaforma è precipitata.",
+    es: "El petróleo se ha agotado: los rotores se han detenido y la plataforma se ha estrellado.",
   },
-  "gameOver.loadLastSave": { en: "Load last save", it: "Carica ultimo salvataggio" },
-  "gameOver.restartLevel": { en: "Restart level", it: "Ricomincia livello" },
-  "congrats.title": { en: "CONGRATULATIONS!", it: "COMPLIMENTI!" },
+  "gameOver.loadLastSave": { en: "Load last save", it: "Carica ultimo salvataggio", es: "Cargar última partida" },
+  "gameOver.restartLevel": { en: "Restart level", it: "Ricomincia livello", es: "Reiniciar nivel" },
+  "congrats.title": { en: "CONGRATULATIONS!", it: "COMPLIMENTI!", es: "¡FELICIDADES!" },
   "congrats.subtitle": {
     en: "The Skyscraper stands complete, the tallest building this city has ever raised. " +
       "From now on, enemies will no longer attack the city. Keep building, there's no limit from here.",
     it: "Il Grattacielo è completo, l'edificio più alto che questa città abbia mai costruito. " +
       "Da ora in poi i nemici non attaccheranno più la città. Continua a costruire, da qui non c'è limite.",
+    es: "El Rascacielos está completo, el edificio más alto que esta ciudad haya construido jamás. " +
+      "A partir de ahora, los enemigos ya no atacarán la ciudad. Sigue construyendo, desde aquí no hay límite.",
   },
-  "congrats.keepPlaying": { en: "Keep playing", it: "Continua a giocare" },
+  "congrats.keepPlaying": { en: "Keep playing", it: "Continua a giocare", es: "Seguir jugando" },
 
   // ---------------------------------------------------------------- edifici
-  "building.chies": { en: "City center", it: "Municipio" },
-  "building.industria": { en: "Industry", it: "Industria" },
-  "building.casa": { en: "House", it: "Casa" },
-  "building.missile": { en: "Missile Launcher", it: "Lanciamissili" },
-  "building.solare": { en: "Solar Panels", it: "Pannelli solari" },
-  "building.parco": { en: "Park", it: "Parco" },
-  "building.club": { en: "Club", it: "Club" },
-  "building.villa": { en: "Villa", it: "Villa" },
-  "building.gatling": { en: "Gatling Gun", it: "Mitragliatrice Gatling" },
-  "building.laser": { en: "Laser", it: "Laser" },
-  "building.eolico": { en: "Wind Turbine", it: "Turbina eolica" },
-  "building.palazzo": { en: "Building", it: "Palazzo" },
-  "building.palazzoRd": { en: "Building", it: "Palazzo" },
-  "building.museo": { en: "Museum", it: "Museo" },
-  "building.museoRd": { en: "Museum", it: "Museo" },
-  "building.monum": { en: "Monument", it: "Monumento" },
-  "building.banca": { en: "Bank", it: "Banca" },
-  "building.grattacielo": { en: "Skyscraper", it: "Grattacielo" },
-  "building.ruspa": { en: "Bulldozer", it: "Ruspa" },
+  "building.chies": { en: "City center", it: "Municipio", es: "Ayuntamiento" },
+  "building.industria": { en: "Industry", it: "Industria", es: "Industria" },
+  "building.casa": { en: "House", it: "Casa", es: "Casa" },
+  "building.missile": { en: "Missile Launcher", it: "Lanciamissili", es: "Lanzamisiles" },
+  "building.solare": { en: "Solar Panels", it: "Pannelli solari", es: "Paneles solares" },
+  "building.parco": { en: "Park", it: "Parco", es: "Parque" },
+  "building.club": { en: "Club", it: "Club", es: "Club" },
+  "building.villa": { en: "Villa", it: "Villa", es: "Villa" },
+  "building.gatling": { en: "Gatling Gun", it: "Mitragliatrice Gatling", es: "Ametralladora Gatling" },
+  "building.laser": { en: "Laser", it: "Laser", es: "Láser" },
+  "building.eolico": { en: "Wind Turbine", it: "Turbina eolica", es: "Turbina eólica" },
+  "building.palazzo": { en: "Building", it: "Palazzo", es: "Edificio" },
+  "building.palazzoRd": { en: "Building", it: "Palazzo", es: "Edificio" },
+  "building.museo": { en: "Museum", it: "Museo", es: "Museo" },
+  "building.museoRd": { en: "Museum", it: "Museo", es: "Museo" },
+  "building.monum": { en: "Monument", it: "Monumento", es: "Monumento" },
+  "building.banca": { en: "Bank", it: "Banca", es: "Banco" },
+  "building.grattacielo": { en: "Skyscraper", it: "Grattacielo", es: "Rascacielos" },
+  "building.ruspa": { en: "Bulldozer", it: "Ruspa", es: "Buldócer" },
 
   // ------------------------------------------------------- messaggi di gioco
-  "msg.placementCancelled": { en: "placement cancelled", it: "piazzamento annullato" },
-  "msg.built": { en: "Built: {label} (-{cost} mon)", it: "Costruito: {label} (-{cost} mon)" },
-  "msg.cantSaveNow": { en: "You can't save right now: {reason}", it: "Non puoi salvare adesso: {reason}" },
-  "msg.gameSaved": { en: "game saved", it: "partita salvata" },
-  "msg.gameSavedToFile": { en: "game saved to file", it: "partita salvata su file" },
-  "msg.saveToFileFailed": { en: "save to file failed", it: "salvataggio su file non riuscito" },
-  "msg.loadFromFileFailed": { en: "load from file failed", it: "caricamento da file non riuscito" },
-  "msg.invalidFile": { en: "invalid or modified file", it: "file non valido o modificato" },
-  "msg.gameLoadedFromFile": { en: "game loaded from file", it: "partita caricata da file" },
-  "msg.loanObtained": { en: "loan of {amount} mon obtained", it: "prestito di {amount} mon ottenuto" },
-  "msg.traded": { en: "traded {giveAmount} {give} for {takeAmount} {take}", it: "scambiati {giveAmount} {give} per {takeAmount} {take}" },
-  "msg.needResourceHave": { en: "need {amount} {resource} (have {have})", it: "servono {amount} {resource} (hai {have})" },
-  "msg.levelToUnlock": { en: "{label}: level {level} to unlock", it: "{label}: livello {level} per sbloccare" },
+  "msg.placementCancelled": { en: "placement cancelled", it: "piazzamento annullato", es: "colocación cancelada" },
+  "msg.built": { en: "Built: {label} (-{cost} mon)", it: "Costruito: {label} (-{cost} mon)", es: "Construido: {label} (-{cost} mon)" },
+  "msg.cantSaveNow": { en: "You can't save right now: {reason}", it: "Non puoi salvare adesso: {reason}", es: "No puedes guardar ahora: {reason}" },
+  "msg.gameSaved": { en: "game saved", it: "partita salvata", es: "partida guardada" },
+  "msg.gameSavedToFile": { en: "game saved to file", it: "partita salvata su file", es: "partida guardada en archivo" },
+  "msg.saveToFileFailed": { en: "save to file failed", it: "salvataggio su file non riuscito", es: "no se pudo guardar en archivo" },
+  "msg.loadFromFileFailed": { en: "load from file failed", it: "caricamento da file non riuscito", es: "no se pudo cargar desde archivo" },
+  "msg.invalidFile": { en: "invalid or modified file", it: "file non valido o modificato", es: "archivo no válido o modificado" },
+  "msg.gameLoadedFromFile": { en: "game loaded from file", it: "partita caricata da file", es: "partida cargada desde archivo" },
+  "msg.loanObtained": { en: "loan of {amount} mon obtained", it: "prestito di {amount} mon ottenuto", es: "préstamo de {amount} mon obtenido" },
+  "msg.traded": { en: "traded {giveAmount} {give} for {takeAmount} {take}", it: "scambiati {giveAmount} {give} per {takeAmount} {take}", es: "intercambiados {giveAmount} {give} por {takeAmount} {take}" },
+  "msg.needResourceHave": { en: "need {amount} {resource} (have {have})", it: "servono {amount} {resource} (hai {have})", es: "necesitas {amount} {resource} (tienes {have})" },
+  "msg.levelToUnlock": { en: "{label}: level {level} to unlock", it: "{label}: livello {level} per sbloccare", es: "{label}: nivel {level} para desbloquear" },
   "msg.noBuildingSelected": {
     en: "no building selected — open the menu with the crane",
     it: "nessun edificio selezionato — apri il menu con la gru",
+    es: "ningún edificio seleccionado — abre el menú con la grúa",
   },
-  "msg.notRebuiltYet": { en: "{label}: not rebuilt yet", it: "{label}: non ancora ricostruito" },
-  "msg.constructionInProgress": { en: "construction already in progress", it: "cantiere già in corso" },
+  "msg.notRebuiltYet": { en: "{label}: not rebuilt yet", it: "{label}: non ancora ricostruito", es: "{label}: aún no reconstruido" },
+  "msg.constructionInProgress": { en: "construction already in progress", it: "cantiere già in corso", es: "obra ya en curso" },
   "msg.notDemolishable": {
     en: "{label}: not demolishable/repairable with the bulldozer",
     it: "{label}: non demolibile/riparabile con la ruspa",
+    es: "{label}: no demolible/reparable con el buldócer",
   },
-  "msg.needMonHave": { en: "need {cost} mon (have {have})", it: "servono {cost} mon (hai {have})" },
+  "msg.needMonHave": { en: "need {cost} mon (have {have})", it: "servono {cost} mon (hai {have})", es: "necesitas {cost} mon (tienes {have})" },
   "msg.confirmDemolish": {
     en: "demolish/repair: tap \"yes\" to confirm (-{cost} mon)",
     it: "demolisci/ripara: tocca \"sì\" per confermare (-{cost} mon)",
+    es: "demoler/reparar: toca \"sí\" para confirmar (-{cost} mon)",
   },
-  "msg.demolishedLotsFree": { en: "demolished — lots free", it: "demolito — lotti liberati" },
-  "msg.loanAlreadyActive": { en: "loan already active", it: "prestito già attivo" },
-  "msg.fire": { en: "fire!", it: "fuoco!" },
-  "msg.noTargetInRange": { en: "no target in range", it: "nessun bersaglio a portata" },
-  "msg.insufficientEnergy": { en: "insufficient energy", it: "energia insufficiente" },
-  "msg.cannonReloading": { en: "cannon reloading", it: "cannone in ricarica" },
-  "msg.constructionStarted": { en: "construction started", it: "cantiere avviato" },
-  "msg.constructionStartedBulldozer": { en: "construction started (bulldozer)", it: "cantiere avviato (ruspa)" },
-  "msg.solarPlaced": { en: "solar panels placed on the park (-1000 mon)", it: "pannelli solari installati sul parco (-1000 mon)" },
-  "msg.alreadySolarOnPark": { en: "there's already a solar panel on this park", it: "c'è già un pannello solare su questo parco" },
+  "msg.demolishedLotsFree": { en: "demolished — lots free", it: "demolito — lotti liberati", es: "demolido — parcelas liberadas" },
+  "msg.loanAlreadyActive": { en: "loan already active", it: "prestito già attivo", es: "préstamo ya activo" },
+  "msg.fire": { en: "fire!", it: "fuoco!", es: "¡fuego!" },
+  "msg.noTargetInRange": { en: "no target in range", it: "nessun bersaglio a portata", es: "ningún objetivo a tiro" },
+  "msg.insufficientEnergy": { en: "insufficient energy", it: "energia insufficiente", es: "energía insuficiente" },
+  "msg.cannonReloading": { en: "cannon reloading", it: "cannone in ricarica", es: "cañón recargando" },
+  "msg.constructionStarted": { en: "construction started", it: "cantiere avviato", es: "obra iniciada" },
+  "msg.constructionStartedBulldozer": { en: "construction started (bulldozer)", it: "cantiere avviato (ruspa)", es: "obra iniciada (buldócer)" },
+  "msg.solarPlaced": { en: "solar panels placed on the park (-1000 mon)", it: "pannelli solari installati sul parco (-1000 mon)", es: "paneles solares instalados en el parque (-1000 mon)" },
+  "msg.alreadySolarOnPark": { en: "there's already a solar panel on this park", it: "c'è già un pannello solare su questo parco", es: "ya hay un panel solar en este parque" },
   "msg.needFreeArea": {
     en: "need a free area of {count} adjacent lots (a rectangle)",
     it: "serve un'area libera di {count} lotti adiacenti (un rettangolo)",
+    es: "necesitas un área libre de {count} parcelas adyacentes (un rectángulo)",
   },
-  "msg.notPartOfPlatform": { en: "this area isn't part of the platform yet", it: "quest'area non fa ancora parte della piattaforma" },
-  "msg.tooCloseToTurret": { en: "too close to another defense turret", it: "troppo vicino a un'altra torretta difensiva" },
-  "msg.needFreeDiagonalLot": { en: "need a free lot diagonally adjacent", it: "serve un lotto libero in diagonale" },
-  "msg.dragToFreeLot": { en: "drag to a free adjacent lot", it: "trascina su un lotto libero adiacente" },
-  "msg.itsFree": { en: "It's free!", it: "È gratis!" },
-  "msg.oilAlmostDepleted": { en: "oil is almost depleted", it: "il petrolio sta per esaurirsi" },
-  "msg.stormHitting": { en: "a storm is hitting the city", it: "una tempesta sta colpendo la città" },
-  "msg.attackIncoming": { en: "an attack is incoming", it: "un attacco è in arrivo" },
-  "msg.threatNear": { en: "a threat is near the city", it: "una minaccia è vicina alla città" },
+  "msg.notPartOfPlatform": { en: "this area isn't part of the platform yet", it: "quest'area non fa ancora parte della piattaforma", es: "esta área todavía no forma parte de la plataforma" },
+  "msg.tooCloseToTurret": { en: "too close to another defense turret", it: "troppo vicino a un'altra torretta difensiva", es: "demasiado cerca de otra torreta defensiva" },
+  "msg.needFreeDiagonalLot": { en: "need a free lot diagonally adjacent", it: "serve un lotto libero in diagonale", es: "necesitas una parcela libre en diagonal" },
+  "msg.dragToFreeLot": { en: "drag to a free adjacent lot", it: "trascina su un lotto libero adiacente", es: "arrastra a una parcela libre adyacente" },
+  "msg.itsFree": { en: "It's free!", it: "È gratis!", es: "¡Es gratis!" },
+  "msg.oilAlmostDepleted": { en: "oil is almost depleted", it: "il petrolio sta per esaurirsi", es: "el petróleo está a punto de agotarse" },
+  "msg.stormHitting": { en: "a storm is hitting the city", it: "una tempesta sta colpendo la città", es: "una tormenta está azotando la ciudad" },
+  "msg.attackIncoming": { en: "an attack is incoming", it: "un attacco è in arrivo", es: "un ataque está en camino" },
+  "msg.threatNear": { en: "a threat is near the city", it: "una minaccia è vicina alla città", es: "una amenaza está cerca de la ciudad" },
   "msg.sandboxOn": {
     en: "sandbox mode ON: infinite resources, everything unlocked",
     it: "modalità sandbox ATTIVA: risorse infinite, tutto sbloccato",
+    es: "modo sandbox ACTIVADO: recursos infinitos, todo desbloqueado",
   },
-  "msg.sandboxOff": { en: "sandbox mode OFF", it: "modalità sandbox DISATTIVATA" },
-  "msg.gameLoaded": { en: "game loaded", it: "partita caricata" },
-  "msg.noSaveFound": { en: "no save found", it: "nessun salvataggio trovato" },
+  "msg.sandboxOff": { en: "sandbox mode OFF", it: "modalità sandbox DISATTIVATA", es: "modo sandbox DESACTIVADO" },
+  "msg.gameLoaded": { en: "game loaded", it: "partita caricata", es: "partida cargada" },
+  "msg.noSaveFound": { en: "no save found", it: "nessun salvataggio trovato", es: "no se encontró ninguna partida guardada" },
 
   // ---------------------------------------------------------------- upgrade
-  "upgrade.maxLevel": { en: "max level", it: "livello massimo" },
+  "upgrade.maxLevel": { en: "max level", it: "livello massimo", es: "nivel máximo" },
   "upgrade.needProductionCycles": {
     en: "need {needed} production cycles (now {done})",
     it: "servono {needed} cicli di produzione (ora a {done})",
+    es: "necesitas {needed} ciclos de producción (ahora {done})",
   },
-  "upgrade.needFullGrowth": { en: "need full growth ({done}/{needed})", it: "serve crescita piena ({done}/{needed})" },
-  "upgrade.needPopulation": { en: "need population {needed} (now {done})", it: "serve popolazione {needed} (ora a {done})" },
-  "upgrade.requiresChiesLevel": { en: "requires the city center at level {level}", it: "richiede il municipio al livello {level}" },
-  "upgrade.needResources": { en: "need {list}", it: "servono {list}" },
-  "upgrade.notRebuildable": { en: "not rebuildable with the bulldozer", it: "non ricostruibile con la ruspa" },
-  "unlock.atLevel": { en: "Unlock at level {level}", it: "Sblocca al livello {level}" },
+  "upgrade.needFullGrowth": { en: "need full growth ({done}/{needed})", it: "serve crescita piena ({done}/{needed})", es: "necesitas crecimiento completo ({done}/{needed})" },
+  "upgrade.needPopulation": { en: "need population {needed} (now {done})", it: "serve popolazione {needed} (ora a {done})", es: "necesitas población {needed} (ahora {done})" },
+  "upgrade.requiresChiesLevel": { en: "requires the city center at level {level}", it: "richiede il municipio al livello {level}", es: "requiere el ayuntamiento en nivel {level}" },
+  "upgrade.needResources": { en: "need {list}", it: "servono {list}", es: "necesitas {list}" },
+  "upgrade.notRebuildable": { en: "not rebuildable with the bulldozer", it: "non ricostruibile con la ruspa", es: "no reconstruible con el buldócer" },
+  "unlock.atLevel": { en: "Unlock at level {level}", it: "Sblocca al livello {level}", es: "Se desbloquea en el nivel {level}" },
 
   // ---------------------------------------------------------------- loading
-  "loading.default": { en: "loading", it: "caricamento" },
-  "loading.interface": { en: "loading interface", it: "caricamento interfaccia" },
-  "loading.city": { en: "loading city", it: "caricamento città" },
+  "loading.default": { en: "loading", it: "caricamento", es: "cargando" },
+  "loading.interface": { en: "loading interface", it: "caricamento interfaccia", es: "cargando interfaz" },
+  "loading.city": { en: "loading city", it: "caricamento città", es: "cargando ciudad" },
   "hwWarning.text": {
     en: "Hardware acceleration unavailable on this device/browser — performance may be very limited. Try updating your browser or switching to Chrome.",
     it: "Accelerazione hardware non disponibile su questo dispositivo/browser — le prestazioni potrebbero essere molto limitate. Prova ad aggiornare il browser o a passare a Chrome.",
+    es: "Aceleración por hardware no disponible en este dispositivo/navegador — el rendimiento podría ser muy limitado. Prueba a actualizar el navegador o a cambiar a Chrome.",
   },
-  "hwWarning.dismiss": { en: "Dismiss", it: "Chiudi" },
+  "hwWarning.dismiss": { en: "Dismiss", it: "Chiudi", es: "Cerrar" },
 
   // ------------------------------------------------------------- title screen
-  "title.loadGame": { en: "Load game", it: "Carica partita" },
+  "title.loadGame": { en: "Load game", it: "Carica partita", es: "Cargar partida" },
 
   // --------------------------------------------------------------------- mesi
-  "month.1": { en: "Jan", it: "Gen" },
-  "month.2": { en: "Feb", it: "Feb" },
-  "month.3": { en: "Mar", it: "Mar" },
-  "month.4": { en: "Apr", it: "Apr" },
-  "month.5": { en: "May", it: "Mag" },
-  "month.6": { en: "Jun", it: "Giu" },
-  "month.7": { en: "Jul", it: "Lug" },
-  "month.8": { en: "Aug", it: "Ago" },
-  "month.9": { en: "Sep", it: "Set" },
-  "month.10": { en: "Oct", it: "Ott" },
-  "month.11": { en: "Nov", it: "Nov" },
-  "month.12": { en: "Dec", it: "Dic" },
+  "month.1": { en: "Jan", it: "Gen", es: "Ene" },
+  "month.2": { en: "Feb", it: "Feb", es: "Feb" },
+  "month.3": { en: "Mar", it: "Mar", es: "Mar" },
+  "month.4": { en: "Apr", it: "Apr", es: "Abr" },
+  "month.5": { en: "May", it: "Mag", es: "May" },
+  "month.6": { en: "Jun", it: "Giu", es: "Jun" },
+  "month.7": { en: "Jul", it: "Lug", es: "Jul" },
+  "month.8": { en: "Aug", it: "Ago", es: "Ago" },
+  "month.9": { en: "Sep", it: "Set", es: "Sep" },
+  "month.10": { en: "Oct", it: "Ott", es: "Oct" },
+  "month.11": { en: "Nov", it: "Nov", es: "Nov" },
+  "month.12": { en: "Dec", it: "Dic", es: "Dic" },
 };
 
 export function t(key, vars) {
