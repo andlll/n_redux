@@ -6554,11 +6554,25 @@ export async function mountMatch(ctx, params = {}) {
     // primi istanti. `_selfLit`: `image_blend` forzato bianco nel
     // decompilato — un moltiplicatore neutro, non lo schiarisce (e' nero),
     // ma lo tiene comunque fuori dalla tinta ambientale come l'originale.
+    // [Bug corretto, segnalato dall'autore: "non vedo il lampo bianco (in
+    // realta' nero, vedi sopra) quando arriva un fulmine, solo lo sprite del
+    // fulmine"] `depth: -5` era il valore FISSO letto cosi' com'e' da
+    // basediswa_t/Create.gml — corretto per l'originale (depth di GameMaker,
+    // un sistema tutto suo), ma sortWorld() in questo motore ordina invece
+    // sull'y VERO nel mondo (ogni altro decoro qui — smoke, il fulmine
+    // stesso appena sopra, faro1Decor()... — usa `-y-N`, mai un numero
+    // fisso): -5 e' il depth "giusto" solo per un oggetto a y=0, quindi ad
+    // ogni colpo lontano dal bordo nord della mappa (la stragrande
+    // maggioranza) il segno d'impatto finiva ordinato come se fosse
+    // lontanissimo a nord, dietro a qualunque edificio/terreno reale nella
+    // sua zona — invisibile pur essendo disegnato per davvero. `-g.y-5`
+    // (stessa formula del lampo, sulla posizione vera del segno, non del
+    // fulmine) lo riporta nello stesso "strato" del resto della scena li'.
     for (const s of lightning) {
       dynamic.push({ obj: "decor", x: s.x, y: s.y, depth: -s.y - 5, _f: frameFor(boltSprite(s)) });
       if (s.t < LIGHTNING_GLOW_LIFE) {
         const g = glowPosition(s);
-        dynamic.push({ obj: "decor", x: g.x, y: g.y, depth: -5, _f: frameFor("base", glowFrame(s)), _scale: 2, _selfLit: true });
+        dynamic.push({ obj: "decor", x: g.x, y: g.y, depth: -g.y - 5, _f: frameFor("base", glowFrame(s)), _scale: 2, _selfLit: true });
       }
     }
     // `_sky: true` (qui e su ogni altra voce dichiaratamente in volo piu'
@@ -7401,8 +7415,24 @@ export async function mountMatch(ctx, params = {}) {
       const crysPos = isMobile ? { x: barX + 100, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 570, y: barY - 4 };
       const crysScale = isMobile ? 0.9 : 0.75;
       const crysTextPos = isMobile ? { x: barX + 140, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 606, y: barY + 19 };
-      r.setColorize(iconsDark);
-      if (!hideResourceIcons && crysFrame) r.draw(crysFrame, crysPos.x, crysPos.y, crysScale, 0xffffff, 1);
+      // [Bug corretto, segnalato dall'autore: "non vedo il counter dei crys
+      // quando li raccolgo (desktop)"] A differenza di hap1/hap3/oil/ele/mon
+      // (sagome NERE su trasparente, verificato pixel per pixel sulla
+      // texture sorgente) "crys_ico" e' in realta' BIANCO su trasparente —
+      // lo stesso file, misurato allo stesso modo, non lascia dubbi: nessuna
+      // delle sue coordinate contiene un pixel scuro. Con `setColorize(iconsDark)`
+      // (come i fratelli sopra) il colore vero non viene mai sovrascritto di
+      // giorno (`iconsDark` falso): l'icona resta bianca sul fondo chiaro
+      // della barra, invisibile — e lo sarebbe restata anche di notte, dato
+      // che il tint passato a `r.draw()` era comunque bianco (`0xffffff`,
+      // uguale al colore nativo, nessun cambiamento reale). Qui invece si
+      // forza SEMPRE la colorizzazione, con un tint esplicito che dipende da
+      // `iconsDark` invece di riusare `0xffffff` fisso: nero di giorno (come
+      // gli altri pittogrammi), bianco di notte — lo stesso comportamento
+      // VISIVO dei fratelli neri, non lo stesso codice, perche' il sorgente
+      // di partenza e' invertito.
+      r.setColorize(true);
+      if (!hideResourceIcons && crysFrame) r.draw(crysFrame, crysPos.x, crysPos.y, crysScale, iconsDark ? 0xffffff : 0x000000, 1);
       r.setColorize(false);
       if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), crysTextPos.x, crysTextPos.y, { size: 15, align: "left", color: barTextColor });
     }
