@@ -3331,16 +3331,41 @@ export async function mountMatch(ctx, params = {}) {
 
     const autoDefenseCosts = AUTO_DEFENSE_COST_PER_MIN[b.type];
     const showControl = !b.construction && autoDefenseCosts != null;
-    const SEG_H = 40, AUTODEF_BLOCK_H = 144;
+    const SEG_H = 40;
 
     const panelW = Math.min(320, cw - 40);
     const barH = 20;
     const headerH = 70;
-    const bodyH = b.construction ? 30 : (22 + barH + 20 + (showControl ? AUTODEF_BLOCK_H + 16 : 0));
+    const px = (cw - panelW) / 2;
+    const barX = px + 20, barW = panelW - 40;
+
+    // [Bug corretto, segnalato dall'autore: "nel pannello delle torrette la
+    // descrizione del livello si sovrappone al costo sotto"] La descrizione
+    // va a capo su un numero di righe che dipende dalla lingua (l'italiano
+    // e' spesso piu' lungo dell'inglese) e dal livello scelto (level3 e' la
+    // piu' lunga di tutte) — uno slot fisso (prima: 50px, buono per 2 righe)
+    // non bastava piu' con testi piu' lunghi, e la descrizione finiva sopra
+    // al testo del costo. Stessa tecnica gia' usata per il balloon del
+    // tutorial (piu' sotto in questo file): disegna il testo HTML SUBITO a
+    // un `top` provvisorio (l'unico valore ancora ignoto a questo punto),
+    // misura l'altezza VERA con `getBoundingClientRect()` e usa quella per
+    // dimensionare il pannello — `descEl.style.top` viene corretto piu'
+    // sotto una volta nota la `cy` reale, senza un secondo `drawHtmlText()`
+    // (raddoppierebbe l'elemento nel pool per lo stesso testo).
+    let descEl = null, descH = 0;
+    const autoDefLevel = showControl ? (b.autoDefenseLevel ?? 1) : null;
+    if (showControl) {
+      const info = AUTO_DEFENSE_LEVELS[autoDefLevel - 1];
+      descEl = drawHtmlText(info.desc, barX, 0, { size: 12.5, maxWidth: barW, wrap: true, align: "center" });
+      descH = descEl.getBoundingClientRect().height;
+    }
+    const DESC_GAP = 14;
+    const autoDefBlockH = showControl ? (SEG_H + 12 + 20 + descH + DESC_GAP + 22) : 0;
+    const bodyH = b.construction ? 30 : (22 + barH + 20 + (showControl ? autoDefBlockH + 16 : 0));
     const statsH = statLines.length * 26;
     const btnH = 46;
     const panelH = headerH + bodyH + statsH + 16 + btnH + 20;
-    const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+    const py = (ch - panelH) / 2;
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
     const title = def.label + (maxLevel > 1 && !b.construction ? t("buildingInfo.levelSuffix", { level: b.level, max: maxLevel }) : "");
@@ -3355,13 +3380,12 @@ export async function mountMatch(ctx, params = {}) {
       const ratio = maxLife > 0 ? Math.max(0, Math.min(1, b.life / maxLife)) : 0;
       drawHtmlText(t("buildingInfo.health", { cur: Math.max(0, Math.round(b.life)), max: Math.round(maxLife) }), px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
       cy += 22;
-      const barX = px + 20, barW = panelW - 40;
       drawPillBar(barX, cy, barW, barH, 0x000000, 0.12);
       const barColor = ratio > 0.5 ? 0x4caf50 : ratio > 0.2 ? 0xffa726 : 0xef5350;
       if (ratio > 0) drawPillBar(barX, cy, barW * ratio, barH, barColor, 0.9);
       cy += barH + 20;
       if (showControl) {
-        const level = b.autoDefenseLevel ?? 1;
+        const level = autoDefLevel;
         // [Nuova funzionalita', richiesta dall'autore: "i pulsanti delle
         // strutture di difesa devono essere rettangoli stondato"] Tre
         // bottoni VERI e distinti (pauseButtonFrame, lo stesso "vetro"
@@ -3400,8 +3424,8 @@ export async function mountMatch(ctx, params = {}) {
         const info = AUTO_DEFENSE_LEVELS[level - 1];
         drawHtmlText(info.name, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
         cy += 20;
-        drawHtmlText(info.desc, barX, cy, { size: 12.5, maxWidth: barW, wrap: true, align: "center" });
-        cy += 50;
+        descEl.style.top = `${cy}px`;
+        cy += descH + DESC_GAP;
         const costText = level === 1 ? t("autoDefense.freeAlwaysOn") : t("autoDefense.costPerMin", { cost: autoDefenseCosts[level] });
         drawHtmlText(costText, px + panelW / 2, cy, { size: 14, maxWidth: panelW - 30, color: level > 1 ? "#c65050" : undefined });
         cy += 22;
