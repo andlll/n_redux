@@ -1950,16 +1950,16 @@ export async function mountMatch(ctx, params = {}) {
    * annulla. [C] Collision_dir1..4.gml: l'edificio nasce sul lotto con la y
    * maggiore fra origine e vicino — [Bug corretto, richiesto dall'autore:
    * "alcuni edifici disattivano i placeholder adiacenti anche se liberi, non
-   * deve succedere"] l'ALTRO lotto (`blockedSite`, sotto) non viene piu'
+   * deve succedere"] l'altro lotto (quello con la y minore) non viene piu'
    * bloccato per sempre com'era nel decompilato (`dirdel/Collision_
    * placeholder.gml`, [C], uccideva anche lui): resta un placeholder libero
    * come ogni altro, deviazione esplicita dall'originale. Palazzo/museo
    * restano comunque grandi due lotti VISIVAMENTE (lo sprite finale copre
-   * anche l'area del vicino, vedi `depthY` sotto, invariato) — costruire
-   * qualcos'altro proprio li' puo' quindi sovrapporsi a schermo col loro
-   * sprite; accettato dall'autore, nessuna maschera di collisione vera per
-   * evitarlo (STUDIO.md, "pepazzittecollider" mai ricostruito, stesso limite
-   * gia' noto per le torrette).
+   * anche l'area del vicino) — costruire qualcos'altro proprio li' puo'
+   * quindi sovrapporsi a schermo col loro sprite; accettato dall'autore,
+   * nessuna maschera di collisione vera per evitarlo (STUDIO.md,
+   * "pepazzittecollider" mai ricostruito, stesso limite gia' noto per le
+   * torrette).
    */
   function resolvePlacement(sx, sy) {
     if (!armedPlacement) return;
@@ -1975,7 +1975,6 @@ export async function mountMatch(ctx, params = {}) {
     const def = BUILDING_TYPES[type];
     const neighbor = hit.placeholder;
     const buildSite = neighbor.y > origin.y ? neighbor : origin;
-    const blockedSite = buildSite === neighbor ? origin : neighbor;
     origin._armed = false;
     for (const k in def.placeCost) r12[k] -= def.placeCost[k];
     buildSite.consumed = true;
@@ -1988,22 +1987,20 @@ export async function mountMatch(ctx, params = {}) {
     // esattamente come ogni altro tipo — palazzoRd/museoRd non compaiono nel
     // menu (OTHER_BUILDINGS), solo qui.
     const concreteType = hit.axis === "rd" ? `${type}Rd` : type;
-    // Depth: palazzo/museo nascono sul lotto con la y MAGGIORE (buildSite,
-    // sopra) ma lo sprite finale e' grande abbastanza da coprire visivamente
-    // ANCHE il lotto bloccato (blockedSite, y minore) accanto — se il depth
-    // si ordinasse come ogni altro edificio (-buildSite.y, il piu' vicino dei
-    // due alla camera) l'edificio vinceva il confronto per-y anche contro
-    // vicini genuinamente piu' vicini (y maggiore di buildSite ma ancora
-    // dentro l'ingombro visivo del suo sprite sovradimensionato) — segnalato
-    // dall'autore ("a volte si vedono sopra edifici che sono piu' in basso").
-    // [I] Nessun dato di "vera" altezza dello sprite per fare di meglio
-    // (STUDIO.md, "pepazzittecollider" mai ricostruito): la media fra i due
-    // lotti del cluster e' un compromesso, non l'ancoraggio a un singolo
-    // angolo (buildSite o blockedSite) — riduce il bias in avanti senza
-    // introdurre quello opposto (nascosto da vicini che dovrebbero stargli
-    // dietro).
-    const depthY = (buildSite.y + blockedSite.y) / 2;
-    const b = placeBuilding(concreteType, buildSite.x, buildSite.y, -depthY);
+    // Depth: [Bug corretto, segnalato dall'autore: "a volte si vedono sopra
+    // edifici che sono piu' in basso"] qui mediava `buildSite.y` (il lotto
+    // con la y MAGGIORE, dove l'edificio nasce davvero) con la y del lotto
+    // adiacente bloccato, piu' piccola, per compensare lo sprite
+    // sovradimensionato — un compromesso nostro, non dell'originale.
+    // **[C]** media1s/Create.gml (edificio finito) e impamediaR|RD/Create.gml
+    // (cantiere): `depth = -y + 3` / `-y + 3.1`, la `y` della singola
+    // istanza (creata con `action_create_object(..., 0, 0)` in modalita'
+    // relativa, cioe' sul lotto stesso) — GameMaker non calcola nessun
+    // centro geometrico dallo sprite, ordina solo per posizione
+    // dell'istanza. L'ancoraggio vero e' quindi il singolo lotto con la y
+    // maggiore (buildSite, "la base piu' in basso delle due"), mai una
+    // media con l'altro lotto.
+    const b = placeBuilding(concreteType, buildSite.x, buildSite.y, -buildSite.y);
     buildings.push(b);
     if (b.level >= 1) spawnDecor(b, currentDecor(b));
     constructionBalloons.push(spawnConstructionBalloon(buildSite.x, buildSite.y));
