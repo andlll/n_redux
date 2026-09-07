@@ -183,7 +183,12 @@ const STRINGS = {
 
   // ---------------------------------------------------------------- edifici
   "building.chies": { en: "City center", it: "Municipio", es: "Ayuntamiento", pt: "Prefeitura", de: "Rathaus", fr: "Hôtel de ville" },
-  "building.industria": { en: "Industry", it: "Industria", es: "Industria", pt: "Indústria", de: "Industrie", fr: "Industrie" },
+  // [Bug corretto, segnalato dall'autore: "'industria' non ha senso come
+  // nome, produce energia elettrica (buildings.js: production ele), e' una
+  // centrale"] "Industry"/"Industria" in tutte le lingue -> "Power
+  // Plant"/"Centrale elettrica"/ecc, coerente con come il tutorial (gia'
+  // corretto in inglese, tutorial.js) la descrive da sempre.
+  "building.industria": { en: "Power Plant", it: "Centrale elettrica", es: "Central eléctrica", pt: "Usina Elétrica", de: "Kraftwerk", fr: "Centrale électrique" },
   "building.casa": { en: "House", it: "Casa", es: "Casa", pt: "Casa", de: "Haus", fr: "Maison" },
   "building.missile": { en: "Missile Launcher", it: "Lanciamissili", es: "Lanzamisiles", pt: "Lançador de Mísseis", de: "Raketenwerfer", fr: "Lance-missiles" },
   "building.solare": { en: "Solar Panels", it: "Pannelli solari", es: "Paneles solares", pt: "Painéis Solares", de: "Solarpanele", fr: "Panneaux solaires" },
