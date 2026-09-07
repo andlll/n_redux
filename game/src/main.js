@@ -14,7 +14,7 @@ import {
 import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { Pool } from "./pool.js";
-import { spawnLightning, stepLightning, boltSprite, glowPosition, glowFrame, LIGHTNING_GLOW_LIFE } from "./lightning.js";
+import { spawnLightning, stepLightning, boltSprite, glowAlpha, LIGHTNING_GLOW_LIFE } from "./lightning.js";
 import { createWeatherState, stepRain, rainDropAngle, RAIN_STREAK_LENGTH, RAIN_STREAK_WIDTH, RAIN_TINT, RAIN_ALPHA } from "./weather.js";
 import { createFireworksState, stepFireworks, FIREWORK_DEPTH, FIREWORK_SPARK_SIZE } from "./fireworks.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
@@ -6547,44 +6547,15 @@ export async function mountMatch(ctx, params = {}) {
       const frameIdx = Math.min(SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
       dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, SMOKE_LIFE) });
     }
-    // Il fulmine (game/src/lightning.js): il lampo vero (`th1`/`th2` ->
-    // `th1s`/`th2s` a meta' vita, depth -y-5 come l'originale) sempre
-    // presente finche' vivo, il segno d'impatto (`basediswa_t`, sprite
-    // "base" — un disco nero che sfuma in alpha, 30 frame veri) solo per i
-    // primi istanti. `_selfLit`: `image_blend` forzato bianco nel
-    // decompilato — un moltiplicatore neutro, non lo schiarisce (e' nero),
-    // ma lo tiene comunque fuori dalla tinta ambientale come l'originale.
-    // [Bug corretto, segnalato dall'autore: "non vedo il lampo bianco (in
-    // realta' nero, vedi sopra) quando arriva un fulmine, solo lo sprite del
-    // fulmine"] `depth: -5` era il valore FISSO letto cosi' com'e' da
-    // basediswa_t/Create.gml — corretto per l'originale (depth di GameMaker,
-    // un sistema tutto suo), ma sortWorld() in questo motore ordina invece
-    // sull'y VERO nel mondo (ogni altro decoro qui — smoke, il fulmine
-    // stesso appena sopra, faro1Decor()... — usa `-y-N`, mai un numero
-    // fisso): -5 e' il depth "giusto" solo per un oggetto a y=0, quindi ad
-    // ogni colpo lontano dal bordo nord della mappa (la stragrande
-    // maggioranza) il segno d'impatto finiva ordinato come se fosse
-    // lontanissimo a nord, dietro a qualunque edificio/terreno reale nella
-    // sua zona — invisibile pur essendo disegnato per davvero. `-g.y-5`
-    // (stessa formula del lampo, sulla posizione vera del segno, non del
-    // fulmine) lo riporta nello stesso "strato" del resto della scena li'.
+    // Il fulmine vero (game/src/lightning.js): `th1`/`th2` -> `th1s`/`th2s`
+    // a meta' vita, depth -y-5 come l'originale (sortWorld() qui ordina
+    // sull'y vero nel mondo, come ogni altro decoro di questa lista — mai un
+    // numero fisso). Il segno d'impatto (`basediswa_t` nel decompilato) NON
+    // e' piu' uno sprite ("base") ancorato al mondo qui — vedi il rettangolo
+    // a schermo intero disegnato piu' sotto, subito dopo il loop di
+    // frameList, vicino a faroFlashes.
     for (const s of lightning) {
       dynamic.push({ obj: "decor", x: s.x, y: s.y, depth: -s.y - 5, _f: frameFor(boltSprite(s)) });
-      if (s.t < LIGHTNING_GLOW_LIFE) {
-        const g = glowPosition(s);
-        // [Bug corretto, segnalato dall'autore: "nell'originale il lampo
-        // copriva tutta l'area di gioco, una texture piccola scalata n
-        // volte"] `_scale: 2` leggeva "200" di action_sprite_transform(200,
-        // 200, 0, 0) (basediswa_t/Create.gml) come 200% invece che come
-        // fattore letterale — lo stesso equivoco gia' preso e corretto per
-        // l'overlay `aura` (vedi il commento su AURA_OVERLAY piu' sopra:
-        // action_sprite_transform(150, 90, 0, 0) su uno sprite 32x32 diventa
-        // 4800x2880, "piu' grande della room", non 1.5x). Qui lo stesso
-        // sprite "base" e' 32x32 nativo: a 200x diventa 6400x6400, un lampo
-        // che copre per davvero l'area di gioco invece di un quadratino
-        // 64x64 quasi invisibile accanto al fulmine.
-        dynamic.push({ obj: "decor", x: g.x, y: g.y, depth: -g.y - 5, _f: frameFor("base", glowFrame(s)), _scale: 200, _selfLit: true });
-      }
     }
     // `_sky: true` (qui e su ogni altra voce dichiaratamente in volo piu'
     // sotto — mongolfiere/minacce/proiettili/fumo aereo): esclude la voce
@@ -6949,6 +6920,24 @@ export async function mountMatch(ctx, params = {}) {
       const k = p.t / FARO_FLASH_LIFE;
       const size = 40 + k * 260;
       r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, FARO_FLASH_COLOR, (1 - k) * 0.6);
+    }
+    // Segno d'impatto del fulmine (game/src/lightning.js) — [Nuova
+    // implementazione, richiesta dall'autore: "fai in modo che copra
+    // esattamente tutto lo schermo, lascia stare quel 200 volte e
+    // trasformalo in un rettangolo vettoriale come fatto per il filtro
+    // notte"] Stessa tecnica dell'overlay giorno/notte `aura` (sopra: un
+    // quad a tinta unita invece di uno sprite), ma dimensionato su `l, t,
+    // vw, vh` (sopra, il rettangolo di mondo VISIBILE calcolato per il
+    // culling di frameList) invece che sull'intera room: la vista corrente
+    // e' esattamente lo schermo per definizione, qualunque siano camera/
+    // zoom in quel momento — a differenza di uno sprite scalato e ancorato
+    // al punto colpito, che poteva restare piu' corto da un lato o
+    // sprecare migliaia di pixel dall'altro a seconda di dove cadeva il
+    // colpo rispetto all'inquadratura. glowAlpha() (lightning.js) rifa la
+    // stessa curva di dissolvenza (255->~10 di alpha in 30 tick, lineare)
+    // gia' cotta nei 30 frame dello sprite originale, qui in continuo.
+    for (const s of lightning) {
+      if (s.t < LIGHTNING_GLOW_LIFE) r.draw(solidFrame(white, vw, vh), l, t, 1, 0x000000, glowAlpha(s));
     }
     // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva
     // quando l'autodifesa scala i soldi al giocatore — l'icona blu dei
