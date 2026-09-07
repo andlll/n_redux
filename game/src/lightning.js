@@ -13,7 +13,13 @@
 // cambio di sprite a meta' vita, nessuna animazione multi-frame.
 //
 // [C] basediswa_t/Create.gml: figlio creato alla posizione di `thunder`,
-// spostato RELATIVO di (-100,-300), scala 200% (action_sprite_transform),
+// spostato RELATIVO di (-100,-300), scala 200x — action_sprite_transform(200,
+// 200, 0, 0), un fattore letterale non una percentuale (**[Bug corretto,
+// segnalato dall'autore: "nell'originale il lampo copriva tutta l'area di
+// gioco"]**: main.js leggeva "200" come 200%/2x, lo stesso equivoco gia'
+// preso e corretto per l'overlay `aura`, vedi il suo commento in main.js —
+// su uno sprite 32x32 come "base" sotto, 200x vuol dire 6400x6400, un lampo
+// che copre davvero l'area di gioco, non un quadratino 64x64) —
 // `image_blend` forzato a 16777215 (bianco — un moltiplicatore neutro,
 // "non scurire coi toni ambientali giorno/notte", `_selfLit` nel nostro
 // renderer), depth fisso -5, arma `alarm[0]=30`. **[Bug corretto durante il

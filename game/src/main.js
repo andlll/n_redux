@@ -6572,7 +6572,18 @@ export async function mountMatch(ctx, params = {}) {
       dynamic.push({ obj: "decor", x: s.x, y: s.y, depth: -s.y - 5, _f: frameFor(boltSprite(s)) });
       if (s.t < LIGHTNING_GLOW_LIFE) {
         const g = glowPosition(s);
-        dynamic.push({ obj: "decor", x: g.x, y: g.y, depth: -g.y - 5, _f: frameFor("base", glowFrame(s)), _scale: 2, _selfLit: true });
+        // [Bug corretto, segnalato dall'autore: "nell'originale il lampo
+        // copriva tutta l'area di gioco, una texture piccola scalata n
+        // volte"] `_scale: 2` leggeva "200" di action_sprite_transform(200,
+        // 200, 0, 0) (basediswa_t/Create.gml) come 200% invece che come
+        // fattore letterale — lo stesso equivoco gia' preso e corretto per
+        // l'overlay `aura` (vedi il commento su AURA_OVERLAY piu' sopra:
+        // action_sprite_transform(150, 90, 0, 0) su uno sprite 32x32 diventa
+        // 4800x2880, "piu' grande della room", non 1.5x). Qui lo stesso
+        // sprite "base" e' 32x32 nativo: a 200x diventa 6400x6400, un lampo
+        // che copre per davvero l'area di gioco invece di un quadratino
+        // 64x64 quasi invisibile accanto al fulmine.
+        dynamic.push({ obj: "decor", x: g.x, y: g.y, depth: -g.y - 5, _f: frameFor("base", glowFrame(s)), _scale: 200, _selfLit: true });
       }
     }
     // `_sky: true` (qui e su ogni altra voce dichiaratamente in volo piu'
