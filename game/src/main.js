@@ -3125,7 +3125,16 @@ export async function mountMatch(ctx, params = {}) {
     const rects = [];
     segments.forEach((seg, i) => {
       const bx = x + i * segW + SEG_GAP / 2, bw = segW - SEG_GAP;
-      r.draw(pauseButtonFrame(bw, h), bx, y, 1, seg.selected ? 0x4caf50 : BUTTON_TINT, seg.selected ? 0.88 : BUTTON_ALPHA);
+      // Pillola vera (raggio = h/2, tagPillFrame() piu' sotto — stessa
+      // procedura dei cartellini di costo) invece di pauseButtonFrame()
+      // (raggio fisso 14px): su un segmento stretto/quasi quadrato quel
+      // raggio fisso si legge come un semplice rettangolo con gli angoli
+      // smussati, non come un bottone tondo — l'effetto "pillola" richiede
+      // un raggio proporzionato all'altezza del bottone, non un numero
+      // costante pensato per righe intere larghe. [Bug corretto, segnalato
+      // dall'autore: "il tondo e' sui pulsanti sbagliati, quelli della
+      // lingua/intervallo dovrebbero essere tondi e sono squadrati"]
+      r.draw(tagPillFrame(Math.round(bw), Math.round(h)), bx, y, 1, seg.selected ? 0x4caf50 : BUTTON_TINT, seg.selected ? 0.88 : BUTTON_ALPHA);
       renderContent(seg, bx, y, bw, h);
       rects.push({ x: bx, y, w: bw, h, action, value: seg.value });
     });
