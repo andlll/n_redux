@@ -211,6 +211,44 @@ const TUTORIAL_TEXTS_PT = [
   "Bem, parece que agora você já sabe se virar por aí! Boa sorte com sua própria plataforma NIMBUS!",
 ];
 
+const TUTORIAL_TEXTS_DE = [
+  "Verdammt! Sieht aus, als hätten sie die halbe Stadt zerstört! Als neuer Bürgermeister musst du sie wiederaufbauen, bevor sie zurückkommen!",
+  "Zuerst solltest du diese Ruinen abreißen, damit wir dort neue Häuser bauen können.",
+  "Wähle den Button in Baggerform aus und klicke dann auf die Ruinen, um sie zu entfernen!",
+  "Wenn du kurz davor bist, eine Ruine zu entfernen, erscheinen die Kosten der Aktion darüber!",
+  "Bauen und Abreißen kosten natürlich Geld. Du musst auch für die Gerüste bezahlen, solange die Arbeiten laufen!",
+  "Wir sammeln Geld, indem wir die Bürger besteuern. Du kannst Steuern einsammeln, indem du mit der Maus über diese blauen Symbole fährst!",
+  "Wenn du Steuern einsammelst, siehst du, wie dein Geldbetrag steigt. Die obere Leiste zeigt dir allgemein die Menge der Ressourcen, die du besitzt.",
+  "Die untere Leiste dagegen ist die Aktionsleiste. Benutze den Handbutton, um Werkzeuge auszuwählen",
+  "Der Button daneben ist der Bau-Button. Wähle ihn jetzt aus und dann den Haus-Button, den ersten!",
+  "Baue jetzt fünf Häuser auf fünf leeren Grundstücken! Wir müssen die Bevölkerung in diesen Kriegszeiten vergrößern!",
+  "Sobald ein Haus fertiggestellt ist, wächst sofort die Bevölkerung, aber auch der Energieverbrauch! Die Bevölkerung der Häuser wächst im Laufe der Zeit weiter",
+  "Um die Stadt mit Energie zu versorgen, nutzen wir Industrieanlagen. Wenn die Energie unter null fällt, hören unsere Bürger auf, Steuern zu zahlen!",
+  "Baue jetzt eine Industrieanlage auf einem leeren Grundstück! Denk daran, dass der Energieverbrauch von der Bevölkerung abhängt, also wird er stetig weiterwachsen",
+  "Wir müssen ihnen auch etwas saubere Luft und Unterhaltung bieten, und dafür kannst du Parks bauen",
+  "Beachte, dass je mehr Bevölkerung und Industrieanlagen wachsen, desto mehr Parks werden benötigt!",
+  "Beachte auch, dass Gebäude nachts viel mehr Energie verbrauchen!",
+  "Baue jetzt einen Park auf einem leeren Grundstück. Denk daran, dass Parks billig und schnell zu bauen, aber sehr teuer im Unterhalt sind!",
+  "Wenn du genug Parks hast, siehst du ein glückliches Gesicht neben der Ressourcenanzeige, andernfalls hören sie auf, Steuern zu zahlen!",
+  "Die Verteidigung der Stadt ist ein weiterer entscheidender Punkt. Wie du sehen kannst, setzen wir massive Artillerie ein, um die Stadt zu schützen!",
+  "Baue einen Raketenwerfer auf einem leeren Grundstück. Denk daran, dass du sie nicht zu nah beieinander bauen kannst, das wäre zu gefährlich!",
+  "Wir nutzen Waffen auch, um dem Feind Ressourcen abzunehmen, die er in diesen riesigen Ballons transportiert, die du über uns fliegen siehst!",
+  "Tipp: Wähle das Handwerkzeug aus und halte dann eine Waffe gedrückt, um ihr Panel zu öffnen und die Autoverteidigung zu aktivieren, damit sie von selbst Spionageballons und Flugzeuge abschießt (geringe Kosten pro Minute)!",
+  "Tipp: Das funktioniert bei jedem Gebäude, nicht nur bei Waffen! Halte bei ausgewähltem Handwerkzeug ein Gebäude gedrückt, um sein Statistik-Panel zu sehen.",
+  "Ja, ich weiß, was du denkst, und ja, NIMBUS ist gewachsen, indem es fremden Nationen Öl gestohlen hat, aber was soll man machen?",
+  "Wenn sich ein Ballon nähert, klicke auf die nächstgelegene Waffe, um ihn zu zerstören, und sammle dann schnell die vom Himmel fallende Ressource ein!",
+  "Grüne Ballons transportieren Öl. Sie sind die häufigsten!",
+  "Industrieanlagen und die Motoren der Stadt verbrennen Öl, um zu laufen. Je schwerer die Stadt, desto mehr Öl verbraucht sie!",
+  "Denk also daran, keine unnötigen Dinge oder zu viele Industrieanlagen zu bauen, sonst stürzt die Stadt zu Boden!",
+  "Gelbe Ballons transportieren Batterien für Energie und blaue Geldeinlagen.",
+  "Rote Ballons werden vom Feind geschickt, um uns auszuspionieren, also musst du sie unbedingt zerstören!",
+  "Wenn du das nicht tust, rufen sie Verstärkung und du erlebst einen Angriff wie den, den du vorher gesehen hast!",
+  "Ich glaube, sie werden nicht aufhören, bis wir etwas sehr Großes bauen, um ihnen zu zeigen, dass wir hierher gehören!",
+  "Mit der Zeit wird deine Stadt größer und es wird schwierig, alles auf einen Blick zu kontrollieren!",
+  "Du kannst auch die rechte Maustaste benutzen, um die Ansicht zu bewegen, und das Mausrad für den Zoom! Auf dem Handy wische mit dem Finger, um die Kartenansicht zu bewegen.",
+  "Nun, es sieht so aus, als wüsstest du jetzt, wie man sich zurechtfindet! Viel Glück mit deiner eigenen NIMBUS-Plattform!",
+];
+
 export const TUTORIAL_TEXTS = TUTORIAL_TEXTS_EN;   // lunghezza (LAST_PHASE sotto): identica in tutte le lingue
 
 export function tutorialText(phase) {
@@ -218,6 +256,7 @@ export function tutorialText(phase) {
   const arr = lang === "it" ? TUTORIAL_TEXTS_IT
     : lang === "es" ? TUTORIAL_TEXTS_ES
     : lang === "pt" ? TUTORIAL_TEXTS_PT
+    : lang === "de" ? TUTORIAL_TEXTS_DE
     : TUTORIAL_TEXTS_EN;
   return arr[phase] ?? "";
 }

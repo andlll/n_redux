@@ -33,7 +33,7 @@ import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   tutorialText, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN, seaScrollOffset,
 } from "./tutorial.js";
-import { t, cycleLang, getLang, buildingLabel } from "./i18n.js";
+import { t, setLang, getLang, LANGUAGES, buildingLabel } from "./i18n.js";
 
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
 // export mountMatch(ctx, params) invece di uno script a livello di modulo —
@@ -3097,6 +3097,40 @@ export async function mountMatch(ctx, params = {}) {
     }
     return pauseBlurTex;
   }
+  /**
+   * Controllo "segmentato": N bottoni distinti e arrotondati affiancati su
+   * una riga, uno per valore possibile — stessa identica resa del
+   * selettore di livello autodifesa (drawBuildingInfoPanel() piu' sotto:
+   * pauseButtonFrame, spazio fra i segmenti, verde 0x4caf50/0.88 su quello
+   * selezionato invece di BUTTON_TINT/BUTTON_ALPHA). [Nuova funzionalita',
+   * richiesta dall'autore: "il pulsante di cambio lingua nel menu di pausa e
+   * quello per l'intervallo di autosalvataggio vanno strutturati identici al
+   * controllo dei livelli di autodifesa, non piu' un bottone unico che
+   * cicla i valori a ogni tocco"] Estratta qui apposta: usata da
+   * drawPauseOverlay() (lingua) e drawSavingOptionsOverlay() (intervallo)
+   * sotto con lo stesso identico guscio, cambia solo cosa disegna dentro
+   * ogni segmento (`renderContent(seg, sx, sy, sw, sh)` — un'etichetta
+   * testuale in entrambi i casi, ma resta generico). Il selettore
+   * dell'autodifesa non la usa: ha un'icona invece di testo dentro ogni
+   * segmento e un blocco nome/descrizione/costo sotto che dipende dal
+   * livello scelto, diverso a sufficienza da non valere la pena forzarlo
+   * nello stesso stampo.
+   * Ritorna l'array di rect `{x, y, w, h, action, value}`, nello stesso
+   * formato di ogni altra voce di `pauseMenuButtons` (sopra) — il chiamante
+   * lo spinge li' con lo spread, onTap (sotto) lo trova/gestisce senza
+   * nessun caso speciale.
+   */
+  function drawSegmentedControl(x, y, w, h, segments, action, renderContent) {
+    const segW = w / segments.length, SEG_GAP = 6;
+    const rects = [];
+    segments.forEach((seg, i) => {
+      const bx = x + i * segW + SEG_GAP / 2, bw = segW - SEG_GAP;
+      r.draw(pauseButtonFrame(bw, h), bx, y, 1, seg.selected ? 0x4caf50 : BUTTON_TINT, seg.selected ? 0.88 : BUTTON_ALPHA);
+      renderContent(seg, bx, y, bw, h);
+      rects.push({ x: bx, y, w: bw, h, action, value: seg.value });
+    });
+    return rects;
+  }
   function drawPauseOverlay() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
     const blurTex = getCachedPauseBlur();
@@ -3128,16 +3162,28 @@ export async function mountMatch(ctx, params = {}) {
     // percorso a se', non un doppione di questo menu). "Saving options"
     // apre il sotto-pannello dell'autosalvataggio (drawSavingOptionsOverlay(),
     // pauseSubmenu sopra) per chi vuole spegnerlo/regolarlo.
-    const rows = [
+    const rowsBefore = [
       { label: t("pause.resume"), action: "resume" },
       { label: t("pause.saveToFile"), action: "saveFile" },
       { label: t("pause.loadFromFile"), action: "loadFile" },
       { label: t("pause.savingOptions"), action: "savingOptions" },
-      { label: t("pause.language", { lang: getLang().toUpperCase() }), action: "cycleLang" },
+    ];
+    const rowsAfter = [
       { label: t("pause.resetGame"), action: "resetGame" },
       { label: t("pause.backToMenu"), action: "title" },
     ];
-    const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
+    // [Nuova funzionalita', richiesta dall'autore: "il pulsante di cambio
+    // lingua strutturato identico al controllo dei livelli di autodifesa"]
+    // Una didascalia (t("pause.language"), ora senza il valore corrente
+    // interpolato — il valore e' il segmento evidenziato stesso) +
+    // drawSegmentedControl() (sopra), un segmento per lingua in LANGUAGES
+    // (i18n.js) al posto del vecchio bottone unico che ciclava
+    // EN->IT->ES->PT->DE->EN a ogni tocco: ogni segmento seleziona la
+    // propria lingua direttamente.
+    const LANG_CAPTION_H = 22, LANG_SEG_H = 40, LANG_ROW_H = LANG_CAPTION_H + LANG_SEG_H;
+    const btnH = 46, btnGap = 14;
+    const panelW = Math.min(360, cw - 40);
+    const panelH = 96 + (rowsBefore.length + rowsAfter.length) * (btnH + btnGap) + LANG_ROW_H + btnGap + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
     // Pannello "vetro smerigliato": bianco traslucido invece del rettangolo
     // scuro opaco di prima, angoli arrotondati (pausePanelFrame(), sopra) al
@@ -3153,10 +3199,25 @@ export async function mountMatch(ctx, params = {}) {
     drawHtmlText(title, px + panelW / 2, py + 34, { size: 26 });
 
     pauseMenuButtons = [];
-    const btnW = panelW - 60, btnH = 46, btnGap = 14;
+    const btnW = panelW - 60;
+    const bx = px + (panelW - btnW) / 2;
     let by = py + 96;
-    for (const row of rows) {
-      const bx = px + (panelW - btnW) / 2;
+    for (const row of rowsBefore) {
+      r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
+      drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
+      pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+      by += btnH + btnGap;
+    }
+
+    drawHtmlText(t("pause.language"), bx + btnW / 2, by + LANG_CAPTION_H / 2, { size: 14, maxWidth: btnW - 20 });
+    by += LANG_CAPTION_H;
+    const curLang = getLang();
+    pauseMenuButtons.push(...drawSegmentedControl(bx, by, btnW, LANG_SEG_H,
+      LANGUAGES.map((code) => ({ value: code, selected: code === curLang })), "setLang",
+      (seg, sx, sy, sw, sh) => drawHtmlText(seg.value.toUpperCase(), sx + sw / 2, sy + sh / 2, { size: 14, maxWidth: sw - 6 })));
+    by += LANG_SEG_H + btnGap;
+
+    for (const row of rowsAfter) {
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
       drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
       pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
@@ -3168,13 +3229,15 @@ export async function mountMatch(ctx, params = {}) {
   /**
    * Sotto-pannello "Saving options" del menu di pausa (pauseSubmenu === "saving",
    * aperto dalla voce omonima di drawPauseOverlay()) — stessa identica
-   * struttura pannello/bottoni/blur, solo righe diverse: le quattro
-   * impostazioni di autosalvataggio (`autosave`, sopra) piu' "Back" per
-   * tornare al pannello principale. Ogni riga mostra il proprio stato
-   * attuale nell'etichetta stessa (ON/OFF, il valore in minuti) invece di
-   * un controllo separato — un solo tap la cambia e basta, coerente con
-   * l'unico altro controllo touch-only a piu' valori del motore (Zoom +/-,
-   * piu' sotto).
+   * struttura pannello/bottoni/blur, solo righe diverse: le impostazioni di
+   * autosalvataggio (`autosave`, sopra) piu' "Back" per tornare al
+   * pannello principale. Autosave/duringAttacks/duringLowOil restano
+   * bottoni singoli che mostrano il proprio stato ON/OFF nell'etichetta —
+   * due soli valori possibili, un tap li inverte e basta. L'intervallo
+   * (sei valori, AUTOSAVE_INTERVALS sopra) e' invece un controllo
+   * segmentato (vedi sotto): [Nuova funzionalita', richiesta dall'autore:
+   * "lo stesso controllo del cambio lingua, strutturato identico a quello
+   * dei livelli di autodifesa"].
    */
   function drawSavingOptionsOverlay() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
@@ -3183,19 +3246,27 @@ export async function mountMatch(ctx, params = {}) {
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
     const onOff = (v) => (v ? t("common.on") : t("common.off"));
-    const rows = [
+    const rowsBefore = [
       { label: t("savingOptions.autosave", { state: onOff(autosave.enabled) }), action: "toggleEnabled" },
-      { label: t("savingOptions.interval", { min: autosave.intervalMin }), action: "cycleInterval" },
+    ];
+    const rowsAfter = [
       { label: t("savingOptions.duringAttacks", { state: onOff(autosave.duringAttacks) }), action: "toggleAttacks" },
       { label: t("savingOptions.duringLowOil", { state: onOff(autosave.duringLowOil) }), action: "toggleLowOil" },
       { label: t("savingOptions.back"), action: "back" },
     ];
+    // Stessa didascalia + drawSegmentedControl() (sopra, vicino a
+    // drawPauseOverlay()) gia' usata per la lingua li': un segmento per
+    // valore in AUTOSAVE_INTERVALS (sopra) al posto del vecchio bottone
+    // unico "cycleInterval" che ciclava i sei valori a ogni tocco.
+    const INTERVAL_CAPTION_H = 22, INTERVAL_SEG_H = 40, INTERVAL_ROW_H = INTERVAL_CAPTION_H + INTERVAL_SEG_H;
+    const btnH = 46, btnGap = 14;
     // 360 fisso di nuovo (com'era prima del fix su "gotham"): Montserrat,
     // proporzionale, ci sta comoda anche sulla riga piu' lunga ("Save
     // during attacks: OFF") senza bisogno di allargare il pannello — a
     // differenza del font bitmap monospazio-per-carattere di prima, un
     // font vero varia larghezza per lettera, molto piu' compatto.
-    const panelW = Math.min(360, cw - 40), panelH = 96 + rows.length * 60 + 20;
+    const panelW = Math.min(360, cw - 40);
+    const panelH = 96 + (rowsBefore.length + rowsAfter.length) * (btnH + btnGap) + INTERVAL_ROW_H + btnGap + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
@@ -3203,10 +3274,24 @@ export async function mountMatch(ctx, params = {}) {
     drawHtmlText(title, px + panelW / 2, py + 38, { size: 22, maxWidth: panelW - 24 });
 
     pauseMenuButtons = [];
-    const btnW = panelW - 60, btnH = 46, btnGap = 14;
+    const btnW = panelW - 60;
+    const bx = px + (panelW - btnW) / 2;
     let by = py + 96;
-    for (const row of rows) {
-      const bx = px + (panelW - btnW) / 2;
+    for (const row of rowsBefore) {
+      r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
+      drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
+      pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+      by += btnH + btnGap;
+    }
+
+    drawHtmlText(t("savingOptions.interval"), bx + btnW / 2, by + INTERVAL_CAPTION_H / 2, { size: 14, maxWidth: btnW - 20 });
+    by += INTERVAL_CAPTION_H;
+    pauseMenuButtons.push(...drawSegmentedControl(bx, by, btnW, INTERVAL_SEG_H,
+      AUTOSAVE_INTERVALS.map((min) => ({ value: min, selected: min === autosave.intervalMin })), "setInterval",
+      (seg, sx, sy, sw, sh) => drawHtmlText(String(seg.value), sx + sw / 2, sy + sh / 2, { size: 13, maxWidth: sw - 4 })));
+    by += INTERVAL_SEG_H + btnGap;
+
+    for (const row of rowsAfter) {
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
       drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
       pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
@@ -4907,9 +4992,8 @@ export async function mountMatch(ctx, params = {}) {
         if (hit?.action === "toggleEnabled") {
           autosave.enabled = !autosave.enabled;
           saveAutosaveSettings(autosave);
-        } else if (hit?.action === "cycleInterval") {
-          const i = AUTOSAVE_INTERVALS.indexOf(autosave.intervalMin);
-          autosave.intervalMin = AUTOSAVE_INTERVALS[(i + 1) % AUTOSAVE_INTERVALS.length];
+        } else if (hit?.action === "setInterval") {
+          autosave.intervalMin = hit.value;
           saveAutosaveSettings(autosave);
         } else if (hit?.action === "toggleAttacks") {
           autosave.duringAttacks = !autosave.duringAttacks;
@@ -4945,8 +5029,8 @@ export async function mountMatch(ctx, params = {}) {
         doLoadFromFile();   // async, idem
       } else if (hit?.action === "savingOptions") {
         pauseSubmenu = "saving";
-      } else if (hit?.action === "cycleLang") {
-        cycleLang();
+      } else if (hit?.action === "setLang") {
+        setLang(hit.value);
       } else if (hit?.action === "resetGame") {
         pauseSubmenu = "confirmReset";   // un tap solo non basta: prima la conferma (irreversibile)
       } else if (hit?.action === "title") {
