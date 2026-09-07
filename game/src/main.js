@@ -387,6 +387,16 @@ export async function mountMatch(ctx, params = {}) {
     const frac = pxFromLeft / f.w;
     return { tex: f.tex, v0: f.v0, v1: f.v1, u0: f.u0 + (f.u1 - f.u0) * frac, u1: f.u1, w: f.w - pxFromLeft, h: f.h, ox: 0, oy: 0 };
   }
+  // Come subFrameLeft()/subFrameRight() sopra ma ritaglia anche in verticale
+  // (loro tengono sempre l'intera altezza — bastava per `icone_oriz`, una
+  // sola striscia orizzontale): serve per crys_ico sotto, un frame con
+  // margine trasparente asimmetrico su tutti i lati invece di una singola
+  // riga di icone gia' accostate. Origine azzerata come subFrameRight(): un
+  // ritaglio non e' piu' ancorato al frame originale.
+  function subFrameRect(f, x0, y0, x1, y1) {
+    const fu = (f.u1 - f.u0) / f.w, fv = (f.v1 - f.v0) / f.h;
+    return { tex: f.tex, u0: f.u0 + fu * x0, u1: f.u0 + fu * x1, v0: f.v0 + fv * y0, v1: f.v0 + fv * y1, w: x1 - x0, h: y1 - y0, ox: 0, oy: 0 };
+  }
   // [Nuova funzionalita', richiesta dall'autore: "nei pannelli della banca
   // sostituiamo la sigla testuale delle risorse con l'iconcina, come nella
   // barra in alto"] `icone_oriz` cuoce le quattro icone (persona/pompa di
@@ -400,12 +410,41 @@ export async function mountMatch(ctx, params = {}) {
   // (36px). Solo le tre risorse scambiabili in TRADES/LOANS (state.js) hanno
   // una voce qui: la popolazione non compare mai in un costo.
   const RESOURCE_ICON_X = { oil: [90, 126], ele: [195, 211], mon: [287, 323] };
+  // [Bug corretto, segnalato dall'autore: "l'etichetta hover del costo in
+  // cristalli per accendere il faro mostra ancora 'crys' come testo invece
+  // del simbolo"] I cristalli non fanno parte di `icone_oriz` (STUDIO.md: un
+  // sistema aggiunto in questo motore, RESOURCE_ICON_X sopra copre solo le
+  // tre risorse scambiabili originali) — l'icona vera e' `crys_ico`, gia'
+  // usata dal contatore della barra risorse piu' sotto. A differenza delle
+  // tre sopra pero' il suo frame nativo (w=27,h=40,ox=-7,oy=-16, stesso dato
+  // di data/sprites.json citato la' per il contatore) NON e' ritagliato a
+  // filo del disegno: c'e' margine trasparente asimmetrico su tutti i lati
+  // (il contatore lo corregge con un offset Y calcolato apposta, vedi il suo
+  // commento). Qui invece serve un frame ANCORATO in alto a sinistra come i
+  // tre sopra (drawCostTagAt()/layoutIconParts() piu' sotto impilano icona e
+  // testo assumendo che il bordo del frame sia gia' il bordo visivo, nessun
+  // offset per chiamante) — CRYS_ICON_BBOX ritaglia il rombo vero (misurato
+  // a mano sul PNG sorgente, stessa tecnica di RESOURCE_ICON_X) cosi' non
+  // serve nessuna matematica di compensazione qui: l'icona si allinea da
+  // sola alla pillola/testo esattamente come oil/ele/mon.
+  const CRYS_ICON_BBOX = { x0: 7, y0: 7, x1: 21, y1: 31 };
   function resourceIconFrame(kind) {
+    if (kind === "crys") {
+      const full = frameFor("crys_ico");
+      if (!full) return null;
+      const { x0, y0, x1, y1 } = CRYS_ICON_BBOX;
+      return subFrameRect(full, x0, y0, x1, y1);
+    }
     const bounds = RESOURCE_ICON_X[kind];
     const full = frameFor("icone_oriz");
     if (!bounds || !full) return null;
     return subFrameRight(subFrameLeft(full, bounds[1]), bounds[0]);
   }
+  // Chiavi di costo con un'icona vera (costParts() sotto): le tre di
+  // RESOURCE_ICON_X piu' "crys", che vive altrove (resourceIconFrame()
+  // sopra) — un solo posto che sa "quali", cosi' costParts() non deve
+  // conoscere la storia di dove vive il frame di ciascuna.
+  const RESOURCE_HAS_ICON = new Set([...Object.keys(RESOURCE_ICON_X), "crys"]);
   // Larghezza vera di un testo HTML: un `canvas.measureText()` su un canvas
   // 2D fuori dal DOM, non un `getBoundingClientRect()` su un elemento vero —
   // costa quanto una chiamata Canvas2D, non un reflow di pagina, e a
@@ -4258,10 +4297,19 @@ export async function mountMatch(ctx, params = {}) {
    * qualunque costo che non fosse SOLO `mon`) funziona per qualunque
    * combinazione di risorse: nessun caso speciale per chies (prima
    * l'unico tipo con due sprite dedicati, "c12aa"/"c23aa", per il suo
-   * costo doppio mon+oil). Una risorsa senza icona nota (RESOURCE_ICON_X,
-   * sopra) resta testo puro ("500 xyz"): non puo' capitare oggi (mon/oil/
-   * ele coprono ogni chiave di costo del gioco) ma degrada senza rompersi
-   * se in futuro se ne aggiungesse una nuova.
+   * costo doppio mon+oil). Una risorsa senza icona nota resta testo puro
+   * ("500 xyz") invece di rompersi. [Bug corretto, segnalato dall'autore:
+   * "l'etichetta del costo in cristalli del faro mostra ancora 'crys' come
+   * testo"] Il commento originale qui dava mon/oil/ele per l'unico caso
+   * possibile ("non puo' capitare oggi") — falso gia' al momento in cui e'
+   * stato scritto: FARO_SIGN_COST (sopra) costa `crys`, mai coperto da
+   * RESOURCE_ICON_X (icone_oriz non lo contiene, vedi il commento su
+   * resourceIconFrame()) e quindi mai intercettato dal ramo icona sotto —
+   * degradava silenziosamente a testo ("20 crys") invece di un bug rumoroso,
+   * per questo e' passato inosservato. RESOURCE_HAS_ICON (sopra
+   * RESOURCE_ICON_X centralizza) sostituisce il controllo diretto su
+   * RESOURCE_ICON_X: unico punto che sa quali risorse hanno un'icona,
+   * indipendentemente da dove vive il loro frame.
    */
   function costParts(cost) {
     if (!cost) return null;
@@ -4270,7 +4318,7 @@ export async function mountMatch(ctx, params = {}) {
     const parts = [];
     entries.forEach(([k, v], i) => {
       if (i > 0) parts.push({ text: ", " });
-      if (RESOURCE_ICON_X[k]) parts.push({ text: `${v} ` }, { icon: k });
+      if (RESOURCE_HAS_ICON.has(k)) parts.push({ text: `${v} ` }, { icon: k });
       else parts.push({ text: `${v} ${k}` });
     });
     return parts;
