@@ -249,6 +249,44 @@ const TUTORIAL_TEXTS_DE = [
   "Nun, es sieht so aus, als wüsstest du jetzt, wie man sich zurechtfindet! Viel Glück mit deiner eigenen NIMBUS-Plattform!",
 ];
 
+const TUTORIAL_TEXTS_FR = [
+  "Zut ! On dirait qu'ils ont détruit la moitié de la ville ! En tant que nouveau maire, tu dois la reconstruire avant qu'ils reviennent !",
+  "D'abord, tu devrais démolir ces ruines, pour qu'on puisse y construire de nouvelles maisons.",
+  "Sélectionne le bouton en forme de pelleteuse puis clique sur les ruines pour les supprimer !",
+  "Quand tu es sur le point de supprimer une ruine, le coût de l'opération apparaît au-dessus !",
+  "Construire et démolir coûtent de l'argent, bien sûr. Tu dois aussi payer les échafaudages pendant que les travaux sont en cours !",
+  "On récolte de l'argent en taxant les citoyens. Tu peux collecter les impôts en passant la souris sur ces icônes bleues !",
+  "Quand tu collectes les impôts, tu vois ton montant d'argent augmenter. La barre du haut te donne en général la quantité de ressources que tu possèdes.",
+  "La barre du bas, elle, est la Barre d'Actions. Utilise le bouton main pour sélectionner des outils",
+  "Le bouton juste à côté est le bouton Construire. Sélectionne-le, puis choisis le bouton maison, le premier !",
+  "Construis maintenant cinq maisons sur cinq emplacements vides ! On doit faire croître la population en ces temps de guerre !",
+  "Dès qu'une maison est terminée, la population augmente aussitôt, mais aussi la consommation d'énergie ! La population des maisons continue de croître avec le temps",
+  "Pour fournir de l'énergie à la ville, on utilise des industries. Si l'énergie tombe en dessous de zéro, nos citoyens arrêteront de payer leurs impôts !",
+  "Construis maintenant une industrie sur un emplacement vide ! N'oublie pas que la consommation d'énergie dépend de la population, donc elle continuera d'augmenter",
+  "On doit aussi leur offrir un peu d'air pur et de distraction, et pour ça tu peux construire des parcs",
+  "Remarque que plus la population et les industries grandissent, plus ils auront besoin de parcs !",
+  "Remarque aussi que la nuit, les bâtiments consomment bien plus d'énergie !",
+  "Construis maintenant un parc sur un emplacement vide. N'oublie pas que les parcs sont bon marché et rapides à construire, mais très coûteux à entretenir !",
+  "Si tu as assez de parcs, tu verras un visage souriant à côté du compteur de ressources, sinon oui, ils arrêteront de payer leurs impôts !",
+  "La défense de la ville est un autre point crucial. Comme tu peux le voir, on utilise une artillerie massive pour protéger la ville !",
+  "Construis un lance-missiles sur un emplacement vide. N'oublie pas que tu ne peux pas les construire trop près les uns des autres, ce serait trop dangereux !",
+  "On utilise aussi les armes pour prendre des ressources à l'ennemi, qui les transporte dans ces énormes ballons que tu vois voler au-dessus de nous !",
+  "Astuce : sélectionne l'outil main, puis appuie longuement sur une arme pour ouvrir son panneau et activer l'Autodéfense, pour qu'elle abatte toute seule ballons espions et avions (petit coût par minute) !",
+  "Astuce : ça marche sur n'importe quel bâtiment, pas seulement les armes ! Avec l'outil main sélectionné, appuie longuement sur un bâtiment pour voir son panneau de statistiques.",
+  "Oui, je sais ce que tu penses, et oui, NIMBUS a grandi en volant du pétrole à des nations étrangères, mais que veux-tu qu'on y fasse ?",
+  "Quand un ballon approche, clique sur l'arme la plus proche pour le détruire, puis récupère vite la ressource qui tombe du ciel !",
+  "Les ballons verts transportent du pétrole. Ce sont les plus courants !",
+  "Les industries et les moteurs de la ville brûlent du pétrole pour fonctionner. Plus la ville est lourde, plus elle consomme de pétrole !",
+  "Alors n'oublie pas de ne pas construire de choses inutiles ni trop d'industries, sinon la ville s'écrasera au sol !",
+  "Les ballons jaunes transportent des batteries d'énergie et les bleus des dépôts d'argent.",
+  "Les ballons rouges sont envoyés par l'ennemi pour nous espionner, donc tu dois absolument les détruire !",
+  "Si tu ne le fais pas, ils appelleront des renforts et tu subiras une attaque comme celle que tu as vue avant !",
+  "Je pense qu'ils ne s'arrêteront pas tant qu'on n'aura pas construit quelque chose de très grand pour leur montrer que cet endroit est à nous !",
+  "Avec le temps, ta ville deviendra plus grande et il sera difficile de tout contrôler d'un coup d'œil !",
+  "Tu peux aussi utiliser le bouton droit de la souris pour déplacer la vue et la molette pour le zoom ! Sur mobile, glisse ton doigt pour déplacer la vue de la carte.",
+  "Bon, on dirait que tu sais maintenant comment te débrouiller ! Bonne chance avec ta propre plateforme NIMBUS !",
+];
+
 export const TUTORIAL_TEXTS = TUTORIAL_TEXTS_EN;   // lunghezza (LAST_PHASE sotto): identica in tutte le lingue
 
 export function tutorialText(phase) {
@@ -257,6 +295,7 @@ export function tutorialText(phase) {
     : lang === "es" ? TUTORIAL_TEXTS_ES
     : lang === "pt" ? TUTORIAL_TEXTS_PT
     : lang === "de" ? TUTORIAL_TEXTS_DE
+    : lang === "fr" ? TUTORIAL_TEXTS_FR
     : TUTORIAL_TEXTS_EN;
   return arr[phase] ?? "";
 }
