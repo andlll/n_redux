@@ -13,26 +13,37 @@
 // cambio di sprite a meta' vita, nessuna animazione multi-frame.
 //
 // [C] basediswa_t/Create.gml: figlio creato alla posizione di `thunder`,
-// spostato RELATIVO di (-100,-300), scala 200% (action_sprite_transform),
-// `image_blend` forzato a 16777215 (bianco — un moltiplicatore neutro,
-// "non scurire coi toni ambientali giorno/notte", `_selfLit` nel nostro
-// renderer), depth fisso -5, arma `alarm[0]=30`. **[Bug corretto durante il
+// spostato RELATIVO di (-100,-300), scala 200x — action_sprite_transform(200,
+// 200, 0, 0), un fattore letterale non una percentuale (uno sprite 32x32
+// come "base" diventa 6400x6400): un lampo che copre per davvero l'area di
+// gioco, non un dettaglio vicino al fulmine. `image_blend` forzato a
+// 16777215 (bianco — un moltiplicatore neutro, "non scurire coi toni
+// ambientali giorno/notte", `_selfLit` nel nostro renderer prima di questo
+// commento), depth fisso -5, arma `alarm[0]=30`. **[Bug corretto durante il
 // porting]**: non e' un "bagliore bianco" come una prima lettura del solo
 // Create.gml suggeriva — lo sprite `base` (data/sprites.json) e' in realta'
 // un disco NERO puro (RGB sempre 0,0,0, verificato pixel per pixel sulle
 // texture page) con 30 frame che sfumano solo l'ALPHA da 255 a ~10: un
-// segno d'impatto scuro che si dissolve, non un lampo di luce — il "colore
-// bianco" del blend non lo schiarisce mai (0 moltiplicato per qualunque
-// tinta resta 0), conta comunque per fedelta' al decompilato. GameMaker
-// anima uno sprite multi-frame per conto proprio (`image_speed` di default
-// 1, mai spento in Create.gml): 30 frame su 30 tick di vita, un frame a
-// tick, l'intera animazione gira esattamente una volta.
+// segno d'impatto scuro che si dissolve, non un lampo di luce.
+// [Nuova implementazione, richiesta dall'autore: "fai in modo che copra
+// esattamente tutto lo schermo, lascia stare quel 200 volte e trasformalo
+// in un rettangolo vettoriale come fatto per il filtro notte"] Uno sprite
+// 32x32 scalato 200x per inseguire "tutta l'area di gioco" resta comunque
+// un quadrato FISSO ancorato al punto colpito (spostato di -100,-300): a
+// seconda di dove la camera inquadra il colpo puo' restare piu' corto del
+// bordo dello schermo da un lato, o sprecare migliaia di pixel dall'altro
+// — un rettangolo vettoriale grande esattamente quanto la vista corrente
+// (come l'overlay giorno/notte `aura`, main.js: un quad a tinta unita
+// invece di uno sprite) coincide col bordo dello schermo per costruzione,
+// qualunque sia la posizione della camera o dello zoom. `glowAlpha()`
+// sotto sostituisce i 30 frame di alpha pre-cotti nello sprite con la
+// stessa identica curva (255->~10 in 30 tick, lineare) calcolata in
+// continuo: nessun frame index da inseguire, stesso fade percepito.
 const TICK = 1 / 60;
 const BOLT_SWAP_T = 30 * TICK;
 const BOLT_LIFE = 45 * TICK;
 export const GLOW_FRAME_COUNT = 30;
 export const LIGHTNING_GLOW_LIFE = GLOW_FRAME_COUNT * TICK;
-const GLOW_DX = -100, GLOW_DY = -300;
 
 /** Un colpo per impatto — `x,y` e' il punto vero (edificio: b.x, b.y +
  * l'offset del tipo/livello colpito, buildings.js; mongolfiera: b.x, b.y). */
@@ -49,21 +60,17 @@ export function stepLightning(strikes, dt) {
 
 /** Sprite del fulmine vero in questo istante — tinta ambientale normale
  * (non e' `_selfLit`: `thunder` stesso non forza nessun colore nel
- * decompilato, solo il suo figlio `basediswa_t`/glowPosition() sotto lo fa). */
+ * decompilato, solo il suo figlio `basediswa_t`/glowAlpha() sotto lo fa). */
 export function boltSprite(s) {
   const swapped = s.t >= BOLT_SWAP_T;
   return s.variant === 1 ? (swapped ? "th1s" : "th1") : (swapped ? "th2s" : "th2");
 }
 
-/** Posizione del segno d'impatto (basediswa_t) — vivo, e in animazione
- * (glowFrame() sotto), solo per i primi LIGHTNING_GLOW_LIFE secondi della
- * vita del fulmine. */
-export function glowPosition(s) {
-  return { x: s.x + GLOW_DX, y: s.y + GLOW_DY };
-}
-
-/** Frame corrente dell'animazione a 30 fotogrammi di `base` (l'alpha che
- * sfuma e' gia' dentro lo sprite stesso, nessun fade calcolato qui). */
-export function glowFrame(s) {
-  return Math.min(GLOW_FRAME_COUNT - 1, Math.floor(s.t / TICK));
+/** Alpha del lampo nero a schermo intero in questo istante — sostituisce i
+ * 30 frame pre-cotti dello sprite "base" (255->~10 di alpha, lineare) con
+ * la stessa curva calcolata in continuo su `s.t`: 1 appena colpito, ~0.04
+ * al termine di LIGHTNING_GLOW_LIFE. Chi chiama smette di disegnare da
+ * solo oltre quella vita (`s.t >= LIGHTNING_GLOW_LIFE`, come prima). */
+export function glowAlpha(s) {
+  return 1 - Math.min(1, s.t / LIGHTNING_GLOW_LIFE) * (245 / 255);
 }

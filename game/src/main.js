@@ -14,7 +14,7 @@ import {
 import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js";
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { Pool } from "./pool.js";
-import { spawnLightning, stepLightning, boltSprite, glowPosition, glowFrame, LIGHTNING_GLOW_LIFE } from "./lightning.js";
+import { spawnLightning, stepLightning, boltSprite, glowAlpha, LIGHTNING_GLOW_LIFE } from "./lightning.js";
 import { createWeatherState, stepRain, rainDropAngle, RAIN_STREAK_LENGTH, RAIN_STREAK_WIDTH, RAIN_TINT, RAIN_ALPHA } from "./weather.js";
 import { createFireworksState, stepFireworks, FIREWORK_DEPTH, FIREWORK_SPARK_SIZE } from "./fireworks.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
@@ -387,6 +387,16 @@ export async function mountMatch(ctx, params = {}) {
     const frac = pxFromLeft / f.w;
     return { tex: f.tex, v0: f.v0, v1: f.v1, u0: f.u0 + (f.u1 - f.u0) * frac, u1: f.u1, w: f.w - pxFromLeft, h: f.h, ox: 0, oy: 0 };
   }
+  // Come subFrameLeft()/subFrameRight() sopra ma ritaglia anche in verticale
+  // (loro tengono sempre l'intera altezza — bastava per `icone_oriz`, una
+  // sola striscia orizzontale): serve per crys_ico sotto, un frame con
+  // margine trasparente asimmetrico su tutti i lati invece di una singola
+  // riga di icone gia' accostate. Origine azzerata come subFrameRight(): un
+  // ritaglio non e' piu' ancorato al frame originale.
+  function subFrameRect(f, x0, y0, x1, y1) {
+    const fu = (f.u1 - f.u0) / f.w, fv = (f.v1 - f.v0) / f.h;
+    return { tex: f.tex, u0: f.u0 + fu * x0, u1: f.u0 + fu * x1, v0: f.v0 + fv * y0, v1: f.v0 + fv * y1, w: x1 - x0, h: y1 - y0, ox: 0, oy: 0 };
+  }
   // [Nuova funzionalita', richiesta dall'autore: "nei pannelli della banca
   // sostituiamo la sigla testuale delle risorse con l'iconcina, come nella
   // barra in alto"] `icone_oriz` cuoce le quattro icone (persona/pompa di
@@ -400,12 +410,41 @@ export async function mountMatch(ctx, params = {}) {
   // (36px). Solo le tre risorse scambiabili in TRADES/LOANS (state.js) hanno
   // una voce qui: la popolazione non compare mai in un costo.
   const RESOURCE_ICON_X = { oil: [90, 126], ele: [195, 211], mon: [287, 323] };
+  // [Bug corretto, segnalato dall'autore: "l'etichetta hover del costo in
+  // cristalli per accendere il faro mostra ancora 'crys' come testo invece
+  // del simbolo"] I cristalli non fanno parte di `icone_oriz` (STUDIO.md: un
+  // sistema aggiunto in questo motore, RESOURCE_ICON_X sopra copre solo le
+  // tre risorse scambiabili originali) — l'icona vera e' `crys_ico`, gia'
+  // usata dal contatore della barra risorse piu' sotto. A differenza delle
+  // tre sopra pero' il suo frame nativo (w=27,h=40,ox=-7,oy=-16, stesso dato
+  // di data/sprites.json citato la' per il contatore) NON e' ritagliato a
+  // filo del disegno: c'e' margine trasparente asimmetrico su tutti i lati
+  // (il contatore lo corregge con un offset Y calcolato apposta, vedi il suo
+  // commento). Qui invece serve un frame ANCORATO in alto a sinistra come i
+  // tre sopra (drawCostTagAt()/layoutIconParts() piu' sotto impilano icona e
+  // testo assumendo che il bordo del frame sia gia' il bordo visivo, nessun
+  // offset per chiamante) — CRYS_ICON_BBOX ritaglia il rombo vero (misurato
+  // a mano sul PNG sorgente, stessa tecnica di RESOURCE_ICON_X) cosi' non
+  // serve nessuna matematica di compensazione qui: l'icona si allinea da
+  // sola alla pillola/testo esattamente come oil/ele/mon.
+  const CRYS_ICON_BBOX = { x0: 7, y0: 7, x1: 21, y1: 31 };
   function resourceIconFrame(kind) {
+    if (kind === "crys") {
+      const full = frameFor("crys_ico");
+      if (!full) return null;
+      const { x0, y0, x1, y1 } = CRYS_ICON_BBOX;
+      return subFrameRect(full, x0, y0, x1, y1);
+    }
     const bounds = RESOURCE_ICON_X[kind];
     const full = frameFor("icone_oriz");
     if (!bounds || !full) return null;
     return subFrameRight(subFrameLeft(full, bounds[1]), bounds[0]);
   }
+  // Chiavi di costo con un'icona vera (costParts() sotto): le tre di
+  // RESOURCE_ICON_X piu' "crys", che vive altrove (resourceIconFrame()
+  // sopra) — un solo posto che sa "quali", cosi' costParts() non deve
+  // conoscere la storia di dove vive il frame di ciascuna.
+  const RESOURCE_HAS_ICON = new Set([...Object.keys(RESOURCE_ICON_X), "crys"]);
   // Larghezza vera di un testo HTML: un `canvas.measureText()` su un canvas
   // 2D fuori dal DOM, non un `getBoundingClientRect()` su un elemento vero —
   // costa quanto una chiamata Canvas2D, non un reflow di pagina, e a
@@ -3125,7 +3164,16 @@ export async function mountMatch(ctx, params = {}) {
     const rects = [];
     segments.forEach((seg, i) => {
       const bx = x + i * segW + SEG_GAP / 2, bw = segW - SEG_GAP;
-      r.draw(pauseButtonFrame(bw, h), bx, y, 1, seg.selected ? 0x4caf50 : BUTTON_TINT, seg.selected ? 0.88 : BUTTON_ALPHA);
+      // Pillola vera (raggio = h/2, tagPillFrame() piu' sotto — stessa
+      // procedura dei cartellini di costo) invece di pauseButtonFrame()
+      // (raggio fisso 14px): su un segmento stretto/quasi quadrato quel
+      // raggio fisso si legge come un semplice rettangolo con gli angoli
+      // smussati, non come un bottone tondo — l'effetto "pillola" richiede
+      // un raggio proporzionato all'altezza del bottone, non un numero
+      // costante pensato per righe intere larghe. [Bug corretto, segnalato
+      // dall'autore: "il tondo e' sui pulsanti sbagliati, quelli della
+      // lingua/intervallo dovrebbero essere tondi e sono squadrati"]
+      r.draw(tagPillFrame(Math.round(bw), Math.round(h)), bx, y, 1, seg.selected ? 0x4caf50 : BUTTON_TINT, seg.selected ? 0.88 : BUTTON_ALPHA);
       renderContent(seg, bx, y, bw, h);
       rects.push({ x: bx, y, w: bw, h, action, value: seg.value });
     });
@@ -4249,10 +4297,19 @@ export async function mountMatch(ctx, params = {}) {
    * qualunque costo che non fosse SOLO `mon`) funziona per qualunque
    * combinazione di risorse: nessun caso speciale per chies (prima
    * l'unico tipo con due sprite dedicati, "c12aa"/"c23aa", per il suo
-   * costo doppio mon+oil). Una risorsa senza icona nota (RESOURCE_ICON_X,
-   * sopra) resta testo puro ("500 xyz"): non puo' capitare oggi (mon/oil/
-   * ele coprono ogni chiave di costo del gioco) ma degrada senza rompersi
-   * se in futuro se ne aggiungesse una nuova.
+   * costo doppio mon+oil). Una risorsa senza icona nota resta testo puro
+   * ("500 xyz") invece di rompersi. [Bug corretto, segnalato dall'autore:
+   * "l'etichetta del costo in cristalli del faro mostra ancora 'crys' come
+   * testo"] Il commento originale qui dava mon/oil/ele per l'unico caso
+   * possibile ("non puo' capitare oggi") — falso gia' al momento in cui e'
+   * stato scritto: FARO_SIGN_COST (sopra) costa `crys`, mai coperto da
+   * RESOURCE_ICON_X (icone_oriz non lo contiene, vedi il commento su
+   * resourceIconFrame()) e quindi mai intercettato dal ramo icona sotto —
+   * degradava silenziosamente a testo ("20 crys") invece di un bug rumoroso,
+   * per questo e' passato inosservato. RESOURCE_HAS_ICON (sopra
+   * RESOURCE_ICON_X centralizza) sostituisce il controllo diretto su
+   * RESOURCE_ICON_X: unico punto che sa quali risorse hanno un'icona,
+   * indipendentemente da dove vive il loro frame.
    */
   function costParts(cost) {
     if (!cost) return null;
@@ -4261,7 +4318,7 @@ export async function mountMatch(ctx, params = {}) {
     const parts = [];
     entries.forEach(([k, v], i) => {
       if (i > 0) parts.push({ text: ", " });
-      if (RESOURCE_ICON_X[k]) parts.push({ text: `${v} ` }, { icon: k });
+      if (RESOURCE_HAS_ICON.has(k)) parts.push({ text: `${v} ` }, { icon: k });
       else parts.push({ text: `${v} ${k}` });
     });
     return parts;
@@ -6490,19 +6547,15 @@ export async function mountMatch(ctx, params = {}) {
       const frameIdx = Math.min(SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
       dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, SMOKE_LIFE) });
     }
-    // Il fulmine (game/src/lightning.js): il lampo vero (`th1`/`th2` ->
-    // `th1s`/`th2s` a meta' vita, depth -y-5 come l'originale) sempre
-    // presente finche' vivo, il segno d'impatto (`basediswa_t`, sprite
-    // "base" — un disco nero che sfuma in alpha, 30 frame veri) solo per i
-    // primi istanti. `_selfLit`: `image_blend` forzato bianco nel
-    // decompilato — un moltiplicatore neutro, non lo schiarisce (e' nero),
-    // ma lo tiene comunque fuori dalla tinta ambientale come l'originale.
+    // Il fulmine vero (game/src/lightning.js): `th1`/`th2` -> `th1s`/`th2s`
+    // a meta' vita, depth -y-5 come l'originale (sortWorld() qui ordina
+    // sull'y vero nel mondo, come ogni altro decoro di questa lista — mai un
+    // numero fisso). Il segno d'impatto (`basediswa_t` nel decompilato) NON
+    // e' piu' uno sprite ("base") ancorato al mondo qui — vedi il rettangolo
+    // a schermo intero disegnato piu' sotto, subito dopo il loop di
+    // frameList, vicino a faroFlashes.
     for (const s of lightning) {
       dynamic.push({ obj: "decor", x: s.x, y: s.y, depth: -s.y - 5, _f: frameFor(boltSprite(s)) });
-      if (s.t < LIGHTNING_GLOW_LIFE) {
-        const g = glowPosition(s);
-        dynamic.push({ obj: "decor", x: g.x, y: g.y, depth: -5, _f: frameFor("base", glowFrame(s)), _scale: 2, _selfLit: true });
-      }
     }
     // `_sky: true` (qui e su ogni altra voce dichiaratamente in volo piu'
     // sotto — mongolfiere/minacce/proiettili/fumo aereo): esclude la voce
@@ -6867,6 +6920,24 @@ export async function mountMatch(ctx, params = {}) {
       const k = p.t / FARO_FLASH_LIFE;
       const size = 40 + k * 260;
       r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, FARO_FLASH_COLOR, (1 - k) * 0.6);
+    }
+    // Segno d'impatto del fulmine (game/src/lightning.js) — [Nuova
+    // implementazione, richiesta dall'autore: "fai in modo che copra
+    // esattamente tutto lo schermo, lascia stare quel 200 volte e
+    // trasformalo in un rettangolo vettoriale come fatto per il filtro
+    // notte"] Stessa tecnica dell'overlay giorno/notte `aura` (sopra: un
+    // quad a tinta unita invece di uno sprite), ma dimensionato su `l, t,
+    // vw, vh` (sopra, il rettangolo di mondo VISIBILE calcolato per il
+    // culling di frameList) invece che sull'intera room: la vista corrente
+    // e' esattamente lo schermo per definizione, qualunque siano camera/
+    // zoom in quel momento — a differenza di uno sprite scalato e ancorato
+    // al punto colpito, che poteva restare piu' corto da un lato o
+    // sprecare migliaia di pixel dall'altro a seconda di dove cadeva il
+    // colpo rispetto all'inquadratura. glowAlpha() (lightning.js) rifa la
+    // stessa curva di dissolvenza (255->~10 di alpha in 30 tick, lineare)
+    // gia' cotta nei 30 frame dello sprite originale, qui in continuo.
+    for (const s of lightning) {
+      if (s.t < LIGHTNING_GLOW_LIFE) r.draw(solidFrame(white, vw, vh), l, t, 1, 0x000000, glowAlpha(s));
     }
     // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva
     // quando l'autodifesa scala i soldi al giocatore — l'icona blu dei
@@ -7344,8 +7415,24 @@ export async function mountMatch(ctx, params = {}) {
       const crysPos = isMobile ? { x: barX + 100, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 570, y: barY - 4 };
       const crysScale = isMobile ? 0.9 : 0.75;
       const crysTextPos = isMobile ? { x: barX + 140, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 606, y: barY + 19 };
-      r.setColorize(iconsDark);
-      if (!hideResourceIcons && crysFrame) r.draw(crysFrame, crysPos.x, crysPos.y, crysScale, 0xffffff, 1);
+      // [Bug corretto, segnalato dall'autore: "non vedo il counter dei crys
+      // quando li raccolgo (desktop)"] A differenza di hap1/hap3/oil/ele/mon
+      // (sagome NERE su trasparente, verificato pixel per pixel sulla
+      // texture sorgente) "crys_ico" e' in realta' BIANCO su trasparente —
+      // lo stesso file, misurato allo stesso modo, non lascia dubbi: nessuna
+      // delle sue coordinate contiene un pixel scuro. Con `setColorize(iconsDark)`
+      // (come i fratelli sopra) il colore vero non viene mai sovrascritto di
+      // giorno (`iconsDark` falso): l'icona resta bianca sul fondo chiaro
+      // della barra, invisibile — e lo sarebbe restata anche di notte, dato
+      // che il tint passato a `r.draw()` era comunque bianco (`0xffffff`,
+      // uguale al colore nativo, nessun cambiamento reale). Qui invece si
+      // forza SEMPRE la colorizzazione, con un tint esplicito che dipende da
+      // `iconsDark` invece di riusare `0xffffff` fisso: nero di giorno (come
+      // gli altri pittogrammi), bianco di notte — lo stesso comportamento
+      // VISIVO dei fratelli neri, non lo stesso codice, perche' il sorgente
+      // di partenza e' invertito.
+      r.setColorize(true);
+      if (!hideResourceIcons && crysFrame) r.draw(crysFrame, crysPos.x, crysPos.y, crysScale, iconsDark ? 0xffffff : 0x000000, 1);
       r.setColorize(false);
       if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), crysTextPos.x, crysTextPos.y, { size: 15, align: "left", color: barTextColor });
     }
