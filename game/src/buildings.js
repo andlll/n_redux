@@ -1339,6 +1339,11 @@ export const BUILDING_TYPES = {
       // [C] impa4r/Alarm_0.gml, passi 0..10 (vedi commento sopra per il
       // perche' si ferma qui). Il gruppo di 5 "gru" al passo 3 e' letto
       // punto per punto (offset diversi ciascuna, non un pattern regolare).
+      // [Bug corretto] Stesso bug/causa di monum.construct sopra
+      // (`impa4f/Alarm_0.gml`, tic10: crea il topper, `tops4s`, e arma il
+      // reveal vero — Alarm_5, crea `casa4s` — ad `alarm(700,5)`, 700 tic
+      // DOPO l'ingresso in tic10, non subito).
+      revealAtEnd: true,
       steps: [
         { spr: ["sr11", "sr12", "sr13", "sr14"], dur: 390 },
         { spr: "sr15", dur: 40 }, { spr: "sr16", dur: 40 },
@@ -1391,13 +1396,37 @@ export const BUILDING_TYPES = {
         // semplificazioni" — stessa coda cosmetica gia' tagliata per il
         // livello 1: l'originale continua a tic 46, mirror simmetrico dei
         // tic 24..45 che smonta la gru senza alcun effetto di gioco).
-        // `casa5ss` nasce dalla traccia "f" (impa5f/Alarm_5.gml) allo stesso
-        // istante in cui "r" entra nel suo passo finale (tic23, il topper +
-        // 1200 tic di pausa) — stessa scelta gia' fatta per il livello 1.
         // Le 22 sprite intermedie (tic1..22) ripetono lo stesso schema a
         // dado di tic0 (una coppia/quaterna equiprobabile per gradino), letto
         // riga per riga: **[C]** i 5 "grubig" al tic4 sono uno sprite piu'
         // grande di "gru1" (usato dal livello 1), stessi 5 offset esatti.
+        //
+        // [Bug corretto, segnalato dall'autore: "controlla anche palazzo/
+        // museo"] Una nota precedente qui diceva "casa5ss nasce allo stesso
+        // istante in cui 'r' entra nel suo passo finale (tic23)" — sbagliata:
+        // **[C]** `impa5f/Alarm_0.gml`, tic23, arma `alarm(1200,0)` (prosegue
+        // la propria coda, tic24) E `alarm(1200,5)` — Alarm_5
+        // (`impa5f/Alarm_5.gml`: crea `casa5ss`) scatta quindi 1200 tic DOPO
+        // l'ingresso in tic23, non subito. Con `revealAtStep` di default
+        // (l'ultimo passo, lo stesso di tic23) l'edificio compariva 1200 tic
+        // troppo presto — subito sotto lo scaffold ancora fermo al pieno
+        // ("sr84"/"sf84"), visibile per altri 20 secondi prima che
+        // l'impalcatura sparisse per davvero. `revealAtEnd` (stesso
+        // meccanismo di `eolico` sopra) sposta il reveal alla vera fine
+        // dell'array — che qui COINCIDE con l'istante vero del reveal
+        // decompilato, dato che la coda cosmetica tic24+ e' gia' tagliata
+        // (nessun passo in piu' da attraversare fra i due). Il topper
+        // (`tops5s`, sotto) nasce sulla traccia "r" allo STESSO tic23 (non
+        // "f") — **[C]** `tops5s/Create.gml: action_set_alarm(1100,0)`, letto
+        // fedelmente come `life:1100`, ma l'alarm vero del reveal e' 1200:
+        // nel decompilato stesso il topper sparisce 100 tic PRIMA della vera
+        // fine (la stessa imprecisione di 40-45 tic gia' vista per casa/villa
+        // — STUDIO.md, "fai sempre corrispondere la distruzione del topper
+        // con la creazione dell'edificio, su OGNI cantiere"). `revealAtEnd`
+        // non passa da `syncTopperLife()` (quella lavora solo su
+        // `revealAtStep`): corretto qui a mano, life:1200, per la stessa
+        // sincronia sempre garantita altrove.
+        revealAtEnd: true,
         steps: [
           { spr: ["sr11", "sr12", "sr13", "sr14"], dur: 30 },
           { spr: "sr15", dur: 40 }, { spr: "sr16", dur: 40 },
@@ -1431,7 +1460,7 @@ export const BUILDING_TYPES = {
           // quel nome), quindi frameFor() tornava sempre `null`: il topper
           // del secondo livello non spariva ne' appariva ruotato male, era
           // semplicemente invisibile.
-          { spr: "sr84", dur: 1200, spawn: [{ spr: "topls", dx: 0, dy: -340, depthOffset: -344, life: 1100 }] },
+          { spr: "sr84", dur: 1200, spawn: [{ spr: "topls", dx: 0, dy: -340, depthOffset: -344, life: 1200 }] },
         ],
       },
     ],
@@ -1487,6 +1516,7 @@ export const BUILDING_TYPES = {
         { spr: "c442", decor: "c442l" }, { spr: "c444", decor: "c444l" },
         { spr: "c452", decor: "c452l" }, { spr: "c454", decor: "c454l" },
       ],
+      revealAtEnd: true,
       steps: [
         { spr: ["rd11", "rd12", "rd13", "rd14"], dur: 390 },
         { spr: "rd15", dur: 40 }, { spr: "rd16", dur: 40 },
@@ -1501,6 +1531,10 @@ export const BUILDING_TYPES = {
         { spr: "rd35", dur: 40 }, { spr: "rd36", dur: 40 },
         { spr: ["rd41", "rd42", "rd43", "rd44"], dur: 40 },
         { spr: "rd45", dur: 40 },
+        // [Bug corretto] Stesso bug/causa di palazzo.construct sopra
+        // (`impa4fd/Alarm_0.gml`, tic10: identico a impa4f — reveal vero
+        // 700 tic dopo l'ingresso in tic10, non subito). `revealAtEnd`
+        // aggiunto sopra `steps` per questa entry.
         // [Bug corretto] **[C]** tops4d/_object.json: sprite "topld", non
         // "topls" — scoperto implementando il topper del livello 2
         // (tops5d, stesso sprite "topld") e controllando anche l'oggetto
@@ -1543,6 +1577,15 @@ export const BUILDING_TYPES = {
         // `frontSprFor()` sotto riconosce ora anche questo prefisso.
         // I 5 "grubig" del tic4 hanno offset SPECULARI rispetto all'asse
         // "r" (coerente con l'asse diagonale opposto).
+        //
+        // [Bug corretto] Stesso bug di palazzo.upgrades[0] sopra, stessa
+        // causa (impa5fd/Alarm_0.gml tic23 arma il reveal — Alarm_5, crea
+        // `casa5dd` — ad `alarm(1200,5)`, 1200 tic dopo tic23, non subito):
+        // `revealAtEnd` al posto del default `revealAtStep`, topper
+        // (`tops5d`, sotto) risincronizzato a `life:1200` (l'alarm grezzo di
+        // `tops5d/Create.gml`, 1100, e' lo stesso 100 tic troppo corto letto
+        // per `tops5s`, vedi il commento li').
+        revealAtEnd: true,
         steps: [
           { spr: ["rd11", "rd12", "rd13", "rd14"], dur: 30 },
           { spr: "rd15", dur: 40 }, { spr: "rd16", dur: 40 },
@@ -1570,7 +1613,7 @@ export const BUILDING_TYPES = {
           // non "tops5d" — l'atlas non ha nessuno sprite chiamato "tops5d",
           // quindi il topper del secondo livello su questo asse era
           // altrettanto invisibile.
-          { spr: "dr84", dur: 1200, spawn: [{ spr: "topld", dx: 0, dy: -340, depthOffset: -344, life: 1100 }] },
+          { spr: "dr84", dur: 1200, spawn: [{ spr: "topld", dx: 0, dy: -340, depthOffset: -344, life: 1200 }] },
         ],
       },
     ],
@@ -1628,6 +1671,11 @@ export const BUILDING_TYPES = {
         // reale, non un refuso di trascrizione).
         { spr: "med2", decor: "med2x" },
       ],
+      // [Bug corretto] Stesso bug/causa di monum/palazzo.construct sopra
+      // (`impamediaF/Alarm_0.gml`, tic10: identico a impa4f — crea `tops4s`
+      // e arma il reveal vero, Alarm_5 (`media1s`), ad `alarm(700,5)`, 700
+      // tic dopo l'ingresso in tic10, non subito).
+      revealAtEnd: true,
       steps: [
         { spr: ["sr11", "sr12", "sr13", "sr14"], dur: 390 },
         { spr: "sr15", dur: 40 }, { spr: "sr16", dur: 40 },
@@ -1674,6 +1722,9 @@ export const BUILDING_TYPES = {
         { spr: "med1d", decor: "med1dl" },
         { spr: "med2d", decor: "med2dx" },   // [C] MEDIALITE2D: stessa asimmetria di MEDIALITE2, "med2dl" non esiste
       ],
+      // [Bug corretto] Stesso bug/causa di museo.construct sopra (reveal
+      // vero 700 tic dopo l'ingresso nel passo del topper, non subito).
+      revealAtEnd: true,
       steps: [
         { spr: ["rd11", "rd12", "rd13", "rd14"], dur: 390 },
         { spr: "rd15", dur: 40 }, { spr: "rd16", dur: 40 },
@@ -1733,6 +1784,23 @@ export const BUILDING_TYPES = {
       hap: { create: 1000, destroy: -1000 },       // [C] monum/Create.gml + Destroy.gml
       ruin: ["monu_ruin"],                          // [C] monum/Step.gml: create_object(ruinmonument), nessun dado
       decor: ["monu_l"],                            // [C] monum/Create.gml: create_object(monum_light)
+      // [Bug corretto, segnalato dall'autore: "controlla anche palazzo/
+      // museo"] **[C]** `impaMONUf/Alarm_0.gml`, tic10: crea il topper
+      // (`tops3`) E arma DUE alarm — `alarm(800,0)` (prosegue la propria
+      // coda, tic11: la coda cosmetica di smontaggio, gia' tagliata qui
+      // come per palazzo/museo/banca) E `alarm(700,5)` — Alarm_5
+      // (`impaMONUf/Alarm_5.gml`: crea `monum`) scatta quindi 700 tic DOPO
+      // l'ingresso in tic10, non subito. Col `revealAtStep` di default
+      // (l'ultimo passo, lo stesso di tic10) il monumento compariva 700 tic
+      // troppo presto — ANCORA SOTTO lo scaffold fermo al pieno ("ir41"),
+      // visibile per altri ~12s prima che l'impalcatura sparisse davvero
+      // (verificato anche con una simulazione diretta di
+      // stepConstructions()). Stesso identico bug, stessa causa, di
+      // palazzo.upgrades[0]/palazzoRd.upgrades[0] sopra: qui pero' il
+      // topper (raw `life:700`) coincide gia' con la vera durata del passo
+      // (`dur:700`), quindi basta `revealAtEnd` — nessun numero da
+      // ricalcolare.
+      revealAtEnd: true,
       steps: [
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
         { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
@@ -1801,6 +1869,10 @@ export const BUILDING_TYPES = {
       // dissolvenza in alpha (stepLights(), main.js) sullo stesso frame 0 di
       // "banca_lx", coerente con ogni altra luce del motore.
       decor: ["banca_lx"],
+      // [Bug corretto] Stesso bug/causa di monum.construct sopra
+      // (`impaBANKf/Alarm_0.gml`, tic10: identico a impaMONUf — topper
+      // + `alarm(700,5)` per il reveal vero, 700 tic dopo, non subito).
+      revealAtEnd: true,
       steps: [
         { spr: ["ir13", "ir14", "ir15", "ir16"], dur: 390 },
         { spr: "ir12", dur: 40 }, { spr: "ir11", dur: 40 },
