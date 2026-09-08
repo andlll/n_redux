@@ -52,9 +52,31 @@ export const BUILDING_TYPES = {
         finalSprite: "crc4", lifeBonus: 500,        // [C] upcrc12/Alarm_0.gml, tic==12
         ruin: "ruinc2",                             // [C] chies/Step.gml: level==2 -> ruinc2
         decor: ["crc2l"],                           // sprite del figlio "cddvd2" che sostituisce "cddvd"
+        // [Bug corretto, segnalato dall'autore: "hai controllato anche gli
+        // upgrade?"] Non ancora finora — chies non passa dalla coppia "r"/"f"
+        // (nessun topper, `frontSprFor()` non riconosce i prefissi "ce"/
+        // "ci"), ma soffre della STESSA classe di bug gia' vista per monum/
+        // palazzo: **[C]** `upcrc12/Alarm_0.gml`, tic11 mette "ce23" e arma
+        // `alarm(30,0)` — il reveal vero (level=2, sprite "crc4") scatta al
+        // tic12 SUCCESSIVO, 30 tic DOPO, non all'ingresso di "ce23". Col
+        // `revealAtStep` di default (l'ultimo passo, lo stesso di "ce23") la
+        // chiesa passava a "crc4" 30 tic troppo presto (mezzo secondo,
+        // minore degli altri casi ma stessa causa). `revealAtEnd` come per
+        // monum/banca/palazzo/museo sopra.
+        //
+        // [Bug corretto, in piu'] `upcrc12/Alarm_0.gml`, tic0 (la stessa
+        // transizione che mette "ce12"): crea anche due "gru" (oggetto,
+        // sprite reale "gru1" — STUDIO.md/addConstructionSpawn(), main.js)
+        // a offset relativo (54,106) e (178,38) — mai portate: chies era
+        // l'unico cantiere con gru nel decompilato ma senza nessuna gru
+        // visibile nel port.
+        revealAtEnd: true,
         steps: [                                    // [C] upcrc12/Mouse_LeftPressed.gml + Alarm_0.gml
           { spr: "ce11", dur: 60 },                  // sprite messo subito all'avvio del cantiere
-          { spr: "ce12", dur: 60 }, { spr: "ce13", dur: 60 }, { spr: "ce14", dur: 60 },
+          { spr: "ce12", dur: 60, spawn: [
+            { spr: "gru1", dx: 54, dy: 106 }, { spr: "gru1", dx: 178, dy: 38 },
+          ] },
+          { spr: "ce13", dur: 60 }, { spr: "ce14", dur: 60 },
           { spr: "ce15", dur: 60 }, { spr: "ce16", dur: 60 }, { spr: "ce17", dur: 800 },
           { spr: "ce18", dur: 30 }, { spr: "ce19", dur: 30 }, { spr: "ce20", dur: 30 },
           { spr: "ce21", dur: 30 }, { spr: "ce22", dur: 30 }, { spr: "ce23", dur: 30 },
@@ -66,9 +88,30 @@ export const BUILDING_TYPES = {
         finalSprite: "crc5", lifeBonus: 500,        // [C] upcrc23/Alarm_0.gml, tic==16
         ruin: "ruinc3",                             // [C] chies/Step.gml: level==3 -> ruinc3
         decor: ["crc3l", "crc3l2", "crc3l3", "crc3l4", "crc3l5"],  // sostituiscono "cddvd2"
+        // [Bug corretto] Stessa causa di upcrc12 sopra: **[C]** `upcrc23/
+        // Alarm_0.gml`, tic15 mette "ci37" e arma `alarm(30,0)` — il reveal
+        // vero (level=3, sprite "crc5") scatta al tic16 successivo, 30 tic
+        // dopo, non all'ingresso di "ci37".
+        //
+        // [Bug corretto, in piu'] `upcrc23/Alarm_0.gml`, tic0 (la stessa
+        // transizione che mette "ci22"): crea due "grubig" (sprite reale
+        // "grubig", la gru piu' grande gia' in uso per palazzo/palazzoRd
+        // livello 2 sopra) agli stessi offset (54,106)/(178,38) di upcrc12 —
+        // mai portate, stesso gap. [I] Come per palazzo/palazzoRd sopra,
+        // `addConstructionSpawn()` (main.js) instrada solo "gru1" alla gru
+        // ANIMATA vera (game/src/cranes.js) — "grubig" non ha ancora un
+        // equivalente (sprite/tempi propri, gr21..24 + "grutopbig", mai
+        // portati: STUDIO.md, gap dichiarato), quindi qui come li' resta un
+        // decoro FERMO sull'ultimo sprite (transient, rimosso alla vera fine
+        // del cantiere) invece di montarsi/smontarsi da sola — coerente con
+        // lo stesso limite gia' presente altrove, non una regressione.
+        revealAtEnd: true,
         steps: [                                    // [C] upcrc23/Mouse_LeftPressed.gml + Alarm_0.gml
           { spr: "ci21", dur: 60 },                  // sprite messo subito all'avvio del cantiere
-          { spr: "ci22", dur: 60 }, { spr: "ci23", dur: 60 }, { spr: "ci24", dur: 60 },
+          { spr: "ci22", dur: 60, spawn: [
+            { spr: "grubig", dx: 54, dy: 106 }, { spr: "grubig", dx: 178, dy: 38 },
+          ] },
+          { spr: "ci23", dur: 60 }, { spr: "ci24", dur: 60 },
           { spr: "ci25", dur: 60 }, { spr: "ci26", dur: 60 }, { spr: "ci27", dur: 60 },
           { spr: "ci28", dur: 60 }, { spr: "ci29", dur: 2000 }, { spr: "ci30", dur: 30 },
           { spr: "ci31", dur: 30 }, { spr: "ci32", dur: 30 }, { spr: "ci33", dur: 30 },
