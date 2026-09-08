@@ -325,8 +325,15 @@ const STRINGS = {
   // artwork (tools/23_atlas.py, TITLE_BUTTON_OVERRIDES) non ha piu' il testo
   // cotto nello sprite come l'originale decompilato, va disegnato a runtime
   // per lingua.
-  "title.newGame": { en: "New game", it: "Nuova partita", es: "Nueva partida", pt: "Novo jogo", de: "Neues Spiel", fr: "Nouvelle partie" },
-  "title.newGameEasy": { en: "Easy game", it: "Partita facile", es: "Partida fácil", pt: "Jogo fácil", de: "Leichtes Spiel", fr: "Partie facile" },
+  // [Bug corretto, segnalato dall'autore: "'nuova partita' e' fuorviante,
+  // il software carica automaticamente una partita salvata se ne trova
+  // una"] **[C]** `standma`/`easma` navigano sempre con `autoload: true`
+  // (title.js: `navigateTo`) — un tap su questo bottone NON garantisce una
+  // partita nuova, riprende quella salvata per quella mappa se esiste
+  // (doLoad(), main.js). "Avvia"/"Start" non promette niente sullo stato
+  // della partita, evita la lettura sbagliata.
+  "title.newGame": { en: "Start Nimbus", it: "Avvia Nimbus", es: "Iniciar Nimbus", pt: "Iniciar Nimbus", de: "Nimbus starten", fr: "Démarrer Nimbus" },
+  "title.newGameEasy": { en: "Start Nimbus – Easy", it: "Avvia Nimbus – Facile", es: "Iniciar Nimbus – Fácil", pt: "Iniciar Nimbus – Fácil", de: "Nimbus starten – Leicht", fr: "Démarrer Nimbus – Facile" },
   "title.tutorial": { en: "Tutorial", it: "Tutorial", es: "Tutorial", pt: "Tutorial", de: "Tutorial", fr: "Didacticiel" },
 
   // --------------------------------------------------------------------- mesi
