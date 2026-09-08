@@ -50,12 +50,33 @@ function affordableEarly(def) {
   return (def.placeCost.mon ?? 0) <= AAB_INITIAL_MONEY;
 }
 
+// [Bug corretto, segnalato dall'autore: "possibile che l'edificio sparisca
+// per mezzo secondo quando parte l'upgrade da chies lvl1 a lvl2?"]
+// Riprodotto dal vivo (Playwright contro una build reale): il cantiere di
+// chies (ce11..ci37, gli sprite finiti crc4/crc5 inclusi) e' "deferred"
+// come qualunque upgrade — ma lo scaglione "advanced" parte solo quando
+// `pop>=500` diventa vera, la STESSA soglia che sblocca il pulsante
+// dell'upgrade: se il giocatore lo tocca prima che le ~29 pagine
+// dell'intero scaglione finiscano di scaricarsi (rete reale, non
+// localhost — dove il gap e' quasi impercettibile), la chiesa resta
+// invisibile finche' non arrivano. A differenza di industria/casa (i cui
+// upgrade restano legittimamente "avanzati", raggiunti molto piu' tardi,
+// con margine reale per lo scaricamento in bg) chies e' un caso a parte:
+// e' l'UNICO edificio gia' in piedi dall'inizio (mai piazzato dal
+// giocatore) ed e' la soglia PIU' BASSA fra tutti gli unlock avanzati —
+// il primo contenuto "avanzato" che una partita puo' raggiungere, spesso
+// in pochi minuti. Invece di allungare il margine (accorciare lo
+// scaglione, anticiparne il trigger), i suoi upgrade tornano "core" per
+// intero, `type === "chies"` sotto: cantiere E sprite finiti gia' pronti
+// da subito, nessuna corsa possibile per costruzione.
 const buildingsCore = new Set(), buildingsDeferred = new Set();
 for (const [type, def] of Object.entries(BUILDING_TYPES)) {
   if (STAR_TYPES.has(type) || !affordableEarly(def)) {
     // Intero edificio (livello 1 incluso) deferred: troppo caro/troppo
     // lontano da un traguardo per essere raggiunto nei primi minuti.
     walk(def, [], buildingsDeferred, buildingsDeferred, new Set());
+  } else if (type === "chies") {
+    walk(def, [], buildingsCore, buildingsCore, new Set());
   } else {
     walk(def, [], buildingsCore, buildingsDeferred, new Set(["upgrades"]));
   }
