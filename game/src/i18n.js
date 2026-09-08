@@ -333,7 +333,13 @@ const STRINGS = {
   // (doLoad(), main.js). "Avvia"/"Start" non promette niente sullo stato
   // della partita, evita la lettura sbagliata.
   "title.newGame": { en: "Start Nimbus", it: "Avvia Nimbus", es: "Iniciar Nimbus", pt: "Iniciar Nimbus", de: "Nimbus starten", fr: "Démarrer Nimbus" },
-  "title.newGameEasy": { en: "Start Nimbus – Easy", it: "Avvia Nimbus – Facile", es: "Iniciar Nimbus – Fácil", pt: "Iniciar Nimbus – Fácil", de: "Nimbus starten – Leicht", fr: "Démarrer Nimbus – Facile" },
+  // [Richiesto dall'autore: "solo 'Nimbus - Facile', cosi' l'altezza del
+  // testo viene piu' simile alle altre"] Senza il verbo ("Avvia"/"Start"/
+  // ecc.) la stringa e' piu' corta: fitFontSize() (title.js) la riduce di
+  // meno, quindi la sua altezza risulta piu' vicina a quella degli altri
+  // due bottoni invece di spiccare piu' piccola per il solo fatto di
+  // essere la piu' lunga delle tre.
+  "title.newGameEasy": { en: "Nimbus – Easy", it: "Nimbus – Facile", es: "Nimbus – Fácil", pt: "Nimbus – Fácil", de: "Nimbus – Leicht", fr: "Nimbus – Facile" },
   "title.tutorial": { en: "Tutorial", it: "Tutorial", es: "Tutorial", pt: "Tutorial", de: "Tutorial", fr: "Didacticiel" },
 
   // --------------------------------------------------------------------- mesi
