@@ -124,11 +124,13 @@ export function loadRoomAtlas(gl, roomName, { onProgress } = {}) {
       // [Bug corretto, richiesto dall'autore: "il gioco lagga da morire su
       // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed
       // eviction"] `startedGroups`: quali scaglioni oltre "core" sono gia'
-      // stati avviati (o non esistono per questa room) — vedi
-      // loadDeferredGroup() sotto, che lo consulta per restare idempotente
-      // (chiamata ad ogni frame da game/src/main.js, deve fare il vero
-      // download una volta sola).
-      startedGroups: new Set(),
+      // stati avviati (o non esistono per questa room), e la LORO promise —
+      // vedi loadDeferredGroup() sotto, che la consulta per restare
+      // idempotente (chiamata ad ogni frame da game/src/main.js, deve fare
+      // il vero download una volta sola) e per restituire la stessa
+      // promise a un secondo chiamante che la vuole aspettare per davvero
+      // (main.js, solo `tutorial`) invece di farne partire un secondo giro.
+      startedGroups: new Map(),
     };
     entry.promise = (async () => {
       const atlas = await fetch(`./data/${roomName}.atlas.json`).then((x) => x.json());
@@ -210,23 +212,40 @@ export function loadRoomAtlas(gl, roomName, { onProgress } = {}) {
  * 0), `"advanced"` finisce per coprire l'intero resto dell'atlas — stesso
  * comportamento "tutto cio' che non e' core" della vecchia versione unica.
  */
-export function loadDeferredGroup(gl, roomName, group) {
+// `onPage` (opzionale, [Nuova funzionalita', richiesta dall'autore: "il
+// tutorial lagga alla prima visita sulla sequenza aerei, la seconda volta
+// no — sospetto sia lo scaglione combat che arriva mentre la scena gia'
+// gira"]): chiamato dopo ogni pagina di QUESTA chiamata (fallita compresa,
+// stesso principio di `loadPagesLimited`/`onPage` sopra) — permette a chi
+// chiama (main.js, solo per `tutorial`: l'unica room la cui cutscene
+// iniziale usa `threats.js` per script, non per l'economia normale delle
+// spie) di aspettare per davvero questo scaglione con una barra di
+// progresso vera invece di lasciarlo scaricare in sottofondo mentre la
+// scena che lo usa gia' gira. Ogni altro chiamante (main.js, il trigger
+// normale "stato di gioco si avvicina alla soglia") continua a ignorare il
+// valore di ritorno esattamente come prima — resta a tutti gli effetti
+// "non aspettata" per loro, la promise adesso restituita non li obbliga a
+// niente.
+export function loadDeferredGroup(gl, roomName, group, { onPage } = {}) {
   const entry = cache.get(roomName);
-  if (!entry?.atlas || !entry.pageTex || entry.startedGroups.has(group)) return;
-  entry.startedGroups.add(group);
+  if (!entry?.atlas || !entry.pageTex) return Promise.resolve();
+  if (entry.startedGroups.has(group)) return entry.startedGroups.get(group) ?? Promise.resolve();
   const { atlas, pageTex, cancelled } = entry;
   const coreCount = atlas.corePages ?? atlas.pages.length;
   const combatCount = atlas.combatPages ?? 0;
   const [start, end] = group === "combat" ? [coreCount, coreCount + combatCount]
     : group === "advanced" ? [coreCount + combatCount, atlas.pages.length]
     : [0, 0];
-  if (end <= start) return;
+  if (end <= start) { entry.startedGroups.set(group, Promise.resolve()); return Promise.resolve(); }
   const indices = Array.from({ length: end - start }, (_, i) => start + i);
-  // Non aspettata (stesso principio della vecchia `deferredIndices`,
-  // rimossa sopra): un fallimento qui non deve toccare le pagine core gia'
-  // andate a buon fine, e frameFor() gia' tratta `pageTex[i] === null` come
-  // "non ancora pronto".
-  loadPagesLimited(gl, atlas.pages, pageTex, indices, { rethrow: false, cancelled });
+  // Non aspettata dal trigger normale (stesso principio della vecchia
+  // `deferredIndices`, rimossa sopra): un fallimento qui non deve toccare
+  // le pagine core gia' andate a buon fine, e frameFor() gia' tratta
+  // `pageTex[i] === null` come "non ancora pronto". Chi la vuole aspettare
+  // per davvero (`onPage` sopra) la riceve comunque per intero.
+  const promise = loadPagesLimited(gl, atlas.pages, pageTex, indices, { rethrow: false, cancelled, onPage });
+  entry.startedGroups.set(group, promise);
+  return promise;
 }
 
 // [Bug corretto, segnalato dall'autore: "su iPhone tutorial/match facile
