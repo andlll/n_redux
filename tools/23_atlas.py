@@ -48,6 +48,27 @@ scene = json.load(open(os.path.join(ROOT, "game", "data", room_name + ".scene.js
 spr_by_name = {s["name"]: s for s in sprites}
 page_by_id = {t["id"]: t for t in textures}
 
+# [Nuova funzionalita', richiesta dall'autore] Artwork nuova (non del gioco
+# originale) per i tre pulsanti del menu principale — sostituisce solo i
+# PIXEL, non lo sprite: `data/sprites.json` resta lo specchio 1:1 della
+# tabella sprite decompilata (nome/dimensioni/origine di newga/newgaeas/
+# tutoriae non cambiano, li' restano quelli letti dal gioco originale), qui
+# si aggiungono soltanto pagine sorgente sintetiche (fuori dalla numerazione
+# page_NNN.png dell'estrazione originale, cosi' restano subito riconoscibili
+# come non-originali) da cui questi tre nomi vengono impacchettati AL POSTO
+# della regione ritagliata dalla texture page originale. Le nuove immagini
+# non hanno testo (va disegnato a runtime, per lingua — game/src/title.js).
+TITLE_BUTTON_OVERRIDES = {
+    "newga": "menu_newga.png",
+    "newgaeas": "menu_newgaeas.png",
+    "tutoriae": "menu_tutoriae.png",
+}
+if room_name == "title":
+    from PIL import Image as _Image
+    for _spr_name, _file in TITLE_BUTTON_OVERRIDES.items():
+        _im = _Image.open(os.path.join(ARCHIVE, "assets", "textures", _file))
+        page_by_id[_spr_name] = {"id": _spr_name, "file": _file, "w": _im.width, "h": _im.height}
+
 # Sprite che non stanno mai ferme in una room ma servono a runtime perche' il
 # giocatore le fa comparire (edifici piazzati, cantieri di potenziamento...).
 # 23_atlas.py impacchetta solo cio' che vede nella room statica: queste sono
@@ -870,6 +891,18 @@ used = sorted(scene_sprites | extra)
 for name in used:
     s = spr_by_name.get(name)
     if not s:
+        continue
+    if room_name == "title" and name in TITLE_BUTTON_OVERRIDES:
+        # Vedi TITLE_BUTTON_OVERRIDES sopra: un solo frame pieno (nessun
+        # ritaglio, render_x/y=0), origine invariata rispetto allo sprite
+        # originale (stesso punto di ancoraggio per l'hit-test dei pulsanti,
+        # game/src/title.js) — cambia solo da quale file arrivano i pixel.
+        p = page_by_id[name]
+        rects.append({
+            "spr": name, "frame": 0, "tier": tier_of(name),
+            "src": name, "sx": 0, "sy": 0, "w": p["w"], "h": p["h"],
+            "ox": s["origin_x"], "oy": s["origin_y"],
+        })
         continue
     dedup = name in DEDUP_CONSECUTIVE_SPRITES
     prev_key = None

@@ -106,6 +106,23 @@ export async function mountTitle(ctx) {
 
   const BUTTONS = scene.instances.filter((it) => ["standma", "easma", "me3"].includes(it.obj));
   for (const b of BUTTONS) b._f = frameFor(b.spr);
+  // [Nuova funzionalita', richiesta dall'autore] Nuova artwork per i tre
+  // bottoni (tools/23_atlas.py, TITLE_BUTTON_OVERRIDES): a differenza degli
+  // sprite originali (`newga`/`newgaeas`/`tutoriae`, testo cotto nel PNG) la
+  // nuova non ha testo — un'etichetta HTML vera per bottone (stesso
+  // principio di `drawHtmlText()`/`.gameText`, main.js: nitida a qualunque
+  // dimensione, localizzata via t()), posizionata ogni frame sopra lo sprite
+  // via `camUI.worldToScreen()` invece che con coordinate fisse: i bottoni
+  // sono sprite di MONDO (disegnati da `camUI`, sotto), la loro posizione
+  // schermo cambia con resize()/fit dello zoom.
+  const BUTTON_LABEL_KEYS = { standma: "title.newGame", easma: "title.newGameEasy", me3: "title.tutorial" };
+  for (const b of BUTTONS) {
+    b._label = document.createElement("div");
+    b._label.className = "gameText";
+    b._label.style.display = "block";
+    b._label.style.textAlign = "center";
+    document.body.appendChild(b._label);
+  }
   // [Richiesto dall'autore: "rimuovi lo sprite con NIMBUS/Mount Fuji
   // Software, 2019 e il logo, tieni solo il logo come watermark statico in
   // basso a destra"] `gogirrra` (spr `logigogi`, 530x96) e' un unico raster
@@ -474,13 +491,32 @@ export async function mountTitle(ctx) {
       r.setColorize(false);
     }
     for (const b of BUTTONS) if (b._f) r.draw(b._f, b.x, b.y, 1, 0xffffff, 1);
-    if (fadeT > 0) {
-      const k = Math.min(1, fadeT / FADE_DUR);
+    const fadeK = fadeT > 0 ? Math.min(1, fadeT / FADE_DUR) : 0;
+    if (fadeK > 0) {
       const hw = camUI.worldW / 2, hh = camUI.worldH / 2;
       r.drawQuad(SOLID, { x: camUI.x - hw, y: camUI.y - hh }, { x: camUI.x + hw, y: camUI.y - hh },
-        { x: camUI.x + hw, y: camUI.y + hh }, { x: camUI.x - hw, y: camUI.y + hh }, 0x000000, k);
+        { x: camUI.x + hw, y: camUI.y + hh }, { x: camUI.x - hw, y: camUI.y + hh }, 0x000000, fadeK);
     }
     r.flush();
+
+    // Etichette HTML dei bottoni (BUTTON_LABEL_KEYS/b._label, sopra):
+    // riposizionate ogni frame (camUI.worldToScreen(), invariata solo finche'
+    // il layout/zoom non cambia, ma piu' semplice farlo sempre che tracciare
+    // resize()) e sfumate insieme al bottone WebGL sotto (stesso `fadeK`
+    // del quad nero appena disegnato — altrimenti resterebbero a galleggiare
+    // sopra lo schermo nero durante la transizione verso `match`/`tutorial`).
+    for (const b of BUTTONS) {
+      if (!b._f) continue;
+      const s = camUI.worldToScreen(b.x, b.y);
+      const screenH = b._f.h / camUI.zoom;
+      b._label.textContent = t(BUTTON_LABEL_KEYS[b.obj]);
+      b._label.style.left = `${s.x}px`;
+      b._label.style.top = `${s.y}px`;
+      b._label.style.transform = "translate(-50%, -50%)";
+      b._label.style.fontSize = `${screenH * 0.22}px`;
+      b._label.style.maxWidth = `${(b._f.w / camUI.zoom) * 0.8}px`;
+      b._label.style.opacity = String(1 - fadeK);
+    }
 
     hideLoading();
 
@@ -628,6 +664,7 @@ export async function mountTitle(ctx) {
       msgEl.remove();
       loadFileBtn.remove();
       titleWrap.remove();
+      for (const b of BUTTONS) b._label.remove();
     },
   };
 }

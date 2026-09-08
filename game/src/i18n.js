@@ -320,6 +320,14 @@ const STRINGS = {
 
   // ------------------------------------------------------------- title screen
   "title.loadGame": { en: "Load game", it: "Carica partita", es: "Cargar partida", pt: "Carregar partida", de: "Spiel laden", fr: "Charger la partie" },
+  // [Nuova funzionalita', richiesta dall'autore] Etichette dei tre bottoni
+  // del menu principale (`newga`/`newgaeas`/`tutoriae`, title.js): la nuova
+  // artwork (tools/23_atlas.py, TITLE_BUTTON_OVERRIDES) non ha piu' il testo
+  // cotto nello sprite come l'originale decompilato, va disegnato a runtime
+  // per lingua.
+  "title.newGame": { en: "New game", it: "Nuova partita", es: "Nueva partida", pt: "Novo jogo", de: "Neues Spiel", fr: "Nouvelle partie" },
+  "title.newGameEasy": { en: "Easy game", it: "Partita facile", es: "Partida fácil", pt: "Jogo fácil", de: "Leichtes Spiel", fr: "Partie facile" },
+  "title.tutorial": { en: "Tutorial", it: "Tutorial", es: "Tutorial", pt: "Tutorial", de: "Tutorial", fr: "Didacticiel" },
 
   // --------------------------------------------------------------------- mesi
   "month.1": { en: "Jan", it: "Gen", es: "Ene", pt: "Jan", de: "Jan", fr: "Jan" },
