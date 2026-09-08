@@ -5376,9 +5376,28 @@ export async function mountMatch(ctx, params = {}) {
       // ruspaYes|No/bankIcon, tutti fra -9001 e -9100) che devono continuare
       // a vincere quando si sovrappongono a un edificio.
       const PLACEHOLDER_PICK_PRIORITY = -8500;
+      // [Bug corretto, segnalato dall'autore: "appena costruisco il cannone
+      // laser vicino a un'altra torretta, toccandola sparo col laser invece
+      // che con lei"] Ogni torretta aveva la STESSA priorita' fissa (-8000,
+      // sotto): quando due aree di tap si sovrappongono (`turretHitBox()`
+      // sopra — l'unione di tutti i frame direzionali + 28px di margine, che
+      // puo' benissimo superare i 130px minimi fra due torrette,
+      // TURRET_MIN_DIST in buildings.js) il confronto sotto (`< `, mai `<=`)
+      // non decide MAI un pareggio: vinceva semplicemente la prima trovata
+      // nell'ordine di disegno, quasi sempre non quella su cui il giocatore
+      // aveva davvero toccato — fireTurretManual() (projectiles.js) sparava
+      // quindi con l'arma SBAGLIATA (spesso il laser, hitscan senza
+      // proiettile fisico: da qui "sparisce senza effetti e senza
+      // proiettili" segnalato dall'autore). Spareggio vero fra torrette in
+      // conflitto: vince quella il cui centro (`o.x,o.y`) e' piu' vicino al
+      // punto toccato (`w.x,w.y`, sopra) — lo scostamento resta sempre < 1,
+      // mai abbastanza da far vincere una torretta contro un placeholder
+      // libero (-8500) o perdere contro un edificio normale (`o.depth`,
+      // tipicamente >> -8000 su qualunque mappa reale).
       const pickPriority = (o) => o.obj === "placeholder" ? PLACEHOLDER_PICK_PRIORITY
-        : (o.obj === "building" && BUILDING_TYPES[o.ref.type]?.turret) ? -8000
-        : o.depth;
+        : (o.obj === "building" && BUILDING_TYPES[o.ref.type]?.turret)
+          ? -8000 - 1 / (1 + (o.x - w.x) ** 2 + (o.y - w.y) ** 2)
+          : o.depth;
       if (hit && (!picked || pickPriority(it) < pickPriority(picked))) picked = it;
     }
     if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
