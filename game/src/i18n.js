@@ -325,8 +325,21 @@ const STRINGS = {
   // artwork (tools/23_atlas.py, TITLE_BUTTON_OVERRIDES) non ha piu' il testo
   // cotto nello sprite come l'originale decompilato, va disegnato a runtime
   // per lingua.
-  "title.newGame": { en: "New game", it: "Nuova partita", es: "Nueva partida", pt: "Novo jogo", de: "Neues Spiel", fr: "Nouvelle partie" },
-  "title.newGameEasy": { en: "Easy game", it: "Partita facile", es: "Partida fácil", pt: "Jogo fácil", de: "Leichtes Spiel", fr: "Partie facile" },
+  // [Bug corretto, segnalato dall'autore: "'nuova partita' e' fuorviante,
+  // il software carica automaticamente una partita salvata se ne trova
+  // una"] **[C]** `standma`/`easma` navigano sempre con `autoload: true`
+  // (title.js: `navigateTo`) — un tap su questo bottone NON garantisce una
+  // partita nuova, riprende quella salvata per quella mappa se esiste
+  // (doLoad(), main.js). "Avvia"/"Start" non promette niente sullo stato
+  // della partita, evita la lettura sbagliata.
+  "title.newGame": { en: "Start Nimbus", it: "Avvia Nimbus", es: "Iniciar Nimbus", pt: "Iniciar Nimbus", de: "Nimbus starten", fr: "Démarrer Nimbus" },
+  // [Richiesto dall'autore: "solo 'Nimbus - Facile', cosi' l'altezza del
+  // testo viene piu' simile alle altre"] Senza il verbo ("Avvia"/"Start"/
+  // ecc.) la stringa e' piu' corta: fitFontSize() (title.js) la riduce di
+  // meno, quindi la sua altezza risulta piu' vicina a quella degli altri
+  // due bottoni invece di spiccare piu' piccola per il solo fatto di
+  // essere la piu' lunga delle tre.
+  "title.newGameEasy": { en: "Nimbus – Easy", it: "Nimbus – Facile", es: "Nimbus – Fácil", pt: "Nimbus – Fácil", de: "Nimbus – Leicht", fr: "Nimbus – Facile" },
   "title.tutorial": { en: "Tutorial", it: "Tutorial", es: "Tutorial", pt: "Tutorial", de: "Tutorial", fr: "Didacticiel" },
 
   // --------------------------------------------------------------------- mesi

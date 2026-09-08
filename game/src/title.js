@@ -123,6 +123,28 @@ export async function mountTitle(ctx) {
     b._label.style.textAlign = "center";
     document.body.appendChild(b._label);
   }
+  // [Bug corretto, segnalato dall'autore: "'nuova partita' e' fuorviante"
+  // — le nuove etichette "Avvia Nimbus – Facile" e affini, piu' lunghe
+  // delle vecchie "Partita facile"] A font-size fisso il testo piu' lungo
+  // eccedeva `maxWidth` (sotto) — `.gameText` (index.html) e' sempre
+  // `white-space: nowrap` (mai andata a capo, stessa scelta di ogni altra
+  // etichetta HTML del motore), quindi l'ellissi CSS si mangiava meta'
+  // della parola ("Nimbus starten …", "facile"/"leicht"/"fácil" mai
+  // visibile — verificato in browser su tutte e sei le lingue). Stessa
+  // tecnica di misura di `htmlTextWidth()` (main.js): riduce il font-size
+  // finche' il testo intero entra nella larghezza disponibile, invece di
+  // troncarlo. `FIT_MARGIN`: la misura su canvas offscreen e il rendering
+  // DOM vero non coincidono mai al pixel esatto (hinting/kerning) — senza
+  // un margine la stringa piu' lunga (es. "Iniciar Nimbus – Fácil")
+  // restava troncata di un soffio nonostante il calcolo, verificato in
+  // browser.
+  const FIT_MARGIN = 0.95;
+  const labelMeasureCtx = document.createElement("canvas").getContext("2d");
+  function fitFontSize(text, baseSizePx, maxWidthPx) {
+    labelMeasureCtx.font = `700 ${baseSizePx}px Montserrat, sans-serif`;
+    const w = labelMeasureCtx.measureText(text).width;
+    return w > maxWidthPx ? baseSizePx * (maxWidthPx / w) * FIT_MARGIN : baseSizePx;
+  }
   // [Richiesto dall'autore: "rimuovi lo sprite con NIMBUS/Mount Fuji
   // Software, 2019 e il logo, tieni solo il logo come watermark statico in
   // basso a destra"] `gogirrra` (spr `logigogi`, 530x96) e' un unico raster
@@ -509,12 +531,13 @@ export async function mountTitle(ctx) {
       if (!b._f) continue;
       const s = camUI.worldToScreen(b.x, b.y);
       const screenH = b._f.h / camUI.zoom;
+      const maxWidthPx = (b._f.w / camUI.zoom) * 0.8;
       b._label.textContent = t(BUTTON_LABEL_KEYS[b.obj]);
       b._label.style.left = `${s.x}px`;
       b._label.style.top = `${s.y}px`;
       b._label.style.transform = "translate(-50%, -50%)";
-      b._label.style.fontSize = `${screenH * 0.22}px`;
-      b._label.style.maxWidth = `${(b._f.w / camUI.zoom) * 0.8}px`;
+      b._label.style.fontSize = `${fitFontSize(b._label.textContent, screenH * 0.22, maxWidthPx)}px`;
+      b._label.style.maxWidth = `${maxWidthPx}px`;
       b._label.style.opacity = String(1 - fadeK);
     }
 

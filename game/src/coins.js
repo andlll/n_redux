@@ -65,8 +65,19 @@ function maxChiesLevel(buildings) {
  * esattamente come `action_set_alarm(3000, 4)` in cima a entrambi gli Alarm_4
  * originali, PRIMA dei controlli che decidono se generare la moneta.
  */
-export function stepCoinSpawner(buildings, coins, dt, r12) {
+export function stepCoinSpawner(buildings, coins, dt, r12, platformState) {
   const chiesLv3 = maxChiesLevel(buildings) >= 3;
+  // [Nuova funzionalita', richiesta dall'autore: "a grattacielo completato
+  // le ville non dovrebbero piu' produrre biotech, altrimenti e' fuorviante"]
+  // `biotech` e' un carburante a consumo singolo (letto una volta a >=100 e
+  // azzerato per sbloccare il grattacielo, main.js) — una volta che il
+  // grattacielo esiste per davvero (non solo in cantiere: STAR_BUILDINGS.
+  // grattacielo.unlocked() in main.js resta comunque falso per il resto
+  // della partita), continuare a far comparire "bioico" mostrerebbe un
+  // premio che non porta piu' a nulla. Deviazione deliberata dal
+  // decompilato (che non conosce affatto lo stato del grattacielo qui),
+  // non un `[C]`.
+  const grattacieloDone = buildings.some((bl) => bl.type === "grattacielo" && !bl.construction);
   for (const b of buildings) {
     const isPalazzo = b.type === "palazzo" || b.type === "palazzoRd";
     if (b.level < 1 || (b.type !== "casa" && b.type !== "villa" && !isPalazzo)) continue;
@@ -96,7 +107,7 @@ export function stepCoinSpawner(buildings, coins, dt, r12) {
       if (r12.hap < r12.pop + 100) continue;
       if (r12.ele <= 0) continue;
       const ava = b.ava ?? 0;
-      if (ava === 0) {
+      if (ava === 0 && !grattacieloDone) {
         // [C] villa1/Alarm_4.gml, ava==0: crea "soldbio" — stessa famiglia
         // "sold*" (depth/hitbox/raccolta) ma NON assegna mon: incrementa
         // r12.biotech. **[Risolto, STUDIO.md/main.js STAR_BUILDINGS.
@@ -115,17 +126,38 @@ export function stepCoinSpawner(buildings, coins, dt, r12) {
         // un'icona di una risorsa diversa dai soldi).
         coins.push({ buildingId: b.id, x: b.x, y: b.y, depth: COIN_DEPTH, amount: 1,
           kind: "biotech", t: 0, spr: "bioico", auto: false });
-        continue;
+      } else {
+        // [C] villa1/Alarm_4.gml, ava 1..4 -> sold2..sold5 (40/60/80/100 mon,
+        // le stesse istanze condivise con casa sopra, stesso valore fisso);
+        // ava>=5 (crescita completa) -> sold1 (20 mon), la PIU' BASSA delle
+        // sei — non la continuazione della progressione (sold6, 120 mon,
+        // come farebbe la formula di casa): letto cosi' come sta nel
+        // decompilato, non "raddrizzato". Grattacielo gia' completato e
+        // ava==0: nessun corrispettivo nel decompilato (che non conosce lo
+        // stato del grattacielo) — tratta ava==0 come ava==1 (40 mon, il
+        // primo gradino reale) invece di lasciare la villa senza premio.
+        const effAva = ava === 0 ? 1 : ava;
+        const amount = effAva >= 5 ? 20 : [40, 60, 80, 100][effAva - 1];
+        coins.push({ buildingId: b.id, x: b.x, y: b.y, depth: COIN_DEPTH, amount, kind: "mon",
+          t: 0, spr: chiesLv3 ? "soldfade" : "soldico", auto: chiesLv3 });
       }
-      // [C] villa1/Alarm_4.gml, ava 1..4 -> sold2..sold5 (40/60/80/100 mon,
-      // le stesse istanze condivise con casa sopra, stesso valore fisso);
-      // ava>=5 (crescita completa) -> sold1 (20 mon), la PIU' BASSA delle
-      // sei — non la continuazione della progressione (sold6, 120 mon,
-      // come farebbe la formula di casa): letto cosi' come sta nel
-      // decompilato, non "raddrizzato".
-      const amount = ava >= 5 ? 20 : [40, 60, 80, 100][ava - 1];
-      coins.push({ buildingId: b.id, x: b.x, y: b.y, depth: COIN_DEPTH, amount, kind: "mon",
-        t: 0, spr: chiesLv3 ? "soldfade" : "soldico", auto: chiesLv3 });
+      // [Bug corretto] villa1/Alarm_4.gml non si ferma al ramo `ava` sopra:
+      // in coda, SE esistono sia `r22` che `r32` (`action_if_number(159, 0,
+      // 2)` poi, annidato, `action_if_number(161, 0, 2)` — instance_count
+      // dei due oggetti piattaforma della catena fari->ponti,
+      // game/src/platform.js, "expanded" per entrambi: tier2 richiede gia'
+      // `chies.level>=3`), crea un SECONDO `soldbio`, incondizionato — ogni
+      // villa che soddisfa hap/ele sopra regala biotech extra ad OGNI ciclo,
+      // non solo quando `ava==0`. Mancava del tutto: senza, una volta
+      // espansa la catena portuale (tipicamente quando chies e' gia' a
+      // livello 3) le ville sembrano produrre solo "mon" e mai piu'
+      // biotech, perche' a quel punto della partita `ava` e' quasi sempre
+      // >0 e il ramo sopra da solo non basta piu' a farlo notare. Spenta di
+      // nuovo, come il ramo `ava==0` sopra, a grattacielo completato.
+      if (!grattacieloDone && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded") {
+        coins.push({ buildingId: b.id, x: b.x, y: b.y, depth: COIN_DEPTH, amount: 1,
+          kind: "biotech", t: 0, spr: "bioico", auto: false });
+      }
     }
   }
 }

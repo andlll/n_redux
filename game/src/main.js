@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, syncTopperLife } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -788,6 +788,23 @@ export async function mountMatch(ctx, params = {}) {
       const c = entry.clearing;
       if (!c) continue;
       const up = ruinClearUp(entry.level ?? 1);
+      // [Bug corretto] Stesso `revealAtStep` (default l'ultimo passo) usato
+      // da stepConstructions() (buildings.js) per calcolare quando il topper
+      // deve sparire — qui non c'e' nessun `applyLevelFinish()` (un rudere
+      // in demolizione non rivela mai un edificio vero, vedi sotto), ma
+      // l'istante "il resto dell'impalcatura ha finito di crescere e sta per
+      // iniziare a smontarsi" e' lo stesso, sempre l'inizio dell'ultimo
+      // passo dell'array. Senza, i due `addConstructionSpawn()` sotto
+      // usavano la `life` GREZZA del topper (l'alarm originale del
+      // decompilato, es. tops1=260) invece di quella sincronizzata — lo
+      // stesso identico bug gia' corretto per i cantieri veri
+      // (syncTopperLife(), buildings.js: "fai sempre corrispondere la
+      // distruzione del topper con la creazione dell'edificio, su ogni
+      // cantiere"), qui mai portato: il topper di un rudere sotto ruspa
+      // spariva prima del previsto, lasciando l'impalcatura ancora al pieno
+      // (`ir11`/equivalenti) ma senza piu' il proprio tetto per qualche
+      // istante, prima ancora che iniziasse davvero a smontarsi.
+      const revealAtStep = up.revealAtStep ?? up.steps.length - 1;
       // Oggetto "edificio" fittizio, solo per riusare addConstructionSpawn()/
       // removeTransientDecor()/stepCranes() (main.js/cranes.js) cosi' come
       // sono invece di duplicarli per un rudere: id proprio (decorEntities
@@ -798,7 +815,7 @@ export async function mountMatch(ctx, params = {}) {
       let cur = up.steps[c.stepIndex];
       if (c.curSpr === undefined) {
         c.curSpr = pickSpr(cur.spr);
-        if (cur.spawn) addConstructionSpawn(c.fb, cur.spawn);
+        if (cur.spawn) addConstructionSpawn(c.fb, syncTopperLife(cur.spawn, up, c.stepIndex, revealAtStep));
       }
       // [Nuova sequenza, richiesta dall'autore: "sui cantieri delle rovine
       // prima l'impalcatura viene montata, poi la rovina sparisce, poi
@@ -831,7 +848,7 @@ export async function mountMatch(ctx, params = {}) {
       if (c.stepIndex < up.steps.length) {
         cur = up.steps[c.stepIndex];
         c.curSpr = pickSpr(cur.spr);
-        if (cur.spawn) addConstructionSpawn(c.fb, cur.spawn);
+        if (cur.spawn) addConstructionSpawn(c.fb, syncTopperLife(cur.spawn, up, c.stepIndex, revealAtStep));
         entry.spr = c.curSpr;
         entry._f = frameFor(entry.spr);
         entry.frontSpr = frontSprFor(entry.spr);
@@ -6017,7 +6034,7 @@ export async function mountMatch(ctx, params = {}) {
       // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
       // cantiere che casa/industria si porta dietro (spawnato da placeAt(),
       // solo avanzato qui).
-      stepBalloonSpawner(r12, balloons, dt, buildings);
+      stepBalloonSpawner(r12, balloons, dt, buildings, platformState);
       // onStruck: [C] Alarm_5.gml crea "esplo" prima di uccidersi per
       // fulmine — vedi il commento in stepBalloons() (balloons.js).
       // onStruck (balloons.js): "esplo" + il lampo del fulmine vero e proprio
@@ -6139,7 +6156,7 @@ export async function mountMatch(ctx, params = {}) {
       stepPedestrians(pedestrians, dt);
       // I pulsanti blu delle monete (game/src/coins.js): casa1|2|3/Alarm_4.gml,
       // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
-      stepCoinSpawner(buildings, coins, dt, r12);
+      stepCoinSpawner(buildings, coins, dt, r12, platformState);
       stepCoins(coins, dt, r12);
       // [Nuova funzionalita', richiesta dall'autore: indagare se le ville
       // producessero una seconda risorsa a forma di elica del DNA legata al
