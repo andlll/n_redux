@@ -244,6 +244,42 @@ export async function mountMatch(ctx, params = {}) {
   const { atlas, pageTex } = await loadRoomAtlas(gl, atlasKeyFor(roomName), {
     onProgress: (loaded, total) => reportProgress(roomName, loaded, total, t("loading.city")),
   });
+  // [Bug corretto, segnalato dall'autore: "la sequenza aerei del tutorial
+  // lagga alla prima visita, la seconda no — sospetto sia lo scaglione
+  // combat che arriva mentre la scena gia' gira, se fosse solo questione di
+  // GPU laggerebbe uguale"] Il tier "combat" (sotto, dentro `if (skyAlive)`)
+  // si avvia normalmente solo quando `r12.spy`/una minaccia vera si
+  // avvicina — ma la cutscene iniziale del tutorial (tutorial.js,
+  // spawnBattle()) crea `bombar`/`air`/`dirig` VERI gia' dopo pochi
+  // secondi, per script, MAI passando da quei contatori (r12.spy/onda/
+  // bombn/diron restano a zero per l'intera cutscene — e' tutta roba
+  // scriptata, non l'economia normale delle mongolfiere spia): il trigger
+  // normale non scatterebbe mai in tempo. Prima di questo fix le sue
+  // pagine "combat" partivano comunque subito ma SENZA essere aspettate —
+  // la cutscene (requestAnimationFrame(frame) sotto) iniziava a girare
+  // súbito dopo le sole pagine core, mentre "combat" (gli sprite VERI di
+  // quegli stessi aerei) scaricava ancora in sottofondo: pop-in vero al
+  // primo avvio, texture gia' in cache HTTP del browser (quindi
+  // praticamente istantanee) a ogni visita successiva — esattamente il
+  // sintomo segnalato, e la prova che non era un limite della GPU. Qui la
+  // aspettiamo per davvero, PRIMA che la cutscene inizi a girare — stessa
+  // barra di progresso di sopra (`reportProgress`/"loading.city"), un
+  // secondo giro da 0 a 100% dopo quello delle pagine core (STUDIO.md
+  // index.html/app.js: un secondo "riparte da zero" e' gia' il linguaggio
+  // normale di questa barra fra una fase e la successiva, non un
+  // errore). Solo `tutorial`: match/match_easy non hanno mai bisogno di
+  // "combat" cosi' presto (il trigger normale in `stepAtmosphere` sotto
+  // arriva comunque in tempo quando una minaccia vera si avvicina davvero),
+  // quindi restano al caricamento in sottofondo di sempre — nessun rischio
+  // di ripetere il crash su iPhone gia' descritto sopra (assets.js,
+  // PAGE_LOAD_CONCURRENCY) per un atlas "advanced" che qui non serve.
+  if (roomName === "tutorial" && (atlas.combatPages ?? 0) > 0) {
+    let combatLoaded = 0;
+    const combatTotal = atlas.combatPages;
+    await loadDeferredGroup(gl, atlasKeyFor(roomName), "combat", {
+      onPage: () => { combatLoaded++; reportProgress(roomName, combatLoaded, combatTotal, t("loading.city")); },
+    });
+  }
   // Icona del bottone di pausa (drawPauseButton() sotto) — fornita
   // dall'autore come PNG a parte (game/pause-button.png, committato accanto
   // a favicon/apple-touch-icon: un'immagine statica, non uno sprite del
@@ -284,20 +320,6 @@ export async function mountMatch(ctx, params = {}) {
     w: costWarningIconTex.width, h: costWarningIconTex.height,
     ox: costWarningIconTex.width / 2, oy: costWarningIconTex.height,
   };
-  // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
-  // alcuni device — ottimizziamo lato GPU: atlas piu' piccoli ed eviction"]
-  // Il tier "combat" (sotto, dentro `if (skyAlive)`) si avvia normalmente
-  // solo quando `r12.spy`/una minaccia vera si avvicina — ma la cutscene
-  // iniziale del tutorial (tutorial.js, spawnBattle()) crea `bombar`/`air`/
-  // `dirig` VERI gia' dopo pochi secondi, per script, MAI passando da
-  // quei contatori (r12.spy/onda/bombn/diron restano a zero per l'intera
-  // cutscene — e' tutta roba scriptata, non l'economia normale delle
-  // mongolfiere spia): il trigger normale non scatterebbe mai in tempo.
-  // Qui il tutorial fa eccezione, come faceva "deferred" incondizionato
-  // prima di questo cambio — le sue pagine "combat" partono subito, non
-  // c'e' niente da guadagnare a ritardarle in una room che le usa comunque
-  // nei primi secondi.
-  if (roomName === "tutorial") loadDeferredGroup(gl, atlasKeyFor(roomName), "combat");
   // `frameIdx` (default 0): quasi tutti gli sprite del motore sono statici,
   // una sola posa (STUDIO.md, "nessun sistema di image_speed") — ma alcuni
   // (le svolte delle auto, game/src/cars.js) sono davvero multi-frame
