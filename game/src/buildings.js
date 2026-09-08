@@ -2474,7 +2474,9 @@ function applyLevelFinish(b, def, up, c, r12, onDecor, deferDecor = false) {
  * la decorazione resta visibile DOPO il reveal, non se lo precede.
  */
 const TOPPER_SPRITES = new Set(["toppers", "topls", "topld"]);
-function syncTopperLife(spawnList, up, stepIndex, revealAtStep) {
+// Esportata: stepRuinClearing() (main.js) la riusa per la stessa impalcatura
+// "f" in sovraimpressione sui ruderi sotto ruspa — vedi il commento li'.
+export function syncTopperLife(spawnList, up, stepIndex, revealAtStep) {
   if (stepIndex >= revealAtStep) return spawnList;
   let ticksToReveal = 0;
   for (let k = stepIndex; k < revealAtStep; k++) ticksToReveal += up.steps[k].dur;
