@@ -197,7 +197,7 @@ export function spawnLoot(lootDef, x, y) {
  * 4" interno mai replicato — un dettaglio di numerazione, non un livello
  * di gioco in piu').
  */
-export function stepBalloonSpawner(r12, balloons, dt, buildings) {
+export function stepBalloonSpawner(r12, balloons, dt, buildings, platformState) {
   r12.spyT = (r12.spyT ?? 0) + dt;
   // [Bug corretto, segnalato dall'autore: "il grattacielo non blocca gli
   // aerei spia/gli attacchi"] **[C]** `r12/Create.gml: action_set_alarm
@@ -249,7 +249,19 @@ export function stepBalloonSpawner(r12, balloons, dt, buildings) {
     const chiesLevel = maxChiesLevel(buildings);
     if (chiesLevel >= 3 && dice(2)) balloons.push(spawnBalloon("monvo"));   // [C]
     if (chiesLevel >= 2) {
-      if (dice(18)) balloons.push(spawnBalloon("monviolo"));       // [C] (gate 160 semplificato, vedi sopra)
+      // [Nuova funzionalita', richiesta dall'autore: "a ponti completati
+      // niente piu' mongolfiere viola, altrimenti e' fuorviante"] `crys`
+      // (l'unico bottino di monviolo) si spende SOLO sui due segnali d'onda
+      // della catena fari->ponti (`clickWaveSignal`/`clickWaveSignal3`,
+      // platform.js: 20/50 crys, una tantum ciascuno) — nessun altro uso in
+      // tutto il gioco. Una volta che ENTRAMBI i tier sono "expanded" quei
+      // due segnali sono gia' stati accesi da un pezzo (tappati ben prima
+      // dell'espansione finale), quindi i cristalli sono garantiti inutili
+      // per il resto della partita: continuare a farli piovere sarebbe un
+      // premio senza scopo. Deviazione deliberata dal decompilato (che non
+      // conosce lo stato dei ponti qui), non un `[C]`.
+      const bridgesDone = platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded";
+      if (!bridgesDone && dice(18)) balloons.push(spawnBalloon("monviolo"));   // [C] (gate 160 semplificato, vedi sopra)
       if (dice(15)) balloons.push(spawnBalloon("monvo_giga"));     // [C]
     }
     // `r12.spyCooldownT` (sopra): il dado della spia non gira nemmeno finche'

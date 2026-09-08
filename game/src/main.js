@@ -6017,7 +6017,7 @@ export async function mountMatch(ctx, params = {}) {
       // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
       // cantiere che casa/industria si porta dietro (spawnato da placeAt(),
       // solo avanzato qui).
-      stepBalloonSpawner(r12, balloons, dt, buildings);
+      stepBalloonSpawner(r12, balloons, dt, buildings, platformState);
       // onStruck: [C] Alarm_5.gml crea "esplo" prima di uccidersi per
       // fulmine — vedi il commento in stepBalloons() (balloons.js).
       // onStruck (balloons.js): "esplo" + il lampo del fulmine vero e proprio
