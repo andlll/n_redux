@@ -6139,7 +6139,7 @@ export async function mountMatch(ctx, params = {}) {
       stepPedestrians(pedestrians, dt);
       // I pulsanti blu delle monete (game/src/coins.js): casa1|2|3/Alarm_4.gml,
       // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
-      stepCoinSpawner(buildings, coins, dt, r12);
+      stepCoinSpawner(buildings, coins, dt, r12, platformState);
       stepCoins(coins, dt, r12);
       // [Nuova funzionalita', richiesta dall'autore: indagare se le ville
       // producessero una seconda risorsa a forma di elica del DNA legata al
