@@ -4613,6 +4613,12 @@ export async function mountMatch(ctx, params = {}) {
   // finche' non supera SAVE_ICON_DURATION.
   let saveIconT = null;
   const SAVE_ICON_DURATION = 1;   // secondi — [C] savvvvvco/Create.gml: action_set_alarm(60, 0) a 60fps
+  // Avviso "olio in esaurimento" (main.js, frame() sotto) — [C] r12/Step.gml:
+  // action_if_variable(oil, 1000, 3), operatore 3 = "<=".
+  const LOW_OIL_THRESHOLD = 1000;
+  // [C] alertalaert/Alarm_0.gml + Alarm_1.gml: action_set_alarm(45,...) in
+  // entrambi — mostra/nasconde ogni 45 tick, un ciclo completo ogni 90.
+  const LOW_OIL_BLINK_PERIOD = 45 * TICK;
   /** Chiamata da doSave()/doSaveToFile()/stepAutosave() dopo un salvataggio
    * riuscito (mai su un blocco per situazione critica o un tentativo
    * annullato) — riparte da zero anche se una sequenza precedente e' ancora
@@ -8315,6 +8321,37 @@ export async function mountMatch(ctx, params = {}) {
       }
     } else {
       setCutsceneText(null);
+    }
+
+    // [Nuova funzionalita', richiesta dall'autore: "abbiamo implementato un
+    // low oil warning? mi ricordo uno sprite lampeggiante a centro
+    // schermo"] Avviso "olio in esaurimento" — [C] src/objects/alertalaert:
+    // r12/Step.gml arma l'istanza quando `oil<=1000` (action_if_variable con
+    // operatore 3, "<="), Step.gml la tiene ancorata al centro esatto della
+    // view (`action_move_to(view_xview+vw/2, view_yview+vh/2)`) finche' oil
+    // non risale sopra 1000, e Alarm_0/Alarm_1 alternano lo sprite vero
+    // ("alertlowoil") e uno vuoto ogni 45 tick (0.75s) — nessun suono in
+    // nessuno dei quattro eventi dell'oggetto. Ricalcolato da zero ogni
+    // frame dalla sola condizione `r12.oil`, non da un'istanza creata/
+    // distrutta con un flag di guardia (`allerta` nel decompilato): stesso
+    // identico effetto (blocco continuo mentre oil resta basso, sparisce
+    // appena risale), senza bisogno di replicare la guardia qui.
+    // Distinto da `criticalSaveReason()` (soglia 10% del tetto attuale/500
+    // di fallback, main.js sopra): quello blocca/spiega solo i salvataggi
+    // con un messaggio testuale, non e' mai stato un sostituto di questo
+    // avviso visivo persistente.
+    // `!paused`: stesso principio dei banner "ATTACK INCOMING"/
+    // "THUNDERSTORM INCOMING" appena sopra — un avviso sullo stato di
+    // gioco non ha senso lampeggiare sopra al menu che lo ferma.
+    if (r12.oil <= LOW_OIL_THRESHOLD && !paused && Math.floor(phaseT / LOW_OIL_BLINK_PERIOD) % 2 === 0) {
+      const cw = canvas.clientWidth, ch = canvas.clientHeight;
+      const f = frameFor("alertlowoil");
+      if (f) {
+        r.setAmbient(1, 1, 1);
+        r.setProjection(screenProjection(cw, ch));
+        r.draw(f, cw / 2, ch / 2, 1, 0xffffff, 1);
+        r.flush();
+      }
     }
 
     // Icona "salvataggio in corso" (saveIconT/showSaveIcon(), sopra) —
