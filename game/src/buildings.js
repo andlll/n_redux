@@ -3047,6 +3047,15 @@ export function stepConsumption(buildings, dt, r12, isNight) {
 
 const STORM_CHECK = 57 * TICK;   // [C] industria1|2/Alarm_5.gml, industria3/Alarm_6.gml, casa1|2/Alarm_5.gml: si riarmano tutti a 57 tick
 
+// [Bug corretto, segnalato dall'autore: "diminuiamo un po' i danni causati
+// dai fulmini, mi pare facciano troppo danno agli edifici"] `sd.loss` nelle
+// tabelle `storm` sotto e' il danno decompilato 1:1 ([C]) — quasi sempre 50,
+// che per un edificio appena costruito come industria1 (life: 50, sopra) e'
+// la vita INTERA: un solo fulmine lo distrugge di colpo. Scalato qui,
+// un'unica manopola, invece di ritoccare a mano ogni singola voce [C] nelle
+// tabelle (che restano fedeli al decompilato per riferimento).
+const STORM_DAMAGE_SCALE = 0.5;
+
 /**
  * Avanza il danno da fulmine degli edifici finiti che dichiarano `storm`
  * per livello (industria, casa — non tutti i livelli: `null` = quel
@@ -3074,7 +3083,7 @@ export function stepStormDamage(buildings, dt, r12, onStrike) {
     while (b.stormT >= STORM_CHECK) {
       b.stormT -= STORM_CHECK;
       if (r12.storm && Math.random() < 1 / sd.dice) {
-        b.life = Math.max(0, b.life - sd.loss);
+        b.life = Math.max(0, b.life - sd.loss * STORM_DAMAGE_SCALE);
         onStrike?.(b.x, b.y + (sd.dy ?? 0));
       }
     }

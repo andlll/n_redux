@@ -6097,20 +6097,19 @@ export async function mountMatch(ctx, params = {}) {
       // il temporale vero di `match` (r12.storm) sia sotto quello cosmetico
       // di `match_easy` (r12.stormeasy): stepRain() la fa cadere o la
       // svuota di scatto a seconda di quale (se uno) e' attivo ORA.
-      // [Bug corretto, segnalato dall'autore: "le gocce non coprono tutto lo
-      // screen size"] Bordi della camera (`cam.x/y ± cam.worldW/worldH / 2`
-      // — lo stesso calcolo di `l/t/rr/bb` usato piu' sotto per il culling
-      // di frameList()), non piu' `scene.width/height`: la scena intera
-      // puo' essere molto piu' grande dell'area davvero inquadrata in
-      // questo istante (camera libera, game/src/camera.js), quindi una
-      // striscia di emissione legata alla scena lasciava quasi sempre lo
-      // schermo vero poco o per niente coperto — vedi il commento in cima a
-      // weather.js.
-      {
-        const rvw = cam.worldW, rvh = cam.worldH;
-        const rl = cam.x - rvw / 2, rt = cam.y - rvh / 2;
-        stepRain(weatherState, dt, !!(r12.storm || r12.stormeasy), rl, rl + rvw, rt, rt + rvh);
-      }
+      // [Bug corretto, segnalato dall'autore: "il sistema particellare della
+      // pioggia mi sembra leggerino, estendiamolo a tutta la room e non alla
+      // telecamera, altrimenti se sposto velocemente la visuale a destra non
+      // piove"] Bordi della ROOM (`scene.width/height`, come `cam.bounds`
+      // sopra), non piu' quelli della camera (`cam.x/y ± cam.worldW/worldH /
+      // 2`): una striscia di emissione legata al riquadro camera resta
+      // sempre indietro rispetto a un pan veloce (la si "supera" prima che
+      // faccia in tempo a spawnare/seguire la nuova posizione, lasciando
+      // l'area appena scoperta senza pioggia per un istante) — legandola
+      // all'intera room invece, la pioggia e' gia' presente ovunque la
+      // camera possa mai inquadrare, qualunque sia la velocita' del pan.
+      // Vedi il commento in cima a weather.js.
+      stepRain(weatherState, dt, !!(r12.storm || r12.stormeasy), 0, scene.width, 0, scene.height);
       // Fuochi d'artificio sopra chies (game/src/fireworks.js) — sempre
       // "in ascolto", scoppiano davvero solo a Gennaio (r12.month === 1,
       // state.js/stepCalendar()).
