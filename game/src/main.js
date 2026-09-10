@@ -6040,8 +6040,29 @@ export async function mountMatch(ctx, params = {}) {
       // verrebbe piu' controllato affatto dopo quel momento se non era gia'
       // scattato prima — un edificio sbloccato DOPO che la spia e' gia'
       // attiva non avrebbe mai avviato il proprio scaglione.
+      // [Bug corretto, segnalato dall'autore: "a inizio partita il
+      // lanciarazzi uccide sul colpo le mongolfiere senza animazioni, dopo
+      // un temporale funziona correttamente"] Le condizioni sopra
+      // coprivano solo le minacce vere/il fuoco automatico che ne
+      // consegue, mai il fuoco MANUALE (fireTurretManual, projectiles.js):
+      // missile/gatling/laser sono costruibili e sparabili col tap fin dal
+      // primo minuto, molto prima che spia/temporale/ondata esistano —
+      // "redb"/"gatmissse" (gruppo "projectiles") e "fica"/il lampo alla
+      // bocca (gruppo "threats") restano pagine "combat" non ancora
+      // richieste: `frameFor()` torna `null` finche' non arrivano
+      // (main.js/assets.js, gia' gestito altrove come "niente da
+      // disegnare", nessun errore) — il colpo uccide comunque la
+      // mongolfiera (la logica non aspetta le texture) ma senza nessun
+      // razzo/lampo/esplosione visibile, finche' una delle condizioni sopra
+      // non fa scattare lo scaglione. Qualunque torretta gia' in piedi
+      // (`BUILDING_TYPES[b.type]?.turret`, buildings.js) rende il fuoco
+      // manuale possibile da subito: aggiunta come terza condizione
+      // indipendente, cosi' costruire un lanciarazzi/gatling/laser basta da
+      // solo a precaricare "combat", senza dover aspettare una minaccia
+      // vera o un temporale.
       if (r12.spy || r12.storm || r12.stormeasy
-        || (r12.ondan ?? 0) > 0 || (r12.bombn ?? 0) > 0 || (r12.diron ?? 0) > 0) {
+        || (r12.ondan ?? 0) > 0 || (r12.bombn ?? 0) > 0 || (r12.diron ?? 0) > 0
+        || buildings.some((b) => BUILDING_TYPES[b.type]?.turret)) {
         loadDeferredGroup(gl, atlasKeyFor(roomName), "combat");
       }
       // "advanced": chies a livello 2 (la soglia PIU' BASSA fra tutti i
