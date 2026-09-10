@@ -481,6 +481,14 @@ GAMEPLAY_SPRITES = {
         # — [Nuova funzionalita', richiesta dall'autore]).
         "handee", "groo", "baccc",
         "eyee1", "eyee2", "eyee3",
+        # Avviso "olio in esaurimento" (src/objects/alertalaert, sprite
+        # "alertlowoil") — [C] r12/Step.gml: creato quando oil<=1000,
+        # ancorato al centro della view finche' non risale sopra 1000,
+        # lampeggiante ogni 45 tick (game/src/main.js, LOW_OIL_THRESHOLD/
+        # LOW_OIL_BLINK_PERIOD). Persistente come "savicona"/"bancobutt"
+        # sopra, non legato al decoro statico di nessuna room — va elencato
+        # qui come loro.
+        "alertlowoil",
     ],
     # Alberi (src/objects/albe|albe2|albe3/Create.gml, STUDIO.md): a Create
     # l'originale sceglie a dado uno sprite finale diverso per istanza fra

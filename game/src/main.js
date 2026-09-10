@@ -860,6 +860,45 @@ export async function mountMatch(ctx, params = {}) {
     }
   }
 
+  // [Nuova funzionalita', richiesta dall'autore: "su mobile la demolizione
+  // di una rovina deve avvenire in due tap: il primo uguale all'hover del
+  // mouse su desktop (tinta rossa + cartellino del prezzo), il secondo
+  // conferma l'operazione"] Riferimento diretto alla voce (`ruins`/
+  // `ruinLots`, stessa forma {x,y,cost,_f,clearing}) attualmente "armata" da
+  // un primo tap mobile — letto sotto (per il tap successivo) e nel ciclo di
+  // disegno di main.js (per mimare l'hover: stessa tinta rossa/cartellino
+  // gia' in uso per il mouse). `null` = nessuna voce armata.
+  let ruinTapArmed = null;
+  /** Tocco su un rudere da battaglia (`ruins`) o su un lotto-rudere del
+   * tutorial (`ruinLots`) con la ruspa selezionata — chi chiama garantisce
+   * gia' `r12.selec === 11`. Su desktop (mouse, hover vero: la tinta rossa
+   * + il cartellino prezzo sono gia' visibili PRIMA del click) il tap
+   * esegue subito, come da sempre. Su mobile (`isMobile`, nessun hover
+   * senza contatto) il primo tap arma `ruinTapArmed` invece di eseguire —
+   * il ciclo di disegno lo mostra allo stesso modo dell'hover — e solo un
+   * secondo tap sulla STESSA voce gia' armata esegue davvero; toccare
+   * un'altra voce mentre una e' armata la disarma e arma la nuova al suo
+   * posto, mai due "in corso" insieme. [Bug corretto, segnalato
+   * dall'autore: "se non ci sono soldi fai comparire l'iconcina rossa
+   * solita di mancanza soldi"] Fondi insufficienti ora mostrano
+   * `spawnInsufficientFundsWarning()` (la stessa icona di ogni altro
+   * acquisto rifiutato) invece di non fare assolutamente niente in
+   * silenzio, su entrambe le piattaforme. */
+  function tapRuinLike(entry) {
+    if (entry.clearing) return;
+    if (isMobile && ruinTapArmed !== entry) {
+      ruinTapArmed = entry;
+      return;
+    }
+    if (!canAfford(r12, { mon: entry.cost })) {
+      spawnInsufficientFundsWarning(entry.x, entry.y, entry._f);
+    } else {
+      r12.mon -= entry.cost;
+      entry.clearing = { stepIndex: 0, t: 0 };
+    }
+    ruinTapArmed = null;
+  }
+
   // `chies` e' gia' un'istanza vera nella room (src/rooms/match_easy.json:
   // un solo `chies` a (851,513), STUDIO.md §5.3), non nasce da un
   // placeholder. Va tolta da `staticWorld` (altrimenti sarebbe disegnata due
@@ -4574,6 +4613,12 @@ export async function mountMatch(ctx, params = {}) {
   // finche' non supera SAVE_ICON_DURATION.
   let saveIconT = null;
   const SAVE_ICON_DURATION = 1;   // secondi — [C] savvvvvco/Create.gml: action_set_alarm(60, 0) a 60fps
+  // Avviso "olio in esaurimento" (main.js, frame() sotto) — [C] r12/Step.gml:
+  // action_if_variable(oil, 1000, 3), operatore 3 = "<=".
+  const LOW_OIL_THRESHOLD = 1000;
+  // [C] alertalaert/Alarm_0.gml + Alarm_1.gml: action_set_alarm(45,...) in
+  // entrambi — mostra/nasconde ogni 45 tick, un ciclo completo ogni 90.
+  const LOW_OIL_BLINK_PERIOD = 45 * TICK;
   /** Chiamata da doSave()/doSaveToFile()/stepAutosave() dopo un salvataggio
    * riuscito (mai su un blocco per situazione critica o un tentativo
    * annullato) — riparte da zero anche se una sequenza precedente e' ancora
@@ -5288,9 +5333,13 @@ export async function mountMatch(ctx, params = {}) {
           // rifiuto di QUELLA demolizione anche dopo aver premuto la mano.
           // La mano deve annullare qualunque strumento sia armato, non solo
           // il bottone evidenziato: anche il popup di conferma della ruspa.
+          // `ruinTapArmed` (sopra, tapRuinLike()): stesso principio per il
+          // primo tap mobile su un rudere — non deve restare "armato" (tinta
+          // rossa + cartellino ancora visibili) dopo aver mollato la ruspa.
           selectedType = null;
           r12.selec = 0;
           ruspaPending = null;
+          ruinTapArmed = null;
         }  // handbutton
         else if (btn.kind === "building") {                              // casa/industria/...
           // Stesso gate della griglia mobile qui sopra, per lo stesso
@@ -5475,28 +5524,26 @@ export async function mountMatch(ctx, params = {}) {
     // stepRuinClearing() sopra, ogni frame) cosi' l'impalcatura vera della
     // sua taglia (front track + topper/gru inclusi, vedi il commento su
     // ruinClearUp()/stepRuinClearing() sopra) compare prima che il lotto si
-    // liberi per davvero. `!lot.clearing` blocca un secondo tap (e quindi un
-    // secondo pagamento) mentre il ciclo e' gia' in corso.
+    // liberi per davvero. Il tap vero e proprio passa da tapRuinLike()
+    // (sopra, stepRuinClearing()): su mobile il primo tap solo arma
+    // l'evidenziazione (niente pagamento ancora), un secondo tap sulla
+    // stessa voce esegue davvero — su desktop resta un solo tap, l'hover
+    // del mouse ha gia' mostrato la stessa tinta/cartellino prima del
+    // click. Fuori dalla ruspa (`r12.selec !== 11`) il tap resta muto, come
+    // sempre.
     if (picked.obj === "ruinLot") {
-      const lot = picked.ref;
       message = ""; messageT = 0;
-      if (!lot.clearing && r12.selec === 11 && canAfford(r12, { mon: lot.cost })) {
-        r12.mon -= lot.cost;
-        lot.clearing = { stepIndex: 0, t: 0 };
-      }
+      if (r12.selec === 11) tapRuinLike(picked.ref);
       picked = null;
       return;
     }
     // Rudere VERO da battaglia (destroyBuilding() sopra) — stessa identica
     // meccanica di "ruinLot" appena sopra (stesso ciclo di impalcature via
-    // `clearing`/stepRuinClearing()), solo su `ruins` invece di `ruinLots`.
+    // `clearing`/stepRuinClearing()/tapRuinLike()), solo su `ruins` invece
+    // di `ruinLots`.
     if (picked.obj === "ruin") {
-      const ru = picked.ref;
       message = ""; messageT = 0;
-      if (!ru.clearing && r12.selec === 11 && canAfford(r12, { mon: ru.cost })) {
-        r12.mon -= ru.cost;
-        ru.clearing = { stepIndex: 0, t: 0 };
-      }
+      if (r12.selec === 11) tapRuinLike(picked.ref);
       picked = null;
       return;
     }
@@ -6097,20 +6144,19 @@ export async function mountMatch(ctx, params = {}) {
       // il temporale vero di `match` (r12.storm) sia sotto quello cosmetico
       // di `match_easy` (r12.stormeasy): stepRain() la fa cadere o la
       // svuota di scatto a seconda di quale (se uno) e' attivo ORA.
-      // [Bug corretto, segnalato dall'autore: "le gocce non coprono tutto lo
-      // screen size"] Bordi della camera (`cam.x/y ± cam.worldW/worldH / 2`
-      // — lo stesso calcolo di `l/t/rr/bb` usato piu' sotto per il culling
-      // di frameList()), non piu' `scene.width/height`: la scena intera
-      // puo' essere molto piu' grande dell'area davvero inquadrata in
-      // questo istante (camera libera, game/src/camera.js), quindi una
-      // striscia di emissione legata alla scena lasciava quasi sempre lo
-      // schermo vero poco o per niente coperto — vedi il commento in cima a
-      // weather.js.
-      {
-        const rvw = cam.worldW, rvh = cam.worldH;
-        const rl = cam.x - rvw / 2, rt = cam.y - rvh / 2;
-        stepRain(weatherState, dt, !!(r12.storm || r12.stormeasy), rl, rl + rvw, rt, rt + rvh);
-      }
+      // [Bug corretto, segnalato dall'autore: "il sistema particellare della
+      // pioggia mi sembra leggerino, estendiamolo a tutta la room e non alla
+      // telecamera, altrimenti se sposto velocemente la visuale a destra non
+      // piove"] Bordi della ROOM (`scene.width/height`, come `cam.bounds`
+      // sopra), non piu' quelli della camera (`cam.x/y ± cam.worldW/worldH /
+      // 2`): una striscia di emissione legata al riquadro camera resta
+      // sempre indietro rispetto a un pan veloce (la si "supera" prima che
+      // faccia in tempo a spawnare/seguire la nuova posizione, lasciando
+      // l'area appena scoperta senza pioggia per un istante) — legandola
+      // all'intera room invece, la pioggia e' gia' presente ovunque la
+      // camera possa mai inquadrare, qualunque sia la velocita' del pan.
+      // Vedi il commento in cima a weather.js.
+      stepRain(weatherState, dt, !!(r12.storm || r12.stormeasy), 0, scene.width, 0, scene.height);
       // Fuochi d'artificio sopra chies (game/src/fireworks.js) — sempre
       // "in ascolto", scoppiano davvero solo a Gennaio (r12.month === 1,
       // state.js/stepCalendar()).
@@ -6524,16 +6570,22 @@ export async function mountMatch(ctx, params = {}) {
     // rossa gia' in uso per i lotti-rudere del tutorial (`ruinLots` sotto),
     // qui esteso a QUALUNQUE room: un rudere da
     // battaglia puo' comparire su `match`/`match_easy` quanto su `tutorial`.
-    // [I] Nessun cartellino prezzo all'hover (a differenza del popup ruspa
-    // su un edificio vivo, `ruspaPending` sopra): ne' `ruinLot` lo mostra
-    // gia' — stesso gap, non nuovo qui. `._f`/`.spr` di un rudere in
+    // Cartellino prezzo all'hover: vedi il blocco dedicato piu' sotto (dopo
+    // drawBuildMenuOverlay), stesso schema del cartellino di `ruinLot`.
+    // [Nuova funzionalita', richiesta dall'autore: "su mobile la demolizione
+    // deve avvenire in due tap, il primo uguale all'hover del mouse"]
+    // `ruinTapArmed === ru` (tapRuinLike(), sopra) mette la voce armata dal
+    // primo tap mobile nello stesso identico stato "evidenziato" dell'hover
+    // del mouse — stessa tinta, stesso cartellino, un solo ramo invece di
+    // due condizioni separate a valle. `._f`/`.spr` di un rudere in
     // `clearing` cambiano ogni frame (stepRuinClearing() sopra, sopra
     // stepConstructions()): il tint rosso "tappabile" invece si spegne
     // (`!entry.clearing` sotto) proprio perche' un secondo tap durante il
     // ciclo di impalcature non fa piu' niente (guardia in input.onTap).
     const hoverWorld = input.hover && input.hoverPointerType === "mouse" ? cam.screenToWorld(input.hover.x, input.hover.y) : null;
     for (const ru of ruins) {
-      const hovered = !ru.clearing && !!hoverWorld && r12.selec === 11 && ru._f && inFrameRect(hoverWorld.x, hoverWorld.y, ru.x, ru.y, ru._f);
+      const hovered = !ru.clearing && r12.selec === 11 && ru._f
+        && ((!!hoverWorld && inFrameRect(hoverWorld.x, hoverWorld.y, ru.x, ru.y, ru._f)) || ruinTapArmed === ru);
       ru._hovered = hovered;
       dynamic.push({
         obj: "ruin", ref: ru, x: ru.x, y: ru.y, depth: ru.depth, _f: ru._f,
@@ -6554,7 +6606,10 @@ export async function mountMatch(ctx, params = {}) {
     if (tutorialState) {
       const hw = hoverWorld;
       for (const lot of ruinLots) {
-        const hovered = !lot.clearing && !!hw && r12.selec === 11 && lot._f && inFrameRect(hw.x, hw.y, lot.x, lot.y, lot._f);
+        // Stesso principio di `ru`/`ruinTapArmed` appena sopra: il primo tap
+        // mobile arma questa voce esattamente come l'hover del mouse.
+        const hovered = !lot.clearing && r12.selec === 11 && lot._f
+          && ((!!hw && inFrameRect(hw.x, hw.y, lot.x, lot.y, lot._f)) || ruinTapArmed === lot);
         lot._hovered = hovered;
         // [C] ruin1|2/Mouse_MouseEnter.gml: action_sprite_color(255,1) — 255 e'
         // "puro rosso" nel formato colore di GameMaker (R+G*256+B*65536, vedi
@@ -7096,6 +7151,18 @@ export async function mountMatch(ctx, params = {}) {
     if (tutorialState) for (const lot of ruinLots) {
       if (!lot._hovered) continue;
       drawCostTagWorld(costParts({ mon: lot.cost }), lot.x, lot.y - 50);
+      break;
+    }
+    // [Nuova funzionalita', richiesta dall'autore: "il primo tap su una
+    // rovina deve essere uguale all'hover su desktop, tinta rossa +
+    // cartellino col prezzo"] Stesso cartellino/offset del blocco appena
+    // sopra sui lotti-rudere del tutorial, qui sui ruderi VERI da battaglia
+    // (`ruins`, ogni room) — mancava anche su desktop (`ru._hovered`, gia'
+    // vero all'hover del mouse: vedi il ciclo di disegno sopra), non solo
+    // su mobile.
+    for (const ru of ruins) {
+      if (!ru._hovered) continue;
+      drawCostTagWorld(costParts({ mon: ru.cost }), ru.x, ru.y - 50);
       break;
     }
     // Testo "Yes!"/"No" dei due bottoni conferma ruspa (dynamic.push({obj:
@@ -8254,6 +8321,37 @@ export async function mountMatch(ctx, params = {}) {
       }
     } else {
       setCutsceneText(null);
+    }
+
+    // [Nuova funzionalita', richiesta dall'autore: "abbiamo implementato un
+    // low oil warning? mi ricordo uno sprite lampeggiante a centro
+    // schermo"] Avviso "olio in esaurimento" — [C] src/objects/alertalaert:
+    // r12/Step.gml arma l'istanza quando `oil<=1000` (action_if_variable con
+    // operatore 3, "<="), Step.gml la tiene ancorata al centro esatto della
+    // view (`action_move_to(view_xview+vw/2, view_yview+vh/2)`) finche' oil
+    // non risale sopra 1000, e Alarm_0/Alarm_1 alternano lo sprite vero
+    // ("alertlowoil") e uno vuoto ogni 45 tick (0.75s) — nessun suono in
+    // nessuno dei quattro eventi dell'oggetto. Ricalcolato da zero ogni
+    // frame dalla sola condizione `r12.oil`, non da un'istanza creata/
+    // distrutta con un flag di guardia (`allerta` nel decompilato): stesso
+    // identico effetto (blocco continuo mentre oil resta basso, sparisce
+    // appena risale), senza bisogno di replicare la guardia qui.
+    // Distinto da `criticalSaveReason()` (soglia 10% del tetto attuale/500
+    // di fallback, main.js sopra): quello blocca/spiega solo i salvataggi
+    // con un messaggio testuale, non e' mai stato un sostituto di questo
+    // avviso visivo persistente.
+    // `!paused`: stesso principio dei banner "ATTACK INCOMING"/
+    // "THUNDERSTORM INCOMING" appena sopra — un avviso sullo stato di
+    // gioco non ha senso lampeggiare sopra al menu che lo ferma.
+    if (r12.oil <= LOW_OIL_THRESHOLD && !paused && Math.floor(phaseT / LOW_OIL_BLINK_PERIOD) % 2 === 0) {
+      const cw = canvas.clientWidth, ch = canvas.clientHeight;
+      const f = frameFor("alertlowoil");
+      if (f) {
+        r.setAmbient(1, 1, 1);
+        r.setProjection(screenProjection(cw, ch));
+        r.draw(f, cw / 2, ch / 2, 1, 0xffffff, 1);
+        r.flush();
+      }
     }
 
     // Icona "salvataggio in corso" (saveIconT/showSaveIcon(), sopra) —

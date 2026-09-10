@@ -43,25 +43,29 @@
 // rapidamente la direzione iniziale — proprio come nell'originale.
 //
 // 2) L'originale emette su una striscia FISSA in coordinate di room
-// (-400..5500): la room del gioco originale non aveva una camera libera
-// come questa (pan/zoom veri, game/src/camera.js), quindi quella striscia
-// copriva comunque l'intera vista perche' la vista nativa non usciva mai da
-// li'. Qui la camera SI sposta/zooma (`cam.x/y/zoom`): una striscia fissa
-// sull'intera `scene` (spesso molto piu' larga/alta della sola parte
-// inquadrata in un dato istante) lasciava quasi sempre l'area VISIBILE poco
-// o per niente coperta. **[Bug corretto]** La striscia di emissione ora
-// segue la camera invece della scena: `spawnDrop()` prende i bordi del
-// mondo attualmente INQUADRATO (stesso `cam.x/y ± cam.worldW/worldH / 2`
-// gia' usato da main.js per il culling di `frameList()`), con un margine
-// abbastanza ampio da coprire anche la deriva orizzontale che il vento
-// imprime durante la vita della goccia (altrimenti il bordo sopravento —
-// qui destra, essendo il vento verso sinistra — resterebbe visibilmente piu'
-// scarso). Densita' invariata (900 gocce/s, [C] 15/tick a 60fps): non scala
-// con la larghezza inquadrata, esattamente come l'originale (una striscia
-// di larghezza fissa, densita' per-area costante) — zoomare fuori mostra la
-// stessa pioggia "diluita" su piu' schermo, coerente con un'intensita' di
-// pioggia vera e propria, non un numero di gocce a schermo tenuto costante
-// ad ogni zoom.
+// (-400..5500), larga quanto l'intera room. **[Bug corretto, segnalato
+// dall'autore: "il sistema particellare della pioggia mi sembra leggerino,
+// estendiamolo a tutta la room e non alla telecamera, altrimenti se sposto
+// velocemente la visuale a destra non piove"]** Una prima versione di
+// questo file legava la striscia al riquadro camera invece che alla room
+// (`cam.x/y ± cam.worldW/worldH / 2`, per inseguire una camera libera che
+// l'originale non aveva) — corretto perche' "inseguire" ha un difetto
+// intrinseco: un pan veloce supera la vecchia posizione della striscia
+// prima che il frame successivo la faccia ripartire dalla nuova, lasciando
+// l'area appena scoperta senza gocce per un istante (niente pioggia finche'
+// la camera non si ferma e la striscia "recupera"). Tornando alla striscia
+// intera-room (`spawnDrop()` prende i bordi passati da main.js, ora
+// `scene.width/height` invece di `cam.x/y ± cam.worldW/worldH / 2`), la
+// pioggia e' gia' presente ovunque la camera possa mai inquadrare,
+// qualunque sia la velocita' del pan — lo stesso principio della striscia
+// FISSA nativa, solo dimensionata sulla room invece che su un intervallo
+// scritto a mano. Il margine (RAIN_MARGIN sotto) resta per coprire la
+// deriva orizzontale che il vento imprime durante la vita della goccia
+// (altrimenti il bordo sottovento — qui sinistra, essendo il vento verso
+// sinistra — perderebbe gocce appena fuori dal bordo room prima di rientrare
+// in vista). Densita' invariata (900 gocce/s, [C] 15/tick a 60fps): non
+// scala con la larghezza della striscia, esattamente come l'originale (una
+// striscia di larghezza fissa, densita' per-area costante).
 import { Pool } from "./pool.js";
 
 // `state.drops` sotto: un Pool riusabile (game/src/pool.js), non un array
@@ -92,19 +96,19 @@ export function createWeatherState() {
   return { spawnT: 0, drops: new Pool() };
 }
 
-/** Nasce appena sopra il bordo SUPERIORE dell'area attualmente inquadrata
- * dalla camera, distribuita su tutta la sua larghezza (+ margine, vedi il
- * commento in cima al file) — mai sulla scena intera. Direzione di lancio
- * randomizzata ([C] part_type_direction 210-290°) — quasi subito sovrastata
- * dalla gravita' vera (RAIN_GRAVITY_X/Y sopra, applicata in stepRain()
- * sotto), esattamente come nell'originale. `vx`/`vy` sono la velocita' VERA
- * (px/s, spazio schermo — y positiva verso il basso), letta direttamente da
- * rainDropAngle() per orientare il quad — nessuna ricostruzione
- * trigonometrica separata per il disegno. */
-function spawnDrop(d, camLeft, camRight, camTop) {
+/** Nasce appena sopra il bordo SUPERIORE della room, distribuita su tutta
+ * la sua larghezza (+ margine, vedi il commento in cima al file) — non piu'
+ * legata al riquadro camera (vedi il commento in cima al file sul perche').
+ * Direzione di lancio randomizzata ([C] part_type_direction 210-290°) —
+ * quasi subito sovrastata dalla gravita' vera (RAIN_GRAVITY_X/Y sopra,
+ * applicata in stepRain() sotto), esattamente come nell'originale. `vx`/`vy`
+ * sono la velocita' VERA (px/s, spazio schermo — y positiva verso il
+ * basso), letta direttamente da rainDropAngle() per orientare il quad —
+ * nessuna ricostruzione trigonometrica separata per il disegno. */
+function spawnDrop(d, roomLeft, roomRight, roomTop) {
   const dirRad = ((RAIN_DIR_MIN + Math.random() * (RAIN_DIR_MAX - RAIN_DIR_MIN)) * Math.PI) / 180;
-  d.x = camLeft - RAIN_MARGIN + Math.random() * (camRight - camLeft + RAIN_MARGIN * 2);
-  d.y = camTop - RAIN_MARGIN;
+  d.x = roomLeft - RAIN_MARGIN + Math.random() * (roomRight - roomLeft + RAIN_MARGIN * 2);
+  d.y = roomTop - RAIN_MARGIN;
   d.vx = Math.cos(dirRad) * RAIN_SPEED;
   d.vy = -Math.sin(dirRad) * RAIN_SPEED;
   d.t = 0;
@@ -117,12 +121,11 @@ function spawnDrop(d, camLeft, camRight, camTop) {
  * colpo, non lo lascia esaurirsi da solo) — qui svuota `drops` di scatto
  * appena `raining` torna false, stesso comportamento.
  *
- * `camLeft/camRight/camTop/camBottom`: i bordi del mondo attualmente
- * inquadrato dalla camera (main.js: `cam.x/y ± cam.worldW/worldH / 2`,
- * stesso calcolo gia' usato li' per il culling di `frameList()`) — la
- * striscia di emissione e la rimozione delle gocce seguono questi bordi
- * invece della scena intera, vedi il commento in cima al file. */
-export function stepRain(state, dt, raining, camLeft, camRight, camTop, camBottom) {
+ * `roomLeft/roomRight/roomTop/roomBottom`: i bordi della ROOM (main.js:
+ * `0, scene.width, 0, scene.height`) — la striscia di emissione e la
+ * rimozione delle gocce seguono questi bordi, non quelli (mobili) del
+ * riquadro camera, vedi il commento in cima al file. */
+export function stepRain(state, dt, raining, roomLeft, roomRight, roomTop, roomBottom) {
   if (!raining) {
     if (state.drops.active.length) state.drops.clear();
     state.spawnT = 0;
@@ -131,7 +134,7 @@ export function stepRain(state, dt, raining, camLeft, camRight, camTop, camBotto
   state.spawnT += dt;
   while (state.spawnT >= RAIN_SPAWN_PERIOD) {
     state.spawnT -= RAIN_SPAWN_PERIOD;
-    spawnDrop(state.drops.spawn(), camLeft, camRight, camTop);
+    spawnDrop(state.drops.spawn(), roomLeft, roomRight, roomTop);
   }
   const drops = state.drops.active;
   for (let i = drops.length - 1; i >= 0; i--) {
@@ -146,16 +149,15 @@ export function stepRain(state, dt, raining, camLeft, camRight, camTop, camBotto
     d.vy += RAIN_GRAVITY_Y * dt;
     d.x += d.vx * dt;
     d.y += d.vy * dt;
-    // Rimozione per uscita dall'area inquadrata (margine RAIN_MARGIN in
-    // ogni direzione), non piu' legata alla sola scena intera — vedi il
-    // commento in cima al file ("le gocce non coprono tutto lo screen
-    // size"): una goccia che la camera ha gia' superato (sopra/sotto/di
-    // lato) va tolta subito, continuare ad avanzarla fuori vista sarebbe
-    // spreco puro. `d.t >= RAIN_LIFE` resta come tetto di sicurezza.
+    // Rimozione per uscita dall'area della ROOM (margine RAIN_MARGIN in
+    // ogni direzione) — una goccia che ha gia' superato il bordo room
+    // (sopra/sotto/di lato) va tolta subito, continuare ad avanzarla fuori
+    // dalla room sarebbe spreco puro. `d.t >= RAIN_LIFE` resta come tetto
+    // di sicurezza.
     if (d.t >= RAIN_LIFE
-      || d.y > camBottom + RAIN_MARGIN
-      || d.x < camLeft - RAIN_MARGIN * 2
-      || d.x > camRight + RAIN_MARGIN * 2) {
+      || d.y > roomBottom + RAIN_MARGIN
+      || d.x < roomLeft - RAIN_MARGIN * 2
+      || d.x > roomRight + RAIN_MARGIN * 2) {
       state.drops.release(i);
     }
   }
