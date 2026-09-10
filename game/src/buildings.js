@@ -629,7 +629,7 @@ export const BUILDING_TYPES = {
   // "cosa manca"), non riletto qui.
   missile: {
     get label() { return buildingLabel("missile"); },
-    placeCost: { mon: 5000 },    // [C] placeholder/Mouse_LeftReleased.gml, selec==3
+    placeCost: { mon: 3000 },    // [C] placeholder/Mouse_LeftReleased.gml, selec==3 — costo ridotto rispetto all'originale (5000)
     // [I] `close` nell'originale e' vera collisione fisica fra la maschera
     // di missile/gatling/laser (`placeholder/Collision_impamissr|
     // rocket_launcher|gatlinggun|lasergun.gml`, tutte impostano lo stesso

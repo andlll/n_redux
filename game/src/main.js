@@ -4841,7 +4841,7 @@ export async function mountMatch(ctx, params = {}) {
   // nel decompilato (pu3/pu7/Step.gml, nessun `unlosei`/`chies` gate).
   const OTHER_BUILDINGS = [
     { type: "parco", selec: 7, spr: "p7", tint: 0x139f13, cost: 500 },
-    { type: "missile", selec: 3, spr: "p3", tint: 0x892020, cost: 5000 },
+    { type: "missile", selec: 3, spr: "p3", tint: 0x892020, cost: 3000 },
     // "Grattacielo" era il nome (mai verificato) di una versione precedente
     // di questa riga: **[C]** src/objects/level2palazz (il popup "livello 2
     // sbloccato" agganciato a `pu6/Mouse_MouseEnter.gml`, stesso schema di
