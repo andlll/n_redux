@@ -467,6 +467,18 @@ export async function mountMatch(ctx, params = {}) {
       const { x0, y0, x1, y1 } = CRYS_ICON_BBOX;
       return subFrameRect(full, x0, y0, x1, y1);
     }
+    // [Nuova funzionalita', richiesta dall'autore: "cristalli e biotech
+    // nella colonna a sinistra insieme alle altre risorse"] A differenza di
+    // "crys" sopra, il margine trasparente di "biot_ico" non e' mai stato
+    // misurato pixel per pixel (il commento sul contatore biotech, piu'
+    // sotto nella funzione di disegno, lo segnala gia': l'atlas coi due
+    // sprite nuovi "bioico"/"biot_ico" non era stato ricostruito quando
+    // quel codice fu scritto — 24_blit.ps1 e' Windows-only). Frame intero,
+    // nessun ritaglio: stesso livello di incertezza gia' accettato li' ("una
+    // prima stima da rifinire a vista"), non un rischio nuovo introdotto qui.
+    if (kind === "bio") {
+      return frameFor("biot_ico");
+    }
     if (kind === "pop") {
       const full = frameFor("icone_oriz");
       if (!full) return null;
@@ -7470,9 +7482,20 @@ export async function mountMatch(ctx, params = {}) {
     // commento su `hideResourceText` due righe sotto (testo DOM, la
     // sfumatura di pausa non lo tocca).
     const MOBILE_RES_GAP = 6;
+    // [Nuova disposizione, richiesta dall'autore: "cristalli e biotech
+    // incolonnati a sinistra con le altre, non nel blocchetto a destra"]
+    // Le due risorse "extra" (aggiunte in questo motore, mai nel
+    // decompilato — vedi il commento sul contatore cristalli piu' sotto)
+    // seguono la stessa regola con cui gia' comparivano/sparivano nel
+    // blocchetto a destra: invisibili finche' il giocatore non ne possiede
+    // almeno una, per non mostrare un contatore a "0" per una risorsa che
+    // la sua partita potrebbe non aver ancora incontrato.
+    const mobileResKinds = [["pop", r12.pop], ["oil", r12.oil], ["ele", r12.ele], ["mon", r12.mon]];
+    if (r12.crys > 0) mobileResKinds.push(["crys", r12.crys]);
+    if (r12.biotech > 0) mobileResKinds.push(["bio", r12.biotech]);
     const mobileResLayout = isMobile ? (() => {
       let rowY = barY;
-      return [["pop", r12.pop], ["oil", r12.oil], ["ele", r12.ele], ["mon", r12.mon]].map(([kind, raw]) => {
+      return mobileResKinds.map(([kind, raw]) => {
         const text = String(Math.round(raw));
         const { resolved, total } = layoutIconParts([{ icon: kind }, { text }], TAG_TEXT_SIZE, TAG_GAP);
         const row = { kind, text, icon: resolved[0], y: rowY, w: Math.round(total + TAG_PAD) };
@@ -7584,14 +7607,12 @@ export async function mountMatch(ctx, params = {}) {
     // Ancora orizzontale di riga2 su mobile: ancorata al bordo DESTRO dello
     // schermo invece che a `barX` (sinistra, dove sta la colonna) — stesso
     // `UI_MARGIN` gia' usato per ogni altro elemento ancorato a un bordo
-    // (bottone pausa, `pbX` piu' sotto). 260px riserva lo spazio per l'intero
-    // blocco orologio+data+faccina+cristalli+biotech: gli stessi offset
-    // relativi di sempre (26/84/100/140/180/220, sotto) misurati da
-    // `ROW2_X` invece che da `barX`, non uno stile nuovo — solo un'ancora
-    // diversa. Il mese piu' lungo in italiano ("settembre") e un numero a 4
-    // cifre restano comodamente dentro, come gia' erano dentro la vecchia
-    // riga2 alla stessa larghezza relativa.
-    const ROW2_X = isMobile ? Math.round(canvas.clientWidth - UI_MARGIN - 260) : barX;
+    // (bottone pausa, `pbX` piu' sotto). Da quando cristalli/biotech si sono
+    // spostati nella colonna a sinistra (mobileResLayout, sopra) riga2
+    // contiene solo orologio+data+faccina: 130px bastano per l'ultimo, la
+    // faccina a offset 84 (sotto) + la sua larghezza, col margine per il
+    // mese piu' lungo in italiano ("settembre") sulla colonna della data.
+    const ROW2_X = isMobile ? Math.round(canvas.clientWidth - UI_MARGIN - 130) : barX;
     const clockScale = isMobile ? 0.5 : 0.85;
     // [Bug corretto, segnalato dall'autore: "su desktop c'e' troppo gap fra
     // il denaro e orologio/data/faccina, avviciniamoli"] Tutto il blocco
@@ -7713,11 +7734,16 @@ export async function mountMatch(ctx, params = {}) {
     // scala 0.9, +32.4): sottratto da `crysPos.y` sotto per farlo
     // combaciare col centro vero di `hapPos` (`(ROW2_Y+ROW2B_Y)/2`, la
     // stessa riga), non piu' una riga a parte piu' in basso.
-    if (r12.crys > 0) {
+    // [Nuova disposizione, richiesta dall'autore: "cristalli e biotech
+    // incolonnati a sinistra"] Su mobile questo contatore lo disegna gia'
+    // il ciclo di `mobileResLayout` sopra (stessa pillola di pop/olio/
+    // energia/denaro): il blocco qui sotto resta solo per desktop, dove sta
+    // ancora sulla riga unica a destra della faccina.
+    if (r12.crys > 0 && !isMobile) {
       const crysFrame = frameFor("crys_ico");
-      const crysPos = isMobile ? { x: ROW2_X + 100, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 570, y: barY - 4 };
-      const crysScale = isMobile ? 0.9 : 0.75;
-      const crysTextPos = isMobile ? { x: ROW2_X + 140, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 606, y: barY + 19 };
+      const crysPos = { x: barX + 570, y: barY - 4 };
+      const crysScale = 0.75;
+      const crysTextPos = { x: barX + 606, y: barY + 19 };
       // [Bug corretto, segnalato dall'autore: "non vedo il counter dei crys
       // quando li raccolgo (desktop)"] A differenza di hap1/hap3/oil/ele/mon
       // (sagome NERE su trasparente, verificato pixel per pixel sulla
@@ -7754,11 +7780,13 @@ export async function mountMatch(ctx, params = {}) {
     // Windows-only): a differenza di `crysPos`, "misurato pixel per pixel"
     // dall'autore in precedenza, questa e' una prima stima da rifinire a
     // vista una volta ricostruito l'atlas.
-    if (r12.biotech > 0) {
+    // Su mobile questo contatore lo disegna gia' `mobileResLayout` sopra,
+    // stesso motivo/stesso commento del blocco cristalli qui sopra.
+    if (r12.biotech > 0 && !isMobile) {
       const bioFrame = frameFor("biot_ico");
-      const bioPos = isMobile ? { x: ROW2_X + 180, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 650, y: barY - 4 };
-      const bioScale = isMobile ? 0.9 : 0.75;
-      const bioTextPos = isMobile ? { x: ROW2_X + 220, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 686, y: barY + 19 };
+      const bioPos = { x: barX + 650, y: barY - 4 };
+      const bioScale = 0.75;
+      const bioTextPos = { x: barX + 686, y: barY + 19 };
       r.setColorize(iconsDark);
       if (!hideResourceIcons && bioFrame) r.draw(bioFrame, bioPos.x, bioPos.y, bioScale, 0xffffff, 1);
       r.setColorize(false);
