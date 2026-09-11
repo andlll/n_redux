@@ -4365,9 +4365,17 @@ export async function mountMatch(ctx, params = {}) {
    * veri, perche' drawHtmlText() e' un overlay DOM che non sa nulla della
    * matrice camera. Il tag e' centrato due volte con lo stesso identico
    * `total` (layoutIconParts()): una volta nello spazio del quad (icone +
-   * pillola), una nello spazio schermo (testo) — corrispondono perche' in
-   * questo motore un'unita' mondo e un pixel schermo sono sempre la stessa
-   * cosa (nessuno zoom camera, STUDIO.md).
+   * pillola), una nello spazio schermo (testo).
+   * [Bug corretto: per drawCostTagWorld() lo spazio del quad E' il mondo, e
+   * la camera HA zoom vero (camera.js, 0.4-3) — un quad di taglia `w x h`
+   * finisce a `w/zoom x h/zoom` pixel schermo veri, mentre il testo DOM
+   * resta sempre `w x h` pixel veri. Ai due lati dello zoom (`zoom !== 1`)
+   * i due centraggi non coincidevano piu': pillola e testo si scentravano
+   * (verso sinistra/basso zoomando indietro, `zoom` cresce). Qui si
+   * moltiplica ogni offset applicato allo spazio del quad (`pillX/pillY/
+   * px`, mai `textX/textY/tx` che sono gia' pixel veri) per `zoom`, cosi'
+   * la pillola/iconcine restano sempre esattamente `w x h` pixel SCHERMO
+   * veri — la stessa taglia leggibile del testo — a qualunque zoom.]
    * `alpha` (default 1, per la dissolvenza dei cartellini "a tap" — build
    * menu/upgrade edificio, sotto): drawHtmlText() non ha un parametro
    * alpha proprio (`color`, sempre opaco altrove — nessun altro testo HTML
@@ -4385,37 +4393,39 @@ export async function mountMatch(ctx, params = {}) {
    * risorse di notte (`iconsDark` piu' sotto) — qui tinta con lo stesso
    * `textRgb` del testo, cosi' icona e numero restano dello stesso colore
    * qualunque esso sia.] */
-  function drawCostTagAt(tag, pillX, pillY, textX, textY, { tint = 0x000000, textRgb = [255, 255, 255], alpha = 1 } = {}) {
+  function drawCostTagAt(tag, pillX, pillY, textX, textY, { tint = 0x000000, textRgb = [255, 255, 255], alpha = 1, zoom = 1 } = {}) {
     const { resolved, total } = layoutIconParts(normalizeTag(tag), TAG_TEXT_SIZE, TAG_GAP);
     const h = TAG_PILL_H;
     const w = Math.round(total + TAG_PAD);
-    r.draw(tagPillFrame(w, h), pillX - w / 2, pillY, 1, tint, alpha);
+    r.draw(tagPillFrame(w, h), pillX - (w / 2) * zoom, pillY, zoom, tint, alpha);
     const [tr, tg, tb] = textRgb;
     const iconTint = (tr << 16) | (tg << 8) | tb;
     const hasIcon = resolved.some((p) => p.frame);
     if (hasIcon) r.setColorize(true);
-    let px = pillX - total / 2, tx = textX - total / 2;
+    let px = pillX - (total / 2) * zoom, tx = textX - total / 2;
     for (const p of resolved) {
-      if (p.frame) r.draw(p.frame, px, pillY + (h - p.iconH) / 2, p.scale, iconTint, alpha);
+      if (p.frame) r.draw(p.frame, px, pillY + ((h - p.iconH) / 2) * zoom, p.scale * zoom, iconTint, alpha);
       else drawHtmlText(p.text, tx, textY + h / 2, { size: TAG_TEXT_SIZE, align: "left", color: `rgba(${tr},${tg},${tb},${alpha})` });
-      px += p.w + TAG_GAP;
+      px += (p.w + TAG_GAP) * zoom;
       tx += p.w + TAG_GAP;
     }
     if (hasIcon) r.setColorize(false);
   }
   /** Cartellino in spazio SCHERMO (menu costruzioni, riga scorrevole
    * desktop): `topCenterX,topCenterY` sono gia' pixel schermo, nessuna
-   * conversione. */
+   * conversione — `zoom` resta 1 (default), non serve alcuna correzione. */
   function drawCostTagScreen(tag, topCenterX, topCenterY, opts) {
     drawCostTagAt(tag, topCenterX, topCenterY, topCenterX, topCenterY, opts);
   }
   /** Cartellino ancorato a un punto del MONDO (popup ruspa, cartellino
    * upgrade sull'edificio, lotti-rudere del tutorial): la pillola segue la
    * camera come ogni altro sprite di mondo, il testo (DOM, sempre schermo)
-   * usa cam.worldToScreen() sullo stesso punto. */
+   * usa cam.worldToScreen() sullo stesso punto. Passa `cam.zoom` cosi'
+   * drawCostTagAt() puo' compensare lo zoom vero della camera (bug corretto
+   * sopra). */
   function drawCostTagWorld(tag, wx, wy, opts) {
     const s = cam.worldToScreen(wx, wy);
-    drawCostTagAt(tag, wx, wy, s.x, s.y, opts);
+    drawCostTagAt(tag, wx, wy, s.x, s.y, { ...opts, zoom: cam.zoom });
   }
   /** Pezzi testo/icona di un costo (mon/oil/ele...), stesso formato di
    * drawIconLine() sopra — un cartellino mostra il prezzo con l'icona vera
