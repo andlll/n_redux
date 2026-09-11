@@ -5589,7 +5589,7 @@ export async function mountMatch(ctx, params = {}) {
       // visivi: nell'originale non avevano eventi Mouse propri (i pedoni
       // solo eventi Collision, non replicati — vedi pedestrians.js), quindi
       // qui non devono "rubare" il tocco.
-      if (!it._f || it.obj === "decor" || it.obj === "scaffold" || it.obj === "car"
+      if (!it._f || it.obj === "decor" || it.obj === "scaffold" || it.obj === "oldBuilding" || it.obj === "car"
         || it.obj === "semaphore" || it.obj === "cloud" || it.obj === "bird" || it.obj === "pedestrian") continue;
       // stessa distinzione rombo/rettangolo della prima passata sopra — un
       // placeholder che arriva fin qui (nessun oggetto interattivo colpito
@@ -6601,6 +6601,21 @@ export async function mountMatch(ctx, params = {}) {
         obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr, buildingFrameIdx),
         ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true } : {}),
       });
+      // [Bug corretto, segnalato dall'autore: "si vedeva anche nel gioco
+      // originale, partiva subito dopo la parte frontale e si montavano
+      // quasi insieme"] L'edificio VECCHIO durante un upgrade con topper
+      // (`b.oldSpr`, buildings.js — vedi il commento su `tryStartUpgrade()`
+      // li' per l'archeologia sui GML decompilati): nell'originale non era
+      // affatto lo stesso sprite del "retro" (sopra) che aspettava a
+      // sostituirlo — erano tre ISTANZE SEPARATE e contemporaneamente vive
+      // (`impa1to2r`/`casa1`/`impa1to2f`, coi rispettivi `depth`
+      // -y+1/-y/-y-3), l'edificio vecchio incastrato letteralmente FRA la
+      // sagoma di cantiere e l'impalcatura, non sopra o sotto entrambe.
+      // Stesso ordine qui: spinto DOPO "building" (retro, sopra) ma PRIMA di
+      // "scaffold" (fronte, sotto) cosi' l'ordine d'inserimento a depth
+      // pari (-b.y per tutti e tre, STUDIO.md su sortWorld/effDepth) li
+      // stratifica nello stesso ordine dell'originale.
+      if (b.oldSpr) dynamic.push({ obj: "oldBuilding", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.oldSpr) });
       // Impalcatura in sovraimpressione + coperchio di fine cantiere (vedi
       // buildings.js): stessa x/y dell'edificio, spinti sopra di lui
       // dall'ordine di inserimento (a parita' di depth+y l'array mantiene
