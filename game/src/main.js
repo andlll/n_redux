@@ -1414,6 +1414,17 @@ export async function mountMatch(ctx, params = {}) {
   let gridTapTagAt = 0;
   const GRID_TAP_SHOW_MS = 500;
   const GRID_TAP_FADE_MS = 400;
+  // [Nuova funzionalita', richiesta dall'autore: "il cartellino del prezzo di
+  // upgrade dovrebbe rimanere a schermo un secondo piu' a lungo"] Solo il
+  // cartellino upgrade (attemptUpgradeTap()/upgradeTagBuildingId, non quello
+  // del menu costruzioni sopra, che resta a GRID_TAP_SHOW_MS): tempo pieno
+  // piu' lungo di un secondo netto prima di iniziare la dissolvenza (la
+  // dissolvenza stessa, GRID_TAP_FADE_MS, resta la stessa). Condiviso fra
+  // attemptUpgradeTap() (la finestra di "secondo tap per confermare") e il
+  // disegno del cartellino piu' sotto: le due letture DEVONO restare uguali,
+  // altrimenti il cartellino sparirebbe mentre un secondo tap lo tratterebbe
+  // ancora come "in mostra" (o viceversa).
+  const UPGRADE_TAG_SHOW_MS = GRID_TAP_SHOW_MS + 1000;
 
   // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
   // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
@@ -2184,7 +2195,8 @@ export async function mountMatch(ctx, params = {}) {
   // l'hover, su mobile non e' contemplato" — "facciamo tap to reveal, solo
   // su mobile, mi sembra l'opzione piu' pulita"] Stesso principio del
   // cartellino del menu costruzioni (gridTapTagType/gridTapTagAt, sopra: la
-  // stessa dissolvenza GRID_TAP_SHOW_MS/GRID_TAP_FADE_MS), ma qui il PRIMO
+  // stessa dissolvenza, ma con un tempo pieno piu' lungo — UPGRADE_TAG_SHOW_MS
+  // invece di GRID_TAP_SHOW_MS, vedi il commento li' vicino), ma qui il PRIMO
   // tap non conferma mai — a differenza di li' (comment su gridTapTagType,
   // sopra: selezionare un tipo e' un'azione gratuita/reversibile, un
   // secondo tap di conferma ci era sembrato solo confusione in piu'), un
@@ -2209,7 +2221,7 @@ export async function mountMatch(ctx, params = {}) {
   function attemptUpgradeTap(b) {
     if (isMobile && upgradeUnlocked(b, r12, buildings)) {
       const peeking = upgradeTagBuildingId === b.id
-        && performance.now() - upgradeTagAt < GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
+        && performance.now() - upgradeTagAt < UPGRADE_TAG_SHOW_MS + GRID_TAP_FADE_MS;
       if (!peeking) {
         upgradeTagBuildingId = b.id;
         upgradeTagAt = performance.now();
@@ -3163,6 +3175,7 @@ export async function mountMatch(ctx, params = {}) {
       el.style.textOverflow = "clip";
       el.style.width = `${maxWidth}px`;
       el.style.transform = "none";
+      el.style.lineHeight = "1.4";   // `.gameText`, invariato: leggibilita' su piu' righe vere
     } else if (align === "left") {
       el.style.textAlign = "left";
       el.style.whiteSpace = "nowrap";
@@ -3170,6 +3183,25 @@ export async function mountMatch(ctx, params = {}) {
       el.style.textOverflow = "clip";
       el.style.maxWidth = maxWidth != null ? `${maxWidth}px` : "";
       el.style.transform = "translateY(-50%)";
+      // [Bug corretto, segnalato dall'autore: "la scritta del prezzo nel
+      // cartellino e' decentrata"] `line-height:1.4` di `.gameText` (pensato
+      // per la leggibilita' di un paragrafo vero, ramo `wrap` sopra) rende la
+      // riga (il "line box") molto piu' alta del testo che ci sta dentro —
+      // `translateY(-50%)` centra quel BOX, non l'inchiostro del glifo, e per
+      // una singola riga di sole cifre (nessun discendente come "g"/"y" che
+      // userebbe lo spazio sotto) il risultato e' un numero visibilmente
+      // spostato verso l'alto rispetto al centro vero del cartellino/della
+      // barra risorse (ogni chiamante con `align:"left"`: drawCostTagAt(),
+      // drawIconLine(), i contatori mon/oil/ele/crys/biotech, calendario) —
+      // verificato isolando la stessa identica regola CSS (stesso font reale,
+      // stesso peso) in una pagina a parte e confrontando il rendering con
+      // una riga guida sul centro geometrico vero: con 1.4 il numero cade
+      // quasi tutto SOPRA la riga, con 0.8 (qui sotto) ci sta a cavallo,
+      // bilanciato. Resta `nowrap`/una riga sola su ogni chiamante di questo
+      // ramo (mai testo lungo/andato a capo, quello e' il ramo `wrap` sopra,
+      // che non tocca `line-height` apposta): un valore piu' stretto non
+      // stringe mai righe vere, solo il margine interno di UNA riga.
+      el.style.lineHeight = "0.8";
     } else {
       el.style.textAlign = "center";
       el.style.whiteSpace = "nowrap";
@@ -3177,6 +3209,7 @@ export async function mountMatch(ctx, params = {}) {
       el.style.textOverflow = "ellipsis";
       el.style.maxWidth = maxWidth != null ? `${maxWidth}px` : "";
       el.style.transform = "translate(-50%, -50%)";
+      el.style.lineHeight = "1.4";   // `.gameText`, invariato — vedi il commento sopra
     }
     return el;
   }
@@ -7156,17 +7189,18 @@ export async function mountMatch(ctx, params = {}) {
     // la visibilita' del costo di upgrade su mobile? facciamo tap to
     // reveal, solo su mobile"] Stesso cartellino di sopra, ma pilotato dal
     // tap invece che dall'hover (attemptUpgradeTap()/upgradeTagBuildingId,
-    // sopra) — stessa dissolvenza GRID_TAP_SHOW_MS/GRID_TAP_FADE_MS gia'
-    // usata dal cartellino del menu costruzioni. Cerca l'edificio per id
-    // invece di tenerne un riferimento diretto: sopravvive a un giro di
-    // salvataggio/caricamento fra il tap e la dissolvenza (`buildings`
-    // viene sempre ricreato da doLoad()) senza puntare a un'istanza ormai
-    // orfana — se non lo trova piu' (demolito, o la partita e' stata
-    // ricaricata) il timer si azzera subito invece di restare armato a
-    // vuoto fino al prossimo timeout naturale.
+    // sopra) — stessa dissolvenza del cartellino del menu costruzioni, ma
+    // con un tempo pieno piu' lungo (UPGRADE_TAG_SHOW_MS, richiesto
+    // dall'autore: "dovrebbe rimanere a schermo un secondo piu' a lungo").
+    // Cerca l'edificio per id invece di tenerne un riferimento diretto:
+    // sopravvive a un giro di salvataggio/caricamento fra il tap e la
+    // dissolvenza (`buildings` viene sempre ricreato da doLoad()) senza
+    // puntare a un'istanza ormai orfana — se non lo trova piu' (demolito, o
+    // la partita e' stata ricaricata) il timer si azzera subito invece di
+    // restare armato a vuoto fino al prossimo timeout naturale.
     if (isMobile && upgradeTagBuildingId != null) {
       const elapsed = performance.now() - upgradeTagAt;
-      const total = GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
+      const total = UPGRADE_TAG_SHOW_MS + GRID_TAP_FADE_MS;
       const b = elapsed < total ? buildings.find((bb) => bb.id === upgradeTagBuildingId) : null;
       if (!b) {
         upgradeTagBuildingId = null;
@@ -7174,7 +7208,7 @@ export async function mountMatch(ctx, params = {}) {
         const upicoFrame = frameFor("upico");
         const tag = upicoFrame && costParts(nextUpgrade(b)?.cost);
         if (tag) {
-          const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
+          const alpha = elapsed < UPGRADE_TAG_SHOW_MS ? 1 : 1 - (elapsed - UPGRADE_TAG_SHOW_MS) / GRID_TAP_FADE_MS;
           drawCostTagWorld(tag, b.x, b.y - upicoFrame.oy - 15, { alpha });
         }
       }
