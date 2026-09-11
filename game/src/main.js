@@ -7480,9 +7480,6 @@ export async function mountMatch(ctx, params = {}) {
         return row;
       });
     })() : null;
-    const MOBILE_STACK_H = isMobile
-      ? mobileResLayout.length * TAG_PILL_H + (mobileResLayout.length - 1) * MOBILE_RES_GAP
-      : 0;
     if (isMobile) {
       if (!hideResourceIcons) {
         r.setColorize(true);
@@ -7559,31 +7556,42 @@ export async function mountMatch(ctx, params = {}) {
     // a sinistra, centrata verticalmente sulle due righe della data (mese
     // sopra, anno sotto — `r12.time` e' l'anno di gioco, game/src/state.js)
     // impilate alla sua destra.
-    // [Bug corretto, segnalato dall'autore: "l'orologio ora e' allineato
-    // alla prima risorsa della riga sopra?" — non lo era ancora] Il blocco
-    // partiva comunque da un x scelto per lasciare margine al contatore
-    // cristalli (prima a sinistra, sotto — vedi il commento su crysPos piu'
-    // sotto: ora spostato a destra della faccina, quello spazio e' libero
-    // per davvero). Misurato pixel per pixel sulla texture vera di
-    // "icone_oriz" (assets/textures/page_002.png): l'icona "persona"
-    // (popolazione, la prima della riga sopra) occupa la colonna locale
-    // 9..22 (centro 15.5) — lo stesso sistema di coordinate di `barX`, dato
-    // che la striscia si disegna con origine (0,0) a `(barX,barY)`.
-    // `clockFrame` (subFrameRight di "icone_oriz" sotto, ox=0/oy=0) tiene
-    // l'icona orologio alla colonna locale 15..45 (centro 30) DELLA
-    // SOTTO-IMMAGINE tagliata a CLOCK_CUT_X: a `clockScale` 0.5 il suo
-    // centro visivo cade a `clockPos.x + 30*0.5 = clockPos.x + 15` —
-    // uguale al centro dell'icona persona (`barX + 15.5`) quando
-    // `clockPos.x = barX` (arrotondato, la meta' di pixel non conta).
-    // [Nuova disposizione] Su mobile la riga2 (sotto) partiva a un `barY+50`
-    // fisso, tarato per stare subito sotto l'unica riga orizzontale di
-    // pop/olio/energia/denaro — ora che quella riga e' una colonna di 4
-    // pillole (MOBILE_STACK_H sopra), riga2 deve iniziare sotto la colonna
-    // intera invece di finirci sovrapposta; su desktop resta tutto sulla
-    // stessa riga di sempre, `ROW2_Y` non e' mai usato in quel ramo (sotto,
-    // ogni posizione desktop e' calcolata a parte da `barY`).
-    const ROW2_Y = isMobile ? barY + MOBILE_STACK_H + MOBILE_RES_GAP : barY + 50;
+    // [Bug corretto (storico, era ancora vero quando riga2 stava sotto la
+    // colonna/riga1 — vedi il commento subito sotto per la disposizione
+    // attuale), segnalato dall'autore: "l'orologio ora e' allineato alla
+    // prima risorsa della riga sopra?" — non lo era ancora] `clockFrame`
+    // (subFrameRight di "icone_oriz", ox=0/oy=0) tiene l'icona orologio alla
+    // colonna locale 15..45 DELLA SOTTO-IMMAGINE tagliata a CLOCK_CUT_X
+    // (centro 30): a `clockScale` 0.5 il suo centro visivo cade a
+    // `clockPos.x + 30*0.5 = clockPos.x + 15`. Questo dato di pixel resta
+    // valido (e' la geometria del frame, non la sua posizione a schermo);
+    // l'allineamento con l'icona "persona" (colonna locale 9..22, centro
+    // 15.5) valeva solo quando `clockPos.x` coincideva con `barX` — non piu'
+    // vero ora che riga2 ha una sua ancora indipendente (`ROW2_X`, sotto).
+    // [Nuova disposizione, richiesta dall'autore: "data e orologio (e il
+    // resto della riga2) a destra, che li' e' libero"] La colonna delle
+    // risorse (sopra) e' stretta (una pillola per riga, non piu' un'unica
+    // striscia larga): a differenza della vecchia riga2 sotto la striscia
+    // orizzontale, che aveva bisogno di tutta la larghezza per non
+    // sovrapporsi, ora c'e' spazio VERO alla destra della colonna, alla
+    // stessa altezza — riga2 (orologio/data/faccina/cristalli/biotech,
+    // sotto) trasloca li' invece di continuare a occupare altezza sotto la
+    // colonna. Su desktop resta tutto sulla riga 1 di sempre, `ROW2_Y` non
+    // e' mai usato in quel ramo (ogni posizione desktop e' calcolata a
+    // parte da `barY`, sotto).
+    const ROW2_Y = isMobile ? barY : barY + 50;
     const ROW2B_Y = ROW2_Y + 20;
+    // Ancora orizzontale di riga2 su mobile: ancorata al bordo DESTRO dello
+    // schermo invece che a `barX` (sinistra, dove sta la colonna) — stesso
+    // `UI_MARGIN` gia' usato per ogni altro elemento ancorato a un bordo
+    // (bottone pausa, `pbX` piu' sotto). 260px riserva lo spazio per l'intero
+    // blocco orologio+data+faccina+cristalli+biotech: gli stessi offset
+    // relativi di sempre (26/84/100/140/180/220, sotto) misurati da
+    // `ROW2_X` invece che da `barX`, non uno stile nuovo — solo un'ancora
+    // diversa. Il mese piu' lungo in italiano ("settembre") e un numero a 4
+    // cifre restano comodamente dentro, come gia' erano dentro la vecchia
+    // riga2 alla stessa larghezza relativa.
+    const ROW2_X = isMobile ? Math.round(canvas.clientWidth - UI_MARGIN - 260) : barX;
     const clockScale = isMobile ? 0.5 : 0.85;
     // [Bug corretto, segnalato dall'autore: "su desktop c'e' troppo gap fra
     // il denaro e orologio/data/faccina, avviciniamoli"] Tutto il blocco
@@ -7595,7 +7603,7 @@ export async function mountMatch(ctx, params = {}) {
     // lungo plausibile (`r12.mon` — misurato: un numero a 9 cifre e' largo
     // ~75px in Montserrat 15px grassetto, finisce quindi verso x=415)
     // l'orologio (ora a x+426) resta comunque staccato, ~11px di margine.
-    const clockPos = isMobile ? { x: barX, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 426, y: barY + 8 };
+    const clockPos = isMobile ? { x: ROW2_X, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 426, y: barY + 8 };
     // [Bug corretto, segnalato dall'autore: "le icone a destra sono
     // disallineate — prima l'orologio (allineato con le altre icone), poi
     // mese e anno incolonnati, poi la faccina (allineata con le altre
@@ -7621,13 +7629,13 @@ export async function mountMatch(ctx, params = {}) {
     // `barY+32`, stesso passo ~18px di prima ma ricentrato: la loro media
     // torna a combaciare con l'orologio, non piu' `barY+12` come prima).
     const DATE_COL_X = barX + 470;
-    const monthPos = isMobile ? { x: barX + 26, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
-    const timePos = isMobile ? { x: barX + 26, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
+    const monthPos = isMobile ? { x: ROW2_X + 26, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
+    const timePos = isMobile ? { x: ROW2_X + 26, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
     // `hap1`/`hap3` (data/sprites.json): ox=oy=23=w/2=h/2 esatto, quindi il
     // loro centro visivo coincide SEMPRE con `hapPos.y` stesso qualunque sia
     // la scala — bastava allinearlo allo stesso `barY+23` di sopra (prima
     // era `barY+5`, quasi al livello del solo mese).
-    const hapPos = isMobile ? { x: barX + 84, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
+    const hapPos = isMobile ? { x: ROW2_X + 84, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
     if (!hideResourceText) {
       drawHtmlText(monthName(r12.month ?? 1) ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
     }
@@ -7707,9 +7715,9 @@ export async function mountMatch(ctx, params = {}) {
     // stessa riga), non piu' una riga a parte piu' in basso.
     if (r12.crys > 0) {
       const crysFrame = frameFor("crys_ico");
-      const crysPos = isMobile ? { x: barX + 100, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 570, y: barY - 4 };
+      const crysPos = isMobile ? { x: ROW2_X + 100, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 570, y: barY - 4 };
       const crysScale = isMobile ? 0.9 : 0.75;
-      const crysTextPos = isMobile ? { x: barX + 140, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 606, y: barY + 19 };
+      const crysTextPos = isMobile ? { x: ROW2_X + 140, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 606, y: barY + 19 };
       // [Bug corretto, segnalato dall'autore: "non vedo il counter dei crys
       // quando li raccolgo (desktop)"] A differenza di hap1/hap3/oil/ele/mon
       // (sagome NERE su trasparente, verificato pixel per pixel sulla
@@ -7748,9 +7756,9 @@ export async function mountMatch(ctx, params = {}) {
     // vista una volta ricostruito l'atlas.
     if (r12.biotech > 0) {
       const bioFrame = frameFor("biot_ico");
-      const bioPos = isMobile ? { x: barX + 180, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 650, y: barY - 4 };
+      const bioPos = isMobile ? { x: ROW2_X + 180, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 650, y: barY - 4 };
       const bioScale = isMobile ? 0.9 : 0.75;
-      const bioTextPos = isMobile ? { x: barX + 220, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 686, y: barY + 19 };
+      const bioTextPos = isMobile ? { x: ROW2_X + 220, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 686, y: barY + 19 };
       r.setColorize(iconsDark);
       if (!hideResourceIcons && bioFrame) r.draw(bioFrame, bioPos.x, bioPos.y, bioScale, 0xffffff, 1);
       r.setColorize(false);
