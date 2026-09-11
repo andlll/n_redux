@@ -225,20 +225,45 @@ export function fileSystemAccessSupported() {
   return typeof window !== "undefined" && "showSaveFilePicker" in window && "showOpenFilePicker" in window;
 }
 
+// [Bug corretto, segnalato dall'autore: "iOS salva un file gia' esistente
+// aggiungendo un numero in fondo al nome, poi pero' quel file non viene
+// caricato tramite caricamento manuale"] Il contenuto (JSON + checksum,
+// verify()/isValidSaveData() sopra) e' l'UNICA cosa che conta per la
+// validita' di un salvataggio: il nome del file non viene mai letto ne'
+// confrontato da nessuna parte in questo modulo. Il colpevole reale e'
+// `accept` sull'`<input type=file>` del fallback universale sotto (l'unico
+// percorso su iOS: la File System Access API non esiste ne' su Safari ne'
+// su Firefox, commento sopra) — includeva sia l'estensione sia il MIME
+// (`.json,application/json`), e su iOS il filtro per MIME si basa sul tipo
+// di sistema (UTI) associato al file, non sulla sua estensione vera: un
+// file duplicato/rinominato da Files/iCloud Drive (o arrivato da un
+// provider terzo, Google Drive/Dropbox) puo' perdere l'associazione
+// "public.json" pur mantenendo l'estensione ".json" sul nome, e Safari lo
+// nasconde dal picker invece di mostrarlo — indipendentemente da come si
+// chiama il file, un problema di RICONOSCIMENTO DEL TIPO, non di nome
+// esatto. **[I]** Estensione propria (`.nimbus`) invece di `.json`: non
+// esiste un UTI di sistema registrato per lei, quindi iOS non ha nulla da
+// "riconoscere male" — ricade sul confronto letterale dell'estensione (il
+// comportamento piu' prevedibile, uniforme su tutti i browser), esattamente
+// come chiedeva l'autore per "liberare" il nome file. Il filtro accetta
+// ANCHE ".json" (sia qui sotto sia nel fallback piu' in basso) solo per
+// continuare a poter aprire i salvataggi vecchi gia' sul dispositivo di
+// qualcuno — i salvataggi NUOVI usano sempre `.nimbus` (suggestedFileName()
+// sotto).
 function suggestedFileName(sceneName) {
-  return `nimbus-${sceneName}.json`;
+  return `nimbus-${sceneName}.nimbus`;
 }
 
 const FILE_PICKER_TYPES = [{
   description: "NIMBUS save file",
-  accept: { "application/json": [".json"] },
+  accept: { "application/json": [".nimbus", ".json"] },
 }];
 
-// Scarica `text` (gia' JSON.stringify-ato) come file .json col download
-// nativo del browser — l'utente sceglie dove salvarlo dal proprio dialog
-// "Salva come" (o dalla cartella download di default su mobile): funziona
-// su ogni browser, ma non lascia un handle da riusare, ogni salvataggio
-// successivo va ridato daccapo.
+// Scarica `text` (gia' JSON.stringify-ato) come file (".nimbus", vedi
+// suggestedFileName() sopra) col download nativo del browser — l'utente
+// sceglie dove salvarlo dal proprio dialog "Salva come" (o dalla cartella
+// download di default su mobile): funziona su ogni browser, ma non lascia
+// un handle da riusare, ogni salvataggio successivo va ridato daccapo.
 function downloadJSON(text, filename) {
   const blob = new Blob([text], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -328,7 +353,12 @@ export async function loadFromFile() {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".json,application/json";
+    // Solo estensioni, MAI un criterio MIME (niente "application/json"): su
+    // iOS il filtro per MIME passa dall'UTI di sistema del file, non dalla
+    // sua estensione vera — vedi il commento su suggestedFileName() sopra.
+    // ".nimbus" prima (i salvataggi nuovi), ".json" ancora accettato per
+    // aprire quelli vecchi.
+    input.accept = ".nimbus,.json";
     // Fuori schermo, non `display:none` (alcuni browser mobile ignorano
     // `.click()` su un input file mai stato nel DOM, o nascosto con
     // display:none, prima di aprire davvero il dialog di sistema) — stesso

@@ -4202,3 +4202,40 @@ paragrafo 8.
   di questa modifica (il nuovo lampo *e'* invece gia' implicitamente
   "sempre acceso" come f1lux, non stagionato day/night: stessa
   semplificazione, non introdotta ora ma ereditata).
+
+- **Le auto di `honda3..honda9` (`carmaker`) andavano fuori strada su
+  `match`/`tutorial` — correzione di una nota sbagliata di questo stesso
+  diario.** Segnalato dall'autore: "ho l'impressione che spesso invadano gli
+  spazi per gli edifici". La voce "`honda3` nel tutorial restava ferma"
+  (piu' sopra in questo file) aveva gia' letto `action_if_number(736,1,0)`
+  in ogni `honda3..9/Create.gml` (il nudge relativo +21,-26, vero SOLO su
+  `match_easy`) ma concludeva che cablare SEMPRE il nudge nella costante di
+  spawn andasse bene, scrivendo "la posizione vera dell'istanza (1841,631)
+  coincide (a un pixel) con `CAR_TYPES.honda3.spawn` (1863,604)" — falso:
+  quei due numeri differiscono esattamente dell'ammontare del nudge
+  (~22,-27px), non di un pixel. Il confronto "a un pixel" nel testo
+  precedente (main.js, vicino a `INITIAL_CAR_TYPES`) era in realta' fra
+  "posizione vera + nudge" e la costante — la prova giusta, letta pero' con
+  una conclusione sbagliata subito dopo. Dato che `carmaker` (quindi
+  honda3..9) esiste in OGNI room (gia' noto, mai sfruttato fino ad ora) e
+  la costante di spawn era UNA SOLA per tutte, ogni honda3..9 su `match`/
+  `tutorial` (736==0, nudge mai dovuto) nasceva comunque ~21-27px fuori dal
+  punto vero — spostamento che si propaga a tutto il percorso a spezzate
+  per l'intera vita del veicolo, mai corretto in seguito, abbastanza da
+  tagliare dentro un lotto edificabile o fuori dalla sagoma della strada.
+  Sette tipi diversi (honda3..9), uno ogni 60s di gioco: da qui lo "spesso".
+  **[I] Corretto**: `CAR_TYPES.honda3..9` (game/src/cars.js) tornano alle
+  coordinate GREZZE di `carmaker`/`Alarm_*.gml` (fedeli al decompilato,
+  nessun nudge cablato) con un nuovo flag `matchEasyNudge: true`;
+  `spawnCar(type, night, nudge)` applica `MATCH_EASY_NUDGE` (+21,-26) solo
+  quando sia il flag sia il parametro sono veri — main.js passa
+  `nudge = roomName === "match_easy"` nei due punti che spawnano tramite
+  `carmaker` (le auto iniziali e il ciclo `CARMAKER_SCHEDULE`), `stepCars()`
+  ricorda `c.nudge` sull'istanza per riapplicarlo identico ad ogni rientro.
+  Riverificato lo stesso riscontro di allora, letto nel verso giusto: la
+  posizione vera dell'istanza statica di `honda3` nel tutorial (1841,631,
+  `tutorial.scene.json`) ora coincide (a un pixel) con la coordinata GREZZA
+  (1842,630), non con quella nudged — la stessa prova, la conclusione
+  opposta. Nessun altro tipo (`honda1`/`honda2`/`honda_facile_1/2`, la
+  famiglia `honda2x`/`honda3x` di r32/r22, i ponti levatoi) ha questo gate
+  nel decompilato e nessuno di questi ha ricevuto `matchEasyNudge`.

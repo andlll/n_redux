@@ -97,10 +97,42 @@ export const CAR_TYPES = {
   // depth `-y - 16` (**[C]** honda3..9/Step.gml, contro `-y - 2` di
   // honda_facile_1/2: passano davanti a tutto anche piu' decisamente) e un
   // dettaglio in piu' letto in ogni Create.gml: `action_if_number(736, 1,
-  // 0)` (vero per match_easy, STUDIO.md/state.js) sposta l'istanza appena
-  // nata di (+21,-26) — un aggiustamento relativo, non assoluto — rispetto
-  // al punto passato da chi la crea. Le coordinate qui sotto lo includono
-  // gia', non sono quelle scritte a mano in Alarm_*.gml/carmaker.
+  // 0)` sposta l'istanza appena nata di (+21,-26) — un aggiustamento
+  // relativo, non assoluto — rispetto al punto passato da chi la crea, MA
+  // SOLO quando la 736 e' vera, cioe' SOLO su `match_easy` (STUDIO.md/
+  // state.js): `carmaker` (e quindi honda3..9) esiste in OGNI room —
+  // main.js chiama `spawnCar()` per queste stesse chiavi sia per
+  // `match`/`tutorial` (736==0, mai nudge) sia per `match_easy` (736==1,
+  // sempre nudge) — quindi il nudge non puo' restare cablato una volta per
+  // tutte nella coordinata come si faceva prima qui: le coordinate sotto
+  // sono quelle scritte a mano in Alarm_*.gml/carmaker (nessun nudge), e
+  // `matchEasyNudge: true` dice a `spawnCar()`/`makeCar()` di applicarlo
+  // solo quando chi chiama passa `nudge=true` (main.js, `roomName ===
+  // "match_easy"`).
+  // [Bug corretto, segnalato dall'autore: "le auto vanno spesso fuori
+  // strada e invadono gli spazi per gli edifici" su `match`] Una nota
+  // precedente aveva gia' letto il gate `736` qui sopra ma concluso (STUDIO.
+  // md, "honda3 nel tutorial restava ferma") che cablare SEMPRE il nudge
+  // nella coordinata andasse bene perche' "la posizione vera dell'istanza
+  // statica di honda3 nel tutorial (1841,631) coincide con CAR_TYPES.
+  // honda3.spawn (1863,604)" — ma (1841,631) e (1863,604) NON coincidono
+  // affatto, differiscono esattamente dell'ammontare del nudge (+22,-27,
+  // arrotondamento a parte): quella nota confrontava "posizione vera +
+  // nudge" con la costante cablata (che infatti coincidono, a riprova che
+  // la costante e' gia' quella CON nudge), poi scriveva la conclusione come
+  // se il confronto fosse stato "posizione vera" da sola — un errore di
+  // trascrizione nel diario, non un fatto verificato. Su `match`/`tutorial`
+  // (736==0) l'istanza non si sposta mai: usare comunque la costante con
+  // nudge cablato metteva ogni honda3..9 ~21-27px fuori dal punto vero per
+  // l'intera sua vita (lo spostamento iniziale si propaga a tutto il
+  // percorso a spezzate, mai corretto dopo), abbastanza per tagliare dentro
+  // un lotto edificabile o fuori dalla sagoma vera della strada — su
+  // `match` succede per SETTE tipi diversi (honda3..9), uno ogni 60s, per
+  // questo "spesso". Verificato di nuovo con lo stesso riscontro gia' usato
+  // allora: la posizione vera dell'istanza statica di honda3 nel tutorial
+  // (1841,631, tutorial.scene.json) ora coincide (a 1px) con la coordinata
+  // GREZZA sotto (1842,630), non con quella nudged — la stessa prova di
+  // prima, letta nel verso giusto.
   //
   // Sprite multi-frame (es. "g_bs_as", 38 frame) durante le fasi di
   // svolta/accelerazione: animati per davvero, vedi stepCars() piu' sotto
@@ -109,7 +141,8 @@ export const CAR_TYPES = {
   // sceglierne uno fisso (varianti di costruzione, sprite degli edifici,
   // ... restano tutte pose singole, fedeli).
   honda3: {
-    spawn: { x: 1863, y: 604 },            // [C] carmaker/Alarm_0.gml (1842,630) + il nudge (+21,-26)
+    spawn: { x: 1842, y: 630 },            // [C] carmaker/Alarm_0.gml, grezzo (nudge applicato da spawnCar() solo su match_easy)
+    matchEasyNudge: true,
     life: 713,                              // [C] 633 + 80 (Alarm_5 arma alarm(80,6))
     spr: "g_bs",                            // [C] sprite di default (_object.json)
     initial: { dir: 210, spd: 3 },          // [C] action_set_motion(210, 3) in Create
@@ -132,8 +165,9 @@ export const CAR_TYPES = {
   // corretto dall'autore), qui riprodotto con `firstSpawn` invece di
   // "aggiustarlo".
   honda4: {
-    firstSpawn: { x: 83, y: 500 },          // [C] carmaker/Alarm_0.gml (62,526) + nudge
-    spawn: { x: 93, y: 502 },               // [C] honda4/Alarm_3.gml (72,528) + nudge
+    firstSpawn: { x: 62, y: 526 },          // [C] carmaker/Alarm_0.gml, grezzo
+    spawn: { x: 72, y: 528 },               // [C] honda4/Alarm_3.gml, grezzo
+    matchEasyNudge: true,
     life: 378,                              // [C] 318 + 60 (Alarm_2 arma alarm(60,3))
     spr: "p_bd",                            // [C] sprite di default (_object.json)
     initial: { dir: 330, spd: 3 },          // [C] action_set_motion(330, 3) in Create
@@ -145,7 +179,8 @@ export const CAR_TYPES = {
     ],
   },
   honda5: {
-    spawn: { x: 1568, y: 491 },             // [C] carmaker/Alarm_0.gml (1547,517) + nudge
+    spawn: { x: 1547, y: 517 },             // [C] carmaker/Alarm_0.gml, grezzo
+    matchEasyNudge: true,
     life: 542,                               // [C] 504 + 38 (Alarm_9 arma alarm(38,11))
     spr: "c_bs",                             // [C] sprite di default (_object.json)
     initial: { dir: 210, spd: 3 },           // [C] action_set_motion(210, 3) in Create
@@ -165,7 +200,8 @@ export const CAR_TYPES = {
     ],
   },
   honda6: {
-    spawn: { x: 1877, y: 617 },             // [C] carmaker/Alarm_0.gml (1856,643) + nudge
+    spawn: { x: 1856, y: 643 },             // [C] carmaker/Alarm_0.gml, grezzo
+    matchEasyNudge: true,
     life: 762,                               // [C] 724 + 38 (Alarm_9 arma alarm(38,11))
     spr: "v_bs",                             // [C] sprite di default (_object.json)
     initial: { dir: 210, spd: 3 },           // [C] action_set_motion(210, 3) in Create
@@ -185,7 +221,8 @@ export const CAR_TYPES = {
     ],
   },
   honda7: {
-    spawn: { x: 880, y: 38 },               // [C] carmaker/Alarm_0.gml (859,64) + nudge
+    spawn: { x: 859, y: 64 },               // [C] carmaker/Alarm_0.gml, grezzo
+    matchEasyNudge: true,
     life: 1072,                              // [C] 1034 + 38 (Alarm_9 arma alarm(38,11))
     spr: "r_bd",                             // [C] sprite di default (_object.json)
     initial: { dir: 330, spd: 3 },           // [C] action_set_motion(330, 3) in Create
@@ -205,7 +242,8 @@ export const CAR_TYPES = {
     ],
   },
   honda8: {
-    spawn: { x: 274, y: 377 },              // [C] carmaker/Alarm_0.gml (253,403) + nudge
+    spawn: { x: 253, y: 403 },              // [C] carmaker/Alarm_0.gml, grezzo
+    matchEasyNudge: true,
     life: 662,                               // [C] 624 + 38 (Alarm_9 arma alarm(38,11))
     spr: "g_bs",                             // [C] sprite di default (_object.json)
     initial: { dir: 210, spd: 3 },           // [C] action_set_motion(210, 3) in Create
@@ -225,7 +263,8 @@ export const CAR_TYPES = {
     ],
   },
   honda9: {
-    spawn: { x: 1319, y: 919 },             // [C] carmaker/Alarm_0.gml (1298,945) + nudge
+    spawn: { x: 1298, y: 945 },             // [C] carmaker/Alarm_0.gml, grezzo
+    matchEasyNudge: true,
     life: 1266,                              // [C] 1228 + 38 (Alarm_9 arma alarm(38,11))
     spr: "p_as",                             // [C] sprite di default (_object.json)
     initial: { dir: 150, spd: 3 },           // [C] action_set_motion(150, 3) in Create
@@ -886,25 +925,40 @@ export const NIGHT_TINT = (() => {
   return (r << 16) | (g << 8) | b;                    // 0xb9b9f9
 })();
 
-function makeCar(type, night, pos) {
+// [C] honda3..9/Create.gml: `action_if_number(736, 1, 0)` — lo stesso
+// spostamento relativo per tutti e sette (verificato riga per riga in
+// ciascun Create.gml), mai per nessun altro tipo (honda1/honda2/
+// honda_facile_1/2 non hanno questo gate, gli honda2x/3x/i ponti sono
+// creati gia' senza nudge da chi li piazza — vedi il commento sopra
+// CAR_TYPES.honda3).
+const MATCH_EASY_NUDGE = { dx: 21, dy: -26 };
+
+function makeCar(type, night, pos, nudge) {
   const def = CAR_TYPES[type];
   const p = pos ?? def.spawn;
+  const x = nudge && def.matchEasyNudge ? p.x + MATCH_EASY_NUDGE.dx : p.x;
+  const y = nudge && def.matchEasyNudge ? p.y + MATCH_EASY_NUDGE.dy : p.y;
   return {
-    type, x: p.x, y: p.y,
+    type, x, y,
     dir: def.initial.dir, spd: def.initial.spd, spr: def.spr,
-    t: 0, schedIdx: 0, depth: -p.y - def.depthOffset,
+    t: 0, schedIdx: 0, depth: -y - def.depthOffset,
     tint: night ? NIGHT_TINT : 0xffffff,
     frame: 0,   // tick trascorsi da quando `spr` e' stato scelto l'ultima volta
+    nudge: !!nudge,   // riapplicato ad ogni rientro (stepCars sotto), stessa room per tutta la vita della partita
   };
 }
 
 /** Prima comparsa di un'auto (a inizio partita per honda_facile_1/2, o
  * quando `carmaker` la fa arrivare per honda3..9): usa `firstSpawn` se il
  * tipo lo dichiara (solo honda4, vedi sopra), altrimenti la stessa
- * posizione dei rientri successivi. */
-export function spawnCar(type, night) {
+ * posizione dei rientri successivi. `nudge` (default false): vero SOLO
+ * quando chi chiama sta simulando `match_easy` (main.js) — il gate `736`
+ * di honda3..9/Create.gml letto sopra, mai per gli altri tipi (il campo
+ * `matchEasyNudge` su CAR_TYPES lo restringe a chi lo dichiara davvero,
+ * anche se il chiamante lo passasse true per errore). */
+export function spawnCar(type, night, nudge = false) {
   const def = CAR_TYPES[type];
-  return makeCar(type, night, def.firstSpawn ?? def.spawn);
+  return makeCar(type, night, def.firstSpawn ?? def.spawn, nudge);
 }
 
 /**
@@ -958,7 +1012,7 @@ export function stepCars(cars, dt, r12, night) {
     c.depth = -c.y - def.depthOffset;
     if (c.t >= def.life * TICK) {
       cars.splice(i, 1);
-      if (r12.oil > 0) cars.push(makeCar(c.type, night));
+      if (r12.oil > 0) cars.push(makeCar(c.type, night, undefined, c.nudge));
     }
   }
 }

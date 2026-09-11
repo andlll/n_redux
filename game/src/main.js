@@ -522,12 +522,12 @@ export async function mountMatch(ctx, params = {}) {
    * pezzo, spingendo la seconda icona sempre piu' a destra del previsto —
    * la misura reale non ha questo problema.
    */
-  function drawIconLine(parts, cx, cy, { size = 16, gap = 6 } = {}) {
+  function drawIconLine(parts, cx, cy, { size = 16, gap = 6, color } = {}) {
     const { resolved, total } = layoutIconParts(parts, size, gap);
     let x = cx - total / 2;
     for (const p of resolved) {
       if (p.frame) r.draw(p.frame, x, cy - p.iconH / 2, p.scale, 0xffffff, 1);
-      else if (p.text) drawHtmlText(p.text, x, cy, { size, align: "left" });
+      else if (p.text) drawHtmlText(p.text, x, cy, { size, align: "left", color });
       x += p.w + gap;
     }
   }
@@ -984,16 +984,18 @@ export async function mountMatch(ctx, params = {}) {
   // una nota precedente la lasciava ferma per scelta, assumendo che
   // `CAR_TYPES.honda3.spawn` (cars.js: il punto fisso di `carmaker`, le auto
   // che arrivano nel tempo su tutte e tre le room) non fosse la posizione
-  // reale di QUESTA istanza. **[C]** Rileggendo `honda3/Create.gml`: il nudge
-  // relativo (+21,-26), applicato quando `action_if_number(736,1,0)` e' vero
-  // (lo stesso flag "0=match/1=match_easy" letto ovunque nel motore,
-  // game/src/state.js) — su `tutorial` (`roomName==="match"`, STUDIO.md)
-  // vale `false`, lo stesso ramo di `match`, quindi NON si applica: la
-  // posizione vera dell'istanza (1841,631, `tutorial.scene.json`) piu' il
-  // nudge da' (1862,605) — a un pixel da `CAR_TYPES.honda3.spawn`
-  // (1863,604, gia' scritto per `carmaker`): sono lo stesso punto. Simulata
-  // come honda1/honda2: tolta da `staticWorld`, spawnata da subito invece
-  // che dopo 60s da `carmaker` (che qui SALTA il suo stesso primo turno,
+  // reale di QUESTA istanza. **[C]** `honda3/Create.gml`: il nudge relativo
+  // (+21,-26), applicato quando `action_if_number(736,1,0)` e' vero (lo
+  // stesso flag "0=match/1=match_easy" letto ovunque nel motore, game/src/
+  // state.js) — su `tutorial` (`roomName==="match"`, STUDIO.md) vale
+  // `false`, lo stesso ramo di `match`, quindi NON si applica: la posizione
+  // vera dell'istanza (1841,631, `tutorial.scene.json`) coincide (a un
+  // pixel) con `CAR_TYPES.honda3.spawn` (1842,630, la coordinata GREZZA di
+  // `carmaker` — cars.js/spawnCar(), "le auto vanno fuori strada su match":
+  // il nudge non e' piu' cablato nella costante, si applica solo quando
+  // `spawnCar(..., nudge)` lo passa true, mai qui sotto). Simulata come
+  // honda1/honda2: tolta da `staticWorld`, spawnata da subito invece che
+  // dopo 60s da `carmaker` (che qui SALTA il suo stesso primo turno,
   // `carmakerIdx` sotto, per non farla comparire due volte).
   const INITIAL_CAR_TYPES = roomName === "tutorial" ? ["honda1", "honda2", "honda3"]
     : roomName === "match" ? ["honda1", "honda2"] : ["honda_facile_1", "honda_facile_2"];
@@ -1142,7 +1144,7 @@ export async function mountMatch(ctx, params = {}) {
   // Auto decorative gia' in marcia da subito, come nella room originale
   // (phaseT parte da 0 = fase "giorno" in PHASES piu' sotto, quindi mai
   // notte alla nascita: nessun tint fanali sulle due iniziali).
-  let cars = INITIAL_CAR_TYPES.map((t) => spawnCar(t, false));
+  let cars = INITIAL_CAR_TYPES.map((t) => spawnCar(t, false, roomName === "match_easy"));
   // `carmaker` (game/src/cars.js, CARMAKER_SCHEDULE): non e' un edificio ne'
   // un'istanza di scena, e' un timer che r12 avvia incondizionatamente in
   // ogni room — ogni 60s di gioco arriva un'altra auto (honda3..honda9),
@@ -1412,6 +1414,17 @@ export async function mountMatch(ctx, params = {}) {
   let gridTapTagAt = 0;
   const GRID_TAP_SHOW_MS = 500;
   const GRID_TAP_FADE_MS = 400;
+  // [Nuova funzionalita', richiesta dall'autore: "il cartellino del prezzo di
+  // upgrade dovrebbe rimanere a schermo un secondo piu' a lungo"] Solo il
+  // cartellino upgrade (attemptUpgradeTap()/upgradeTagBuildingId, non quello
+  // del menu costruzioni sopra, che resta a GRID_TAP_SHOW_MS): tempo pieno
+  // piu' lungo di un secondo netto prima di iniziare la dissolvenza (la
+  // dissolvenza stessa, GRID_TAP_FADE_MS, resta la stessa). Condiviso fra
+  // attemptUpgradeTap() (la finestra di "secondo tap per confermare") e il
+  // disegno del cartellino piu' sotto: le due letture DEVONO restare uguali,
+  // altrimenti il cartellino sparirebbe mentre un secondo tap lo tratterebbe
+  // ancora come "in mostra" (o viceversa).
+  const UPGRADE_TAG_SHOW_MS = GRID_TAP_SHOW_MS + 1000;
 
   // Il decoro (`cddvd`/`cddvd2`/`cddvd3*`, `di*`) non si accumula: ogni salto
   // di livello uccide il decoro precedente e ne crea uno nuovo (`with (cddvd)
@@ -2182,7 +2195,8 @@ export async function mountMatch(ctx, params = {}) {
   // l'hover, su mobile non e' contemplato" — "facciamo tap to reveal, solo
   // su mobile, mi sembra l'opzione piu' pulita"] Stesso principio del
   // cartellino del menu costruzioni (gridTapTagType/gridTapTagAt, sopra: la
-  // stessa dissolvenza GRID_TAP_SHOW_MS/GRID_TAP_FADE_MS), ma qui il PRIMO
+  // stessa dissolvenza, ma con un tempo pieno piu' lungo — UPGRADE_TAG_SHOW_MS
+  // invece di GRID_TAP_SHOW_MS, vedi il commento li' vicino), ma qui il PRIMO
   // tap non conferma mai — a differenza di li' (comment su gridTapTagType,
   // sopra: selezionare un tipo e' un'azione gratuita/reversibile, un
   // secondo tap di conferma ci era sembrato solo confusione in piu'), un
@@ -2207,7 +2221,7 @@ export async function mountMatch(ctx, params = {}) {
   function attemptUpgradeTap(b) {
     if (isMobile && upgradeUnlocked(b, r12, buildings)) {
       const peeking = upgradeTagBuildingId === b.id
-        && performance.now() - upgradeTagAt < GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
+        && performance.now() - upgradeTagAt < UPGRADE_TAG_SHOW_MS + GRID_TAP_FADE_MS;
       if (!peeking) {
         upgradeTagBuildingId = b.id;
         upgradeTagAt = performance.now();
@@ -3161,6 +3175,7 @@ export async function mountMatch(ctx, params = {}) {
       el.style.textOverflow = "clip";
       el.style.width = `${maxWidth}px`;
       el.style.transform = "none";
+      el.style.lineHeight = "1.4";   // `.gameText`, invariato: leggibilita' su piu' righe vere
     } else if (align === "left") {
       el.style.textAlign = "left";
       el.style.whiteSpace = "nowrap";
@@ -3168,6 +3183,25 @@ export async function mountMatch(ctx, params = {}) {
       el.style.textOverflow = "clip";
       el.style.maxWidth = maxWidth != null ? `${maxWidth}px` : "";
       el.style.transform = "translateY(-50%)";
+      // [Bug corretto, segnalato dall'autore: "la scritta del prezzo nel
+      // cartellino e' decentrata"] `line-height:1.4` di `.gameText` (pensato
+      // per la leggibilita' di un paragrafo vero, ramo `wrap` sopra) rende la
+      // riga (il "line box") molto piu' alta del testo che ci sta dentro —
+      // `translateY(-50%)` centra quel BOX, non l'inchiostro del glifo, e per
+      // una singola riga di sole cifre (nessun discendente come "g"/"y" che
+      // userebbe lo spazio sotto) il risultato e' un numero visibilmente
+      // spostato verso l'alto rispetto al centro vero del cartellino/della
+      // barra risorse (ogni chiamante con `align:"left"`: drawCostTagAt(),
+      // drawIconLine(), i contatori mon/oil/ele/crys/biotech, calendario) —
+      // verificato isolando la stessa identica regola CSS (stesso font reale,
+      // stesso peso) in una pagina a parte e confrontando il rendering con
+      // una riga guida sul centro geometrico vero: con 1.4 il numero cade
+      // quasi tutto SOPRA la riga, con 0.8 (qui sotto) ci sta a cavallo,
+      // bilanciato. Resta `nowrap`/una riga sola su ogni chiamante di questo
+      // ramo (mai testo lungo/andato a capo, quello e' il ramo `wrap` sopra,
+      // che non tocca `line-height` apposta): un valore piu' stretto non
+      // stringe mai righe vere, solo il margine interno di UNA riga.
+      el.style.lineHeight = "0.8";
     } else {
       el.style.textAlign = "center";
       el.style.whiteSpace = "nowrap";
@@ -3175,6 +3209,7 @@ export async function mountMatch(ctx, params = {}) {
       el.style.textOverflow = "ellipsis";
       el.style.maxWidth = maxWidth != null ? `${maxWidth}px` : "";
       el.style.transform = "translate(-50%, -50%)";
+      el.style.lineHeight = "1.4";   // `.gameText`, invariato — vedi il commento sopra
     }
     return el;
   }
@@ -3533,9 +3568,21 @@ export async function mountMatch(ctx, params = {}) {
     // l'unico altro numero "di stato" oltre vita/abitanti gia' pronto in
     // BUILDING_TYPES senza dover ricostruire nulla, buildings.js.
     const production = !b.construction ? def.production?.[b.level - 1] : null;
+    // [Nuova funzionalita', richiesta dall'autore: "nelle descrizioni degli
+    // edifici sostituiamo mon/oil/ecc. con i simboli delle risorse, come gia'
+    // fatto per banca/scambi"] `statLines` puo' ora contenere anche
+    // `{ parts }` (lo stesso formato icona+testo di costParts()/drawIconLine(),
+    // non piu' solo stringhe gia' pronte da drawHtmlText() — il ciclo di
+    // disegno piu' sotto distingue i due casi.
     const statLines = [];
     if (residents != null) statLines.push(t("buildingInfo.residents", { n: Math.round(residents) }));
-    if (production) statLines.push(t("buildingInfo.energy", { ele: production.ele, oil: production.oil }));
+    if (production) {
+      statLines.push({ parts: [
+        { text: `${t("buildingInfo.energyPrefix")}${production.ele} ` }, { icon: "ele" },
+        { text: `${t("buildingInfo.energyMiddle")}${production.oil} ` }, { icon: "oil" },
+        { text: t("buildingInfo.energySuffix") },
+      ] });
+    }
 
     const autoDefenseCosts = AUTO_DEFENSE_COST_PER_MIN[b.type];
     const showControl = !b.construction && autoDefenseCosts != null;
@@ -3634,13 +3681,23 @@ export async function mountMatch(ctx, params = {}) {
         cy += 20;
         descEl.style.top = `${cy}px`;
         cy += descH + DESC_GAP;
-        const costText = level === 1 ? t("autoDefense.freeAlwaysOn") : t("autoDefense.costPerMin", { cost: autoDefenseCosts[level] });
-        drawHtmlText(costText, px + panelW / 2, cy, { size: 14, maxWidth: panelW - 30, color: level > 1 ? "#c65050" : undefined });
+        // [Nuova funzionalita', vedi il commento su statLines sopra] Livello
+        // 1 (gratis) resta puro testo, nessuna risorsa da mostrare; 2/3
+        // costano davvero "mon" — icona vera invece della sigla scritta,
+        // stesso schema di LOANS in drawBankPanel().
+        if (level === 1) {
+          drawHtmlText(t("autoDefense.freeAlwaysOn"), px + panelW / 2, cy, { size: 14, maxWidth: panelW - 30 });
+        } else {
+          drawIconLine([
+            { text: `-${autoDefenseCosts[level]} ` }, { icon: "mon" }, { text: t("autoDefense.costPerMin") },
+          ], px + panelW / 2, cy, { size: 14, color: "#c65050" });
+        }
         cy += 22;
       }
     }
     for (const line of statLines) {
-      drawHtmlText(line, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
+      if (typeof line === "string") drawHtmlText(line, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
+      else drawIconLine(line.parts, px + panelW / 2, cy, { size: 15 });
       cy += 26;
     }
 
@@ -4841,7 +4898,7 @@ export async function mountMatch(ctx, params = {}) {
   // nel decompilato (pu3/pu7/Step.gml, nessun `unlosei`/`chies` gate).
   const OTHER_BUILDINGS = [
     { type: "parco", selec: 7, spr: "p7", tint: 0x139f13, cost: 500 },
-    { type: "missile", selec: 3, spr: "p3", tint: 0x892020, cost: 5000 },
+    { type: "missile", selec: 3, spr: "p3", tint: 0x892020, cost: 3000 },
     // "Grattacielo" era il nome (mai verificato) di una versione precedente
     // di questa riga: **[C]** src/objects/level2palazz (il popup "livello 2
     // sbloccato" agganciato a `pu6/Mouse_MouseEnter.gml`, stesso schema di
@@ -6040,8 +6097,29 @@ export async function mountMatch(ctx, params = {}) {
       // verrebbe piu' controllato affatto dopo quel momento se non era gia'
       // scattato prima — un edificio sbloccato DOPO che la spia e' gia'
       // attiva non avrebbe mai avviato il proprio scaglione.
+      // [Bug corretto, segnalato dall'autore: "a inizio partita il
+      // lanciarazzi uccide sul colpo le mongolfiere senza animazioni, dopo
+      // un temporale funziona correttamente"] Le condizioni sopra
+      // coprivano solo le minacce vere/il fuoco automatico che ne
+      // consegue, mai il fuoco MANUALE (fireTurretManual, projectiles.js):
+      // missile/gatling/laser sono costruibili e sparabili col tap fin dal
+      // primo minuto, molto prima che spia/temporale/ondata esistano —
+      // "redb"/"gatmissse" (gruppo "projectiles") e "fica"/il lampo alla
+      // bocca (gruppo "threats") restano pagine "combat" non ancora
+      // richieste: `frameFor()` torna `null` finche' non arrivano
+      // (main.js/assets.js, gia' gestito altrove come "niente da
+      // disegnare", nessun errore) — il colpo uccide comunque la
+      // mongolfiera (la logica non aspetta le texture) ma senza nessun
+      // razzo/lampo/esplosione visibile, finche' una delle condizioni sopra
+      // non fa scattare lo scaglione. Qualunque torretta gia' in piedi
+      // (`BUILDING_TYPES[b.type]?.turret`, buildings.js) rende il fuoco
+      // manuale possibile da subito: aggiunta come terza condizione
+      // indipendente, cosi' costruire un lanciarazzi/gatling/laser basta da
+      // solo a precaricare "combat", senza dover aspettare una minaccia
+      // vera o un temporale.
       if (r12.spy || r12.storm || r12.stormeasy
-        || (r12.ondan ?? 0) > 0 || (r12.bombn ?? 0) > 0 || (r12.diron ?? 0) > 0) {
+        || (r12.ondan ?? 0) > 0 || (r12.bombn ?? 0) > 0 || (r12.diron ?? 0) > 0
+        || buildings.some((b) => BUILDING_TYPES[b.type]?.turret)) {
         loadDeferredGroup(gl, atlasKeyFor(roomName), "combat");
       }
       // "advanced": chies a livello 2 (la soglia PIU' BASSA fra tutti i
@@ -6192,8 +6270,19 @@ export async function mountMatch(ctx, params = {}) {
       stepCalendar(r12, dt);
       stepCars(cars, dt, r12, night);
       carmakerT += dt;
+      // [Bug corretto, segnalato dall'autore: "le auto vanno spesso fuori
+      // strada e invadono gli spazi per gli edifici" su `match`] `nudge`
+      // (game/src/cars.js, CAR_TYPES.honda3..9.matchEasyNudge): il gate
+      // `action_if_number(736,1,0)` di ciascun honda3..9/Create.gml e' vero
+      // SOLO su `match_easy` — questo stesso ciclo pero' gira su OGNI room
+      // (`carmaker` esiste ovunque, commento sopra), quindi va passato qui
+      // in base alla room vera invece di restare cablato nella coordinata
+      // di spawn (che prima valeva sempre "con nudge", sbagliato su
+      // `match`/`tutorial`: l'intero percorso di ogni honda3..9 nasceva
+      // ~21-27px fuori dal punto vero, abbastanza da tagliare dentro un
+      // lotto o fuori dalla strada — sette tipi diversi, uno ogni 60s).
       while (carmakerIdx < CARMAKER_SCHEDULE.length && carmakerT >= CARMAKER_SCHEDULE[carmakerIdx].at) {
-        cars.push(spawnCar(CARMAKER_SCHEDULE[carmakerIdx].type, night));
+        cars.push(spawnCar(CARMAKER_SCHEDULE[carmakerIdx].type, night, roomName === "match_easy"));
         carmakerIdx++;
       }
       stepLights(decorEntities, dt, night, r12);
@@ -7122,17 +7211,18 @@ export async function mountMatch(ctx, params = {}) {
     // la visibilita' del costo di upgrade su mobile? facciamo tap to
     // reveal, solo su mobile"] Stesso cartellino di sopra, ma pilotato dal
     // tap invece che dall'hover (attemptUpgradeTap()/upgradeTagBuildingId,
-    // sopra) — stessa dissolvenza GRID_TAP_SHOW_MS/GRID_TAP_FADE_MS gia'
-    // usata dal cartellino del menu costruzioni. Cerca l'edificio per id
-    // invece di tenerne un riferimento diretto: sopravvive a un giro di
-    // salvataggio/caricamento fra il tap e la dissolvenza (`buildings`
-    // viene sempre ricreato da doLoad()) senza puntare a un'istanza ormai
-    // orfana — se non lo trova piu' (demolito, o la partita e' stata
-    // ricaricata) il timer si azzera subito invece di restare armato a
-    // vuoto fino al prossimo timeout naturale.
+    // sopra) — stessa dissolvenza del cartellino del menu costruzioni, ma
+    // con un tempo pieno piu' lungo (UPGRADE_TAG_SHOW_MS, richiesto
+    // dall'autore: "dovrebbe rimanere a schermo un secondo piu' a lungo").
+    // Cerca l'edificio per id invece di tenerne un riferimento diretto:
+    // sopravvive a un giro di salvataggio/caricamento fra il tap e la
+    // dissolvenza (`buildings` viene sempre ricreato da doLoad()) senza
+    // puntare a un'istanza ormai orfana — se non lo trova piu' (demolito, o
+    // la partita e' stata ricaricata) il timer si azzera subito invece di
+    // restare armato a vuoto fino al prossimo timeout naturale.
     if (isMobile && upgradeTagBuildingId != null) {
       const elapsed = performance.now() - upgradeTagAt;
-      const total = GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
+      const total = UPGRADE_TAG_SHOW_MS + GRID_TAP_FADE_MS;
       const b = elapsed < total ? buildings.find((bb) => bb.id === upgradeTagBuildingId) : null;
       if (!b) {
         upgradeTagBuildingId = null;
@@ -7140,7 +7230,7 @@ export async function mountMatch(ctx, params = {}) {
         const upicoFrame = frameFor("upico");
         const tag = upicoFrame && costParts(nextUpgrade(b)?.cost);
         if (tag) {
-          const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
+          const alpha = elapsed < UPGRADE_TAG_SHOW_MS ? 1 : 1 - (elapsed - UPGRADE_TAG_SHOW_MS) / GRID_TAP_FADE_MS;
           drawCostTagWorld(tag, b.x, b.y - upicoFrame.oy - 15, { alpha });
         }
       }
