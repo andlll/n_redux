@@ -522,12 +522,12 @@ export async function mountMatch(ctx, params = {}) {
    * pezzo, spingendo la seconda icona sempre piu' a destra del previsto —
    * la misura reale non ha questo problema.
    */
-  function drawIconLine(parts, cx, cy, { size = 16, gap = 6 } = {}) {
+  function drawIconLine(parts, cx, cy, { size = 16, gap = 6, color } = {}) {
     const { resolved, total } = layoutIconParts(parts, size, gap);
     let x = cx - total / 2;
     for (const p of resolved) {
       if (p.frame) r.draw(p.frame, x, cy - p.iconH / 2, p.scale, 0xffffff, 1);
-      else if (p.text) drawHtmlText(p.text, x, cy, { size, align: "left" });
+      else if (p.text) drawHtmlText(p.text, x, cy, { size, align: "left", color });
       x += p.w + gap;
     }
   }
@@ -3568,9 +3568,21 @@ export async function mountMatch(ctx, params = {}) {
     // l'unico altro numero "di stato" oltre vita/abitanti gia' pronto in
     // BUILDING_TYPES senza dover ricostruire nulla, buildings.js.
     const production = !b.construction ? def.production?.[b.level - 1] : null;
+    // [Nuova funzionalita', richiesta dall'autore: "nelle descrizioni degli
+    // edifici sostituiamo mon/oil/ecc. con i simboli delle risorse, come gia'
+    // fatto per banca/scambi"] `statLines` puo' ora contenere anche
+    // `{ parts }` (lo stesso formato icona+testo di costParts()/drawIconLine(),
+    // non piu' solo stringhe gia' pronte da drawHtmlText() — il ciclo di
+    // disegno piu' sotto distingue i due casi.
     const statLines = [];
     if (residents != null) statLines.push(t("buildingInfo.residents", { n: Math.round(residents) }));
-    if (production) statLines.push(t("buildingInfo.energy", { ele: production.ele, oil: production.oil }));
+    if (production) {
+      statLines.push({ parts: [
+        { text: `${t("buildingInfo.energyPrefix")}${production.ele} ` }, { icon: "ele" },
+        { text: `${t("buildingInfo.energyMiddle")}${production.oil} ` }, { icon: "oil" },
+        { text: t("buildingInfo.energySuffix") },
+      ] });
+    }
 
     const autoDefenseCosts = AUTO_DEFENSE_COST_PER_MIN[b.type];
     const showControl = !b.construction && autoDefenseCosts != null;
@@ -3669,13 +3681,23 @@ export async function mountMatch(ctx, params = {}) {
         cy += 20;
         descEl.style.top = `${cy}px`;
         cy += descH + DESC_GAP;
-        const costText = level === 1 ? t("autoDefense.freeAlwaysOn") : t("autoDefense.costPerMin", { cost: autoDefenseCosts[level] });
-        drawHtmlText(costText, px + panelW / 2, cy, { size: 14, maxWidth: panelW - 30, color: level > 1 ? "#c65050" : undefined });
+        // [Nuova funzionalita', vedi il commento su statLines sopra] Livello
+        // 1 (gratis) resta puro testo, nessuna risorsa da mostrare; 2/3
+        // costano davvero "mon" — icona vera invece della sigla scritta,
+        // stesso schema di LOANS in drawBankPanel().
+        if (level === 1) {
+          drawHtmlText(t("autoDefense.freeAlwaysOn"), px + panelW / 2, cy, { size: 14, maxWidth: panelW - 30 });
+        } else {
+          drawIconLine([
+            { text: `-${autoDefenseCosts[level]} ` }, { icon: "mon" }, { text: t("autoDefense.costPerMin") },
+          ], px + panelW / 2, cy, { size: 14, color: "#c65050" });
+        }
         cy += 22;
       }
     }
     for (const line of statLines) {
-      drawHtmlText(line, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
+      if (typeof line === "string") drawHtmlText(line, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
+      else drawIconLine(line.parts, px + panelW / 2, cy, { size: 15 });
       cy += 26;
     }
 

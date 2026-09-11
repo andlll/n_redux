@@ -102,7 +102,18 @@ const STRINGS = {
   "buildingInfo.underConstruction": { en: "Under construction…", it: "In costruzione…", es: "En construcción…", pt: "Em construção…", de: "Im Bau…", fr: "En construction…" },
   "buildingInfo.health": { en: "Health: {cur} / {max}", it: "Salute: {cur} / {max}", es: "Salud: {cur} / {max}", pt: "Saúde: {cur} / {max}", de: "Leben: {cur} / {max}", fr: "Santé : {cur} / {max}" },
   "buildingInfo.residents": { en: "Residents: {n}", it: "Abitanti: {n}", es: "Habitantes: {n}", pt: "Moradores: {n}", de: "Bewohner: {n}", fr: "Habitants : {n}" },
-  "buildingInfo.energy": { en: "Energy: +{ele}/cycle (uses {oil} oil)", it: "Energia: +{ele}/ciclo (consuma {oil} petrolio)", es: "Energía: +{ele}/ciclo (consume {oil} petróleo)", pt: "Energia: +{ele}/ciclo (consome {oil} petróleo)", de: "Energie: +{ele}/Zyklus (verbraucht {oil} Öl)", fr: "Énergie : +{ele}/cycle (consomme {oil} pétrole)" },
+  // [Nuova funzionalita', richiesta dall'autore: "nelle descrizioni degli
+  // edifici sostituiamo mon/oil/ecc. con i simboli delle risorse, come gia'
+  // fatto per banca/scambi"] Spezzata in tre pezzi (prefisso/centro/
+  // suffisso) invece di un'unica frase con {ele}/{oil}: drawBuildingInfoPanel()
+  // sotto intercala le due iconcine vere (drawIconLine(), stesso trucco di
+  // drawBankPanel()/drawTradePanel()) al posto dei value grezzi — "oil" come
+  // parola scritta (unica lingua che la ripeteva anche fuori da un placeholder,
+  // le altre gia' usavano la parola vera "petrolio"/"Öl"/... ) sparisce anche
+  // li'.
+  "buildingInfo.energyPrefix": { en: "Energy: +", it: "Energia: +", es: "Energía: +", pt: "Energia: +", de: "Energie: +", fr: "Énergie : +" },
+  "buildingInfo.energyMiddle": { en: "/cycle (uses ", it: "/ciclo (consuma ", es: "/ciclo (consume ", pt: "/ciclo (consome ", de: "/Zyklus (verbraucht ", fr: "/cycle (consomme " },
+  "buildingInfo.energySuffix": { en: ")", it: ")", es: ")", pt: ")", de: ")", fr: ")" },
   "buildingInfo.levelSuffix": { en: " — Level {level}/{max}", it: " — Livello {level}/{max}", es: " — Nivel {level}/{max}", pt: " — Nível {level}/{max}", de: " — Stufe {level}/{max}", fr: " — Niveau {level}/{max}" },
   "buildingInfo.close": { en: "Close", it: "Chiudi", es: "Cerrar", pt: "Fechar", de: "Schließen", fr: "Fermer" },
 
@@ -134,7 +145,11 @@ const STRINGS = {
     fr: "Tire sur tout ce qui est à portée — espions comme ballons de ressources (le butin tombe quand même).",
   },
   "autoDefense.freeAlwaysOn": { en: "Free — always on", it: "Gratis — sempre attivo", es: "Gratis — siempre activo", pt: "Grátis — sempre ativo", de: "Kostenlos — immer aktiv", fr: "Gratuit — toujours actif" },
-  "autoDefense.costPerMin": { en: "-{cost} mon/min", it: "-{cost} mon/min", es: "-{cost} mon/min", pt: "-{cost} mon/min", de: "-{cost} mon/min", fr: "-{cost} mon/min" },
+  // [Nuova funzionalita', vedi il commento su buildingInfo.energyPrefix sopra]
+  // Non piu' "-{cost} mon/min" (identica in tutte le lingue: "mon" non era
+  // mai stato tradotto) — solo il suffisso "/min" resta testo, il numero e
+  // "mon" diventano valore+iconcina in drawBuildingInfoPanel().
+  "autoDefense.costPerMin": { en: "/min", it: "/min", es: "/min", pt: "/min", de: "/min", fr: "/min" },
 
   // ---------------------------------------------------------- banca/scambi
   "bank.title": { en: "GET A LOAN", it: "RICHIEDI UN PRESTITO", es: "SOLICITAR UN PRÉSTAMO", pt: "SOLICITAR UM EMPRÉSTIMO", de: "KREDIT AUFNEHMEN", fr: "OBTENIR UN PRÊT" },
