@@ -450,12 +450,39 @@ export async function mountMatch(ctx, params = {}) {
   // serve nessuna matematica di compensazione qui: l'icona si allinea da
   // sola alla pillola/testo esattamente come oil/ele/mon.
   const CRYS_ICON_BBOX = { x0: 7, y0: 7, x1: 21, y1: 31 };
+  // [Nuova funzionalita', richiesta dall'autore: "risorse incolonnate su
+  // mobile"] La popolazione non entra mai in un costo (RESOURCE_ICON_X
+  // sopra copre solo le tre risorse scambiabili), quindi non aveva mai
+  // avuto bisogno di un frame isolato — la colonna verticale della barra
+  // risorse (sotto) ne ha invece bisogno anche lei, come le altre tre.
+  // Stessa tecnica di misura a mano di RESOURCE_ICON_X: l'icona "persona",
+  // la prima della striscia "icone_oriz", cade sulla colonna locale 9..22
+  // (centro 15.5, gia' misurato per allineare l'orologio della riga 2 —
+  // vedi il commento su clockPos piu' sotto), non un secondo file separato.
+  const POP_ICON_X = [9, 22];
   function resourceIconFrame(kind) {
     if (kind === "crys") {
       const full = frameFor("crys_ico");
       if (!full) return null;
       const { x0, y0, x1, y1 } = CRYS_ICON_BBOX;
       return subFrameRect(full, x0, y0, x1, y1);
+    }
+    // [Nuova funzionalita', richiesta dall'autore: "cristalli e biotech
+    // nella colonna a sinistra insieme alle altre risorse"] A differenza di
+    // "crys" sopra, il margine trasparente di "biot_ico" non e' mai stato
+    // misurato pixel per pixel (il commento sul contatore biotech, piu'
+    // sotto nella funzione di disegno, lo segnala gia': l'atlas coi due
+    // sprite nuovi "bioico"/"biot_ico" non era stato ricostruito quando
+    // quel codice fu scritto — 24_blit.ps1 e' Windows-only). Frame intero,
+    // nessun ritaglio: stesso livello di incertezza gia' accettato li' ("una
+    // prima stima da rifinire a vista"), non un rischio nuovo introdotto qui.
+    if (kind === "bio") {
+      return frameFor("biot_ico");
+    }
+    if (kind === "pop") {
+      const full = frameFor("icone_oriz");
+      if (!full) return null;
+      return subFrameRight(subFrameLeft(full, POP_ICON_X[1]), POP_ICON_X[0]);
     }
     const bounds = RESOURCE_ICON_X[kind];
     const full = frameFor("icone_oriz");
@@ -4365,9 +4392,17 @@ export async function mountMatch(ctx, params = {}) {
    * veri, perche' drawHtmlText() e' un overlay DOM che non sa nulla della
    * matrice camera. Il tag e' centrato due volte con lo stesso identico
    * `total` (layoutIconParts()): una volta nello spazio del quad (icone +
-   * pillola), una nello spazio schermo (testo) — corrispondono perche' in
-   * questo motore un'unita' mondo e un pixel schermo sono sempre la stessa
-   * cosa (nessuno zoom camera, STUDIO.md).
+   * pillola), una nello spazio schermo (testo).
+   * [Bug corretto: per drawCostTagWorld() lo spazio del quad E' il mondo, e
+   * la camera HA zoom vero (camera.js, 0.4-3) — un quad di taglia `w x h`
+   * finisce a `w/zoom x h/zoom` pixel schermo veri, mentre il testo DOM
+   * resta sempre `w x h` pixel veri. Ai due lati dello zoom (`zoom !== 1`)
+   * i due centraggi non coincidevano piu': pillola e testo si scentravano
+   * (verso sinistra/basso zoomando indietro, `zoom` cresce). Qui si
+   * moltiplica ogni offset applicato allo spazio del quad (`pillX/pillY/
+   * px`, mai `textX/textY/tx` che sono gia' pixel veri) per `zoom`, cosi'
+   * la pillola/iconcine restano sempre esattamente `w x h` pixel SCHERMO
+   * veri — la stessa taglia leggibile del testo — a qualunque zoom.]
    * `alpha` (default 1, per la dissolvenza dei cartellini "a tap" — build
    * menu/upgrade edificio, sotto): drawHtmlText() non ha un parametro
    * alpha proprio (`color`, sempre opaco altrove — nessun altro testo HTML
@@ -4385,37 +4420,39 @@ export async function mountMatch(ctx, params = {}) {
    * risorse di notte (`iconsDark` piu' sotto) — qui tinta con lo stesso
    * `textRgb` del testo, cosi' icona e numero restano dello stesso colore
    * qualunque esso sia.] */
-  function drawCostTagAt(tag, pillX, pillY, textX, textY, { tint = 0x000000, textRgb = [255, 255, 255], alpha = 1 } = {}) {
+  function drawCostTagAt(tag, pillX, pillY, textX, textY, { tint = 0x000000, textRgb = [255, 255, 255], alpha = 1, zoom = 1 } = {}) {
     const { resolved, total } = layoutIconParts(normalizeTag(tag), TAG_TEXT_SIZE, TAG_GAP);
     const h = TAG_PILL_H;
     const w = Math.round(total + TAG_PAD);
-    r.draw(tagPillFrame(w, h), pillX - w / 2, pillY, 1, tint, alpha);
+    r.draw(tagPillFrame(w, h), pillX - (w / 2) * zoom, pillY, zoom, tint, alpha);
     const [tr, tg, tb] = textRgb;
     const iconTint = (tr << 16) | (tg << 8) | tb;
     const hasIcon = resolved.some((p) => p.frame);
     if (hasIcon) r.setColorize(true);
-    let px = pillX - total / 2, tx = textX - total / 2;
+    let px = pillX - (total / 2) * zoom, tx = textX - total / 2;
     for (const p of resolved) {
-      if (p.frame) r.draw(p.frame, px, pillY + (h - p.iconH) / 2, p.scale, iconTint, alpha);
+      if (p.frame) r.draw(p.frame, px, pillY + ((h - p.iconH) / 2) * zoom, p.scale * zoom, iconTint, alpha);
       else drawHtmlText(p.text, tx, textY + h / 2, { size: TAG_TEXT_SIZE, align: "left", color: `rgba(${tr},${tg},${tb},${alpha})` });
-      px += p.w + TAG_GAP;
+      px += (p.w + TAG_GAP) * zoom;
       tx += p.w + TAG_GAP;
     }
     if (hasIcon) r.setColorize(false);
   }
   /** Cartellino in spazio SCHERMO (menu costruzioni, riga scorrevole
    * desktop): `topCenterX,topCenterY` sono gia' pixel schermo, nessuna
-   * conversione. */
+   * conversione — `zoom` resta 1 (default), non serve alcuna correzione. */
   function drawCostTagScreen(tag, topCenterX, topCenterY, opts) {
     drawCostTagAt(tag, topCenterX, topCenterY, topCenterX, topCenterY, opts);
   }
   /** Cartellino ancorato a un punto del MONDO (popup ruspa, cartellino
    * upgrade sull'edificio, lotti-rudere del tutorial): la pillola segue la
    * camera come ogni altro sprite di mondo, il testo (DOM, sempre schermo)
-   * usa cam.worldToScreen() sullo stesso punto. */
+   * usa cam.worldToScreen() sullo stesso punto. Passa `cam.zoom` cosi'
+   * drawCostTagAt() puo' compensare lo zoom vero della camera (bug corretto
+   * sopra). */
   function drawCostTagWorld(tag, wx, wy, opts) {
     const s = cam.worldToScreen(wx, wy);
-    drawCostTagAt(tag, wx, wy, s.x, s.y, opts);
+    drawCostTagAt(tag, wx, wy, s.x, s.y, { ...opts, zoom: cam.zoom });
   }
   /** Pezzi testo/icona di un costo (mon/oil/ele...), stesso formato di
    * drawIconLine() sopra — un cartellino mostra il prezzo con l'icona vera
@@ -5552,7 +5589,7 @@ export async function mountMatch(ctx, params = {}) {
       // visivi: nell'originale non avevano eventi Mouse propri (i pedoni
       // solo eventi Collision, non replicati — vedi pedestrians.js), quindi
       // qui non devono "rubare" il tocco.
-      if (!it._f || it.obj === "decor" || it.obj === "scaffold" || it.obj === "car"
+      if (!it._f || it.obj === "decor" || it.obj === "scaffold" || it.obj === "oldBuilding" || it.obj === "car"
         || it.obj === "semaphore" || it.obj === "cloud" || it.obj === "bird" || it.obj === "pedestrian") continue;
       // stessa distinzione rombo/rettangolo della prima passata sopra — un
       // placeholder che arriva fin qui (nessun oggetto interattivo colpito
@@ -6564,6 +6601,21 @@ export async function mountMatch(ctx, params = {}) {
         obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr, buildingFrameIdx),
         ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true } : {}),
       });
+      // [Bug corretto, segnalato dall'autore: "si vedeva anche nel gioco
+      // originale, partiva subito dopo la parte frontale e si montavano
+      // quasi insieme"] L'edificio VECCHIO durante un upgrade con topper
+      // (`b.oldSpr`, buildings.js — vedi il commento su `tryStartUpgrade()`
+      // li' per l'archeologia sui GML decompilati): nell'originale non era
+      // affatto lo stesso sprite del "retro" (sopra) che aspettava a
+      // sostituirlo — erano tre ISTANZE SEPARATE e contemporaneamente vive
+      // (`impa1to2r`/`casa1`/`impa1to2f`, coi rispettivi `depth`
+      // -y+1/-y/-y-3), l'edificio vecchio incastrato letteralmente FRA la
+      // sagoma di cantiere e l'impalcatura, non sopra o sotto entrambe.
+      // Stesso ordine qui: spinto DOPO "building" (retro, sopra) ma PRIMA di
+      // "scaffold" (fronte, sotto) cosi' l'ordine d'inserimento a depth
+      // pari (-b.y per tutti e tre, STUDIO.md su sortWorld/effDepth) li
+      // stratifica nello stesso ordine dell'originale.
+      if (b.oldSpr) dynamic.push({ obj: "oldBuilding", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.oldSpr) });
       // Impalcatura in sovraimpressione + coperchio di fine cantiere (vedi
       // buildings.js): stessa x/y dell'edificio, spinti sopra di lui
       // dall'ordine di inserimento (a parita' di depth+y l'array mantiene
@@ -7426,17 +7478,69 @@ export async function mountMatch(ctx, params = {}) {
     // trattamento gia' dato al balloon/pollice del tutorial per questo
     // stesso pannello (vedi il commento li' sotto).
     const hideResourceIcons = !!tutorialState?.cutscene || !!buildingInfoPanel;
-    r.setColorize(iconsDark);
-    if (!hideResourceIcons && barRowFrame) r.draw(barRowFrame, barX, barY, 1, 0xffffff, 1);
-    r.setColorize(false);
+    // [Nuova disposizione, richiesta dall'autore: "le risorse in alto sono
+    // caotiche su mobile, incolonniamole" — mockup concordato in chat]
+    // `icone_oriz` (ramo desktop sotto) e' tarata per stare comoda su
+    // ~450px (DATE_COL_X piu' sotto): sotto quella soglia (iPhone SE, 375px,
+    // lo stesso caso limite gia' citato li') i quattro numeri arrivano quasi
+    // a toccarsi contro il bordo destro. Su mobile ogni risorsa ha invece la
+    // propria pillola — stesso identico componente visivo dei cartellini di
+    // costo (TAG_PILL_H/TAG_TEXT_SIZE/tagPillFrame()/layoutIconParts(),
+    // drawCostTagAt() piu' sotto, non uno stile nuovo), impilate in colonna
+    // in alto a sinistra invece che affiancate: nessuna ressa qualunque sia
+    // la larghezza dei numeri (endgame incluso), a costo di una colonna piu'
+    // alta sopra la mappa invece di una striscia larga. Layout (pillola per
+    // riga: icona vera, larghezza vera del testo) calcolato una sola volta
+    // qui, condiviso dai due passaggi icone/testo sotto — restano due
+    // passaggi separati, non un solo drawCostTagAt() per riga, per lo stesso
+    // motivo per cui lo erano gia' `barRowFrame`/`stats` sotto: vedi il
+    // commento su `hideResourceText` due righe sotto (testo DOM, la
+    // sfumatura di pausa non lo tocca).
+    const MOBILE_RES_GAP = 6;
+    // [Nuova disposizione, richiesta dall'autore: "cristalli e biotech
+    // incolonnati a sinistra con le altre, non nel blocchetto a destra"]
+    // Le due risorse "extra" (aggiunte in questo motore, mai nel
+    // decompilato — vedi il commento sul contatore cristalli piu' sotto)
+    // seguono la stessa regola con cui gia' comparivano/sparivano nel
+    // blocchetto a destra: invisibili finche' il giocatore non ne possiede
+    // almeno una, per non mostrare un contatore a "0" per una risorsa che
+    // la sua partita potrebbe non aver ancora incontrato.
+    const mobileResKinds = [["pop", r12.pop], ["oil", r12.oil], ["ele", r12.ele], ["mon", r12.mon]];
+    if (r12.crys > 0) mobileResKinds.push(["crys", r12.crys]);
+    if (r12.biotech > 0) mobileResKinds.push(["bio", r12.biotech]);
+    const mobileResLayout = isMobile ? (() => {
+      let rowY = barY;
+      return mobileResKinds.map(([kind, raw]) => {
+        const text = String(Math.round(raw));
+        const { resolved, total } = layoutIconParts([{ icon: kind }, { text }], TAG_TEXT_SIZE, TAG_GAP);
+        const row = { kind, text, icon: resolved[0], y: rowY, w: Math.round(total + TAG_PAD) };
+        rowY += TAG_PILL_H + MOBILE_RES_GAP;
+        return row;
+      });
+    })() : null;
+    if (isMobile) {
+      if (!hideResourceIcons) {
+        r.setColorize(true);
+        for (const row of mobileResLayout) {
+          r.draw(tagPillFrame(row.w, TAG_PILL_H), barX, row.y, 1, 0x000000, 0.72);
+          if (row.icon.frame) r.draw(row.icon.frame, barX + TAG_PAD / 2, row.y + (TAG_PILL_H - row.icon.iconH) / 2, row.icon.scale, 0xffffff, 1);
+        }
+        r.setColorize(false);
+      }
+    } else {
+      r.setColorize(iconsDark);
+      if (!hideResourceIcons && barRowFrame) r.draw(barRowFrame, barX, barY, 1, 0xffffff, 1);
+      r.setColorize(false);
+    }
     // [Bug corretto, segnalato dall'autore: "in pausa le scritte della UI
     // non si blurrano"] Questi numeri sono elementi HTML veri (drawHtmlText(),
     // sopra), non pixel del canvas: pauseBlur.blurScreen() (drawPauseOverlay(),
     // sopra) cattura e sfuma solo il canvas gia' disegnato, quindi qualunque
     // testo HTML resterebbe nitido SOPRA il pannello di pausa invece di
     // sfumarsi con tutto il resto. Le icone WebGL della barra (barRowFrame/
-    // hapFrame/crysFrame, sopra/sotto) restano invece disegnate anche in
-    // pausa: fanno gia' parte del canvas catturato, si sfumano da sole.
+    // hapFrame/crysFrame, sopra/sotto — la colonna mobile sopra incluso)
+    // restano invece disegnate anche in pausa: fanno gia' parte del canvas
+    // catturato, si sfumano da sole.
     // [Bug corretto, segnalato dall'autore: "durante la scena iniziale si
     // vedono i numerini delle risorse in alto", stessa cosa per il menu
     // Buildings del mobile] Stesso identico problema anche durante la
@@ -7450,10 +7554,17 @@ export async function mountMatch(ctx, params = {}) {
     // nasconderli. `hideResourceText` raccoglie tutti i casi in cui il resto
     // della barra risorse e' gia' coperto/oscurato da qualcos'altro.
     const hideResourceText = paused || buildMenuOpen || !!tutorialState?.cutscene || !!buildingInfoPanel;
-    const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
-                   [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
-    if (!hideResourceText) for (const [value, x] of stats) {
-      drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
+    if (isMobile) {
+      if (!hideResourceText) for (const row of mobileResLayout) {
+        drawHtmlText(row.text, barX + TAG_PAD / 2 + row.icon.w + TAG_GAP, row.y + TAG_PILL_H / 2,
+          { size: TAG_TEXT_SIZE, align: "left", color: "#ffffff" });
+      }
+    } else {
+      const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
+                     [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
+      if (!hideResourceText) for (const [value, x] of stats) {
+        drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
+      }
     }
     // Data (mese + anno, game/src/state.js stepCalendar()), orologio+ora e
     // faccina della felicita' (subito sotto): [Bug corretto, segnalato
@@ -7483,24 +7594,40 @@ export async function mountMatch(ctx, params = {}) {
     // a sinistra, centrata verticalmente sulle due righe della data (mese
     // sopra, anno sotto — `r12.time` e' l'anno di gioco, game/src/state.js)
     // impilate alla sua destra.
-    // [Bug corretto, segnalato dall'autore: "l'orologio ora e' allineato
-    // alla prima risorsa della riga sopra?" — non lo era ancora] Il blocco
-    // partiva comunque da un x scelto per lasciare margine al contatore
-    // cristalli (prima a sinistra, sotto — vedi il commento su crysPos piu'
-    // sotto: ora spostato a destra della faccina, quello spazio e' libero
-    // per davvero). Misurato pixel per pixel sulla texture vera di
-    // "icone_oriz" (assets/textures/page_002.png): l'icona "persona"
-    // (popolazione, la prima della riga sopra) occupa la colonna locale
-    // 9..22 (centro 15.5) — lo stesso sistema di coordinate di `barX`, dato
-    // che la striscia si disegna con origine (0,0) a `(barX,barY)`.
-    // `clockFrame` (subFrameRight di "icone_oriz" sotto, ox=0/oy=0) tiene
-    // l'icona orologio alla colonna locale 15..45 (centro 30) DELLA
-    // SOTTO-IMMAGINE tagliata a CLOCK_CUT_X: a `clockScale` 0.5 il suo
-    // centro visivo cade a `clockPos.x + 30*0.5 = clockPos.x + 15` —
-    // uguale al centro dell'icona persona (`barX + 15.5`) quando
-    // `clockPos.x = barX` (arrotondato, la meta' di pixel non conta).
-    const ROW2_Y = barY + 50;
+    // [Bug corretto (storico, era ancora vero quando riga2 stava sotto la
+    // colonna/riga1 — vedi il commento subito sotto per la disposizione
+    // attuale), segnalato dall'autore: "l'orologio ora e' allineato alla
+    // prima risorsa della riga sopra?" — non lo era ancora] `clockFrame`
+    // (subFrameRight di "icone_oriz", ox=0/oy=0) tiene l'icona orologio alla
+    // colonna locale 15..45 DELLA SOTTO-IMMAGINE tagliata a CLOCK_CUT_X
+    // (centro 30): a `clockScale` 0.5 il suo centro visivo cade a
+    // `clockPos.x + 30*0.5 = clockPos.x + 15`. Questo dato di pixel resta
+    // valido (e' la geometria del frame, non la sua posizione a schermo);
+    // l'allineamento con l'icona "persona" (colonna locale 9..22, centro
+    // 15.5) valeva solo quando `clockPos.x` coincideva con `barX` — non piu'
+    // vero ora che riga2 ha una sua ancora indipendente (`ROW2_X`, sotto).
+    // [Nuova disposizione, richiesta dall'autore: "data e orologio (e il
+    // resto della riga2) a destra, che li' e' libero"] La colonna delle
+    // risorse (sopra) e' stretta (una pillola per riga, non piu' un'unica
+    // striscia larga): a differenza della vecchia riga2 sotto la striscia
+    // orizzontale, che aveva bisogno di tutta la larghezza per non
+    // sovrapporsi, ora c'e' spazio VERO alla destra della colonna, alla
+    // stessa altezza — riga2 (orologio/data/faccina/cristalli/biotech,
+    // sotto) trasloca li' invece di continuare a occupare altezza sotto la
+    // colonna. Su desktop resta tutto sulla riga 1 di sempre, `ROW2_Y` non
+    // e' mai usato in quel ramo (ogni posizione desktop e' calcolata a
+    // parte da `barY`, sotto).
+    const ROW2_Y = isMobile ? barY : barY + 50;
     const ROW2B_Y = ROW2_Y + 20;
+    // Ancora orizzontale di riga2 su mobile: ancorata al bordo DESTRO dello
+    // schermo invece che a `barX` (sinistra, dove sta la colonna) — stesso
+    // `UI_MARGIN` gia' usato per ogni altro elemento ancorato a un bordo
+    // (bottone pausa, `pbX` piu' sotto). Da quando cristalli/biotech si sono
+    // spostati nella colonna a sinistra (mobileResLayout, sopra) riga2
+    // contiene solo orologio+data+faccina: 130px bastano per l'ultimo, la
+    // faccina a offset 84 (sotto) + la sua larghezza, col margine per il
+    // mese piu' lungo in italiano ("settembre") sulla colonna della data.
+    const ROW2_X = isMobile ? Math.round(canvas.clientWidth - UI_MARGIN - 130) : barX;
     const clockScale = isMobile ? 0.5 : 0.85;
     // [Bug corretto, segnalato dall'autore: "su desktop c'e' troppo gap fra
     // il denaro e orologio/data/faccina, avviciniamoli"] Tutto il blocco
@@ -7512,7 +7639,7 @@ export async function mountMatch(ctx, params = {}) {
     // lungo plausibile (`r12.mon` — misurato: un numero a 9 cifre e' largo
     // ~75px in Montserrat 15px grassetto, finisce quindi verso x=415)
     // l'orologio (ora a x+426) resta comunque staccato, ~11px di margine.
-    const clockPos = isMobile ? { x: barX, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 426, y: barY + 8 };
+    const clockPos = isMobile ? { x: ROW2_X, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 426, y: barY + 8 };
     // [Bug corretto, segnalato dall'autore: "le icone a destra sono
     // disallineate — prima l'orologio (allineato con le altre icone), poi
     // mese e anno incolonnati, poi la faccina (allineata con le altre
@@ -7538,13 +7665,13 @@ export async function mountMatch(ctx, params = {}) {
     // `barY+32`, stesso passo ~18px di prima ma ricentrato: la loro media
     // torna a combaciare con l'orologio, non piu' `barY+12` come prima).
     const DATE_COL_X = barX + 470;
-    const monthPos = isMobile ? { x: barX + 26, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
-    const timePos = isMobile ? { x: barX + 26, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
+    const monthPos = isMobile ? { x: ROW2_X + 26, y: ROW2_Y } : { x: DATE_COL_X, y: barY + 14 };
+    const timePos = isMobile ? { x: ROW2_X + 26, y: ROW2B_Y } : { x: DATE_COL_X, y: barY + 32 };
     // `hap1`/`hap3` (data/sprites.json): ox=oy=23=w/2=h/2 esatto, quindi il
     // loro centro visivo coincide SEMPRE con `hapPos.y` stesso qualunque sia
     // la scala — bastava allinearlo allo stesso `barY+23` di sopra (prima
     // era `barY+5`, quasi al livello del solo mese).
-    const hapPos = isMobile ? { x: barX + 84, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
+    const hapPos = isMobile ? { x: ROW2_X + 84, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
     if (!hideResourceText) {
       drawHtmlText(monthName(r12.month ?? 1) ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
     }
@@ -7622,11 +7749,16 @@ export async function mountMatch(ctx, params = {}) {
     // scala 0.9, +32.4): sottratto da `crysPos.y` sotto per farlo
     // combaciare col centro vero di `hapPos` (`(ROW2_Y+ROW2B_Y)/2`, la
     // stessa riga), non piu' una riga a parte piu' in basso.
-    if (r12.crys > 0) {
+    // [Nuova disposizione, richiesta dall'autore: "cristalli e biotech
+    // incolonnati a sinistra"] Su mobile questo contatore lo disegna gia'
+    // il ciclo di `mobileResLayout` sopra (stessa pillola di pop/olio/
+    // energia/denaro): il blocco qui sotto resta solo per desktop, dove sta
+    // ancora sulla riga unica a destra della faccina.
+    if (r12.crys > 0 && !isMobile) {
       const crysFrame = frameFor("crys_ico");
-      const crysPos = isMobile ? { x: barX + 100, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 570, y: barY - 4 };
-      const crysScale = isMobile ? 0.9 : 0.75;
-      const crysTextPos = isMobile ? { x: barX + 140, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 606, y: barY + 19 };
+      const crysPos = { x: barX + 570, y: barY - 4 };
+      const crysScale = 0.75;
+      const crysTextPos = { x: barX + 606, y: barY + 19 };
       // [Bug corretto, segnalato dall'autore: "non vedo il counter dei crys
       // quando li raccolgo (desktop)"] A differenza di hap1/hap3/oil/ele/mon
       // (sagome NERE su trasparente, verificato pixel per pixel sulla
@@ -7663,11 +7795,13 @@ export async function mountMatch(ctx, params = {}) {
     // Windows-only): a differenza di `crysPos`, "misurato pixel per pixel"
     // dall'autore in precedenza, questa e' una prima stima da rifinire a
     // vista una volta ricostruito l'atlas.
-    if (r12.biotech > 0) {
+    // Su mobile questo contatore lo disegna gia' `mobileResLayout` sopra,
+    // stesso motivo/stesso commento del blocco cristalli qui sopra.
+    if (r12.biotech > 0 && !isMobile) {
       const bioFrame = frameFor("biot_ico");
-      const bioPos = isMobile ? { x: barX + 180, y: (ROW2_Y + ROW2B_Y) / 2 - 32.4 } : { x: barX + 650, y: barY - 4 };
-      const bioScale = isMobile ? 0.9 : 0.75;
-      const bioTextPos = isMobile ? { x: barX + 220, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 686, y: barY + 19 };
+      const bioPos = { x: barX + 650, y: barY - 4 };
+      const bioScale = 0.75;
+      const bioTextPos = { x: barX + 686, y: barY + 19 };
       r.setColorize(iconsDark);
       if (!hideResourceIcons && bioFrame) r.draw(bioFrame, bioPos.x, bioPos.y, bioScale, 0xffffff, 1);
       r.setColorize(false);
@@ -8014,8 +8148,21 @@ export async function mountMatch(ctx, params = {}) {
         // l'alto (`angle:90`, gia' la convenzione per "punta alla barra
         // risorse in alto" — solo le coordinate erano sbagliate).
         case 6: case 11: case 26: {
-          const resX = tutorialState.phase === 6 ? 340 : tutorialState.phase === 11 ? 228 : 142;
-          target = { x: barX + resX, y: barY + 43, angle: 90 };
+          const resKind = tutorialState.phase === 6 ? "mon" : tutorialState.phase === 11 ? "ele" : "oil";
+          // [Nuova disposizione] Su mobile le quattro risorse non sono piu'
+          // una riga unica (i vecchi offset fissi "olio 142/energia 228/
+          // denaro 340" sotto, ramo desktop) ma una colonna di pillole
+          // (mobileResLayout, sopra — stessa fase di disegno di questa
+          // funzione, gia' calcolata quando questo switch gira): si punta
+          // al centro della pillola vera di quella risorsa invece di un
+          // offset che ora cadrebbe a meta' di una riga diversa.
+          if (isMobile) {
+            const row = mobileResLayout.find((r) => r.kind === resKind);
+            target = row ? { x: barX + row.w / 2, y: row.y + TAG_PILL_H + 6, angle: 90 } : null;
+          } else {
+            const resX = tutorialState.phase === 6 ? 340 : tutorialState.phase === 11 ? 228 : 142;
+            target = { x: barX + resX, y: barY + 43, angle: 90 };
+          }
           break;
         }
         case 7: {
