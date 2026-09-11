@@ -984,16 +984,18 @@ export async function mountMatch(ctx, params = {}) {
   // una nota precedente la lasciava ferma per scelta, assumendo che
   // `CAR_TYPES.honda3.spawn` (cars.js: il punto fisso di `carmaker`, le auto
   // che arrivano nel tempo su tutte e tre le room) non fosse la posizione
-  // reale di QUESTA istanza. **[C]** Rileggendo `honda3/Create.gml`: il nudge
-  // relativo (+21,-26), applicato quando `action_if_number(736,1,0)` e' vero
-  // (lo stesso flag "0=match/1=match_easy" letto ovunque nel motore,
-  // game/src/state.js) — su `tutorial` (`roomName==="match"`, STUDIO.md)
-  // vale `false`, lo stesso ramo di `match`, quindi NON si applica: la
-  // posizione vera dell'istanza (1841,631, `tutorial.scene.json`) piu' il
-  // nudge da' (1862,605) — a un pixel da `CAR_TYPES.honda3.spawn`
-  // (1863,604, gia' scritto per `carmaker`): sono lo stesso punto. Simulata
-  // come honda1/honda2: tolta da `staticWorld`, spawnata da subito invece
-  // che dopo 60s da `carmaker` (che qui SALTA il suo stesso primo turno,
+  // reale di QUESTA istanza. **[C]** `honda3/Create.gml`: il nudge relativo
+  // (+21,-26), applicato quando `action_if_number(736,1,0)` e' vero (lo
+  // stesso flag "0=match/1=match_easy" letto ovunque nel motore, game/src/
+  // state.js) — su `tutorial` (`roomName==="match"`, STUDIO.md) vale
+  // `false`, lo stesso ramo di `match`, quindi NON si applica: la posizione
+  // vera dell'istanza (1841,631, `tutorial.scene.json`) coincide (a un
+  // pixel) con `CAR_TYPES.honda3.spawn` (1842,630, la coordinata GREZZA di
+  // `carmaker` — cars.js/spawnCar(), "le auto vanno fuori strada su match":
+  // il nudge non e' piu' cablato nella costante, si applica solo quando
+  // `spawnCar(..., nudge)` lo passa true, mai qui sotto). Simulata come
+  // honda1/honda2: tolta da `staticWorld`, spawnata da subito invece che
+  // dopo 60s da `carmaker` (che qui SALTA il suo stesso primo turno,
   // `carmakerIdx` sotto, per non farla comparire due volte).
   const INITIAL_CAR_TYPES = roomName === "tutorial" ? ["honda1", "honda2", "honda3"]
     : roomName === "match" ? ["honda1", "honda2"] : ["honda_facile_1", "honda_facile_2"];
@@ -1142,7 +1144,7 @@ export async function mountMatch(ctx, params = {}) {
   // Auto decorative gia' in marcia da subito, come nella room originale
   // (phaseT parte da 0 = fase "giorno" in PHASES piu' sotto, quindi mai
   // notte alla nascita: nessun tint fanali sulle due iniziali).
-  let cars = INITIAL_CAR_TYPES.map((t) => spawnCar(t, false));
+  let cars = INITIAL_CAR_TYPES.map((t) => spawnCar(t, false, roomName === "match_easy"));
   // `carmaker` (game/src/cars.js, CARMAKER_SCHEDULE): non e' un edificio ne'
   // un'istanza di scena, e' un timer che r12 avvia incondizionatamente in
   // ogni room — ogni 60s di gioco arriva un'altra auto (honda3..honda9),
@@ -6213,8 +6215,19 @@ export async function mountMatch(ctx, params = {}) {
       stepCalendar(r12, dt);
       stepCars(cars, dt, r12, night);
       carmakerT += dt;
+      // [Bug corretto, segnalato dall'autore: "le auto vanno spesso fuori
+      // strada e invadono gli spazi per gli edifici" su `match`] `nudge`
+      // (game/src/cars.js, CAR_TYPES.honda3..9.matchEasyNudge): il gate
+      // `action_if_number(736,1,0)` di ciascun honda3..9/Create.gml e' vero
+      // SOLO su `match_easy` — questo stesso ciclo pero' gira su OGNI room
+      // (`carmaker` esiste ovunque, commento sopra), quindi va passato qui
+      // in base alla room vera invece di restare cablato nella coordinata
+      // di spawn (che prima valeva sempre "con nudge", sbagliato su
+      // `match`/`tutorial`: l'intero percorso di ogni honda3..9 nasceva
+      // ~21-27px fuori dal punto vero, abbastanza da tagliare dentro un
+      // lotto o fuori dalla strada — sette tipi diversi, uno ogni 60s).
       while (carmakerIdx < CARMAKER_SCHEDULE.length && carmakerT >= CARMAKER_SCHEDULE[carmakerIdx].at) {
-        cars.push(spawnCar(CARMAKER_SCHEDULE[carmakerIdx].type, night));
+        cars.push(spawnCar(CARMAKER_SCHEDULE[carmakerIdx].type, night, roomName === "match_easy"));
         carmakerIdx++;
       }
       stepLights(decorEntities, dt, night, r12);
