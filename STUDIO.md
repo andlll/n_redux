@@ -4239,3 +4239,21 @@ paragrafo 8.
   opposta. Nessun altro tipo (`honda1`/`honda2`/`honda_facile_1/2`, la
   famiglia `honda2x`/`honda3x` di r32/r22, i ponti levatoi) ha questo gate
   nel decompilato e nessuno di questi ha ricevuto `matchEasyNudge`.
+- **Lo stato di partita vive in un oggetto `st` (game/src/main.js, P1a
+  dell'audit strutturale)**: le 84 `let` di closure di `mountMatch()`
+  (`buildings`, `r12`, `paused`, `outcome`, `message`, le liste di auto/
+  minacce/proiettili...) sono ora proprieta' di un unico `const st = {}`
+  dichiarato subito dopo la destrutturazione di `ctx`, ognuna inizializzata
+  nello STESSO punto di prima (`st.buildings = []` dove c'era
+  `let buildings = []`), cosi' l'ordine di inizializzazione non cambia. La
+  riscrittura e' stata fatta con acorn, scope-aware: il parametro `r12` di
+  `stormFlashAlpha()`/`stepLights()` resta un parametro. Invertendo le
+  sostituzioni si riottiene il file precedente byte per byte: nessun cambio
+  di logica. `window.__nimbus.st` espone l'oggetto intero (i vecchi getter
+  restano). Serve come base per estrarre le responsabilita' di main.js in
+  moduli che ricevono `(st, ctx)` (P1b), senza piu' variabili di closure
+  condivise. **Fix collegata**: `syncNextId(buildings)` (buildings.js) —
+  il contatore d'id degli edifici e' a livello di modulo e non veniva
+  riallineato dopo un caricamento ne' azzerato al mount, quindi una
+  costruzione dopo il load poteva riusare un id gia' presente nel
+  salvataggio (decor, monete e popup ruspa fanno join su `buildingId`).
