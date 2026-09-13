@@ -48,7 +48,10 @@ import { t, setLang, getLang, LANGUAGES, buildingLabel } from "./i18n.js";
 // nella stessa sessione non accumula loop/listener fantasma.
 export async function mountMatch(ctx, params = {}) {
   const { gl, r, canvas, input, pauseBlur, white, navigate, reportProgress, renderScale } = ctx;
-  let stopped = false;
+  // Stato mutabile della partita: prima erano 84 `let` di closure, ora proprieta' di un unico
+  // oggetto (P1a) cosi' da poterlo passare/ispezionare come un tutto.
+  const st = {};
+  st.stopped = false;
   // Cerchio morbido per l'animazione "bolla" delle monete raccolte (vedi
   // coinPops/collectCoinAt() piu' sotto) — nessun asset dell'originale la
   // prevede (nessun sistema di particelle in questo motore, STUDIO.md), e'
@@ -161,7 +164,7 @@ export async function mountMatch(ctx, params = {}) {
   // diverso) — vedi resize() sotto. Diventa true al primo pan/zoom
   // dell'utente su entrambe le piattaforme (input.onDrag/onZoom piu' sotto),
   // cosi' un resize successivo non scavalca piu' la sua scelta.
-  let userMoved = false;
+  st.userMoved = false;
 
   /** zoom = quanti pixel di mondo per pixel di schermo FISICO (camera.js):
    * per avere 1 texel dell'atlas = 1 pixel del display serve zoom == dpr,
@@ -645,8 +648,8 @@ export async function mountMatch(ctx, params = {}) {
    * l'ultimo che combacia e' il piu' vicino alla telecamera). */
   function buildingAt(sx, sy) {
     const w = cam.screenToWorld(sx, sy);
-    for (let i = frameList.length - 1; i >= 0; i--) {
-      const it = frameList[i];
+    for (let i = st.frameList.length - 1; i >= 0; i--) {
+      const it = st.frameList[i];
       if (it.obj !== "building") continue;
       const isTurret = !!BUILDING_TYPES[it.ref.type]?.turret;
       const box = isTurret ? turretHitBox(it.ref.type) : it._f;
@@ -811,7 +814,7 @@ export async function mountMatch(ctx, params = {}) {
     const def = BUILDING_TYPES.casa;
     return level <= 1 ? def.construct : def.upgrades[Math.min(level, 3) - 2];
   }
-  let nextRuinClearId = 1;
+  st.nextRuinClearId = 1;
   /** Avanza il ciclo di impalcature di ogni rudere in `list` (`ruins` o
    * `ruinLots`, stessa forma {x,y,level,spr,frontSpr,_f,clearing}) di `dt`
    * secondi — chiamata ogni frame come stepConstructions() sotto, stesso
@@ -852,7 +855,7 @@ export async function mountMatch(ctx, params = {}) {
       // li filtra per buildingId), `depth: 0` (addDecor() lo traduce in -y da
       // solo, stessa convenzione di ogni edificio vero), `construction: true`
       // (stepCranes() avanza solo le gru di un "edificio" in cantiere).
-      if (!c.fb) c.fb = { id: `ruinClear${nextRuinClearId++}`, x: entry.x, y: entry.y, depth: 0, type: "casa", construction: true };
+      if (!c.fb) c.fb = { id: `ruinClear${st.nextRuinClearId++}`, x: entry.x, y: entry.y, depth: 0, type: "casa", construction: true };
       let cur = up.steps[c.stepIndex];
       if (c.curSpr === undefined) {
         c.curSpr = pickSpr(cur.spr);
@@ -909,7 +912,7 @@ export async function mountMatch(ctx, params = {}) {
   // un primo tap mobile — letto sotto (per il tap successivo) e nel ciclo di
   // disegno di main.js (per mimare l'hover: stessa tinta rossa/cartellino
   // gia' in uso per il mouse). `null` = nessuna voce armata.
-  let ruinTapArmed = null;
+  st.ruinTapArmed = null;
   /** Tocco su un rudere da battaglia (`ruins`) o su un lotto-rudere del
    * tutorial (`ruinLots`) con la ruspa selezionata — chi chiama garantisce
    * gia' `r12.selec === 11`. Su desktop (mouse, hover vero: la tinta rossa
@@ -927,17 +930,17 @@ export async function mountMatch(ctx, params = {}) {
    * silenzio, su entrambe le piattaforme. */
   function tapRuinLike(entry) {
     if (entry.clearing) return;
-    if (isMobile && ruinTapArmed !== entry) {
-      ruinTapArmed = entry;
+    if (isMobile && st.ruinTapArmed !== entry) {
+      st.ruinTapArmed = entry;
       return;
     }
-    if (!canAfford(r12, { mon: entry.cost })) {
+    if (!canAfford(st.r12, { mon: entry.cost })) {
       spawnInsufficientFundsWarning(entry.x, entry.y, entry._f);
     } else {
-      r12.mon -= entry.cost;
+      st.r12.mon -= entry.cost;
       entry.clearing = { stepIndex: 0, t: 0 };
     }
-    ruinTapArmed = null;
+    st.ruinTapArmed = null;
   }
 
   // `chies` e' gia' un'istanza vera nella room (src/rooms/match_easy.json:
@@ -1095,7 +1098,7 @@ export async function mountMatch(ctx, params = {}) {
   // l'unica room senza, non avendo ne' la base volante ne' `chies` capace
   // di raggiungere i livelli che sbloccano i fari (STUDIO.md, gap
   // dichiarati).
-  let platformState = (roomName === "match" || roomName === "tutorial") ? createFaroState() : null;
+  st.platformState = (roomName === "match" || roomName === "tutorial") ? createFaroState() : null;
 
   // Semafori (game/src/semaphores.js, STUDIO.md): `object8` ("se", il palo —
   // mai rinominato dall'autore originale) resta in staticWorld com'e', un
@@ -1109,8 +1112,8 @@ export async function mountMatch(ctx, params = {}) {
   const semaphores = staticWorld.filter((it) => it.obj === "object8").map((it) => createSemaphore(it.x, it.y));
 
   /** @type {ReturnType<typeof placeBuilding>[]} */
-  let buildings = [];
-  let decorEntities = [];      // ornamenti (permanenti a fine cantiere, o transitori durante)
+  st.buildings = [];
+  st.decorEntities = [];      // ornamenti (permanenti a fine cantiere, o transitori durante)
   // I ruderi (game/src/buildings.js, ruinSpriteFor()): quando la vita di un
   // edificio finito arriva a 0, l'originale non lo rimuove — lo sostituisce
   // con un oggetto "ruin*" permanente (STUDIO.md, "il rudere") che nessuno
@@ -1118,7 +1121,7 @@ export async function mountMatch(ctx, params = {}) {
   // ricostruita). Array a parte invece che dentro `buildings`: un rudere non
   // simula piu' niente (nessuna produzione/crescita/mira/fulmine), e' decoro
   // inerte come `decorEntities` — vedi destroyBuilding() sotto.
-  let ruins = [];
+  st.ruins = [];
 
   // ------------------------------------------------------------- tutorial
   // Solo sulla room "tutorial" (game/src/tutorial.js, STUDIO.md): stato del
@@ -1128,22 +1131,22 @@ export async function mountMatch(ctx, params = {}) {
   // le istanze `ruin1`/`ruin2` in `staticWorld`: da qui in poi vivono solo
   // qui, con hover/click propri (input.onTap piu' sotto), non piu' come
   // decoro passivo.
-  let tutorialState = null;
-  let ruinLots = [];
+  st.tutorialState = null;
+  st.ruinLots = [];
   // Balloon di testo + bottone "avanti/esci" (tutorial_square|tutorial_thumb/
   // DrawGUI.gml): entrambi disegnati nel layer GUI come ogni altro elemento
   // del motore (font bitmap vero, `fontMobile` sopra — non un div HTML),
   // non piu' un elemento DOM a parte. `tutorialOkRect` (sotto) e' il
   // rettangolo schermo del pollice, ricalcolato ad ogni frame, letto da
   // input.onTap per il tocco.
-  let tutorialOkRect = null;   // { x, y, w, h }, ricalcolato ad ogni frame dal disegno
+  st.tutorialOkRect = null;   // { x, y, w, h }, ricalcolato ad ogni frame dal disegno
   // { left, right, top, bottom } del box testo, ricalcolato ad ogni frame:
   // serve al pollice (sotto) per agganciarsi sopra al box invece che di fianco.
-  let tutorialBoxRect = null;
+  st.tutorialBoxRect = null;
   if (roomName === "tutorial") {
-    tutorialState = createTutorialState(scene);
-    ruinLots = extractRuinLots(scene);
-    for (const lot of ruinLots) lot._f = frameFor(lot.spr);
+    st.tutorialState = createTutorialState(scene);
+    st.ruinLots = extractRuinLots(scene);
+    for (const lot of st.ruinLots) lot._f = frameFor(lot.spr);
     // `air_tut2` (letto sopra solo per la sua posizione, createCutscene()) e'
     // anche lui gia' un'istanza vera della room col proprio sprite di default
     // ("tuto_bomb") — va tolta da staticWorld com'e' gia' per ruin1/ruin2,
@@ -1160,16 +1163,16 @@ export async function mountMatch(ctx, params = {}) {
   // (STUDIO.md/tutorial.js, sold13). **[I]** `phase += 1` invece di `+0.5`:
   // vedi il commento in cima a tutorial.js per il perche'.
   function advanceTutorial() {
-    if (tutorialState.phase === 4 && !tutorialState.practiceCoinSpawned) {
-      tutorialState.practiceCoinSpawned = true;
-      coins.push({
-        buildingId: null, x: tutorialState.practiceCoinPos.x, y: tutorialState.practiceCoinPos.y,
+    if (st.tutorialState.phase === 4 && !st.tutorialState.practiceCoinSpawned) {
+      st.tutorialState.practiceCoinSpawned = true;
+      st.coins.push({
+        buildingId: null, x: st.tutorialState.practiceCoinPos.x, y: st.tutorialState.practiceCoinPos.y,
         depth: COIN_DEPTH, amount: 260, kind: "mon", t: 0, spr: "soldico", auto: false,
         _tutorialPractice: true,
       });
     }
-    if (tutorialState.phase >= LAST_PHASE) navigate("menu");
-    else tutorialState.phase += 1;
+    if (st.tutorialState.phase >= LAST_PHASE) navigate("menu");
+    else st.tutorialState.phase += 1;
   }
   // I lotti "extra" occupati da un edificio multi-tile (oggi solo `eolico`,
   // buildings.js `def.multiTile`) — [C] `impavent` uccide ogni placeholder che
@@ -1181,11 +1184,11 @@ export async function mountMatch(ctx, params = {}) {
   // persistito a parte in save.js, altrimenti un ciclo salva/carica li
   // libererebbe di nuovo (STUDIO.md non lo segnalava perche' e' un problema
   // nuovo, nato con questo edificio).
-  let blockedSlots = [];
+  st.blockedSlots = [];
   // Auto decorative gia' in marcia da subito, come nella room originale
   // (phaseT parte da 0 = fase "giorno" in PHASES piu' sotto, quindi mai
   // notte alla nascita: nessun tint fanali sulle due iniziali).
-  let cars = INITIAL_CAR_TYPES.map((t) => spawnCar(t, false, roomName === "match_easy"));
+  st.cars = INITIAL_CAR_TYPES.map((t) => spawnCar(t, false, roomName === "match_easy"));
   // `carmaker` (game/src/cars.js, CARMAKER_SCHEDULE): non e' un edificio ne'
   // un'istanza di scena, e' un timer che r12 avvia incondizionatamente in
   // ogni room — ogni 60s di gioco arriva un'altra auto (honda3..honda9),
@@ -1195,30 +1198,30 @@ export async function mountMatch(ctx, params = {}) {
   // stessa posizione di spawn di CARMAKER_SCHEDULE[0]): si salta quella
   // prima voce, altrimenti a 60s ne comparirebbe una SECONDA identica,
   // sovrapposta al punto di partenza della prima.
-  let carmakerT = 0, carmakerIdx = roomName === "tutorial" ? 1 : 0;
+  st.carmakerT = 0, st.carmakerIdx = roomName === "tutorial" ? 1 : 0;
   // Nuvole e uccelli (game/src/atmosphere.js): stesso timer di r12/Alarm_0.gml,
   // puramente decorativi (non incidono su niente in r12).
   const atmo = createAtmosphere();
   // Pedoni (game/src/pedestrians.js): un "pplo" per ogni salto di livello di
   // una casa (vedi spawnDecor() piu' sotto) — vuoto all'avvio, match_easy
   // parte senza nessuna casa gia' costruita.
-  let pedestrians = [];
+  st.pedestrians = [];
   // Mongolfiere (game/src/balloons.js): `balloons`/`loot` sono le mongolfiere
   // di risorse/spia e le casse che lasciano cadere (r12/Alarm_1.gml, ogni 5s);
   // `constructionBalloons`/`constructionBoxes` sono il pacco che ogni `casa`/
   // `industria` piazzata si porta dietro (placeholder/Mouse_LeftReleased.gml),
   // spawnate una alla volta da placeAt() piu' sotto, non da un timer.
-  let balloons = [];
-  let loot = [];
-  let constructionBalloons = [];
-  let constructionBoxes = [];
+  st.balloons = [];
+  st.loot = [];
+  st.constructionBalloons = [];
+  st.constructionBoxes = [];
   // I pulsanti blu delle monete (game/src/coins.js): una per `casa` felice e
   // con corrente, ogni 3000 tick — vedi stepCoinSpawner() piu' sotto.
-  let coins = [];
+  st.coins = [];
   // Le "bolle" che animano la raccolta di una moneta (nostre, non
   // dell'originale — vedi bubbleTex sopra): { x, y, t }, spawnate da
   // collectCoinAt() piu' sotto e disegnate/scartate nel loop principale.
-  let coinPops = [];
+  st.coinPops = [];
   const COIN_POP_LIFE = 0.4;
   const COIN_POP_COLOR = 0x4fc3f7;   // default: monete/mon — invariato
   // [Nota dell'autore: "per ora sono state fatte blu ovunque, falle invece
@@ -1251,11 +1254,11 @@ export async function mountMatch(ctx, params = {}) {
   // spawnata a intervalli regolari finche' il faro e' acceso (stage "lit"/
   // "expanding" — le stesse condizioni con cui game/src/platform.js disegna
   // gia' il bagliore "f1lux") invece che a ogni singolo tick del giocatore.
-  let faroFlashes = [];
+  st.faroFlashes = [];
   const FARO_FLASH_PERIOD = 40 / 60;   // [C] farolux|farolux3/Alarm_0.gml: action_set_alarm(40, 0)
   const FARO_FLASH_LIFE = 0.7;
   const FARO_FLASH_COLOR = 0xff80ff;   // [C] action_effect(...): colore 16744703 (BGR) -> #ff80ff
-  let faroFlashT1 = 0, faroFlashT2 = 0;
+  st.faroFlashT1 = 0, st.faroFlashT2 = 0;
   // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva quando
   // l'autodifesa scala i soldi — l'icona rossa dei soldi (costWarningIconFrame,
   // sopra), fade out, sale verso l'alto: una per il livello 2, due in
@@ -1272,7 +1275,7 @@ export async function mountMatch(ctx, params = {}) {
   // anche sul placeholder quando si prova a costruire senza abbastanza
   // soldi"] — chiamata da onTap/onPointerDown quando placeAt()/
   // armPlacement() rifiutano un piazzamento proprio per fondi insufficienti.
-  let costFloaters = [];
+  st.costFloaters = [];
   const COST_FLOAT_LIFE = 1.0, COST_FLOAT_RISE = 56;
   /** Spawna un costFloater (sopra) ancorato sopra un placeholder — stessa
    * icona/animazione del prelievo autodifesa, per segnalare un tentativo di
@@ -1284,50 +1287,50 @@ export async function mountMatch(ctx, params = {}) {
    * lo stesso margine cosmetico usato li' per non far nascere l'icona
    * incollata al pixel del bordo. */
   function spawnInsufficientFundsWarning(x, y, f) {
-    costFloaters.push({ x, y: y - f.oy - 6, t: 0 });
+    st.costFloaters.push({ x, y: y - f.oy - 6, t: 0 });
   }
   // Il fumo decorativo delle centrali (game/src/smoke.js): una o due ciminiere
   // per `industria` in piedi, mai in cantiere — vedi stepSmokeSpawner() piu'
   // sotto.
-  let smoke = new Pool();
+  st.smoke = new Pool();
   // Il lampo del fulmine (game/src/lightning.js) — un colpo per ogni edificio
   // (stepStormDamage, buildings.js) o mongolfiera (stepBalloons, balloons.js)
   // effettivamente colpiti durante una tempesta, vedi entrambe le chiamate
   // piu' sotto.
-  let lightning = [];
+  st.lightning = [];
   // La pioggia vera del temporale (game/src/weather.js) — sia quello vero
   // di `match` (r12.storm) sia quello cosmetico di `match_easy`
   // (r12.stormeasy): stepRain() piu' sotto decide da solo se e' il momento
   // di farla cadere, in base a quale dei due e' attivo.
-  let weatherState = createWeatherState();
+  st.weatherState = createWeatherState();
   // Minacce vere (game/src/threats.js): `threats` sono aerei/bombardieri/
   // zeppelin, fatti nascere da stepThreatSpawner (r12/Alarm_4|5|6.gml) ogni
   // volta che una mongolfiera spia viene ignorata abbastanza a lungo da
   // "riuscire" (balloons.js). `bombs`/`explosions` sono quello che lasciano
   // cadere in volo.
-  let threats = [];
-  let bombs = [];
-  let explosions = [];
+  st.threats = [];
+  st.bombs = [];
+  st.explosions = [];
   // Scia di fumo di aerei/bombardieri (game/src/threats.js, spawnAerSmoke/
   // stepAerSmoke) — mai gli zeppelin, [C] nessun Alarm_6 su dirig.
-  let aerSmoke = [];
+  st.aerSmoke = [];
   // Pezzi di fusoliera che bombar stacca entrando in stato piro
   // (game/src/threats.js, spawnDebris/stepDebris) — mai air/dirig.
-  let debris = [];
+  st.debris = [];
   // Il fuoco vero delle torrette (game/src/projectiles.js): stepTurretFire
   // crea i colpi (dalla punta del cannone, quando una minaccia vera e' entro
   // portata), stepProjectiles li fa volare e colpire.
-  let projectiles = [];
+  st.projectiles = [];
   // Sbuffi di fumo di scia (game/src/projectiles.js, spawnSmoko/stepSmoko):
   // la scia del razzo in volo + il singolo sbuffo alla bocca del gatling —
   // non il fumo delle centrali (quello e' `smoke`, game/src/smoke.js).
-  let trails = [];
+  st.trails = [];
   // Fasci del laser (game/src/projectiles.js, spawnBeam/stepBeams): l'unico
   // colpo del motore che non e' un proiettile ne' un fotogramma di sprite —
   // un quad pieno disegnato da drawBeams() sotto, vedi il commento su
   // WEAPONS.laser in projectiles.js.
-  let beams = [];
-  let r12 = createR12(roomName === "match");
+  st.beams = [];
+  st.r12 = createR12(roomName === "match");
   // [Nuova funzionalita', richiesta dall'autore: "in tutorial partiamo con
   // 10000 soldi in piu', altrimenti rischiano di non bastare"] Il tutorial fa
   // costruire ruderi/case/centrale/parco/missile ben prima che le tasse
@@ -1335,8 +1338,8 @@ export async function mountMatch(ctx, params = {}) {
   // uguali su ogni room) a volte non reggono l'intera sequenza guidata.
   // `monReal` aggiornato insieme (state.js/clampR12, DEBUG_INFINITE_RESOURCES):
   // resta il valore genuino "usabile" anche se il debug/sandbox e' spento.
-  if (roomName === "tutorial") { r12.mon += 10000; r12.monReal += 10000; }
-  let selectedType = "casa";   // scelto dal selettore in basso a sinistra
+  if (roomName === "tutorial") { st.r12.mon += 10000; st.r12.monReal += 10000; }
+  st.selectedType = "casa";   // scelto dal selettore in basso a sinistra
 
   // La ruspa (`puruspa`, `selec===11`, STUDIO.md/OTHER_BUILDINGS sotto): tocco
   // su un edificio finito con la ruspa selezionata NON demolisce subito — apre
@@ -1344,7 +1347,7 @@ export async function mountMatch(ctx, params = {}) {
   // `demoiessa`/`disegnaprezzo` — src/objects), letto qui in un solo oggetto
   // invece di quattro. `null` = nessun popup aperto. Vedi il commento sul
   // ramo "building" di input.onTap piu' sotto per come si arma/si conferma.
-  let ruspaPending = null;   // { buildingId, cost } — la posizione si legge da b.x/b.y quando serve, non duplicata qui
+  st.ruspaPending = null;   // { buildingId, cost } — la posizione si legge da b.x/b.y quando serve, non duplicata qui
 
   // Il pannello prestiti (src/objects/loanoscrino + get_loan1..4, state.js
   // LOANS/loanActive/takeLoan): a differenza del popup della ruspa (ancorato
@@ -1357,8 +1360,8 @@ export async function mountMatch(ctx, params = {}) {
   // `bankButtons` sono i rettangoli schermo dei 4 bottoni prestito,
   // ricalcolati ad ogni frame dal disegno (stesso schema di `uiButtons`),
   // letti da input.onTap sotto.
-  let bankPanelOpen = false;
-  let bankButtons = [];   // { x, y, w, h, index }
+  st.bankPanelOpen = false;
+  st.bankButtons = [];   // { x, y, w, h, index }
 
   // [Nuova funzionalita', richiesta dall'autore: "nel gioco originale c'era
   // un tasto floating su chies, sbloccato al livello 2, che permetteva di
@@ -1375,9 +1378,9 @@ export async function mountMatch(ctx, params = {}) {
   // basta un timer che scende verso 0, il bottone (world icon "tradeIcon"
   // piu' sotto) resta nascosto finche' non e' scaduto O il pannello e'
   // ancora aperto.
-  let tradePanelOpen = false;
-  let tradeButtons = [];   // { x, y, w, h, index }
-  let tradeCooldownT = 0;
+  st.tradePanelOpen = false;
+  st.tradeButtons = [];   // { x, y, w, h, index }
+  st.tradeCooldownT = 0;
   const TRADE_COOLDOWN = 400 * TICK;   // [C] tradebuttoner/Alarm_2.gml, armato da get1..4
 
   // Pannello informativo di un edificio (drawBuildingInfoPanel() piu' sotto)
@@ -1390,7 +1393,7 @@ export async function mountMatch(ctx, params = {}) {
   // panel aperto (destroyBuilding()/demolishMultiTile() sopra). Vero modale
   // in spazio schermo come `bankPanelOpen`: mentre e' aperto un tap va
   // SOLO al suo bottone di chiusura, mai al mondo sotto.
-  let buildingInfoPanel = null;   // istanza edificio, o null
+  st.buildingInfoPanel = null;   // istanza edificio, o null
   // Riquadro (spazio schermo) del controllo a tre segmenti (1/2/3) di
   // autodifesa dentro il pannello sopra — ricalcolato ad ogni
   // drawBuildingInfoPanel(), `null` quando il pannello e' chiuso o
@@ -1399,7 +1402,7 @@ export async function mountMatch(ctx, params = {}) {
   // "chiudi il pannello" (comportamento di default per ogni altro punto del
   // pannello): un tap dentro il riquadro sceglie il segmento sotto il dito
   // (`Math.floor((sx - x) / (w / 3))`), non serve un rect per segmento.
-  let buildingInfoSegRect = null;   // { x, y, w, h } — w/3 per segmento (1/2/3)
+  st.buildingInfoSegRect = null;   // { x, y, w, h } — w/3 per segmento (1/2/3)
 
   // Overlay costruzioni per mobile (drawBuildMenuOverlay() piu' sotto) —
   // [Nuova funzionalita', richiesta dall'autore: "sul mobile, invece della
@@ -1412,8 +1415,8 @@ export async function mountMatch(ctx, params = {}) {
   // `buildMenuButtons` (i rettangoli-griglia, ricalcolati ad inizio frame —
   // vedi il commento sulla freccia del tutorial piu' sotto per il perche')
   // sono lo stesso genere di array di `uiButtons`/`bankButtons`.
-  let buildMenuOpen = false;
-  let buildMenuButtons = [];   // { x, y, w, h, type?, spr? } — niente `type` = "Back"
+  st.buildMenuOpen = false;
+  st.buildMenuButtons = [];   // { x, y, w, h, type?, spr? } — niente `type` = "Back"
   // Cartellino prezzo/"Level N to unlock" della griglia mobile
   // (drawBuildMenuOverlay(), sotto) — l'equivalente touch dell'hover mouse
   // della riga scorrevole desktop (uiButtons piu' sotto). `input.hover`
@@ -1425,8 +1428,8 @@ export async function mountMatch(ctx, params = {}) {
   // cartellino ancora un attimo dopo, armati dal tap stesso (onTap, sotto)
   // con un timestamp assoluto (`performance.now()`, come il resto dei timer
   // "usa e getta" di questo motore) invece di un altro contatore dt-based.
-  let buildMenuTagType = null;
-  let buildMenuTagUntil = 0;
+  st.buildMenuTagType = null;
+  st.buildMenuTagUntil = 0;
   // [Bug corretto, richiesto dall'autore: "quando clicco un edificio ancora
   // bloccato lo sprite 'level N to unlock' deve comparire mezzo secondo e
   // sparire in dissolvenza"] Stato dedicato, separato da buildMenuTagType/
@@ -1451,8 +1454,8 @@ export async function mountMatch(ctx, params = {}) {
   // finito di dissolversi (mai su un bottone ancora bloccato: quello non
   // seleziona mai, vedi il commento li'). Il nome non e' piu' "locked": lo
   // stesso stato copre ora entrambi i casi (prezzo o "Level N to unlock").
-  let gridTapTagType = null;
-  let gridTapTagAt = 0;
+  st.gridTapTagType = null;
+  st.gridTapTagAt = 0;
   const GRID_TAP_SHOW_MS = 500;
   const GRID_TAP_FADE_MS = 400;
   // [Nuova funzionalita', richiesta dall'autore: "il cartellino del prezzo di
@@ -1483,7 +1486,7 @@ export async function mountMatch(ctx, params = {}) {
     // (bug segnalato dall'autore: "vedo le gru montarsi ma... spariscono
     // subito"). Il decoro transitorio sparisce invece in removeTransientDecor()
     // sotto, quando l'impalcatura e' DAVVERO smontata.
-    decorEntities = decorEntities.filter((d) => d.buildingId !== building.id || d.transient);
+    st.decorEntities = st.decorEntities.filter((d) => d.buildingId !== building.id || d.transient);
     // `parco` non ha un decoro fisso per livello come gli altri tre: il suo
     // e' uno scatter casuale di alberi/lampioni (vedi spawnParcoScatter() e
     // il commento su BUILDING_TYPES.parco in buildings.js) — intercettato
@@ -1505,7 +1508,7 @@ export async function mountMatch(ctx, params = {}) {
     // casa, ma una volta sola (villa e' un solo livello, questo "salto" e'
     // anche l'unico) — altri se ne aggiungono poi durante la crescita
     // (`g.pedestrianDice`, stepGrowth() in buildings.js).
-    if (building.type === "casa" || building.type === "villa") pedestrians.push(spawnPedestrian(building.x, building.y));
+    if (building.type === "casa" || building.type === "villa") st.pedestrians.push(spawnPedestrian(building.x, building.y));
   }
 
   /** Decoro transitorio (gru/macerie durante un cantiere): si aggiunge senza
@@ -1644,7 +1647,7 @@ export async function mountMatch(ctx, params = {}) {
       const y = building.y + dy;
       const isClub = building.type === "club";
       const scrubSpr = lit && !isClub ? scrubSpriteFor(spr) : null;
-      decorEntities.push({
+      st.decorEntities.push({
         obj: "decor", buildingId: building.id,
         x: building.x + dx, y, depth: (lit ? baseDepth - dy - 1 : baseDepth - dy) + depthOffset,
         spr, _f: frameFor(spr),
@@ -1689,8 +1692,8 @@ export async function mountMatch(ctx, params = {}) {
    * di stepLights() — ma quelli non hanno `_life` (solo i topper lo
    * dichiarano), quindi qui non serve nessun controllo sul tipo di decoro. */
   function stepTransientDecor(dt) {
-    for (const d of decorEntities) if (d._life != null) d._life -= dt;
-    decorEntities = decorEntities.filter((d) => d._life == null || d._life > 0);
+    for (const d of st.decorEntities) if (d._life != null) d._life -= dt;
+    st.decorEntities = st.decorEntities.filter((d) => d._life == null || d._life > 0);
   }
 
   /** `onSpawn` di stepConstructions() (buildings.js): le gru e i "topper"
@@ -1749,7 +1752,7 @@ export async function mountMatch(ctx, params = {}) {
    * — pulite qui a parte, cosi' un'eventuale prossima costruzione sullo
    * stesso edificio (upgrade successivo) riparte senza gru "morte" residue. */
   function removeTransientDecor(building) {
-    decorEntities = decorEntities.filter((d) => !(d.buildingId === building.id && d.transient));
+    st.decorEntities = st.decorEntities.filter((d) => !(d.buildingId === building.id && d.transient));
     building._cranes = null;
   }
 
@@ -1847,7 +1850,7 @@ export async function mountMatch(ctx, params = {}) {
     // piattaforma (segnalato dall'autore: "i placeholder delle espansioni
     // sono disponibili da subito anche se le espansioni non sono state
     // costruite").
-    if (!isPlaceholderActive(placeholder.x, placeholder.y, platformState)) {
+    if (!isPlaceholderActive(placeholder.x, placeholder.y, st.platformState)) {
       return t("msg.notPartOfPlatform");
     }
     // [C] placeholder/Mouse_LeftReleased.gml, selec==3: il piazzamento vero e
@@ -1855,7 +1858,7 @@ export async function mountMatch(ctx, params = {}) {
     // STUDIO.md "le mongolfiere" -> tooCloseToTurret()) — controllato PRIMA
     // del costo, come nel decompilato (il blocco intero e' innestato dentro
     // quel controllo, non dopo aver gia' scalato i mon).
-    if (def.turret && tooCloseToTurret(buildings, placeholder.x, placeholder.y)) {
+    if (def.turret && tooCloseToTurret(st.buildings, placeholder.x, placeholder.y)) {
       return t("msg.tooCloseToTurret");
     }
     // [C] placeholder/Mouse_LeftReleased.gml, ramo selec==71 (monum): scala
@@ -1863,8 +1866,8 @@ export async function mountMatch(ctx, params = {}) {
     // altro ramo di quel file — `def.noAffordCheck` riproduce esattamente
     // questa asimmetria (buildings.js, BUILDING_TYPES.monum) invece di
     // "correggerla" silenziosamente: puo' davvero portare mon sotto zero.
-    if (!def.noAffordCheck && !canAfford(r12, def.placeCost)) {
-      return t("msg.needMonHave", { cost: def.placeCost.mon, have: r12.mon.toFixed(0) });
+    if (!def.noAffordCheck && !canAfford(st.r12, def.placeCost)) {
+      return t("msg.needMonHave", { cost: def.placeCost.mon, have: st.r12.mon.toFixed(0) });
     }
     // `eolico`/`grattacielo` (def.multiTile.anchorOffset): il centro visivo
     // e' il placeholder TOCCATO piu' l'offset FISSO letto dal decompilato
@@ -1884,7 +1887,7 @@ export async function mountMatch(ctx, params = {}) {
       cluster = findWindCluster(placeholder);
       if (!cluster) return t("msg.needFreeArea", { count: def.multiTile.count });
     }
-    for (const k in def.placeCost) r12[k] -= def.placeCost[k];
+    for (const k in def.placeCost) st.r12[k] -= def.placeCost[k];
     // [C] `impavent`, una volta nato, uccide con la propria maschera ogni
     // placeholder che copre (Collision_placeholder.gml) — qui equivale a
     // consumare TUTTI i lotti del cluster, non solo quello toccato: gli altri
@@ -1894,7 +1897,7 @@ export async function mountMatch(ctx, params = {}) {
     // cosi' un salvataggio/caricamento non li libera di nuovo — vedi doLoad().
     for (const ph of cluster) {
       ph.consumed = true;
-      if (ph !== placeholder) blockedSlots.push({ x: ph.x, y: ph.y });
+      if (ph !== placeholder) st.blockedSlots.push({ x: ph.x, y: ph.y });
     }
     // depth 0, NON placeholder.depth (-5000): quel numero e' il livello fisso
     // "sempre in primo piano" del segnaposto vuoto (STUDIO.md, cosi' si vede
@@ -1923,7 +1926,7 @@ export async function mountMatch(ctx, params = {}) {
     // b.x/b.y" (quello che facevano entrambe le funzioni) non trovava piu'
     // mai nulla per un edificio multi-tile.
     if (def.multiTile) b.tiles = cluster.map((ph) => ({ x: ph.x, y: ph.y }));
-    buildings.push(b);
+    st.buildings.push(b);
     if (b.level >= 1) spawnDecor(b, currentDecor(b));   // industria: arriva a fine cantiere, casa idem
     // [C] placeholder/Mouse_LeftReleased.gml, letto riga per riga: selec==1
     // (casa), selec==2 (industria), selec==3 (missile), selec==60 (club),
@@ -1938,7 +1941,7 @@ export async function mountMatch(ctx, params = {}) {
     if (type === "casa" || type === "industria" || type === "missile" || type === "solare"
       || type === "club" || type === "villa" || type === "gatling" || type === "laser" || type === "eolico"
       || type === "monum" || type === "banca") {
-      constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y, type === "laser" || type === "banca"));
+      st.constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y, type === "laser" || type === "banca"));
     }
     return null;
   }
@@ -1971,13 +1974,13 @@ export async function mountMatch(ctx, params = {}) {
     // con un pannello gia' presente non deve costare ne' creare nulla.
     if (parco.oversolar) return t("msg.alreadySolarOnPark");
     const def = BUILDING_TYPES.solare;
-    if (!canAfford(r12, def.placeCost)) return t("msg.needMonHave", { cost: def.placeCost.mon, have: r12.mon.toFixed(0) });
-    for (const k in def.placeCost) r12[k] -= def.placeCost[k];
+    if (!canAfford(st.r12, def.placeCost)) return t("msg.needMonHave", { cost: def.placeCost.mon, have: st.r12.mon.toFixed(0) });
+    for (const k in def.placeCost) st.r12[k] -= def.placeCost[k];
     const b = placeBuilding("solare", parco.x, parco.y, 0);
     b.overpark = true;
     parco.oversolar = true;
-    buildings.push(b);
-    constructionBalloons.push(spawnConstructionBalloon(parco.x, parco.y));
+    st.buildings.push(b);
+    st.constructionBalloons.push(spawnConstructionBalloon(parco.x, parco.y));
     return null;
   }
 
@@ -2052,11 +2055,11 @@ export async function mountMatch(ctx, params = {}) {
     const def = BUILDING_TYPES[type];
     // Stesso gate di placeAt() sopra (platform.js, isPlaceholderActive()): un
     // lotto non ancora su un pezzo di piattaforma esistente non arma niente.
-    if (!isPlaceholderActive(origin.x, origin.y, platformState)) {
+    if (!isPlaceholderActive(origin.x, origin.y, st.platformState)) {
       return t("msg.notPartOfPlatform");
     }
-    if (!canAfford(r12, def.placeCost)) {
-      return t("msg.needMonHave", { cost: def.placeCost.mon, have: r12.mon.toFixed(0) });
+    if (!canAfford(st.r12, def.placeCost)) {
+      return t("msg.needMonHave", { cost: def.placeCost.mon, have: st.r12.mon.toFixed(0) });
     }
     const targets = findDiagonalTargets(origin);
     // [I] l'originale arma comunque (crea cre1..cre4 a vuoto) anche con zero
@@ -2064,16 +2067,16 @@ export async function mountMatch(ctx, params = {}) {
     // come gia' scelto per eolico, un messaggio chiaro subito invece di un
     // gesto che puo' solo fallire.
     if (targets.length === 0) return t("msg.needFreeDiagonalLot");
-    armedPlacement = { type, origin, targets };
+    st.armedPlacement = { type, origin, targets };
     origin._armed = true;
     return null;
   }
 
   /** Annulla un gesto armato senza costruire nulla e senza costo — [C] placeholder/Mouse_GlobalLeftReleased.gml. */
   function cancelPlacement() {
-    if (!armedPlacement) return;
-    armedPlacement.origin._armed = false;
-    armedPlacement = null;
+    if (!st.armedPlacement) return;
+    st.armedPlacement.origin._armed = false;
+    st.armedPlacement = null;
   }
 
   /**
@@ -2094,21 +2097,21 @@ export async function mountMatch(ctx, params = {}) {
    * torrette).
    */
   function resolvePlacement(sx, sy) {
-    if (!armedPlacement) return;
-    const { type, origin, targets } = armedPlacement;
+    if (!st.armedPlacement) return;
+    const { type, origin, targets } = st.armedPlacement;
     const w = cam.screenToWorld(sx, sy);
     const hit = targets.find((t) => inFrameDiamond(w.x, w.y, t.placeholder.x, t.placeholder.y, t.placeholder._f));
     if (!hit) {
       cancelPlacement();
-      message = t("msg.placementCancelled");
-      messageT = 3;
+      st.message = t("msg.placementCancelled");
+      st.messageT = 3;
       return;
     }
     const def = BUILDING_TYPES[type];
     const neighbor = hit.placeholder;
     const buildSite = neighbor.y > origin.y ? neighbor : origin;
     origin._armed = false;
-    for (const k in def.placeCost) r12[k] -= def.placeCost[k];
+    for (const k in def.placeCost) st.r12[k] -= def.placeCost[k];
     buildSite.consumed = true;
     // L'asse (dir1/dir3 "r" contro dir2/dir4 "rd", vedi il commento su
     // DIAGONAL_DIRS sopra) sceglie una catena di cantiere/varianti
@@ -2133,12 +2136,12 @@ export async function mountMatch(ctx, params = {}) {
     // maggiore (buildSite, "la base piu' in basso delle due"), mai una
     // media con l'altro lotto.
     const b = placeBuilding(concreteType, buildSite.x, buildSite.y, -buildSite.y);
-    buildings.push(b);
+    st.buildings.push(b);
     if (b.level >= 1) spawnDecor(b, currentDecor(b));
-    constructionBalloons.push(spawnConstructionBalloon(buildSite.x, buildSite.y));
-    armedPlacement = null;
-    message = t("msg.built", { label: def.label, cost: def.placeCost.mon });
-    messageT = 3;
+    st.constructionBalloons.push(spawnConstructionBalloon(buildSite.x, buildSite.y));
+    st.armedPlacement = null;
+    st.message = t("msg.built", { label: def.label, cost: def.placeCost.mon });
+    st.messageT = 3;
   }
 
   /** Aggiunge `chies` a `buildings` a partita nuova (nessun salvataggio): non
@@ -2146,7 +2149,7 @@ export async function mountMatch(ctx, params = {}) {
   function seedChies() {
     if (!chiesScene) return;
     const b = placeBuilding("chies", chiesScene.x, chiesScene.y, chiesScene.depth);
-    buildings.push(b);
+    st.buildings.push(b);
     spawnDecor(b, currentDecor(b));
   }
 
@@ -2157,8 +2160,8 @@ export async function mountMatch(ctx, params = {}) {
   function seedTutorialBuildings() {
     for (const it of tutorialPrebuilt) {
       const spec = TUTORIAL_PREBUILT_TYPES[it.obj];
-      const b = placeFinishedBuilding(spec.type, it.x, it.y, it.depth, spec.level, r12);
-      buildings.push(b);
+      const b = placeFinishedBuilding(spec.type, it.x, it.y, it.depth, spec.level, st.r12);
+      st.buildings.push(b);
       spawnDecor(b, currentDecor(b));
     }
   }
@@ -2201,14 +2204,14 @@ export async function mountMatch(ctx, params = {}) {
   function destroyBuilding(b) {
     const spr = ruinSpriteFor(b);
     if (!spr) return;
-    r12.pop += currentDeathPop(b);
-    r12.hap += currentDeathHap(b);
-    decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
-    buildings = buildings.filter((x) => x !== b);
-    coins = coins.filter((c) => c.buildingId !== b.id);
-    if (picked?.obj === "building" && picked.ref === b) picked = null;
-    if (buildingInfoPanel === b) buildingInfoPanel = null;
-    ruins.push({
+    st.r12.pop += currentDeathPop(b);
+    st.r12.hap += currentDeathHap(b);
+    st.decorEntities = st.decorEntities.filter((d) => d.buildingId !== b.id);
+    st.buildings = st.buildings.filter((x) => x !== b);
+    st.coins = st.coins.filter((c) => c.buildingId !== b.id);
+    if (st.picked?.obj === "building" && st.picked.ref === b) st.picked = null;
+    if (st.buildingInfoPanel === b) st.buildingInfoPanel = null;
+    st.ruins.push({
       x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr),
       level: b.level, cost: ruinRebuildCost(b.level),
     });
@@ -2226,8 +2229,8 @@ export async function mountMatch(ctx, params = {}) {
    * RIMPIAZZATO da spawnDecor() al completamento — e stepLights() lo
    * continuava ad accendere di notte per tutta la durata del cantiere. */
   function startUpgrade(b) {
-    const err = tryStartUpgrade(b, r12, buildings);
-    if (!err) decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
+    const err = tryStartUpgrade(b, st.r12, st.buildings);
+    if (!err) st.decorEntities = st.decorEntities.filter((d) => d.buildingId !== b.id);
     return err;
   }
 
@@ -2257,15 +2260,15 @@ export async function mountMatch(ctx, params = {}) {
   // del rifiuto) — i due esiti si distinguono cosi' invece che con `null`
   // per entrambi, che avrebbe fatto leggere "construction started" anche
   // quando non e' partito nulla.
-  let upgradeTagBuildingId = null;
-  let upgradeTagAt = 0;
+  st.upgradeTagBuildingId = null;
+  st.upgradeTagAt = 0;
   function attemptUpgradeTap(b) {
-    if (isMobile && upgradeUnlocked(b, r12, buildings)) {
-      const peeking = upgradeTagBuildingId === b.id
-        && performance.now() - upgradeTagAt < UPGRADE_TAG_SHOW_MS + GRID_TAP_FADE_MS;
+    if (isMobile && upgradeUnlocked(b, st.r12, st.buildings)) {
+      const peeking = st.upgradeTagBuildingId === b.id
+        && performance.now() - st.upgradeTagAt < UPGRADE_TAG_SHOW_MS + GRID_TAP_FADE_MS;
       if (!peeking) {
-        upgradeTagBuildingId = b.id;
-        upgradeTagAt = performance.now();
+        st.upgradeTagBuildingId = b.id;
+        st.upgradeTagAt = performance.now();
         return undefined;
       }
     }
@@ -2276,8 +2279,8 @@ export async function mountMatch(ctx, params = {}) {
    * dalla ruspa (tryRuspaRebuild() — un impalcatura torna comunque sopra
    * all'edificio, con lo stesso decoro vecchio da spegnere subito). */
   function ruspaRebuild(b) {
-    const err = tryRuspaRebuild(b, r12);
-    if (!err) decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
+    const err = tryRuspaRebuild(b, st.r12);
+    if (!err) st.decorEntities = st.decorEntities.filter((d) => d.buildingId !== b.id);
     return err;
   }
 
@@ -2311,12 +2314,12 @@ export async function mountMatch(ctx, params = {}) {
     for (const t of b.tiles ?? [{ x: b.x, y: b.y }]) {
       const ph = placeholders.find((p) => p.x === t.x && p.y === t.y);
       if (ph) ph.consumed = false;
-      blockedSlots = blockedSlots.filter((s) => !(s.x === t.x && s.y === t.y));
+      st.blockedSlots = st.blockedSlots.filter((s) => !(s.x === t.x && s.y === t.y));
     }
-    decorEntities = decorEntities.filter((d) => d.buildingId !== b.id);
-    buildings = buildings.filter((x) => x !== b);
-    if (picked?.obj === "building" && picked.ref === b) picked = null;
-    if (buildingInfoPanel === b) buildingInfoPanel = null;
+    st.decorEntities = st.decorEntities.filter((d) => d.buildingId !== b.id);
+    st.buildings = st.buildings.filter((x) => x !== b);
+    if (st.picked?.obj === "building" && st.picked.ref === b) st.picked = null;
+    if (st.buildingInfoPanel === b) st.buildingInfoPanel = null;
   }
 
   // -------------------------------------------------------------- salvataggio
@@ -2348,7 +2351,7 @@ export async function mountMatch(ctx, params = {}) {
   // lo stesso file. Seminato da `params.fileHandle` quando si arriva da un
   // "Carica partita" del menu principale (si e' gia' scelto un file, non
   // ha senso chiederne un secondo al primo salvataggio).
-  let fileHandle = params.fileHandle ?? null;
+  st.fileHandle = params.fileHandle ?? null;
 
   // [Nuova funzionalita', richiesta dall'autore: "eviterei di far salvare in
   // situazioni critiche (sotto attacco, con poco oil ecc)"] Ritorna una
@@ -2389,14 +2392,14 @@ export async function mountMatch(ctx, params = {}) {
     // quelli critici). Soglia assoluta di riserva quando il tetto non e'
     // ancora un numero vero, proporzionata all'olio di partenza (5000-7500,
     // state.js `createR12()`).
-    const cap = oilCap(buildings);
+    const cap = oilCap(st.buildings);
     const oilThreshold = Number.isFinite(cap) ? cap * 0.1 : 500;
-    if (r12.oil <= oilThreshold) return { kind: "oil", text: t("msg.oilAlmostDepleted") };
-    if (r12.storm) return { kind: "attack", text: t("msg.stormHitting") };
-    if (r12.alertT > 0) return { kind: "attack", text: t("msg.attackIncoming") };
+    if (st.r12.oil <= oilThreshold) return { kind: "oil", text: t("msg.oilAlmostDepleted") };
+    if (st.r12.storm) return { kind: "attack", text: t("msg.stormHitting") };
+    if (st.r12.alertT > 0) return { kind: "attack", text: t("msg.attackIncoming") };
     if (chiesScene) {
       const r2 = CRITICAL_THREAT_RADIUS * CRITICAL_THREAT_RADIUS;
-      const near = threats.some((th) => (th.x - chiesScene.x) ** 2 + (th.y - chiesScene.y) ** 2 < r2);
+      const near = st.threats.some((th) => (th.x - chiesScene.x) ** 2 + (th.y - chiesScene.y) ** 2 < r2);
       if (near) return { kind: "attack", text: t("msg.threatNear") };
     }
     return null;
@@ -2404,9 +2407,9 @@ export async function mountMatch(ctx, params = {}) {
 
   function doSave() {
     const reason = criticalSaveReason();
-    if (reason) { message = t("msg.cantSaveNow", { reason: reason.text }); messageT = 3; return; }
-    save(scene.name, r12, buildings, ruins, blockedSlots, platformState);
-    message = t("msg.gameSaved"); messageT = 3;
+    if (reason) { st.message = t("msg.cantSaveNow", { reason: reason.text }); st.messageT = 3; return; }
+    save(scene.name, st.r12, st.buildings, st.ruins, st.blockedSlots, st.platformState);
+    st.message = t("msg.gameSaved"); st.messageT = 3;
     showSaveIcon();
   }
   // Applica un salvataggio gia' letto/parsato (da localStorage O da file,
@@ -2414,16 +2417,16 @@ export async function mountMatch(ctx, params = {}) {
   // doLoad() (localStorage) e doLoadFromFile() sotto, cosi' i due percorsi
   // non possono disallinearsi silenziosamente col tempo.
   function applyLoadedData(data) {
-    r12 = data.r12;
-    buildings = data.buildings;
+    st.r12 = data.r12;
+    st.buildings = data.buildings;
     // `?.tier1`: scarta anche un salvataggio con la forma vecchia (prima
     // dei due livelli fari/piattaforma) invece di rompersi su di lui — lo
     // stesso principio "niente stato vecchio da onorare" gia' scelto per
     // l'autoload (commento sopra).
-    if (platformState) platformState = data.platformState?.tier1 ? data.platformState : createFaroState();
-    decorEntities = [];
+    if (st.platformState) st.platformState = data.platformState?.tier1 ? data.platformState : createFaroState();
+    st.decorEntities = [];
     const usedIds = new Set();
-    for (const b of buildings) {
+    for (const b of st.buildings) {
       // ricostruisce quali placeholder sono occupati dalla posizione
       // salvata. [Bug corretto] `b.tiles` (placeAt(), sopra): per un
       // edificio multi-tile (eolico/grattacielo) `b.x/b.y` e' l'ancora
@@ -2449,19 +2452,19 @@ export async function mountMatch(ctx, params = {}) {
     // placeholder, ci nasce sopra un cantiere vero): stesso ciclo `usedIds`
     // di sopra, cosi' un edificio e un rudere non litigano mai per lo
     // stesso slot.
-    ruins = (data.ruins ?? []).map((ru) => ({
+    st.ruins = (data.ruins ?? []).map((ru) => ({
       x: ru.x, y: ru.y, depth: -ru.y, spr: ru.spr, _f: frameFor(ru.spr),
       level: ru.level ?? 1, cost: ruinRebuildCost(ru.level ?? 1),
     }));
-    for (const ru of ruins) {
+    for (const ru of st.ruins) {
       const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === ru.x && p.y === ru.y);
       if (ph) { ph.consumed = true; usedIds.add(ph.id); }
     }
     // Lotti "extra" di un edificio multi-tile (placeAt() sopra, oggi solo
     // `eolico`): niente da disegnare, solo un placeholder che deve restare
     // bloccato — stesso ciclo `usedIds` di sopra.
-    blockedSlots = (data.blockedSlots ?? []).map((s) => ({ x: s.x, y: s.y }));
-    for (const s of blockedSlots) {
+    st.blockedSlots = (data.blockedSlots ?? []).map((s) => ({ x: s.x, y: s.y }));
+    for (const s of st.blockedSlots) {
       const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === s.x && p.y === s.y);
       if (ph) { ph.consumed = true; usedIds.add(ph.id); }
     }
@@ -2490,17 +2493,17 @@ export async function mountMatch(ctx, params = {}) {
   // messaggio "a fuoco e dimentica" del motore.
   async function doSaveToFile() {
     const reason = criticalSaveReason();
-    if (reason) { message = t("msg.cantSaveNow", { reason: reason.text }); messageT = 3; return; }
-    const data = serializeSave(scene.name, r12, buildings, ruins, blockedSlots, platformState);
+    if (reason) { st.message = t("msg.cantSaveNow", { reason: reason.text }); st.messageT = 3; return; }
+    const data = serializeSave(scene.name, st.r12, st.buildings, st.ruins, st.blockedSlots, st.platformState);
     try {
-      const h = await saveToFile(data, fileHandle);
+      const h = await saveToFile(data, st.fileHandle);
       if (h === undefined) return;   // dialog annullato dall'utente, nessun messaggio
-      if (h) fileHandle = h;
-      message = t("msg.gameSavedToFile"); messageT = 3;
+      if (h) st.fileHandle = h;
+      st.message = t("msg.gameSavedToFile"); st.messageT = 3;
       showSaveIcon();
     } catch (err) {
       console.error("nimbus: salvataggio su file fallito", err);
-      message = t("msg.saveToFileFailed"); messageT = 3;
+      st.message = t("msg.saveToFileFailed"); st.messageT = 3;
     }
   }
   async function doLoadFromFile() {
@@ -2509,7 +2512,7 @@ export async function mountMatch(ctx, params = {}) {
       result = await loadFromFile();
     } catch (err) {
       console.error("nimbus: caricamento da file fallito", err);
-      message = t("msg.loadFromFileFailed"); messageT = 3;
+      st.message = t("msg.loadFromFileFailed"); st.messageT = 3;
       return;
     }
     if (!result) return;   // dialog annullato dall'utente, nessun messaggio
@@ -2518,7 +2521,7 @@ export async function mountMatch(ctx, params = {}) {
     // il checksum non combacia (modificato a mano, save.js/verify()). A
     // differenza del dialog annullato (sopra) qui vale la pena dirlo.
     if (result === "invalid") {
-      message = t("msg.invalidFile"); messageT = 3;
+      st.message = t("msg.invalidFile"); st.messageT = 3;
       return;
     }
     // Un file salvato per un'ALTRA room (es. si apre un salvataggio di
@@ -2530,10 +2533,10 @@ export async function mountMatch(ctx, params = {}) {
       navigate("match", { room: result.data.scene, autoload: false, loadedData: result.data, fileHandle: result.handle });
       return;
     }
-    if (result.handle) fileHandle = result.handle;
+    if (result.handle) st.fileHandle = result.handle;
     applyLoadedData(result.data);
-    picked = null;
-    message = t("msg.gameLoadedFromFile"); messageT = 3;
+    st.picked = null;
+    st.message = t("msg.gameLoadedFromFile"); st.messageT = 3;
     // Valore di ritorno (`true`/`undefined`): il chiamante dal menu di pausa
     // lo ignora (fuoco e dimentica, come sempre), ma la schermata di game
     // over (input.onTap, sotto) ne ha bisogno per sapere QUANDO chiudersi —
@@ -2568,7 +2571,7 @@ export async function mountMatch(ctx, params = {}) {
     // `outcome` (sopra) e' a schermo: in sconfitta non c'e' niente da
     // riprendere, in vittoria "P" toglierebbe di mezzo il pannello senza
     // passare dal tap che lo chiude per davvero (onTap sotto).
-    if ((e.key === "p" || e.key === "P") && !outcome) { paused = !paused; pauseSubmenu = null; }
+    if ((e.key === "p" || e.key === "P") && !st.outcome) { st.paused = !st.paused; st.pauseSubmenu = null; }
   }
   window.addEventListener("keydown", onKeydown);
 
@@ -2701,7 +2704,7 @@ export async function mountMatch(ctx, params = {}) {
     return from.map((v, j) => v + (to[j] - v) * k);
   }
 
-  let phaseT = 0;
+  st.phaseT = 0;
   function phaseIndexAt(t) {
     const total = PHASES.reduce((s, p) => s + p.dur, 0);
     let u = t % total;
@@ -3015,7 +3018,7 @@ export async function mountMatch(ctx, params = {}) {
    */
   function drawBeams() {
     const half = 7;   // meta' spessore del nucleo del fascio, in px (invariato)
-    for (const bm of beams) {
+    for (const bm of st.beams) {
       const dx = bm.x1 - bm.x0, dy = bm.y1 - bm.y0;
       const len = Math.hypot(dx, dy) || 1;
       const ux = dx / len, uy = dy / len;
@@ -3104,8 +3107,8 @@ export async function mountMatch(ctx, params = {}) {
     document.body.appendChild(el);
     return el;
   });
-  let textPoolUsed = 0;
-  function resetTextPool() { textPoolUsed = 0; }
+  st.textPoolUsed = 0;
+  function resetTextPool() { st.textPoolUsed = 0; }
   // [Nuova funzionalita', richiesta dall'autore: "sostituisci gli sprite
   // mfs1/mfs11/mfs2 delle due schermate nere della cutscene iniziale del
   // tutorial con scritte Montserrat vere, stesso effetto grafico del menu
@@ -3165,7 +3168,7 @@ export async function mountMatch(ctx, params = {}) {
     }
   }
   function hideUnusedText() {
-    for (let i = textPoolUsed; i < textPool.length; i++) textPool[i].style.display = "none";
+    for (let i = st.textPoolUsed; i < textPool.length; i++) textPool[i].style.display = "none";
   }
   /** Prende il prossimo elemento libero dal pool, lo posiziona/testizza e lo
    * rende visibile — un'etichetta centrata su (cx,cy) di norma (i bottoni/
@@ -3202,7 +3205,7 @@ export async function mountMatch(ctx, params = {}) {
   // ora il primo rispetta `align:"center"` quando richiesto esplicitamente
   // (i due messaggi di sconfitta sotto), il secondo resta identico a prima.
   function drawHtmlText(text, x, y, { size = 16, maxWidth, wrap = false, align, color } = {}) {
-    const el = textPool[textPoolUsed++];
+    const el = textPool[st.textPoolUsed++];
     el.textContent = text;
     el.style.display = "block";
     el.style.fontSize = `${size}px`;
@@ -3281,11 +3284,11 @@ export async function mountMatch(ctx, params = {}) {
    * sotto resta congelato, quindi viene fatta al piu' una volta per
    * "sessione" di pausa invece che ad ogni frame di ognuno dei tre. */
   function getCachedPauseBlur() {
-    if (!pauseBlurTex || pauseBlurW !== canvas.width || pauseBlurH !== canvas.height) {
-      pauseBlurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
-      pauseBlurW = canvas.width; pauseBlurH = canvas.height;
+    if (!st.pauseBlurTex || st.pauseBlurW !== canvas.width || st.pauseBlurH !== canvas.height) {
+      st.pauseBlurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
+      st.pauseBlurW = canvas.width; st.pauseBlurH = canvas.height;
     }
-    return pauseBlurTex;
+    return st.pauseBlurTex;
   }
   /**
    * Controllo "segmentato": N bottoni distinti e arrotondati affiancati su
@@ -3397,21 +3400,21 @@ export async function mountMatch(ctx, params = {}) {
     const title = t("pause.title");
     drawHtmlText(title, px + panelW / 2, py + 34, { size: 26 });
 
-    pauseMenuButtons = [];
+    st.pauseMenuButtons = [];
     const btnW = panelW - 60;
     const bx = px + (panelW - btnW) / 2;
     let by = py + 96;
     for (const row of rowsBefore) {
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
       drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
-      pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+      st.pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
 
     drawHtmlText(t("pause.language"), bx + btnW / 2, by + LANG_CAPTION_H / 2, { size: 14, maxWidth: btnW - 20 });
     by += LANG_CAPTION_H;
     const curLang = getLang();
-    pauseMenuButtons.push(...drawSegmentedControl(bx, by, btnW, LANG_SEG_H,
+    st.pauseMenuButtons.push(...drawSegmentedControl(bx, by, btnW, LANG_SEG_H,
       LANGUAGES.map((code) => ({ value: code, selected: code === curLang })), "setLang",
       (seg, sx, sy, sw, sh) => drawHtmlText(seg.value.toUpperCase(), sx + sw / 2, sy + sh / 2, { size: 14, maxWidth: sw - 6 })));
     by += LANG_SEG_H + btnGap;
@@ -3419,7 +3422,7 @@ export async function mountMatch(ctx, params = {}) {
     for (const row of rowsAfter) {
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
       drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
-      pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+      st.pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
     r.flush();
@@ -3446,11 +3449,11 @@ export async function mountMatch(ctx, params = {}) {
 
     const onOff = (v) => (v ? t("common.on") : t("common.off"));
     const rowsBefore = [
-      { label: t("savingOptions.autosave", { state: onOff(autosave.enabled) }), action: "toggleEnabled" },
+      { label: t("savingOptions.autosave", { state: onOff(st.autosave.enabled) }), action: "toggleEnabled" },
     ];
     const rowsAfter = [
-      { label: t("savingOptions.duringAttacks", { state: onOff(autosave.duringAttacks) }), action: "toggleAttacks" },
-      { label: t("savingOptions.duringLowOil", { state: onOff(autosave.duringLowOil) }), action: "toggleLowOil" },
+      { label: t("savingOptions.duringAttacks", { state: onOff(st.autosave.duringAttacks) }), action: "toggleAttacks" },
+      { label: t("savingOptions.duringLowOil", { state: onOff(st.autosave.duringLowOil) }), action: "toggleLowOil" },
       { label: t("savingOptions.back"), action: "back" },
     ];
     // Stessa didascalia + drawSegmentedControl() (sopra, vicino a
@@ -3472,28 +3475,28 @@ export async function mountMatch(ctx, params = {}) {
     const title = t("savingOptions.title");
     drawHtmlText(title, px + panelW / 2, py + 38, { size: 22, maxWidth: panelW - 24 });
 
-    pauseMenuButtons = [];
+    st.pauseMenuButtons = [];
     const btnW = panelW - 60;
     const bx = px + (panelW - btnW) / 2;
     let by = py + 96;
     for (const row of rowsBefore) {
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
       drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
-      pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+      st.pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
 
     drawHtmlText(t("savingOptions.interval"), bx + btnW / 2, by + INTERVAL_CAPTION_H / 2, { size: 14, maxWidth: btnW - 20 });
     by += INTERVAL_CAPTION_H;
-    pauseMenuButtons.push(...drawSegmentedControl(bx, by, btnW, INTERVAL_SEG_H,
-      AUTOSAVE_INTERVALS.map((min) => ({ value: min, selected: min === autosave.intervalMin })), "setInterval",
+    st.pauseMenuButtons.push(...drawSegmentedControl(bx, by, btnW, INTERVAL_SEG_H,
+      AUTOSAVE_INTERVALS.map((min) => ({ value: min, selected: min === st.autosave.intervalMin })), "setInterval",
       (seg, sx, sy, sw, sh) => drawHtmlText(String(seg.value), sx + sw / 2, sy + sh / 2, { size: 13, maxWidth: sw - 4 })));
     by += INTERVAL_SEG_H + btnGap;
 
     for (const row of rowsAfter) {
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
       drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
-      pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+      st.pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
     r.flush();
@@ -3530,14 +3533,14 @@ export async function mountMatch(ctx, params = {}) {
       px + 30, py + 60, { size: 14, maxWidth: panelW - 60, wrap: true },
     );
 
-    pauseMenuButtons = [];
+    st.pauseMenuButtons = [];
     const btnW = panelW - 60, btnH = 46, btnGap = 14;
     let by = py + 96 + warnH;
     for (const row of rows) {
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
       drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
-      pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+      st.pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
     r.flush();
@@ -3594,7 +3597,7 @@ export async function mountMatch(ctx, params = {}) {
     { get name() { return t("autoDefense.level3.name"); }, get desc() { return t("autoDefense.level3.desc"); } },
   ];
   function drawBuildingInfoPanel() {
-    const b = buildingInfoPanel;
+    const b = st.buildingInfoPanel;
     const def = BUILDING_TYPES[b.type];
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
     const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
@@ -3667,7 +3670,7 @@ export async function mountMatch(ctx, params = {}) {
     const title = def.label + (maxLevel > 1 && !b.construction ? t("buildingInfo.levelSuffix", { level: b.level, max: maxLevel }) : "");
     drawHtmlText(title, px + panelW / 2, py + 32, { size: 20, maxWidth: panelW - 30 });
 
-    buildingInfoSegRect = null;
+    st.buildingInfoSegRect = null;
     let cy = py + headerH;
     if (b.construction) {
       drawHtmlText(t("buildingInfo.underConstruction"), px + panelW / 2, cy + 10, { size: 15, maxWidth: panelW - 30 });
@@ -3689,7 +3692,7 @@ export async function mountMatch(ctx, params = {}) {
         // con una pillola sovrapposta solo sul selezionato — cosi' anche i
         // due non selezionati si leggono come bottoni a se stanti, non come
         // sfondo neutro. SEG_GAP li stacca visibilmente l'uno dall'altro.
-        buildingInfoSegRect = { x: barX, y: cy, w: barW, h: SEG_H };
+        st.buildingInfoSegRect = { x: barX, y: cy, w: barW, h: SEG_H };
         const segW = barW / 3, SEG_GAP = 6;
         // [Nuova funzionalita', richiesta dall'autore: "al posto dei numeri
         // 1/2/3 usiamo i tre simboli dell'occhio inutilizzati che hanno gia'
@@ -3797,13 +3800,13 @@ export async function mountMatch(ctx, params = {}) {
     ty += subH + gap2;
 
     const years = LOAN_MONTHS / 12;
-    bankButtons = [];
+    st.bankButtons = [];
     for (let i = 0; i < LOANS.length; i++) {
       const bx = px + (panelW - btnW) / 2;
       r.draw(pauseButtonFrame(btnW, btnH), bx, ty, 1, BUTTON_TINT, BUTTON_ALPHA);
       drawIconLine([{ text: `${LOANS[i].amount} ` }, { icon: "mon" }, { text: t("bank.inYears", { years }) }],
         bx + btnW / 2, ty + btnH / 2, { size: 16 });
-      bankButtons.push({ x: bx, y: ty, w: btnW, h: btnH, index: i });
+      st.bankButtons.push({ x: bx, y: ty, w: btnW, h: btnH, index: i });
       ty += btnH + btnGap;
     }
     r.flush();
@@ -3843,7 +3846,7 @@ export async function mountMatch(ctx, params = {}) {
     drawHtmlText(t("trade.title"), px + panelW / 2, ty + titleH / 2, { size: 22 });
     ty += titleH + gap1;
 
-    tradeButtons = [];
+    st.tradeButtons = [];
     for (let i = 0; i < TRADES.length; i++) {
       const trade = TRADES[i];
       const bx = px + (panelW - btnW) / 2;
@@ -3852,7 +3855,7 @@ export async function mountMatch(ctx, params = {}) {
         { text: t("trade.getPrefix", { amount: trade.takeAmount }) }, { icon: trade.take },
         { text: t("trade.forMiddle", { amount: trade.giveAmount }) }, { icon: trade.give },
       ], bx + btnW / 2, ty + btnH / 2, { size: 15 });
-      tradeButtons.push({ x: bx, y: ty, w: btnW, h: btnH, index: i });
+      st.tradeButtons.push({ x: bx, y: ty, w: btnW, h: btnH, index: i });
       ty += btnH + btnGap;
     }
     r.flush();
@@ -3949,7 +3952,7 @@ export async function mountMatch(ctx, params = {}) {
     // stato ridotto in proporzione: senza testo non serve piu' tutto quello
     // spazio sopra la griglia.
 
-    for (const b of buildMenuButtons) {
+    for (const b of st.buildMenuButtons) {
       if (!b.type) continue;   // "Back", disegnato a parte sotto
       const f = frameFor(b.spr);
       if (!f) continue;
@@ -3983,7 +3986,7 @@ export async function mountMatch(ctx, params = {}) {
       // marcando a colpo d'occhio quale dei bottoni di questa griglia e' lo
       // strumento davvero attivo in questo momento — prima nessuno dei due
       // stati (selezionato o no) si distingueva dall'altro qui dentro.
-      const isSelected = selectedType === b.type;
+      const isSelected = st.selectedType === b.type;
       const icon = isSelected ? findBuildingIcon(b.type) : null;
       // `locked`: stessa soglia di livello chiesa della riga scorrevole
       // desktop (buildingLocked()/LOCKED_BUTTON_ALPHA, definite piu' sotto
@@ -4003,12 +4006,12 @@ export async function mountMatch(ctx, params = {}) {
     // lasci il cartellino ancora un attimo. Nessun controllo su
     // `hoverPointerType`: questo overlay esiste solo su mobile (isMobile,
     // buildMenuOpen sopra), il touch e' l'unico caso reale.
-    const hoveredTagBtn = input.hover && buildMenuButtons.find((b) => b.type
+    const hoveredTagBtn = input.hover && st.buildMenuButtons.find((b) => b.type
       && input.hover.x >= b.x && input.hover.x <= b.x + b.w
       && input.hover.y >= b.y && input.hover.y <= b.y + b.h);
-    if (hoveredTagBtn) { buildMenuTagType = hoveredTagBtn.type; buildMenuTagUntil = performance.now() + 2500; }
+    if (hoveredTagBtn) { st.buildMenuTagType = hoveredTagBtn.type; st.buildMenuTagUntil = performance.now() + 2500; }
     const tagBtn = hoveredTagBtn
-      ?? (buildMenuTagType && performance.now() < buildMenuTagUntil ? buildMenuButtons.find((b) => b.type === buildMenuTagType) : null);
+      ?? (st.buildMenuTagType && performance.now() < st.buildMenuTagUntil ? st.buildMenuButtons.find((b) => b.type === st.buildMenuTagType) : null);
     // Clampato dentro lo schermo (min/max sotto): un bottone sul bordo
     // sinistro/destro della griglia spingerebbe altrimenti il cartellino
     // (piu' largo di una singola cella) oltre il bordo del canvas.
@@ -4030,10 +4033,10 @@ export async function mountMatch(ctx, params = {}) {
     // caso) — pieno per GRID_TAP_SHOW_MS, poi dissolto in GRID_TAP_FADE_MS
     // invece di sparire di scatto. Stesso testo scelto dal resto della
     // funzione (locked ? unlockTagText : costParts, sopra).
-    if (gridTapTagType) {
-      const elapsed = performance.now() - gridTapTagAt;
+    if (st.gridTapTagType) {
+      const elapsed = performance.now() - st.gridTapTagAt;
       const total = GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
-      const btn = elapsed < total && buildMenuButtons.find((b) => b.type === gridTapTagType);
+      const btn = elapsed < total && st.buildMenuButtons.find((b) => b.type === st.gridTapTagType);
       if (btn) {
         const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
         const locked = buildingLocked(btn.type);
@@ -4047,11 +4050,11 @@ export async function mountMatch(ctx, params = {}) {
         // ritardato quel tanto che serve a leggere il prezzo. Un bottone
         // ancora bloccato invece resta aperto: non ha mai selezionato
         // nulla, non c'e' alcuna scelta da cui "tornare al mondo".
-        if (!buildingLocked(gridTapTagType)) buildMenuOpen = false;
-        gridTapTagType = null;
+        if (!buildingLocked(st.gridTapTagType)) st.buildMenuOpen = false;
+        st.gridTapTagType = null;
       }
     }
-    const backBtn = buildMenuButtons[buildMenuButtons.length - 1];
+    const backBtn = st.buildMenuButtons[st.buildMenuButtons.length - 1];
     r.draw(pauseButtonFrame(backBtn.w, backBtn.h), backBtn.x, backBtn.y, 1, BUTTON_TINT, BUTTON_ALPHA);
     drawHtmlText("Back", backBtn.x + backBtn.w / 2, backBtn.y + backBtn.h / 2, { size: 17, maxWidth: backBtn.w - 20 });
 
@@ -4095,10 +4098,10 @@ export async function mountMatch(ctx, params = {}) {
    */
   function drawOutcomeOverlay() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
-    const defeat = outcome.kind === "defeat";
-    const oilCrash = defeat && outcome.reason === "oil";
-    if (oilCrash && outcome.t < OIL_CRASH_INTRO_DUR) {
-      outcomeButtons = [];
+    const defeat = st.outcome.kind === "defeat";
+    const oilCrash = defeat && st.outcome.reason === "oil";
+    if (oilCrash && st.outcome.t < OIL_CRASH_INTRO_DUR) {
+      st.outcomeButtons = [];
       return;
     }
     const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
@@ -4117,7 +4120,7 @@ export async function mountMatch(ctx, params = {}) {
       r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
     } else if (defeat) {
       const introDur = 1.2;
-      const k = Math.min(1, outcome.t / introDur);
+      const k = Math.min(1, st.outcome.t / introDur);
       const ease = k * k;
       // Base OPACA nera prima di tutto: il crossfade deve rivelare nero, non
       // il frame precedente ancora nel framebuffer.
@@ -4129,7 +4132,7 @@ export async function mountMatch(ctx, params = {}) {
       r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
     }
 
-    outcomeButtons = [];
+    st.outcomeButtons = [];
     if (showPanel && defeat) {
       // [Bug corretto, richiesto dall'autore: "applichiamo lo stesso stile
       // Montserrat bianco su nero dei titoli di apertura del tutorial
@@ -4147,7 +4150,7 @@ export async function mountMatch(ctx, params = {}) {
       // — stesso principio "testo nudo su nero", il nero di fondo resta
       // visibile anche dentro il bottone.
       const title = t("gameOver.title");
-      const subtitle = outcome.reason === "chies"
+      const subtitle = st.outcome.reason === "chies"
         ? t("gameOver.reasonChies")
         : t("gameOver.reasonOil");
       const rows = [
@@ -4175,7 +4178,7 @@ export async function mountMatch(ctx, params = {}) {
         const bx = px + (contentW - btnW) / 2;
         drawOutlineRect(bx, ty, btnW, btnH, 0xffffff, 0.85);
         drawHtmlText(row.label, bx + btnW / 2, ty + btnH / 2, { size: 17, maxWidth: btnW - 20, color: "#ffffff" });
-        outcomeButtons.push({ x: bx, y: ty, w: btnW, h: btnH, action: row.action });
+        st.outcomeButtons.push({ x: bx, y: ty, w: btnW, h: btnH, action: row.action });
         ty += btnH + btnGap;
       }
     } else if (showPanel) {
@@ -4218,7 +4221,7 @@ export async function mountMatch(ctx, params = {}) {
         const bx = px + (panelW - btnW) / 2;
         r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
         drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 17, maxWidth: btnW - 20 });
-        outcomeButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+        st.outcomeButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
         by += btnH + btnGap;
       }
     }
@@ -4296,15 +4299,15 @@ export async function mountMatch(ctx, params = {}) {
   // numero di righe a capo (nuova fase) o la larghezza schermo (resize),
   // non ad ogni frame — rigenerare la texture solo quando (w,h) cambiano
   // davvero, distruggendo la precedente invece di accumularle in VRAM.
-  let tutorialBoxTex = null, tutorialBoxTexKey = "";
+  st.tutorialBoxTex = null, st.tutorialBoxTexKey = "";
   function tutorialBoxFrame(w, h) {
     const key = w + "x" + h;
-    if (key !== tutorialBoxTexKey) {
-      if (tutorialBoxTex) gl.deleteTexture(tutorialBoxTex);
-      tutorialBoxTex = makeRoundedRectTexture(gl, Math.round(w), Math.round(h), 20);
-      tutorialBoxTexKey = key;
+    if (key !== st.tutorialBoxTexKey) {
+      if (st.tutorialBoxTex) gl.deleteTexture(st.tutorialBoxTex);
+      st.tutorialBoxTex = makeRoundedRectTexture(gl, Math.round(w), Math.round(h), 20);
+      st.tutorialBoxTexKey = key;
     }
-    return solidFrame(tutorialBoxTex, w, h);
+    return solidFrame(st.tutorialBoxTex, w, h);
   }
 
   /**
@@ -4526,12 +4529,12 @@ export async function mountMatch(ctx, params = {}) {
    * IDENTICO, quindi anche un campione di 1px non introduce nessun
    * artefatto) stirata a coprire lo spazio restante.
    */
-  let pillCapTex = null, pillCapH = -1;
+  st.pillCapTex = null, st.pillCapH = -1;
   function drawPillBar(x, y, w, h, tint, alpha) {
-    if (pillCapH !== h) {
-      if (pillCapTex) gl.deleteTexture(pillCapTex);
-      pillCapTex = makeRoundedRectTexture(gl, Math.round(h * 2.4), Math.round(h), Math.round(h / 2));
-      pillCapH = h;
+    if (st.pillCapH !== h) {
+      if (st.pillCapTex) gl.deleteTexture(st.pillCapTex);
+      st.pillCapTex = makeRoundedRectTexture(gl, Math.round(h * 2.4), Math.round(h), Math.round(h / 2));
+      st.pillCapH = h;
     }
     const cap = h / 2;
     if (w <= h) {
@@ -4542,9 +4545,9 @@ export async function mountMatch(ctx, params = {}) {
       return;
     }
     const texW = h * 2.4, capFrac = cap / texW;
-    r.draw({ tex: pillCapTex, u0: 0, v0: 0, u1: capFrac, v1: 1, w: cap, h, ox: 0, oy: 0 }, x, y, 1, tint, alpha);
-    r.draw({ tex: pillCapTex, u0: 0.49, v0: 0, u1: 0.51, v1: 1, w: w - h, h, ox: 0, oy: 0 }, x + cap, y, 1, tint, alpha);
-    r.draw({ tex: pillCapTex, u0: 1 - capFrac, v0: 0, u1: 1, v1: 1, w: cap, h, ox: 0, oy: 0 }, x + w - cap, y, 1, tint, alpha);
+    r.draw({ tex: st.pillCapTex, u0: 0, v0: 0, u1: capFrac, v1: 1, w: cap, h, ox: 0, oy: 0 }, x, y, 1, tint, alpha);
+    r.draw({ tex: st.pillCapTex, u0: 0.49, v0: 0, u1: 0.51, v1: 1, w: w - h, h, ox: 0, oy: 0 }, x + cap, y, 1, tint, alpha);
+    r.draw({ tex: st.pillCapTex, u0: 1 - capFrac, v0: 0, u1: 1, v1: 1, w: cap, h, ox: 0, oy: 0 }, x + w - cap, y, 1, tint, alpha);
   }
 
   /** Come makeRoundRectCache() sopra, ma per un contorno invece di un
@@ -4592,7 +4595,7 @@ export async function mountMatch(ctx, params = {}) {
   // del gesto di piazzamento a trascinamento — qui basta ignorare `onDrag`
   // finche' `armedPlacement` e' vivo, invece di introdurre un vero stato
   // "scrolling disabilitato" nella camera.
-  input.onDrag = (dx, dy) => { if (paused || armedPlacement) return; userMoved = true; cam.panByScreen(dx, dy); };
+  input.onDrag = (dx, dy) => { if (st.paused || st.armedPlacement) return; st.userMoved = true; cam.panByScreen(dx, dy); };
   // Piazzamento a trascinamento (palazzo/museo, armPlacement()/resolvePlacement()
   // sopra): arma alla PRESSIONE (non al tocco — `onTap` scatta solo al
   // rilascio, e qui l'origine e il lotto diagonale distano ~100px, ben oltre
@@ -4600,16 +4603,16 @@ export async function mountMatch(ctx, params = {}) {
   // tocco che comincia sopra la UI (bottoni del selettore) non deve armare
   // niente sotto di essa — stesso spirito di `uiHitTest` per il pan.
   input.onPointerDown = (sx, sy) => {
-    if (paused || armedPlacement) return;
-    for (const btn of uiButtons) {
+    if (st.paused || st.armedPlacement) return;
+    for (const btn of st.uiButtons) {
       if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) return;
     }
-    const def = selectedType ? BUILDING_TYPES[selectedType] : null;
+    const def = st.selectedType ? BUILDING_TYPES[st.selectedType] : null;
     if (!def?.diagonalPlacement) return;
     const w = cam.screenToWorld(sx, sy);
     const ph = placeholders.find((p) => !p.consumed && inFrameDiamond(w.x, w.y, p.x, p.y, p._f));
     if (!ph) return;
-    const err = armPlacement(ph, selectedType);
+    const err = armPlacement(ph, st.selectedType);
     // Stesso avviso visivo di placeAt() sotto (onTap, `spawnInsufficientFundsWarning()`
     // sopra): qui l'unico modo di riconoscere PROPRIO il rifiuto per fondi
     // insufficienti (armPlacement() puo' fallire anche per altri motivi —
@@ -4617,11 +4620,11 @@ export async function mountMatch(ctx, params = {}) {
     // ripetere lo stesso controllo che la funzione ha gia' fatto al suo
     // interno: economico (canAfford e' una pura lettura di r12), niente
     // parsing del messaggio d'errore.
-    if (err && !canAfford(r12, def.placeCost)) spawnInsufficientFundsWarning(ph.x, ph.y, ph._f);
-    message = err ?? t("msg.dragToFreeLot");
-    messageT = 3;
+    if (err && !canAfford(st.r12, def.placeCost)) spawnInsufficientFundsWarning(ph.x, ph.y, ph._f);
+    st.message = err ?? t("msg.dragToFreeLot");
+    st.messageT = 3;
   };
-  input.onPointerUp = (sx, sy) => { if (!paused) resolvePlacement(sx, sy); };
+  input.onPointerUp = (sx, sy) => { if (!st.paused) resolvePlacement(sx, sy); };
   // Tocco prolungato su un edificio finito (buildingAt(), sopra) con la
   // mano selezionata: apre il pannello informativo dell'edificio
   // (buildingInfoPanel, drawBuildingInfoPanel() sotto — con in piu' il
@@ -4635,11 +4638,11 @@ export async function mountMatch(ctx, params = {}) {
   // edifici. Ignorato durante ogni altro modale/overlay gia' aperto —
   // stessi guard dell'apertura "normale" del pannello (onTap sotto).
   input.onLongPress = (sx, sy) => {
-    if (paused || outcome || bankPanelOpen || tradePanelOpen || buildingInfoPanel
-      || buildMenuOpen || tutorialState?.cutscene || r12.selec !== 0) return;
+    if (st.paused || st.outcome || st.bankPanelOpen || st.tradePanelOpen || st.buildingInfoPanel
+      || st.buildMenuOpen || st.tutorialState?.cutscene || st.r12.selec !== 0) return;
     const b = buildingAt(sx, sy);
     if (!b || b.construction) return;
-    buildingInfoPanel = b;
+    st.buildingInfoPanel = b;
   };
   // Il fattore si applica a `targetZoom`, non a `zoom` (che insegue con un
   // filo di ritardo, vedi Camera.update()): cosi' una rotellata mentre lo
@@ -4652,7 +4655,7 @@ export async function mountMatch(ctx, params = {}) {
   // di default (pixel-perfect su desktop, "si vede tutta la mappa" su
   // mobile) — `setZoom()`/`update()` (camera.js) clampano gia' da soli
   // dentro [minZoom, maxZoom], nessun controllo in piu' serve qui.
-  input.onZoom = (f, ax, ay) => { if (paused) return; userMoved = true; cam.setZoom(cam.targetZoom * f, ax, ay); };
+  input.onZoom = (f, ax, ay) => { if (st.paused) return; st.userMoved = true; cam.setZoom(cam.targetZoom * f, ax, ay); };
   // Selettore edificio scorrevole: su schermi stretti in portrait la riga di
   // bottoni (fino a 13 nel menu "edifici", vedi OTHER_BUILDINGS piu' sotto) e'
   // piu' larga dello schermo — senza scroll, quelli oltre il bordo destro non
@@ -4662,21 +4665,21 @@ export async function mountMatch(ctx, params = {}) {
   // sopra la UI invece che sulla mappa: solo allora scorre `uiScrollX` invece
   // di far partire un pan di camera. Solo su mobile: su desktop la riga sta
   // gia' intera nella finestra (STUDIO.md "zero zoom"), niente da scorrere.
-  let uiScrollX = 0;
-  let uiRowBounds = null;
+  st.uiScrollX = 0;
+  st.uiRowBounds = null;
   if (isMobile) {
-    input.uiHitTest = (sx, sy) => !paused && !!uiRowBounds
-      && sx >= uiRowBounds.x0 && sx <= uiRowBounds.x1
-      && sy >= uiRowBounds.y0 && sy <= uiRowBounds.y1;
-    input.onUIDrag = (dx) => { if (!paused) uiScrollX -= dx; };
+    input.uiHitTest = (sx, sy) => !st.paused && !!st.uiRowBounds
+      && sx >= st.uiRowBounds.x0 && sx <= st.uiRowBounds.x1
+      && sy >= st.uiRowBounds.y0 && sy <= st.uiRowBounds.y1;
+    input.onUIDrag = (dx) => { if (!st.paused) st.uiScrollX -= dx; };
   }
-  let picked = null;
-  let message = "";
-  let messageT = 0;
+  st.picked = null;
+  st.message = "";
+  st.messageT = 0;
   // Shortcut sandbox (input.onTap, sotto): tap consecutivi su chies,
   // azzerati se il gap fra un tap e il successivo supera CHIES_TAP_WINDOW_MS.
-  let chiesTapCount = 0;
-  let chiesTapLastAt = 0;
+  st.chiesTapCount = 0;
+  st.chiesTapLastAt = 0;
   const CHIES_TAP_TARGET = 20;
   const CHIES_TAP_WINDOW_MS = 1200;
   /**
@@ -4697,13 +4700,13 @@ export async function mountMatch(ctx, params = {}) {
    */
   function registerChiesTap() {
     const nowMs = performance.now();
-    chiesTapCount = (nowMs - chiesTapLastAt <= CHIES_TAP_WINDOW_MS) ? chiesTapCount + 1 : 1;
-    chiesTapLastAt = nowMs;
-    if (chiesTapCount < CHIES_TAP_TARGET) return false;
-    chiesTapCount = 0;
+    st.chiesTapCount = (nowMs - st.chiesTapLastAt <= CHIES_TAP_WINDOW_MS) ? st.chiesTapCount + 1 : 1;
+    st.chiesTapLastAt = nowMs;
+    if (st.chiesTapCount < CHIES_TAP_TARGET) return false;
+    st.chiesTapCount = 0;
     sandbox.on = !sandbox.on;
-    message = sandbox.on ? t("msg.sandboxOn") : t("msg.sandboxOff");
-    messageT = 4;
+    st.message = sandbox.on ? t("msg.sandboxOn") : t("msg.sandboxOff");
+    st.messageT = 4;
     return true;
   }
   // Icona "salvataggio in corso" (src/objects/savvvvvco, sprite "savicona",
@@ -4719,7 +4722,7 @@ export async function mountMatch(ctx, params = {}) {
   // a 60fps. `null` = non in mostra (il caso comune); altrimenti secondi
   // trascorsi dall'ultimo salvataggio riuscito, avanzati in frame() sotto
   // finche' non supera SAVE_ICON_DURATION.
-  let saveIconT = null;
+  st.saveIconT = null;
   const SAVE_ICON_DURATION = 1;   // secondi — [C] savvvvvco/Create.gml: action_set_alarm(60, 0) a 60fps
   // Avviso "olio in esaurimento" (main.js, frame() sotto) — [C] r12/Step.gml:
   // action_if_variable(oil, 1000, 3), operatore 3 = "<=".
@@ -4732,7 +4735,7 @@ export async function mountMatch(ctx, params = {}) {
    * annullato) — riparte da zero anche se una sequenza precedente e' ancora
    * a meta', cosi' due salvataggi ravvicinati non lasciano l'icona a meta'
    * dissolvenza invece di un nuovo ciclo pieno. */
-  function showSaveIcon() { saveIconT = 0; }
+  function showSaveIcon() { st.saveIconT = 0; }
   // Pausa (bottone in basso a destra + tasto P, vedi drawPauseOverlay() e il
   // resto dei riferimenti a `paused` piu' sotto): congela l'intero blocco di
   // simulazione (frame(), sopra) e mostra il mondo — gia' disegnato,
@@ -4741,7 +4744,7 @@ export async function mountMatch(ctx, params = {}) {
   // `playbuttoner`/pausa vera nell'originale, STUDIO.md "playbuttoner
   // investigato" — quello era un acceleratore del grattacielo, non una
   // pausa globale): puramente nostro, richiesto dall'autore.
-  let paused = false;
+  st.paused = false;
   // [Bug corretto, segnalato dall'autore: "il gioco lagga da morire su
   // alcuni device (es. Galaxy S23) — possiamo ottimizzare lato GPU?"]
   // Ricatturato: `pauseBlur.blurScreen()` (game/src/gl.js) e' un
@@ -4761,25 +4764,25 @@ export async function mountMatch(ctx, params = {}) {
   // (mai fra un sotto-pannello e l'altro, che condividono lo stesso mondo
   // congelato) o se le dimensioni del canvas cambiano nel frattempo
   // (rotazione schermo mentre in pausa).
-  let pauseBlurTex = null, pauseBlurW = 0, pauseBlurH = 0, wasPaused = false;
+  st.pauseBlurTex = null, st.pauseBlurW = 0, st.pauseBlurH = 0, st.wasPaused = false;
   // Gesto di piazzamento a trascinamento in corso (palazzo/museo, buildings.js
   // `def.diagonalPlacement`) — vedi armPlacement()/resolvePlacement() sotto.
   // null quando nessun gesto e' armato (il caso comune, per ogni altro tipo).
-  let armedPlacement = null;   // { type, origin, targets: [{placeholder, axis}] }
-  let uiButtons = [];   // { x, y, w, h, type }, ricalcolati ad ogni frame dal disegno del selettore
+  st.armedPlacement = null;   // { type, origin, targets: [{placeholder, axis}] }
+  st.uiButtons = [];   // { x, y, w, h, type }, ricalcolati ad ogni frame dal disegno del selettore
   // Bottone di pausa (sempre presente, in basso a destra) + bottoni del
   // relativo menu (solo quando `paused`): stesso schema di `uiButtons` sopra
   // (ricalcolati ogni frame dal disegno, letti da input.onTap sotto), ma
   // tenuti separati perche' il bottone di pausa deve restare toccabile ANCHE
   // mentre il resto della UI e' bloccato dal menu (vedi onTap).
-  let pauseBtnRect = null;   // { x, y, w, h }
-  let pauseMenuButtons = [];   // { x, y, w, h, action }
+  st.pauseBtnRect = null;   // { x, y, w, h }
+  st.pauseMenuButtons = [];   // { x, y, w, h, action }
   // Sotto-pannello del menu di pausa (null = quello principale, "saving" =
   // le opzioni di autosalvataggio sotto) — riusa lo stesso `pauseMenuButtons`
   // sopra: un solo pannello alla volta e' mai disegnato, quindi un solo
   // array di hitbox basta, letto in modo diverso da onTap a seconda di
   // questo flag invece di tenerne uno per pannello.
-  let pauseSubmenu = null;
+  st.pauseSubmenu = null;
 
   // [Nuova funzionalita', richiesta dall'autore: "una funzione di autosave,
   // attivabile dal menu di pausa (saving options), che regola l'intervallo
@@ -4794,8 +4797,8 @@ export async function mountMatch(ctx, params = {}) {
   // di parete, non simulato: deve continuare a scorrere anche a partita in
   // pausa/sconfitta, altrimenti "ogni N minuti" varrebbe solo mentre si
   // gioca attivamente.
-  let autosave = loadAutosaveSettings();
-  let autosaveT = 0;
+  st.autosave = loadAutosaveSettings();
+  st.autosaveT = 0;
   const AUTOSAVE_INTERVALS = [1, 2, 5, 10, 15, 30];   // minuti, ciclati dal bottone "Interval"
   /** Prova un autosalvataggio se l'intervallo e' scaduto — chiamata una
    * volta per frame da frame() sotto. Stesso `criticalSaveReason()` del
@@ -4809,16 +4812,16 @@ export async function mountMatch(ctx, params = {}) {
    * quicksave manuale, qui nessuno sta guardando un messaggio d'errore da
    * dover ripetere. */
   function stepAutosave(dt) {
-    if (!autosave.enabled) { autosaveT = 0; return; }
-    autosaveT += dt;
-    if (autosaveT < autosave.intervalMin * 60) return;
+    if (!st.autosave.enabled) { st.autosaveT = 0; return; }
+    st.autosaveT += dt;
+    if (st.autosaveT < st.autosave.intervalMin * 60) return;
     const reason = criticalSaveReason();
     if (reason) {
-      const bypass = reason.kind === "oil" ? autosave.duringLowOil : autosave.duringAttacks;
+      const bypass = reason.kind === "oil" ? st.autosave.duringLowOil : st.autosave.duringAttacks;
       if (!bypass) return;
     }
-    save(scene.name, r12, buildings, ruins, blockedSlots, platformState);
-    autosaveT = 0;
+    save(scene.name, st.r12, st.buildings, st.ruins, st.blockedSlots, st.platformState);
+    st.autosaveT = 0;
     showSaveIcon();
   }
 
@@ -4847,9 +4850,9 @@ export async function mountMatch(ctx, params = {}) {
    * di "Continua" — al massimo un grattacielo esiste per partita (unlocked()
    * sopra), quindi basta un flag, non un id da tracciare.
    */
-  let outcome = null;
-  let victoryShown = false;
-  let outcomeButtons = [];   // { x, y, w, h, action }, solo quando il pannello e' visibile
+  st.outcome = null;
+  st.victoryShown = false;
+  st.outcomeButtons = [];   // { x, y, w, h, action }, solo quando il pannello e' visibile
   // Crollo vero della piattaforma (`outcome.reason === "oil"`, sotto) — [C]
   // r12/Step.gml: appena `oil` tocca 0, un'enorme lista di `with (X) {
   // action_kill_object(); }` (finestre accese/luci di ogni edificio, auto
@@ -4874,8 +4877,8 @@ export async function mountMatch(ctx, params = {}) {
   // sotto) — un `navigate()` vero (Restart/Back to menu) rimonta comunque da
   // zero, quindi non ha bisogno di un reset esplicito.
   const CRASH_GRAVITY = 0.04;   // [C] r12/Step.gml: action_set_gravity(270, 0.04) — px/tick^2
-  let crashVSpeed = 0;
-  let crashFallY = 0;
+  st.crashVSpeed = 0;
+  st.crashFallY = 0;
   // [I] Quanto aspettare (drawOutcomeOverlay() sotto) prima di mostrare il
   // pannello GAME OVER: nessun timer fisso nel decompilato (li' non esiste
   // proprio questa schermata, STUDIO.md — "puramente nostra"), quindi
@@ -4910,7 +4913,7 @@ export async function mountMatch(ctx, params = {}) {
   // (input.onZoom, game/src/input.js — l'unico controllo zoom rimasto,
   // gia' funzionante da solo su mobile/desktop). Tolti bottone e riga
   // insieme: nessuna funzione persa, un solo modo di zoomare invece di due.
-  let menoo = 0;
+  st.menoo = 0;
 
   // I piazzabili del menu (menoo 1) che casa/industria non coprono da sole:
   // letti da src/objects/pu3|pu4prov|pu5prov|pu6|pu7|pudj|pusolare|pugatling|
@@ -5010,7 +5013,7 @@ export async function mountMatch(ctx, params = {}) {
     if (sandbox.on) return false;   // [Nuova funzionalita', richiesta dall'autore: sandbox sblocca tutto, vedi CHIES_TAP_* sotto
     const need = CHIES_UNLOCK_BY_TYPE[type];
     if (!need) return false;
-    return (buildings.find((b) => b.type === "chies")?.level ?? 0) < need;
+    return (st.buildings.find((b) => b.type === "chies")?.level ?? 0) < need;
   }
   // [C] STUDIO.md sopra: la stessa dissolvenza usata dal decompilato non
   // esiste (li' un bottone bloccato mostra semplicemente lo sprite normale,
@@ -5043,7 +5046,7 @@ export async function mountMatch(ctx, params = {}) {
       // il guard "gia' costruito" subito dopo — un secondo tap sul
       // monumento gia' in piedi non deve far ricomparire il bottone nemmeno
       // in sandbox, stessa ragione gia' scritta sopra per gli altri due.
-      unlocked: () => (sandbox.on || (r12.distrutti ?? 0) > 49) && !buildings.some((b) => b.type === "monum"),
+      unlocked: () => (sandbox.on || (st.r12.distrutti ?? 0) > 49) && !st.buildings.some((b) => b.type === "monum"),
     },
     {
       type: "banca", selec: 72, spr: "sta2", tint: 0x82824f, cost: 0,
@@ -5058,11 +5061,11 @@ export async function mountMatch(ctx, params = {}) {
       // la banca non doveva mai comparire, indipendentemente da livello di
       // chies o popolazione.
       unlocked: () => {
-        if (buildings.some((b) => b.type === "banca")) return false;
+        if (st.buildings.some((b) => b.type === "banca")) return false;
         if (sandbox.on) return true;
-        const chies = buildings.find((b) => b.type === "chies");
-        return buildings.some((b) => b.type === "monum")
-          && !!chies && chies.level > 1 && r12.pop >= 3000;
+        const chies = st.buildings.find((b) => b.type === "chies");
+        return st.buildings.some((b) => b.type === "monum")
+          && !!chies && chies.level > 1 && st.r12.pop >= 3000;
       },
     },
     // Terza stella: `grattacielo` (buildings.js — corregge la conclusione
@@ -5099,8 +5102,8 @@ export async function mountMatch(ctx, params = {}) {
       // `platformState` e' `null` su `match_easy`) e il requisito biotech —
       // coerente con "tutto sbloccato", non piu' fedele all'originale a
       // quel punto.
-      unlocked: () => !buildings.some((b) => b.type === "grattacielo") && (sandbox.on || (buildings.some((b) => b.type === "banca")
-        && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded" && r12.grattacieloUnlocked)),
+      unlocked: () => !st.buildings.some((b) => b.type === "grattacielo") && (sandbox.on || (st.buildings.some((b) => b.type === "banca")
+        && st.platformState?.tier1.stage === "expanded" && st.platformState?.tier2.stage === "expanded" && st.r12.grattacieloUnlocked)),
     },
   ];
   for (const b of STAR_BUILDINGS) { SELEC_BY_TYPE[b.type] = b.selec; }
@@ -5137,8 +5140,8 @@ export async function mountMatch(ctx, params = {}) {
     const bubbleY = f ? item.y - (f.oy - f.w / 2) : item.y;
     // BIOTECH_POP_COLOR sopra: solo "soldbio" (item.kind === "biotech",
     // coins.js) cambia colore — sold1..18/sold19..30 (kind "mon") restano blu.
-    coinPops.push({ x: item.x, y: bubbleY, t: 0, color: item.kind === "biotech" ? BIOTECH_POP_COLOR : COIN_POP_COLOR });
-    collectCoin(coins, item, r12);
+    st.coinPops.push({ x: item.x, y: bubbleY, t: 0, color: item.kind === "biotech" ? BIOTECH_POP_COLOR : COIN_POP_COLOR });
+    collectCoin(st.coins, item, st.r12);
   }
 
   /** Raccoglie una cassa di risorse lasciata da una mongolfiera (balloons.js)
@@ -5156,8 +5159,8 @@ export async function mountMatch(ctx, params = {}) {
   function collectLootAt(item) {
     const f = frameFor(item.spr);
     const bubbleY = f ? item.y - f.oy + f.h / 2 : item.y;
-    coinPops.push({ x: item.x, y: bubbleY, t: 0, color: LOOT_POP_COLOR[item.key] ?? COIN_POP_COLOR });
-    collectLoot(loot, item, r12);
+    st.coinPops.push({ x: item.x, y: bubbleY, t: 0, color: LOOT_POP_COLOR[item.key] ?? COIN_POP_COLOR });
+    collectLoot(st.loot, item, st.r12);
   }
 
   input.onTap = (sx, sy) => {
@@ -5165,14 +5168,14 @@ export async function mountMatch(ctx, params = {}) {
     // in sconfitta la pausa non ha senso (la partita e' gia' finita), in
     // vittoria non deve restare un modo per aprire il menu di pausa SOPRA al
     // pannello di vittoria stesso.
-    if (outcome) {
-      if (outcome.kind === "victory") {
+    if (st.outcome) {
+      if (st.outcome.kind === "victory") {
         // Qualunque tocco chiude — nessun blocco duro come la sconfitta
         // sotto: e' un traguardo, non una fine (richiesto dall'autore, "puo'
         // continuare a giocare"), quindi anche il bottone "Continua"
         // (outcomeButtons, drawOutcomeOverlay()) e' solo un'affordance, non
         // l'unico modo di chiuderlo.
-        outcome = null;
+        st.outcome = null;
         return;
       }
       // Sconfitta: `outcomeButtons` resta vuoto finche' l'introduzione
@@ -5189,12 +5192,12 @@ export async function mountMatch(ctx, params = {}) {
       // sotto per chi ha toccato per sbaglio, a differenza del menu di
       // pausa dove "Reset game" e' l'unica via e quindi merita un passo in
       // piu'), "Back to menu" (invariato).
-      const hit = outcomeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+      const hit = st.outcomeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       if (hit?.action === "load") {
         const ok = doLoad();
-        if (ok) { picked = null; outcome = null; crashVSpeed = 0; crashFallY = 0; }
-        message = ok ? t("msg.gameLoaded") : t("msg.noSaveFound");
-        messageT = 3;
+        if (ok) { st.picked = null; st.outcome = null; st.crashVSpeed = 0; st.crashFallY = 0; }
+        st.message = ok ? t("msg.gameLoaded") : t("msg.noSaveFound");
+        st.messageT = 3;
       // "loadFile" e' gestito da `input.onClick` sotto, non da qui — vedi
       // il commento li' per il perche' (iOS Safari/input.js).
       } else if (hit?.action === "resetGame") {
@@ -5209,10 +5212,10 @@ export async function mountMatch(ctx, params = {}) {
     // entrambi gli stati (avvia/toglie la pausa), altrimenti una volta
     // pausato non ci sarebbe piu' modo di uscirne se un altro modale fosse
     // aperto sopra di lui.
-    if (pauseBtnRect && sx >= pauseBtnRect.x && sx <= pauseBtnRect.x + pauseBtnRect.w
-      && sy >= pauseBtnRect.y && sy <= pauseBtnRect.y + pauseBtnRect.h) {
-      paused = !paused;
-      pauseSubmenu = null;   // riapre sempre sul pannello principale, mai su "Saving options"
+    if (st.pauseBtnRect && sx >= st.pauseBtnRect.x && sx <= st.pauseBtnRect.x + st.pauseBtnRect.w
+      && sy >= st.pauseBtnRect.y && sy <= st.pauseBtnRect.y + st.pauseBtnRect.h) {
+      st.paused = !st.paused;
+      st.pauseSubmenu = null;   // riapre sempre sul pannello principale, mai su "Saving options"
       return;
     }
     // Mentre e' in pausa il resto del mondo (mondo, UI, altri modali) resta
@@ -5224,29 +5227,29 @@ export async function mountMatch(ctx, params = {}) {
     // nella catena if/else-if di drawBankPanel()/drawPauseOverlay() piu'
     // sotto: quel pannello smette proprio di disegnarsi finche' `paused`
     // resta vero, non solo di restare sopra).
-    if (paused) {
-      const hit = pauseMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+    if (st.paused) {
+      const hit = st.pauseMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       // "Saving options" (pauseSubmenu, sopra): stesso array `pauseMenuButtons`
       // del pannello principale, ma le `action` sono tutte diverse (toggle/
       // ciclo di un'impostazione) — nessuna ambiguita' possibile fra le due
       // liste di stringhe. Ogni tocco riscrive subito le impostazioni in
       // localStorage (saveAutosaveSettings()): niente "Applica"/"Annulla",
       // coerente con ogni altro controllo touch di questo motore.
-      if (pauseSubmenu === "saving") {
+      if (st.pauseSubmenu === "saving") {
         if (hit?.action === "toggleEnabled") {
-          autosave.enabled = !autosave.enabled;
-          saveAutosaveSettings(autosave);
+          st.autosave.enabled = !st.autosave.enabled;
+          saveAutosaveSettings(st.autosave);
         } else if (hit?.action === "setInterval") {
-          autosave.intervalMin = hit.value;
-          saveAutosaveSettings(autosave);
+          st.autosave.intervalMin = hit.value;
+          saveAutosaveSettings(st.autosave);
         } else if (hit?.action === "toggleAttacks") {
-          autosave.duringAttacks = !autosave.duringAttacks;
-          saveAutosaveSettings(autosave);
+          st.autosave.duringAttacks = !st.autosave.duringAttacks;
+          saveAutosaveSettings(st.autosave);
         } else if (hit?.action === "toggleLowOil") {
-          autosave.duringLowOil = !autosave.duringLowOil;
-          saveAutosaveSettings(autosave);
+          st.autosave.duringLowOil = !st.autosave.duringLowOil;
+          saveAutosaveSettings(st.autosave);
         } else if (hit?.action === "back") {
-          pauseSubmenu = null;
+          st.pauseSubmenu = null;
         }
         return;
       }
@@ -5256,27 +5259,27 @@ export async function mountMatch(ctx, params = {}) {
       // doResetGame() cancella il quicksave e rimonta la room da zero), non
       // il tap che apre il pannello (quello e' "resetGame" sul principale,
       // sotto, che si limita ad aprire questo sotto-pannello).
-      if (pauseSubmenu === "confirmReset") {
+      if (st.pauseSubmenu === "confirmReset") {
         if (hit?.action === "confirmReset") {
           doResetGame();
         } else if (hit?.action === "cancelReset") {
-          pauseSubmenu = null;
+          st.pauseSubmenu = null;
         }
         return;
       }
       if (hit?.action === "resume") {
-        paused = false;
-        pauseSubmenu = null;
+        st.paused = false;
+        st.pauseSubmenu = null;
       } else if (hit?.action === "saveFile") {
         doSaveToFile();   // async, messaggio gestito dentro (fuoco e dimentica)
       // "loadFile" e' gestito da `input.onClick` sotto, non da qui — vedi
       // il commento li' per il perche' (iOS Safari/input.js).
       } else if (hit?.action === "savingOptions") {
-        pauseSubmenu = "saving";
+        st.pauseSubmenu = "saving";
       } else if (hit?.action === "setLang") {
         setLang(hit.value);
       } else if (hit?.action === "resetGame") {
-        pauseSubmenu = "confirmReset";   // un tap solo non basta: prima la conferma (irreversibile)
+        st.pauseSubmenu = "confirmReset";   // un tap solo non basta: prima la conferma (irreversibile)
       } else if (hit?.action === "title") {
         navigate("menu");
       }
@@ -5285,8 +5288,8 @@ export async function mountMatch(ctx, params = {}) {
     // Bottone "avanti/esci" del tutorial (tut_ok/tutorialOkRect, disegnato
     // piu' sotto nel layer GUI): stessa priorita' del bottone di pausa,
     // intercetta prima che il tocco raggiunga il mondo sotto.
-    if (tutorialOkRect && sx >= tutorialOkRect.x && sx <= tutorialOkRect.x + tutorialOkRect.w
-      && sy >= tutorialOkRect.y && sy <= tutorialOkRect.y + tutorialOkRect.h) {
+    if (st.tutorialOkRect && sx >= st.tutorialOkRect.x && sx <= st.tutorialOkRect.x + st.tutorialOkRect.w
+      && sy >= st.tutorialOkRect.y && sy <= st.tutorialOkRect.y + st.tutorialOkRect.h) {
       advanceTutorial();
       return;
     }
@@ -5298,16 +5301,16 @@ export async function mountMatch(ctx, params = {}) {
     // prenderne uno, `loanoscrino/Step.gml` si autodistrugge solo quando
     // `bankbuttoner.loaned` diventa 1): qui un tocco fuori dai bottoni
     // chiude senza costo, piu' comodo di un pannello che non si puo' annullare.
-    if (bankPanelOpen) {
-      const hit = bankButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+    if (st.bankPanelOpen) {
+      const hit = st.bankButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       if (hit) {
-        takeLoan(r12, hit.index);
-        message = t("msg.loanObtained", { amount: LOANS[hit.index].amount });
+        takeLoan(st.r12, hit.index);
+        st.message = t("msg.loanObtained", { amount: LOANS[hit.index].amount });
       } else {
-        message = "";
+        st.message = "";
       }
-      bankPanelOpen = false;
-      messageT = 3;
+      st.bankPanelOpen = false;
+      st.messageT = 3;
       return;
     }
     // Il pannello scambi (tradePanelOpen sopra) — stesso trattamento modale
@@ -5317,25 +5320,25 @@ export async function mountMatch(ctx, params = {}) {
     // `backotrade`/uscire dal tap lo fa — qui "un tocco fuori" lo sostituisce,
     // stesso principio gia' scelto per bankPanelOpen) — cosi' si possono
     // incatenare piu' scambi senza riaprire il pannello ogni volta.
-    if (tradePanelOpen) {
-      const hit = tradeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+    if (st.tradePanelOpen) {
+      const hit = st.tradeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       if (hit) {
         const trade = TRADES[hit.index];
-        if (canTrade(r12, hit.index)) {
-          applyTrade(r12, hit.index);
-          message = t("msg.traded", { giveAmount: trade.giveAmount, give: trade.give, takeAmount: trade.takeAmount, take: trade.take });
+        if (canTrade(st.r12, hit.index)) {
+          applyTrade(st.r12, hit.index);
+          st.message = t("msg.traded", { giveAmount: trade.giveAmount, give: trade.give, takeAmount: trade.takeAmount, take: trade.take });
           // [C] get1..4/Mouse_LeftPressed.gml: armano tradebuttoner/Alarm_2.gml
           // (400 tick) solo su uno scambio RIUSCITO — il bottone del mondo
           // resta comunque nascosto finche' il pannello e' aperto (vedi il
           // commento su tradeCooldownT sopra), questo timer conta da quando
           // si chiude.
-          tradeCooldownT = TRADE_COOLDOWN;
+          st.tradeCooldownT = TRADE_COOLDOWN;
         } else {
-          message = t("msg.needResourceHave", { amount: trade.giveAmount, resource: trade.give, have: (r12[trade.give] ?? 0).toFixed(0) });
+          st.message = t("msg.needResourceHave", { amount: trade.giveAmount, resource: trade.give, have: (st.r12[trade.give] ?? 0).toFixed(0) });
         }
-        messageT = 3;
+        st.messageT = 3;
       } else {
-        tradePanelOpen = false;
+        st.tradePanelOpen = false;
       }
       return;
     }
@@ -5347,17 +5350,17 @@ export async function mountMatch(ctx, params = {}) {
     // drawBuildingInfoPanel() sopra — solo torrette) e' l'unica eccezione:
     // sceglie il livello sotto il dito e TIENE il pannello aperto, stesso
     // principio "chainable" di tradePanelOpen.
-    if (buildingInfoPanel) {
-      const t = buildingInfoSegRect;
+    if (st.buildingInfoPanel) {
+      const t = st.buildingInfoSegRect;
       if (t && sx >= t.x && sx <= t.x + t.w && sy >= t.y && sy <= t.y + t.h) {
-        buildingInfoPanel.autoDefenseLevel = Math.floor((sx - t.x) / (t.w / 3)) + 1;
+        st.buildingInfoPanel.autoDefenseLevel = Math.floor((sx - t.x) / (t.w / 3)) + 1;
         return;
       }
       // registerChiesTap() (sopra): il pannello di chies e' gia' aperto —
       // questo tap lo chiude come ogni altro, ma deve comunque contare per
       // lo shortcut sandbox (vedi il commento su registerChiesTap()).
-      if (buildingInfoPanel.type === "chies") registerChiesTap();
-      buildingInfoPanel = null;
+      if (st.buildingInfoPanel.type === "chies") registerChiesTap();
+      st.buildingInfoPanel = null;
       return;
     }
     // Overlay costruzioni mobile (buildMenuOpen, sopra) — stesso
@@ -5366,8 +5369,8 @@ export async function mountMatch(ctx, params = {}) {
     // nella riga scorrevole di sempre) invece di limitarsi a chiudere: un
     // picker, non un pannello di sola lettura. Un tocco su "Indietro" o
     // fuori da ogni bottone chiude senza selezionare nulla.
-    if (buildMenuOpen) {
-      const hit = buildMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+    if (st.buildMenuOpen) {
+      const hit = st.buildMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       // [C] pu6|pudj|pugatling|pusolare|puvillone|pumediat/Mouse_LeftPressed.gml:
       // il ramo che scrive `r12.selec` e' innestato dentro `if (unlosei==1)`
       // — un tocco su un bottone ancora bloccato (buildingLocked(), sopra)
@@ -5390,21 +5393,21 @@ export async function mountMatch(ctx, params = {}) {
       // fa chiudere l'overlay da solo alla fine — resta aperto per un
       // altro tentativo.
       if (hit?.type && buildingLocked(hit.type)) {
-        gridTapTagType = hit.type;
-        gridTapTagAt = performance.now();
+        st.gridTapTagType = hit.type;
+        st.gridTapTagAt = performance.now();
         return;
       }
       if (hit?.type) {
-        selectedType = hit.type;
-        r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
-        gridTapTagType = hit.type;
-        gridTapTagAt = performance.now();
+        st.selectedType = hit.type;
+        st.r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
+        st.gridTapTagType = hit.type;
+        st.gridTapTagAt = performance.now();
         return;
       }
       // "Indietro" (`hit` esiste ma senza `.type`) o un tocco fuori da ogni
       // bottone (`hit` `undefined`) chiudono l'overlay senza selezionare
       // nulla, come sempre.
-      buildMenuOpen = false;
+      st.buildMenuOpen = false;
       return;
     }
     // Un gesto di piazzamento a trascinamento e' gia' stato armato da
@@ -5412,10 +5415,10 @@ export async function mountMatch(ctx, params = {}) {
     // risolve gia' `input.onPointerUp` (resolvePlacement()), che scatta
     // comunque anche quando questo tap viene ignorato — nessuna doppia
     // gestione dello stesso rilascio.
-    if (armedPlacement) return;
+    if (st.armedPlacement) return;
     // il selettore edificio vive in spazio schermo, sopra la mappa: un tocco
     // che lo colpisce non deve raggiungere il mondo sotto.
-    for (const btn of uiButtons) {
+    for (const btn of st.uiButtons) {
       if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) {
         if (btn.kind === "menu") {
           // [Nuova funzionalita', richiesta dall'autore] Solo su mobile, il
@@ -5426,8 +5429,8 @@ export async function mountMatch(ctx, params = {}) {
           // bottone esiste solo su desktop ormai (la riga costruzioni non
           // si apre piu' affatto su mobile), quindi passa comunque di qui
           // senza bisogno di un ramo dedicato.
-          if (isMobile && btn.menoo === 1) buildMenuOpen = true;
-          else menoo = btn.menoo;
+          if (isMobile && btn.menoo === 1) st.buildMenuOpen = true;
+          else st.menoo = btn.menoo;
         }
         else if (btn.kind === "deselect") {
           // [Bug corretto, segnalato dall'autore: la mano non deseleziona
@@ -5442,10 +5445,10 @@ export async function mountMatch(ctx, params = {}) {
           // `ruinTapArmed` (sopra, tapRuinLike()): stesso principio per il
           // primo tap mobile su un rudere — non deve restare "armato" (tinta
           // rossa + cartellino ancora visibili) dopo aver mollato la ruspa.
-          selectedType = null;
-          r12.selec = 0;
-          ruspaPending = null;
-          ruinTapArmed = null;
+          st.selectedType = null;
+          st.r12.selec = 0;
+          st.ruspaPending = null;
+          st.ruinTapArmed = null;
         }  // handbutton
         else if (btn.kind === "building") {                              // casa/industria/...
           // Stesso gate della griglia mobile qui sopra, per lo stesso
@@ -5454,18 +5457,18 @@ export async function mountMatch(ctx, params = {}) {
           // all'hover su questa riga (drawUiRow() sotto): il messaggio resta
           // solo come rinforzo testuale del click stesso.
           if (buildingLocked(btn.type)) {
-            message = t("msg.levelToUnlock", { label: buildingLabel(btn.type), level: CHIES_UNLOCK_BY_TYPE[btn.type] });
-            messageT = 3;
+            st.message = t("msg.levelToUnlock", { label: buildingLabel(btn.type), level: CHIES_UNLOCK_BY_TYPE[btn.type] });
+            st.messageT = 3;
           } else {
-            selectedType = btn.type;
-            r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
+            st.selectedType = btn.type;
+            st.r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
           }
         }
         return;
       }
     }
     const w = cam.screenToWorld(sx, sy);
-    picked = null;
+    st.picked = null;
     // frameList e' ricostruita ad ogni frame di disegno: e' la stessa lista,
     // gia' ordinata top-most-last, che serve per il picking. Due passate: la
     // prima considera solo cio' che e' davvero interattivo (placeholder,
@@ -5506,7 +5509,7 @@ export async function mountMatch(ctx, params = {}) {
     // dietro di lei) — rimossa dalla lista, resta raggiungibile solo dal
     // vecchio fallback per z-order (usato solo per l'HUD di debug), come nel
     // gioco originale.
-    for (const it of frameList) {
+    for (const it of st.frameList) {
       if (it.obj !== "placeholder" && it.obj !== "building" && it.obj !== "loot"
         && it.obj !== "coin" && it.obj !== "upsign" && it.obj !== "ruspaYes" && it.obj !== "ruspaNo"
         && it.obj !== "bankIcon" && it.obj !== "tradeIcon" && it.obj !== "faroButton" && it.obj !== "faroWaveSignal"
@@ -5592,10 +5595,10 @@ export async function mountMatch(ctx, params = {}) {
         : (o.obj === "building" && BUILDING_TYPES[o.ref.type]?.turret)
           ? -8000 - 1 / (1 + (o.x - w.x) ** 2 + (o.y - w.y) ** 2)
           : o.depth;
-      if (hit && (!picked || pickPriority(it) < pickPriority(picked))) picked = it;
+      if (hit && (!st.picked || pickPriority(it) < pickPriority(st.picked))) st.picked = it;
     }
-    if (!picked) for (let i = frameList.length - 1; i >= 0; i--) {
-      const it = frameList[i];
+    if (!st.picked) for (let i = st.frameList.length - 1; i >= 0; i--) {
+      const it = st.frameList[i];
       // il decoro (cddvd*), l'impalcatura di cantiere, le auto (honda_facile_1/2),
       // i tappi dei semafori, nuvole/uccelli e i pedoni sono puramente
       // visivi: nell'originale non avevano eventi Mouse propri (i pedoni
@@ -5611,11 +5614,11 @@ export async function mountMatch(ctx, params = {}) {
         ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
         : inFrameRect(w.x, w.y, it.x, it.y, it._f);
       if (hit) {
-        picked = it;
+        st.picked = it;
         break;
       }
     }
-    if (!picked) return;
+    if (!st.picked) return;
     // Tutorial (game/src/tutorial.js): lotto-rudere — solo con la ruspa
     // selezionata e fondi sufficienti. [Decisione dell'autore: "la rovina
     // ruspata deve creare sempre un placeholder vuoto, non un nuovo
@@ -5637,20 +5640,20 @@ export async function mountMatch(ctx, params = {}) {
     // del mouse ha gia' mostrato la stessa tinta/cartellino prima del
     // click. Fuori dalla ruspa (`r12.selec !== 11`) il tap resta muto, come
     // sempre.
-    if (picked.obj === "ruinLot") {
-      message = ""; messageT = 0;
-      if (r12.selec === 11) tapRuinLike(picked.ref);
-      picked = null;
+    if (st.picked.obj === "ruinLot") {
+      st.message = ""; st.messageT = 0;
+      if (st.r12.selec === 11) tapRuinLike(st.picked.ref);
+      st.picked = null;
       return;
     }
     // Rudere VERO da battaglia (destroyBuilding() sopra) — stessa identica
     // meccanica di "ruinLot" appena sopra (stesso ciclo di impalcature via
     // `clearing`/stepRuinClearing()/tapRuinLike()), solo su `ruins` invece
     // di `ruinLots`.
-    if (picked.obj === "ruin") {
-      message = ""; messageT = 0;
-      if (r12.selec === 11) tapRuinLike(picked.ref);
-      picked = null;
+    if (st.picked.obj === "ruin") {
+      st.message = ""; st.messageT = 0;
+      if (st.r12.selec === 11) tapRuinLike(st.picked.ref);
+      st.picked = null;
       return;
     }
     // palazzo/museo: `input.onPointerDown`, per questo stesso tocco, ha gia'
@@ -5661,20 +5664,20 @@ export async function mountMatch(ctx, params = {}) {
     // `armedPlacement` e' rimasto `null`). In entrambi i casi il messaggio
     // gia' mostrato e' quello giusto: non va sovrascritto col reset generico
     // sotto, e placeAt() (a un lotto solo) non va comunque chiamato.
-    if (picked.obj === "placeholder" && !picked.consumed && BUILDING_TYPES[selectedType]?.diagonalPlacement) return;
-    message = ""; messageT = 0;
-    if (picked.obj === "placeholder" && !picked.consumed) {
-      const def = selectedType ? BUILDING_TYPES[selectedType] : null;
-      if (!selectedType) {
+    if (st.picked.obj === "placeholder" && !st.picked.consumed && BUILDING_TYPES[st.selectedType]?.diagonalPlacement) return;
+    st.message = ""; st.messageT = 0;
+    if (st.picked.obj === "placeholder" && !st.picked.consumed) {
+      const def = st.selectedType ? BUILDING_TYPES[st.selectedType] : null;
+      if (!st.selectedType) {
         // [C] handbutton/Mouse_LeftPressed.gml: `r12.selec = 0`, nessun
         // edificio armato — la modalita' di default prima di aprire il menu.
-        message = t("msg.noBuildingSelected");
+        st.message = t("msg.noBuildingSelected");
       } else if (!def) {
         // Uno degli `OTHER_BUILDINGS` sopra: nel menu, ma non in
         // BUILDING_TYPES — nessuna catena di piazzamento ricostruita.
-        message = t("msg.notRebuiltYet", { label: buildingLabel(selectedType) });
+        st.message = t("msg.notRebuiltYet", { label: buildingLabel(st.selectedType) });
       } else {
-        const err = placeAt(picked, selectedType);
+        const err = placeAt(st.picked, st.selectedType);
         // [Nuova funzionalita', richiesta dall'autore: "la stessa icona del
         // costo dell'autodifesa deve comparire anche sul placeholder quando
         // si prova a costruire senza abbastanza soldi"] `spawnInsufficientFundsWarning()`,
@@ -5685,14 +5688,14 @@ export async function mountMatch(ctx, params = {}) {
         // fondi insufficienti e' ripetere lo stesso controllo che la funzione
         // ha gia' fatto al suo interno (identico a `def.noAffordCheck`
         // incluso), non un parsing del messaggio d'errore.
-        if (err && !def.noAffordCheck && !canAfford(r12, def.placeCost)) {
-          spawnInsufficientFundsWarning(picked.x, picked.y, picked._f);
+        if (err && !def.noAffordCheck && !canAfford(st.r12, def.placeCost)) {
+          spawnInsufficientFundsWarning(st.picked.x, st.picked.y, st.picked._f);
         }
-        message = err ?? `${def.label.toLowerCase()} placed (-${def.placeCost.mon} mon)`;
+        st.message = err ?? `${def.label.toLowerCase()} placed (-${def.placeCost.mon} mon)`;
       }
-      messageT = 3;
-    } else if (picked.obj === "building") {
-      const b = picked.ref;
+      st.messageT = 3;
+    } else if (st.picked.obj === "building") {
+      const b = st.picked.ref;
       // Shortcut sandbox (registerChiesTap(), sopra): conta questo tap ma
       // NON lo intercetta finche' non fa scattare la soglia — tap 1..19 su
       // chies cadono comunque nei rami sotto (tipicamente il pannello
@@ -5707,10 +5710,10 @@ export async function mountMatch(ctx, params = {}) {
       // le collisioni reciproche `sooool/Collision_parco.gml` +
       // `parco/Collision_sooool.gml` dell'originale (qui non serve una vera
       // collisione: e' l'UNICO modo in cui potrebbero mai toccarsi).
-      if (!b.construction && b.type === "parco" && r12.selec === 61) {
+      if (!b.construction && b.type === "parco" && st.r12.selec === 61) {
         const err = placeSolarOverPark(b);
-        message = err ?? t("msg.solarPlaced");
-        messageT = 3;
+        st.message = err ?? t("msg.solarPlaced");
+        st.messageT = 3;
         return;
       }
       // [C] casa1|industria1|.../Mouse_LeftPressed.gml, ramo selec==11 (la
@@ -5720,16 +5723,16 @@ export async function mountMatch(ctx, params = {}) {
       // il costo non e' coperto: `casa1/Mouse_LeftPressed.gml` controlla
       // `mon>=500` PRIMA di creare `demobasia`, non dopo). La conferma vera
       // arriva dal tocco su "ruspaYes" sotto.
-      if (r12.selec === 11) {
+      if (st.r12.selec === 11) {
         const cost = ruspaCostFor(b);
-        if (b.construction) message = t("msg.constructionInProgress");
-        else if (cost == null) message = t("msg.notDemolishable", { label: buildingLabel(b.type) });
-        else if (!canAfford(r12, { mon: cost })) message = t("msg.needMonHave", { cost, have: r12.mon.toFixed(0) });
+        if (b.construction) st.message = t("msg.constructionInProgress");
+        else if (cost == null) st.message = t("msg.notDemolishable", { label: buildingLabel(b.type) });
+        else if (!canAfford(st.r12, { mon: cost })) st.message = t("msg.needMonHave", { cost, have: st.r12.mon.toFixed(0) });
         else {
-          ruspaPending = { buildingId: b.id, cost };
-          message = t("msg.confirmDemolish", { cost });
+          st.ruspaPending = { buildingId: b.id, cost };
+          st.message = t("msg.confirmDemolish", { cost });
         }
-        messageT = 3;
+        st.messageT = 3;
         return;
       }
       // [C] rocket_launcher|lasergun/Mouse_LeftPressed.gml (`manualFire` in
@@ -5744,13 +5747,13 @@ export async function mountMatch(ctx, params = {}) {
       // Sotto cantiere invece resta tryStartUpgrade come per qualunque
       // edificio (che gia' risponderebbe da solo "cantiere gia' in corso").
       if (!b.construction && BUILDING_TYPES[b.type]?.manualFire) {
-        const fired = fireTurretManual(b, projectiles, explosions, r12, threats, trails, beams, balloons, loot);
-        message = fired ? t("msg.fire")
+        const fired = fireTurretManual(b, st.projectiles, st.explosions, st.r12, st.threats, st.trails, st.beams, st.balloons, st.loot);
+        st.message = fired ? t("msg.fire")
           : !b.aimTarget ? t("msg.noTargetInRange")
-          : b.type === "laser" && r12.ele < 200 ? t("msg.insufficientEnergy")
+          : b.type === "laser" && st.r12.ele < 200 ? t("msg.insufficientEnergy")
           : t("msg.cannonReloading");
-        messageT = 3;
-      } else if (r12.selec === 0 && !BUILDING_TYPES[b.type]?.turret) {
+        st.messageT = 3;
+      } else if (st.r12.selec === 0 && !BUILDING_TYPES[b.type]?.turret) {
         // [Nuova funzionalita', richiesta dall'autore: "quando la mano e'
         // selezionata e clicchi su un edificio (non difensivo) mostra una
         // finestrella con le stats"] Con la mano attiva (nessun tipo/
@@ -5763,119 +5766,119 @@ export async function mountMatch(ctx, params = {}) {
         // vero insieme a `manualFire` per missile/gatling/laser — vedi il
         // ramo sopra): ci passano gia' SOLO per il fuoco manuale, un
         // pannello qui li intercetterebbe prima e romperebbe quel tocco.
-        buildingInfoPanel = b;
+        st.buildingInfoPanel = b;
       } else {
         const err = attemptUpgradeTap(b);
-        if (err !== undefined) { message = err ?? t("msg.constructionStarted"); messageT = 3; }
+        if (err !== undefined) { st.message = err ?? t("msg.constructionStarted"); st.messageT = 3; }
       }
-    } else if (picked.obj === "ruspaYes") {
+    } else if (st.picked.obj === "ruspaYes") {
       // [C] demoiessa/Mouse_LeftReleased.gml: `iessa=1`, letto dalla
       // collisione di demobasia col vero edificio (qui, tryRuspaRebuild()/
       // demolishMultiTile() in buildings.js/main.js) — la stessa conferma,
       // un solo tocco invece di un flag+collisione al frame dopo.
-      const b = picked.ref;
+      const b = st.picked.ref;
       const def = BUILDING_TYPES[b.type];
       if (def?.construct?.ruspaDemolish) {
         const cost = ruspaCostFor(b);
-        if (!canAfford(r12, { mon: cost })) {
-          message = t("msg.needMonHave", { cost, have: r12.mon.toFixed(0) });
+        if (!canAfford(st.r12, { mon: cost })) {
+          st.message = t("msg.needMonHave", { cost, have: st.r12.mon.toFixed(0) });
         } else {
-          r12.mon -= cost;
+          st.r12.mon -= cost;
           demolishMultiTile(b);
-          message = t("msg.demolishedLotsFree");
+          st.message = t("msg.demolishedLotsFree");
         }
       } else {
         const err = ruspaRebuild(b);
-        message = err ?? t("msg.constructionStartedBulldozer");
+        st.message = err ?? t("msg.constructionStartedBulldozer");
       }
-      ruspaPending = null;
-      messageT = 3;
-      picked = null;
-    } else if (picked.obj === "ruspaNo") {
+      st.ruspaPending = null;
+      st.messageT = 3;
+      st.picked = null;
+    } else if (st.picked.obj === "ruspaNo") {
       // [C] demobachia/Mouse_LeftReleased.gml: annulla, nessun costo.
-      ruspaPending = null;
-      picked = null;
-    } else if (picked.obj === "loot") {
-      const item = picked.ref;
+      st.ruspaPending = null;
+      st.picked = null;
+    } else if (st.picked.obj === "loot") {
+      const item = st.picked.ref;
       collectLootAt(item);
-      message = `+${item.amount} ${item.key}`;
-      messageT = 3;
-      picked = null;   // raccolta, non c'e' piu' niente da tenere selezionato
-    } else if (picked.obj === "coin") {
-      const item = picked.ref;
+      st.message = `+${item.amount} ${item.key}`;
+      st.messageT = 3;
+      st.picked = null;   // raccolta, non c'e' piu' niente da tenere selezionato
+    } else if (st.picked.obj === "coin") {
+      const item = st.picked.ref;
       collectCoinAt(item);
-      message = `+${item.amount} ${item.kind ?? "mon"}`;
-      messageT = 3;
-      picked = null;
-    } else if (picked.obj === "upsign") {
+      st.message = `+${item.amount} ${item.kind ?? "mon"}`;
+      st.messageT = 3;
+      st.picked = null;
+    } else if (st.picked.obj === "upsign") {
       // [C] upsign12|23/Mouse_LeftPressed.gml: la stessa cosa che "building"
       // gia' fa tap-ovunque-sull'edificio (tryStartUpgrade gia' controlla
       // soglia e costo) — qui e' solo il bersaglio VISIBILE e prioritario
       // quando il potenziamento e' davvero pronto. attemptUpgradeTap()
       // (sopra): su mobile il primo tap qui rivela solo il cartellino
       // prezzo, non avvia ancora niente.
-      const err = attemptUpgradeTap(picked.ref);
-      if (err !== undefined) { message = err ?? t("msg.constructionStarted"); messageT = 3; }
-      picked = null;
-    } else if (picked.obj === "bankIcon") {
+      const err = attemptUpgradeTap(st.picked.ref);
+      if (err !== undefined) { st.message = err ?? t("msg.constructionStarted"); st.messageT = 3; }
+      st.picked = null;
+    } else if (st.picked.obj === "bankIcon") {
       // [C] bankbuttoner/Mouse_LeftPressed.gml: apre il pannello solo se
       // NESSUN prestito e' gia' attivo (`loaned==0` nel decompilato, qui
       // `loanActive()` — vedi il commento li' per il perche').
-      if (loanActive(r12)) {
-        message = t("msg.loanAlreadyActive");
+      if (loanActive(st.r12)) {
+        st.message = t("msg.loanAlreadyActive");
       } else {
-        bankPanelOpen = true;
+        st.bankPanelOpen = true;
       }
-      messageT = 3;
-      picked = null;
-    } else if (picked.obj === "tradeIcon") {
+      st.messageT = 3;
+      st.picked = null;
+    } else if (st.picked.obj === "tradeIcon") {
       // [C] tradebuttoner/Mouse_LeftPressed.gml: apre il pannello scambi e
       // azzera lo strumento armato (`r12.selec=0`, "la mano") — un tocco
       // sul bottone del mondo non deve anche piazzare cio' che era
       // eventualmente selezionato prima.
-      r12.selec = 0;
-      tradePanelOpen = true;
-      picked = null;
-    } else if (picked.obj === "faroButton") {
+      st.r12.selec = 0;
+      st.tradePanelOpen = true;
+      st.picked = null;
+    } else if (st.picked.obj === "faroButton") {
       // [C] upfaro1/Mouse_LeftPressed.gml (game/src/platform.js): -2000 mon,
       // faro1 si accende e compare il segnale successivo (wavesig1).
-      message = clickFaroButton(platformState, r12) ?? "";
-      messageT = 3;
-      picked = null;
-    } else if (picked.obj === "faroWaveSignal") {
+      st.message = clickFaroButton(st.platformState, st.r12) ?? "";
+      st.messageT = 3;
+      st.picked = null;
+    } else if (st.picked.obj === "faroWaveSignal") {
       // [C] wavesig1/Mouse_LeftReleased.gml: attivo solo di notte, -20 crys.
-      message = clickWaveSignal(platformState, r12, isNight(phaseT)) ?? "";
-      messageT = 3;
-      picked = null;
-    } else if (picked.obj === "faroDockerSignal") {
+      st.message = clickWaveSignal(st.platformState, st.r12, isNight(st.phaseT)) ?? "";
+      st.messageT = 3;
+      st.picked = null;
+    } else if (st.picked.obj === "faroDockerSignal") {
       // [C] dockersig1/Mouse_LeftPressed.gml: -5000 mon -9000 oil, avvia
       // l'attracco (~14s) che finisce nella seconda piattaforma (`r32`).
-      message = clickDockerSignal(platformState, r12) ?? "";
-      messageT = 3;
-      picked = null;
-    } else if (picked.obj === "faro3Button") {
+      st.message = clickDockerSignal(st.platformState, st.r12) ?? "";
+      st.messageT = 3;
+      st.picked = null;
+    } else if (st.picked.obj === "faro3Button") {
       // [C] upfaro3/Mouse_LeftPressed.gml: -5000 mon, faro3 si accende.
-      message = clickFaro3Button(platformState, r12) ?? "";
-      messageT = 3;
-      picked = null;
-    } else if (picked.obj === "faro3WaveSignal") {
+      st.message = clickFaro3Button(st.platformState, st.r12) ?? "";
+      st.messageT = 3;
+      st.picked = null;
+    } else if (st.picked.obj === "faro3WaveSignal") {
       // [C] wavesig3/Mouse_LeftReleased.gml: attivo solo di notte, -50 crys.
-      message = clickWaveSignal3(platformState, r12, isNight(phaseT)) ?? "";
-      messageT = 3;
-      picked = null;
-    } else if (picked.obj === "faro3DockerSignal") {
+      st.message = clickWaveSignal3(st.platformState, st.r12, isNight(st.phaseT)) ?? "";
+      st.messageT = 3;
+      st.picked = null;
+    } else if (st.picked.obj === "faro3DockerSignal") {
       // [C] dockersig3/Mouse_LeftPressed.gml: -15000 mon -27000 oil, avvia
       // l'attracco (~10s) che finisce nella terza piattaforma (`r22`/`r220`).
-      message = clickDockerSignal3(platformState, r12) ?? "";
-      messageT = 3;
-      picked = null;
-    } else if (picked.obj === "cargoShip") {
+      st.message = clickDockerSignal3(st.platformState, st.r12) ?? "";
+      st.messageT = 3;
+      st.picked = null;
+    } else if (st.picked.obj === "cargoShip") {
       // [C] cargo1|2|4/Mouse_LeftPressed.gml: una tantum, +2000..3000 alla
       // risorsa della nave (game/src/bridges.js). cargo3 non e' cliccabile:
       // non arriva nemmeno qui (obj resta "decor" per lei, faroDecor()).
-      message = clickShip(picked.ref, r12) ?? "";
-      messageT = 3;
-      picked = null;
+      st.message = clickShip(st.picked.ref, st.r12) ?? "";
+      st.messageT = 3;
+      st.picked = null;
     }
   };
 
@@ -5897,17 +5900,17 @@ export async function mountMatch(ctx, params = {}) {
   // sintetico. Le due azioni "loadFile" in `input.onTap` sopra sono state
   // rimosse di conseguenza (restava solo il commento a spiegare perche').
   input.onClick = (sx, sy) => {
-    if (outcome && outcome.kind !== "victory") {
-      const hit = outcomeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+    if (st.outcome && st.outcome.kind !== "victory") {
+      const hit = st.outcomeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       if (hit?.action === "loadFile") {
         doLoadFromFile().then((ok) => {
-          if (ok) { outcome = null; crashVSpeed = 0; crashFallY = 0; }
+          if (ok) { st.outcome = null; st.crashVSpeed = 0; st.crashFallY = 0; }
         });
       }
       return;
     }
-    if (paused && pauseSubmenu == null) {
-      const hit = pauseMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+    if (st.paused && st.pauseSubmenu == null) {
+      const hit = st.pauseMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       if (hit?.action === "loadFile") doLoadFromFile();   // async, messaggio gestito dentro (fuoco e dimentica)
     }
   };
@@ -5976,7 +5979,7 @@ export async function mountMatch(ctx, params = {}) {
       // comunque dentro la room (schermi piccoli, room piccole) il
       // comportamento richiesto in precedenza resta invariato.
       cam.maxZoom = Math.min(pixelPerfectZoom() * 2, roomCoverZoom);
-      if (!userMoved) cam.setZoomImmediate(pixelPerfectZoom());
+      if (!st.userMoved) cam.setZoomImmediate(pixelPerfectZoom());
     } else if (canvas.clientWidth > 0) {
       // `Math.min`, non `Math.max`: la room e' quasi sempre piu' larga che
       // alta (match_easy 1920x1086, match 3900x2090 — orizzontali) mentre lo
@@ -6005,7 +6008,7 @@ export async function mountMatch(ctx, params = {}) {
       // superarlo, `fitZoom` stesso e' gia' il limite piu' permissivo che
       // non mostra mai l'esterno della piattaforma.
       cam.maxZoom = fitZoom;
-      if (!userMoved) {
+      if (!st.userMoved) {
         cam.setZoomImmediate(fitZoom);
         // `initialFocusX`/`initialFocusY` (calcolati sopra, dove viene
         // spiegato) invece di `scene.width|height / 2`: stesso principio,
@@ -6021,10 +6024,10 @@ export async function mountMatch(ctx, params = {}) {
     cam.clamp();
   }
 
-  let frameList = staticWorld;   // lista dell'ultimo frame disegnato, usata anche dal picking
-  let last = performance.now();
+  st.frameList = staticWorld;   // lista dell'ultimo frame disegnato, usata anche dal picking
+  st.last = performance.now();
   function frame(now) {
-    if (stopped) return;
+    if (st.stopped) return;
     // [Nuova funzionalita', ottimizzazione mobile] Pagina in background
     // (`document.hidden`: tab non attivo, app minimizzata/schermo spento) —
     // niente simulazione ne' disegno finche' non torna visibile. Non basta
@@ -6039,7 +6042,7 @@ export async function mountMatch(ctx, params = {}) {
     // requestAnimationFrame() resta comunque ripianificato: il ciclo
     // riparte da solo, senza bisogno di un listener 'visibilitychange' a
     // parte.
-    if (document.hidden) { last = now; requestAnimationFrame(frame); return; }
+    if (document.hidden) { st.last = now; requestAnimationFrame(frame); return; }
     // Un solo reset per frame, prima di ogni possibile drawHtmlText() (il
     // balloon del tutorial e il menu di pausa/"saving options", entrambi
     // piu' sotto) — hideUnusedText() (in fondo a questa stessa funzione)
@@ -6068,7 +6071,7 @@ export async function mountMatch(ctx, params = {}) {
     // il callback) — soprattutto al primissimo frame, o con WebGL software —
     // un dt negativo qui si propagherebbe a tutti i timer (c.frame incluso,
     // rendendo frameFor() con un indice negativo e un array out-of-bounds).
-    const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
+    const dt = Math.max(0, Math.min(0.05, (now - st.last) / 1000));
     // [Bug corretto, segnalato dall'autore: "gli aerei del tutorial iniziano
     // fermi poi si muovono"] `dt` sopra e' volutamente clampato a 0.05s per
     // proteggere la simulazione vera (fisica, spawn) da un salto enorme dopo
@@ -6086,18 +6089,18 @@ export async function mountMatch(ctx, params = {}) {
     // un secondo dt, senza il tetto di 0.05s, passato SOLO a stepCutscene()
     // (main.js piu' sotto): la cutscene resta sincronizzata al tempo reale
     // anche durante uno stallo iniziale, invece di rallentare con lui.
-    const cutsceneDt = Math.max(0, (now - last) / 1000);
+    const cutsceneDt = Math.max(0, (now - st.last) / 1000);
     // renderScale.sample() (game/src/renderscale.js) vuole lo stesso tempo di
     // frame VERO, non clampato, gia' calcolato sopra per la cutscene — un
     // `dt` limitato a 0.05s nasconderebbe proprio i frame lenti che deve
     // individuare.
     renderScale.sample(cutsceneDt);
-    last = now;
-    phaseT += dt;
+    st.last = now;
+    st.phaseT += dt;
     resize();
     cam.update(dt);
-    const night = isNight(phaseT);
-    const dawn = isDawn(phaseT);
+    const night = isNight(st.phaseT);
+    const dawn = isDawn(st.phaseT);
 
     // `outcome` (sopra): avanza il proprio orologio SEMPRE, anche a
     // simulazione ferma (la sconfitta congela `buildings`/`r12` etc. ma la
@@ -6105,11 +6108,11 @@ export async function mountMatch(ctx, params = {}) {
     // continuare a scorrere). La vittoria non congela niente (`frozen` sotto
     // resta `false`), ma il suo `t` non serve a nient'altro che a esistere
     // per simmetria con la sconfitta — nessun timer di auto-chiusura.
-    if (outcome) outcome.t += dt;
+    if (st.outcome) st.outcome.t += dt;
     stepAutosave(dt);
-    if (saveIconT !== null) {
-      saveIconT += dt;
-      if (saveIconT >= SAVE_ICON_DURATION) saveIconT = null;
+    if (st.saveIconT !== null) {
+      st.saveIconT += dt;
+      if (st.saveIconT >= SAVE_ICON_DURATION) st.saveIconT = null;
     }
 
     // --- simulazione: cantieri, economia, meteo, traffico, luci
@@ -6124,7 +6127,7 @@ export async function mountMatch(ctx, params = {}) {
     // il mondo non cambia mentre e' fermo), cosi' il blur di pausa/sconfitta
     // (drawPauseOverlay()/drawOutcomeOverlay() in fondo al file) puo' restare
     // un post-processo puro invece di dover duplicare la logica di disegno.
-    const frozen = paused || outcome?.kind === "defeat";
+    const frozen = st.paused || st.outcome?.kind === "defeat";
     // Crollo per olio esaurito (`outcome`/`crashFallY` sopra) — [C] r12/Step.gml
     // non fa cadere MAI nuvole/mongolfiere (STUDIO.md, "notte_target"/
     // "casca_target" non le includono): `skyAlive` le tiene vive anche
@@ -6135,7 +6138,7 @@ export async function mountMatch(ctx, params = {}) {
     // game over" (rischierebbe anche un secondo `outcome`, motivo "chies",
     // se una bomba uccidesse la chiesa proprio mentre la prima sconfitta e'
     // gia' in corso) — resta congelato come ogni sconfitta.
-    const oilCrash = outcome?.kind === "defeat" && outcome.reason === "oil";
+    const oilCrash = st.outcome?.kind === "defeat" && st.outcome.reason === "oil";
     const skyAlive = !frozen || oilCrash;
     if (oilCrash) {
       // Stessa integrazione a tick della fisica GameMaker (TICK sopra):
@@ -6145,8 +6148,8 @@ export async function mountMatch(ctx, params = {}) {
       // y += vspeed) invece di una formula continua indipendente che
       // andrebbe ritarata a mano.
       const ticks = dt / TICK;
-      crashVSpeed += CRASH_GRAVITY * ticks;
-      crashFallY += crashVSpeed * ticks;
+      st.crashVSpeed += CRASH_GRAVITY * ticks;
+      st.crashFallY += st.crashVSpeed * ticks;
     }
     // Nuvole/uccelli (game/src/atmosphere.js) e mongolfiere (game/src/
     // balloons.js) — `skyAlive` sopra: le stesse chiamate di sempre, solo
@@ -6199,9 +6202,9 @@ export async function mountMatch(ctx, params = {}) {
       // indipendente, cosi' costruire un lanciarazzi/gatling/laser basta da
       // solo a precaricare "combat", senza dover aspettare una minaccia
       // vera o un temporale.
-      if (r12.spy || r12.storm || r12.stormeasy
-        || (r12.ondan ?? 0) > 0 || (r12.bombn ?? 0) > 0 || (r12.diron ?? 0) > 0
-        || buildings.some((b) => BUILDING_TYPES[b.type]?.turret)) {
+      if (st.r12.spy || st.r12.storm || st.r12.stormeasy
+        || (st.r12.ondan ?? 0) > 0 || (st.r12.bombn ?? 0) > 0 || (st.r12.diron ?? 0) > 0
+        || st.buildings.some((b) => BUILDING_TYPES[b.type]?.turret)) {
         loadDeferredGroup(gl, atlasKeyFor(roomName), "combat");
       }
       // "advanced": chies a livello 2 (la soglia PIU' BASSA fra tutti i
@@ -6229,39 +6232,39 @@ export async function mountMatch(ctx, params = {}) {
       // istante (precostruito o ricaricato, non solo "sta per crescere")
       // copre il gap, sia per il tutorial sia per un salvataggio che
       // riprende una partita avanzata.
-      if (buildings.some((b) => b.level >= 2 || upgradeUnlocked(b, r12, buildings))) {
+      if (st.buildings.some((b) => b.level >= 2 || upgradeUnlocked(b, st.r12, st.buildings))) {
         loadDeferredGroup(gl, atlasKeyFor(roomName), "advanced");
       }
       // [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Nuvole veloci
       // esclusive di `match`/`tutorial` (mai `match_easy` — atmosphere.js,
       // il commento su `fastClouds` per il dettaglio) invece delle "ni"
       // lente usate ovunque fino ad ora, indipendentemente dalla room.
-      stepAtmosphere(atmo, dt, !!(r12.storm || r12.stormeasy), roomName !== "match_easy");
+      stepAtmosphere(atmo, dt, !!(st.r12.storm || st.r12.stormeasy), roomName !== "match_easy");
       // Mongolfiere (game/src/balloons.js): risorse/spia a intervalli regolari
       // (stepBalloonSpawner, equivalente di r12/Alarm_1.gml) + il pacco di
       // cantiere che casa/industria si porta dietro (spawnato da placeAt(),
       // solo avanzato qui).
-      stepBalloonSpawner(r12, balloons, dt, buildings, platformState);
+      stepBalloonSpawner(st.r12, st.balloons, dt, st.buildings, st.platformState);
       // onStruck: [C] Alarm_5.gml crea "esplo" prima di uccidersi per
       // fulmine — vedi il commento in stepBalloons() (balloons.js).
       // onStruck (balloons.js): "esplo" + il lampo del fulmine vero e proprio
       // (game/src/lightning.js — stessa scelta gia' fatta per gli edifici,
       // stepStormDamage() sotto), entrambi creati dal decompilato prima che
       // la mongolfiera si autodistrugga.
-      stepBalloons(balloons, loot, dt, r12, (x, y) => {
-        explosions.push(spawnExplosion(x, y));
-        lightning.push(spawnLightning(x, y));
+      stepBalloons(st.balloons, st.loot, dt, st.r12, (x, y) => {
+        st.explosions.push(spawnExplosion(x, y));
+        st.lightning.push(spawnLightning(x, y));
       });
-      stepLoot(loot, dt);
+      stepLoot(st.loot, dt);
     }
     if (!frozen) {
-      stepConstructions(buildings, dt, r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
+      stepConstructions(st.buildings, dt, st.r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
       // Ciclo di impalcature dei ruderi sotto ruspa (stepRuinClearing()
       // sopra) — stesso principio di stepConstructions() appena sopra, un
       // timer a parte perche' un rudere in `ruins`/`ruinLots` non e' un
       // `buildings` vero (niente `.construction`).
-      stepRuinClearing(ruins, dt, (ru) => clearedPlaceholder(ru.x, ru.y));
-      stepRuinClearing(ruinLots, dt, (lot) => clearedPlaceholder(lot.x, lot.y));
+      stepRuinClearing(st.ruins, dt, (ru) => clearedPlaceholder(ru.x, ru.y));
+      stepRuinClearing(st.ruinLots, dt, (lot) => clearedPlaceholder(lot.x, lot.y));
       // Vittoria (`outcome` sopra): il grattacielo (STAR_BUILDINGS, l'ultima
       // delle tre "stelle") appena finito di costruire — `b.construction`
       // diventa `null` proprio dentro stepConstructions() appena chiamata
@@ -6269,15 +6272,15 @@ export async function mountMatch(ctx, params = {}) {
       // accorgersene. Al piu' un grattacielo esiste per partita
       // (`unlocked()`, STAR_BUILDINGS sopra), quindi `victoryShown` basta a
       // non ripetere il trigger ad ogni frame successivo.
-      if (!victoryShown) {
-        const g = buildings.find((b) => b.type === "grattacielo" && !b.construction);
-        if (g) { victoryShown = true; outcome = { kind: "victory", t: 0 }; }
+      if (!st.victoryShown) {
+        const g = st.buildings.find((b) => b.type === "grattacielo" && !b.construction);
+        if (g) { st.victoryShown = true; st.outcome = { kind: "victory", t: 0 }; }
       }
       // Impalcatura/gru rotanti del grattacielo (game/src/scaffold.js): un
       // sotto-sistema di scenografia indipendente, non un `onSpawn`/`onFinish`
       // di stepConstructions() sopra — vedi il commento in scaffold.js per il
       // perche'.
-      stepGrattacieloScaffold(buildings, dt);
+      stepGrattacieloScaffold(st.buildings, dt);
       // Le gru di cantiere (game/src/cranes.js) — stesso principio dello
       // scaffolding del grattacielo sopra: un timer tutto loro, indipendente
       // dal resto del cantiere. `ruinClearingFakes`: le gru della taglia 3
@@ -6285,21 +6288,21 @@ export async function mountMatch(ctx, params = {}) {
       // `c.fb` — un "edificio" fittizio, mai in `buildings`) — stepCranes()
       // stesso, non una copia: legge solo `.construction`/`._cranes`, che
       // `c.fb` porta gia'.
-      const ruinClearingFakes = [...ruins, ...ruinLots].map((e) => e.clearing?.fb).filter(Boolean);
-      stepCranes([...buildings, ...ruinClearingFakes], dt);
-      stepProduction(buildings, dt, r12);
-      stepSolarProduction(buildings, dt, r12, night, dawn);
-      stepWindProduction(buildings, dt, r12);
+      const ruinClearingFakes = [...st.ruins, ...st.ruinLots].map((e) => e.clearing?.fb).filter(Boolean);
+      stepCranes([...st.buildings, ...ruinClearingFakes], dt);
+      stepProduction(st.buildings, dt, st.r12);
+      stepSolarProduction(st.buildings, dt, st.r12, night, dawn);
+      stepWindProduction(st.buildings, dt, st.r12);
       // Fumo delle centrali (game/src/smoke.js): dopo stepProduction(), cosi'
       // "oil>0" gia' rispecchia il consumo di questo frame, come per le monete
       // blu sotto (stesso ordine gia' scelto per stepCoinSpawner()).
-      stepSmokeSpawner(buildings, smoke, dt, r12);
-      stepSmoke(smoke, dt);
-      stepLightning(lightning, dt);
-      stepGrowth(buildings, dt, r12, (b) => pedestrians.push(spawnPedestrian(b.x, b.y)));
-      stepConsumption(buildings, dt, r12, night);
-      stepWeather(r12, dt, scene.name === "match", scene.name === "match_easy");
-      stepStormDamage(buildings, dt, r12, (x, y) => lightning.push(spawnLightning(x, y)));
+      stepSmokeSpawner(st.buildings, st.smoke, dt, st.r12);
+      stepSmoke(st.smoke, dt);
+      stepLightning(st.lightning, dt);
+      stepGrowth(st.buildings, dt, st.r12, (b) => st.pedestrians.push(spawnPedestrian(b.x, b.y)));
+      stepConsumption(st.buildings, dt, st.r12, night);
+      stepWeather(st.r12, dt, scene.name === "match", scene.name === "match_easy");
+      stepStormDamage(st.buildings, dt, st.r12, (x, y) => st.lightning.push(spawnLightning(x, y)));
       // Pioggia vera del temporale (game/src/weather.js) — attiva sia sotto
       // il temporale vero di `match` (r12.storm) sia sotto quello cosmetico
       // di `match_easy` (r12.stormeasy): stepRain() la fa cadere o la
@@ -6316,11 +6319,11 @@ export async function mountMatch(ctx, params = {}) {
       // all'intera room invece, la pioggia e' gia' presente ovunque la
       // camera possa mai inquadrare, qualunque sia la velocita' del pan.
       // Vedi il commento in cima a weather.js.
-      stepRain(weatherState, dt, !!(r12.storm || r12.stormeasy), 0, scene.width, 0, scene.height);
+      stepRain(st.weatherState, dt, !!(st.r12.storm || st.r12.stormeasy), 0, scene.width, 0, scene.height);
       // Fuochi d'artificio sopra chies (game/src/fireworks.js) — sempre
       // "in ascolto", scoppiano davvero solo a Gennaio (r12.month === 1,
       // state.js/stepCalendar()).
-      if (fireworksState) stepFireworks(fireworksState, dt, r12.month === 1);
+      if (fireworksState) stepFireworks(fireworksState, dt, st.r12.month === 1);
       // [Bug corretto, segnalato dall'autore: "avevi inserito popolazione (e
       // forse anche soldi?) che salgono da soli a ogni secondo, rimuoviamolo"]
       // Qui prima girava anche `tickR12()` (state.js, rimossa): una
@@ -6336,7 +6339,7 @@ export async function mountMatch(ctx, params = {}) {
       // pop>=0 — tutti [C] da r12/Step.gml), che va comunque chiamata ogni
       // frame per applicare quei limiti alla produzione/crescita VERA appena
       // simulata sopra (stepProduction/stepGrowth/stepConsumption/...).
-      clampR12(r12, buildings);
+      clampR12(st.r12, st.buildings);
       // Sconfitta, l'olio a zero (`outcome` sopra) — SOLO su `match`/
       // `tutorial`, le uniche due room con la piattaforma volante
       // (game/src/platform.js): `r12.oil` e' gia' il valore finale di questo
@@ -6346,12 +6349,12 @@ export async function mountMatch(ctx, params = {}) {
       // sotto, nel disegno) smettono di lampeggiare invece di continuare
       // finche' non arriva il buio della cutscene — "i rotori si bloccano",
       // richiesto dall'autore.
-      if (!outcome && (roomName === "match" || roomName === "tutorial") && r12.oil <= 0) {
-        outcome = { kind: "defeat", reason: "oil", t: 0, motorFreezeT: phaseT };
+      if (!st.outcome && (roomName === "match" || roomName === "tutorial") && st.r12.oil <= 0) {
+        st.outcome = { kind: "defeat", reason: "oil", t: 0, motorFreezeT: st.phaseT };
       }
-      stepCalendar(r12, dt);
-      stepCars(cars, dt, r12, night);
-      carmakerT += dt;
+      stepCalendar(st.r12, dt);
+      stepCars(st.cars, dt, st.r12, night);
+      st.carmakerT += dt;
       // [Bug corretto, segnalato dall'autore: "le auto vanno spesso fuori
       // strada e invadono gli spazi per gli edifici" su `match`] `nudge`
       // (game/src/cars.js, CAR_TYPES.honda3..9.matchEasyNudge): il gate
@@ -6363,18 +6366,18 @@ export async function mountMatch(ctx, params = {}) {
       // `match`/`tutorial`: l'intero percorso di ogni honda3..9 nasceva
       // ~21-27px fuori dal punto vero, abbastanza da tagliare dentro un
       // lotto o fuori dalla strada — sette tipi diversi, uno ogni 60s).
-      while (carmakerIdx < CARMAKER_SCHEDULE.length && carmakerT >= CARMAKER_SCHEDULE[carmakerIdx].at) {
-        cars.push(spawnCar(CARMAKER_SCHEDULE[carmakerIdx].type, night, roomName === "match_easy"));
-        carmakerIdx++;
+      while (st.carmakerIdx < CARMAKER_SCHEDULE.length && st.carmakerT >= CARMAKER_SCHEDULE[st.carmakerIdx].at) {
+        st.cars.push(spawnCar(CARMAKER_SCHEDULE[st.carmakerIdx].type, night, roomName === "match_easy"));
+        st.carmakerIdx++;
       }
-      stepLights(decorEntities, dt, night, r12);
+      stepLights(st.decorEntities, dt, night, st.r12);
       stepTransientDecor(dt);
       stepSemaphores(semaphores, dt);
-      stepPedestrians(pedestrians, dt);
+      stepPedestrians(st.pedestrians, dt);
       // I pulsanti blu delle monete (game/src/coins.js): casa1|2|3/Alarm_4.gml,
       // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
-      stepCoinSpawner(buildings, coins, dt, r12, platformState);
-      stepCoins(coins, dt, r12);
+      stepCoinSpawner(st.buildings, st.coins, dt, st.r12, st.platformState);
+      stepCoins(st.coins, dt, st.r12);
       // [Nuova funzionalita', richiesta dall'autore: indagare se le ville
       // producessero una seconda risorsa a forma di elica del DNA legata al
       // grattacielo — confermato: `biotech` (r12, sopra — le monete "bioico"
@@ -6390,37 +6393,37 @@ export async function mountMatch(ctx, params = {}) {
       // commento su `grattacieloUnlocked`, state.js): qui omesso, il gate
       // "un solo grattacielo per partita" resta comunque garantito da
       // `STAR_BUILDINGS.grattacielo.unlocked()` sotto.
-      if (!r12.grattacieloUnlocked && r12.biotech >= 100) {
-        r12.biotech = 0;
-        r12.grattacieloUnlocked = true;
+      if (!st.r12.grattacieloUnlocked && st.r12.biotech >= 100) {
+        st.r12.biotech = 0;
+        st.r12.grattacieloUnlocked = true;
       }
-      if (platformState) {
-        const chiesLevel = buildings.find((b) => b.type === "chies")?.level ?? 0;
-        stepFaroChain(platformState, r12, balloons, cars, smoke, dt, chiesLevel, night);
+      if (st.platformState) {
+        const chiesLevel = st.buildings.find((b) => b.type === "chies")?.level ?? 0;
+        stepFaroChain(st.platformState, st.r12, st.balloons, st.cars, st.smoke, dt, chiesLevel, night);
         // Lampo periodico dei fari accesi (faroFlashes/FARO_FLASH_* sopra) —
         // stesse condizioni di stage con cui faro1Decor()/faro3Decor()
         // (game/src/platform.js) disegnano gia' "f1lux": tier1 accende
         // ENTRAMBI i fari gemelli (FARO1 e FARO2), tier2 solo FARO3.
-        const tier1Lit = platformState.tier1.stage === "lit" || platformState.tier1.stage === "expanding";
-        const tier2Lit = platformState.tier2.stage === "lit" || platformState.tier2.stage === "expanding";
+        const tier1Lit = st.platformState.tier1.stage === "lit" || st.platformState.tier1.stage === "expanding";
+        const tier2Lit = st.platformState.tier2.stage === "lit" || st.platformState.tier2.stage === "expanding";
         if (tier1Lit) {
-          faroFlashT1 += dt;
-          while (faroFlashT1 >= FARO_FLASH_PERIOD) {
-            faroFlashT1 -= FARO_FLASH_PERIOD;
-            faroFlashes.push({ x: FARO1.x, y: FARO1.y - 280, t: 0 });
-            faroFlashes.push({ x: FARO2.x, y: FARO2.y - 280, t: 0 });
+          st.faroFlashT1 += dt;
+          while (st.faroFlashT1 >= FARO_FLASH_PERIOD) {
+            st.faroFlashT1 -= FARO_FLASH_PERIOD;
+            st.faroFlashes.push({ x: FARO1.x, y: FARO1.y - 280, t: 0 });
+            st.faroFlashes.push({ x: FARO2.x, y: FARO2.y - 280, t: 0 });
           }
-        } else faroFlashT1 = 0;
+        } else st.faroFlashT1 = 0;
         if (tier2Lit) {
-          faroFlashT2 += dt;
-          while (faroFlashT2 >= FARO_FLASH_PERIOD) {
-            faroFlashT2 -= FARO_FLASH_PERIOD;
-            faroFlashes.push({ x: FARO3.x, y: FARO3.y - 280, t: 0 });
+          st.faroFlashT2 += dt;
+          while (st.faroFlashT2 >= FARO_FLASH_PERIOD) {
+            st.faroFlashT2 -= FARO_FLASH_PERIOD;
+            st.faroFlashes.push({ x: FARO3.x, y: FARO3.y - 280, t: 0 });
           }
-        } else faroFlashT2 = 0;
-        for (let i = faroFlashes.length - 1; i >= 0; i--) {
-          faroFlashes[i].t += dt;
-          if (faroFlashes[i].t >= FARO_FLASH_LIFE) faroFlashes.splice(i, 1);
+        } else st.faroFlashT2 = 0;
+        for (let i = st.faroFlashes.length - 1; i >= 0; i--) {
+          st.faroFlashes[i].t += dt;
+          if (st.faroFlashes[i].t >= FARO_FLASH_LIFE) st.faroFlashes.splice(i, 1);
         }
       }
       // Raccolta al passaggio del mouse — [C] sold*/soldbio/Mouse_MouseEnter.gml
@@ -6431,8 +6434,8 @@ export async function mountMatch(ctx, params = {}) {
       // striscio, un gesto che l'originale non prevede su touch.
       if (input.hover && input.hoverPointerType === "mouse") {
         const hw = cam.screenToWorld(input.hover.x, input.hover.y);
-        for (let i = coins.length - 1; i >= 0; i--) {
-          const c = coins[i];
+        for (let i = st.coins.length - 1; i >= 0; i--) {
+          const c = st.coins[i];
           const f = frameFor(c.spr);
           if (!f) continue;
           const x0 = c.x - f.ox, y0 = c.y - f.oy;
@@ -6441,39 +6444,39 @@ export async function mountMatch(ctx, params = {}) {
         // Casse di risorse (balloons.js): stessa raccolta al passaggio del
         // mouse delle monete sopra — segnalato dall'autore, prima si
         // raccoglievano solo con un tap esplicito.
-        for (let i = loot.length - 1; i >= 0; i--) {
-          const l = loot[i];
+        for (let i = st.loot.length - 1; i >= 0; i--) {
+          const l = st.loot[i];
           const f = frameFor(l.spr);
           if (!f) continue;
           const x0 = l.x - f.ox, y0 = l.y - f.oy;
           if (hw.x >= x0 && hw.x <= x0 + f.w && hw.y >= y0 && hw.y <= y0 + f.h) collectLootAt(l);
         }
       }
-      for (let i = coinPops.length - 1; i >= 0; i--) {
-        coinPops[i].t += dt;
-        if (coinPops[i].t >= COIN_POP_LIFE) coinPops.splice(i, 1);
+      for (let i = st.coinPops.length - 1; i >= 0; i--) {
+        st.coinPops[i].t += dt;
+        if (st.coinPops[i].t >= COIN_POP_LIFE) st.coinPops.splice(i, 1);
       }
-      for (let i = costFloaters.length - 1; i >= 0; i--) {
-        costFloaters[i].t += dt;
-        if (costFloaters[i].t >= COST_FLOAT_LIFE) costFloaters.splice(i, 1);
+      for (let i = st.costFloaters.length - 1; i >= 0; i--) {
+        st.costFloaters[i].t += dt;
+        if (st.costFloaters[i].t >= COST_FLOAT_LIFE) st.costFloaters.splice(i, 1);
       }
-      stepConstructionBalloons(constructionBalloons, constructionBoxes, dt);
+      stepConstructionBalloons(st.constructionBalloons, st.constructionBoxes, dt);
       // onLand: [C] mon_box|mon_bbox/Alarm_0.gml crea "smoko" prima di
       // autodistruggersi — vedi il commento in stepConstructionBoxes() (balloons.js).
-      stepConstructionBoxes(constructionBoxes, dt, (x, y) => trails.push(spawnSmoko(x, y)));
+      stepConstructionBoxes(st.constructionBoxes, dt, (x, y) => st.trails.push(spawnSmoko(x, y)));
       // Tutorial (game/src/tutorial.js): la cutscene iniziale gira PRIMA di
       // tutto il resto (avanzamento fasi/freccia restano fermi finche' non
       // finisce, stesso ordine del decompilato — l'HUD nasce distrutto dalla
       // cutscene, torna solo alla fine). `coinCollected` (fase 5->6) si legge
       // qui invece che dentro stepTutorialAuto() perche' dipende da `coins`,
       // non solo da `r12`/`buildings`.
-      if (tutorialState) {
-        if (tutorialState.cutscene) {
+      if (st.tutorialState) {
+        if (st.tutorialState.cutscene) {
           // Niente piu' `aspect` da passare (STUDIO.md/tutorial.js, il fix
           // sugli aerei "fermi per qualche frame": la posizione in pixel si
           // calcola ora a valle, nel disegno sotto, dove la vera larghezza
           // dello sprite e' gia' nota).
-          const cutDone = stepCutscene(tutorialState.cutscene, cutsceneDt, !!platformState);
+          const cutDone = stepCutscene(st.tutorialState.cutscene, cutsceneDt, !!st.platformState);
           // `spawnThreats`/`killDirig` (tutorial.js, sopra stepCutscene()):
           // one-shot alla transizione di fase, "planes"->"black1" e
           // "battle"->"black2" — tutorial.js non conosce `threats` (non e'
@@ -6484,26 +6487,26 @@ export async function mountMatch(ctx, params = {}) {
           // cui nasce. [C] blacker1/Create.gml crea gli stessi tipi che il
           // regista vero (stepThreatSpawner) usa in partita — nessun array
           // a parte, la stessa `threats` di sempre.
-          if (tutorialState.cutscene.spawnThreats) threats.push(...tutorialState.cutscene.spawnThreats);
+          if (st.tutorialState.cutscene.spawnThreats) st.threats.push(...st.tutorialState.cutscene.spawnThreats);
           // [C] blacker2/Create.gml: `with (dirig) { action_kill_object() }`
           // — nessuna esplosione, il decompilato lo fa sparire di scatto
           // (a differenza di una morte vera, spawnDeathEffect() non gira
           // qui): stesso trattamento, un filtro invece di un
           // `action_kill_object()` per istanza.
-          if (tutorialState.cutscene.killDirig) threats = threats.filter((th) => th.type !== "dirig");
-          if (cutDone) tutorialState.cutscene = null;
+          if (st.tutorialState.cutscene.killDirig) st.threats = st.threats.filter((th) => th.type !== "dirig");
+          if (cutDone) st.tutorialState.cutscene = null;
         } else {
-          if (tutorialState.practiceCoinSpawned && !coins.some((c) => c._tutorialPractice)) {
-            tutorialState.coinCollected = true;
+          if (st.tutorialState.practiceCoinSpawned && !st.coins.some((c) => c._tutorialPractice)) {
+            st.tutorialState.coinCollected = true;
           }
-          stepTutorialAuto(tutorialState, { r12, buildings });
+          stepTutorialAuto(st.tutorialState, { r12: st.r12, buildings: st.buildings });
         }
         // Bottone avanti/esci: nascosto durante la cutscene e nelle fasi ad
         // avanzamento automatico (HIDE_ADVANCE_BUTTON — tutorial_thumb/
         // Step.gml, le stesse 8 fasi gia' viste in stepTutorialAuto()), visibile
         // in tutte le altre — [C] fedele, non si puo' avanzare a mano una fase
         // gameplay-gated.
-        tutorialState.showOkButton = !tutorialState.cutscene && !HIDE_ADVANCE_BUTTON.has(tutorialState.phase);
+        st.tutorialState.showOkButton = !st.tutorialState.cutscene && !HIDE_ADVANCE_BUTTON.has(st.tutorialState.phase);
         // [Bug corretto, segnalato dall'autore: "spesso non si capisce come
         // avanzare allo step successivo"] **[I]** Il balloon di testo restava
         // legato a `showOkButton` (nascosto insieme al bottone): proprio nelle
@@ -6514,8 +6517,8 @@ export async function mountMatch(ctx, params = {}) {
         // COSA fare. Testo e bottone ora separati: il testo (l'"obiettivo" da
         // perseguire) resta visibile per l'intera fase, gated o no — solo il
         // bottone "avanti" sparisce quando la fase non si supera a tocco.
-        tutorialState.showText = !tutorialState.cutscene;
-        if (tutorialState.showText) {
+        st.tutorialState.showText = !st.tutorialState.cutscene;
+        if (st.tutorialState.showText) {
           // Il balloon/bottone non devono coprire la barra azioni sotto
           // (segnalato dall'autore: si sovrapponevano) — `uiButtons` (un
           // frame indietro, ricalcolata piu' sotto: differenza impercettibile,
@@ -6526,8 +6529,8 @@ export async function mountMatch(ctx, params = {}) {
           // GUI) puo' riusarlo senza ricalcolarlo. Calcolato per ENTRAMBI
           // (testo/bottone, non solo quest'ultimo) da quando i due si sono
           // separati sopra.
-          const barTop = uiButtons.length ? Math.min(...uiButtons.map((b) => b.y)) : canvas.clientHeight - 100;
-          tutorialState.uiGap = Math.max(8, canvas.clientHeight - barTop + 10);
+          const barTop = st.uiButtons.length ? Math.min(...st.uiButtons.map((b) => b.y)) : canvas.clientHeight - 100;
+          st.tutorialState.uiGap = Math.max(8, canvas.clientHeight - barTop + 10);
         }
       }
       // Minacce vere (game/src/threats.js): il regista fa nascere aerei/
@@ -6545,29 +6548,29 @@ export async function mountMatch(ctx, params = {}) {
       // minacce vere: quelle gia' in volo in quel momento restano fino a
       // che non se ne vanno da sole (`stepThreats()` sotto, invariato),
       // niente sparizione di scatto a meta' volo.
-      if (!victoryShown) stepThreatSpawner(r12, threats, dt, !!platformState);
-      stepThreats(threats, bombs, explosions, dt, r12, aerSmoke, debris);
-      stepAerSmoke(aerSmoke, dt);
-      stepDebris(debris, explosions, dt);
-      stepBombs(bombs, explosions, buildings, dt, r12);
-      stepExplosions(explosions, dt);
+      if (!st.victoryShown) stepThreatSpawner(st.r12, st.threats, dt, !!st.platformState);
+      stepThreats(st.threats, st.bombs, st.explosions, dt, st.r12, st.aerSmoke, st.debris);
+      stepAerSmoke(st.aerSmoke, dt);
+      stepDebris(st.debris, st.explosions, dt);
+      stepBombs(st.bombs, st.explosions, st.buildings, dt, st.r12);
+      stepExplosions(st.explosions, dt);
       // Cooldown del bottone scambi (tradeCooldownT, tradeIcon piu' sotto) —
       // [C] tradebuttoner/Alarm_2.gml: un timer locale come bankPanelOpen,
       // non su r12 (al massimo pochi secondi, nessun bisogno di
       // sopravvivere a un salvataggio).
-      if (tradeCooldownT > 0) tradeCooldownT = Math.max(0, tradeCooldownT - dt);
+      if (st.tradeCooldownT > 0) st.tradeCooldownT = Math.max(0, st.tradeCooldownT - dt);
       // Unico controllo per tutte le fonti di danno di questo frame (fulmini,
       // STUDIO.md "le tempeste diventano reali" + bombe appena sganciate sopra).
-      for (const b of buildings) {
+      for (const b of st.buildings) {
         if (b.construction || b.life > 0) continue;
         // Sconfitta, `chies` distrutta (`outcome` sopra) — in QUALUNQUE room:
         // e' sempre l'unico esemplare (STUDIO.md §9), a differenza di ogni
         // altro edificio la cui morte (destroyBuilding() sotto, comunque
         // chiamata: diventa un rudere come sempre) non ferma la partita.
-        if (b.type === "chies" && !outcome) outcome = { kind: "defeat", reason: "chies", t: 0 };
+        if (b.type === "chies" && !st.outcome) st.outcome = { kind: "defeat", reason: "chies", t: 0 };
         destroyBuilding(b);
       }
-      if (r12.alertT > 0) r12.alertT -= dt;
+      if (st.r12.alertT > 0) st.r12.alertT -= dt;
       // Torrette (game/src/buildings.js, stepTurretAim): inseguono la
       // minaccia vera piu' vicina (`threats`: aerei/bombardieri/zeppelin,
       // game/src/threats.js), e se nessuna e' in portata si agganciano alla
@@ -6576,7 +6579,7 @@ export async function mountMatch(ctx, params = {}) {
       // commento su stepTurretAim() in buildings.js. Le auto decorative
       // (`cars`) restano fuori: non sono un bersaglio, ne' ostile ne'
       // cliccabile.
-      stepTurretAim(buildings, threats, balloons);
+      stepTurretAim(st.buildings, st.threats, st.balloons);
       // Costo/minuto dell'autodifesa opzionale (buildings.js,
       // AUTO_DEFENSE_COST_PER_MIN, un valore per livello 2/3) — prima del
       // fuoco vero sotto, cosi' una torretta appena rimasta senza fondi
@@ -6600,9 +6603,9 @@ export async function mountMatch(ctx, params = {}) {
       // corretto: la torretta ruota) ma senza quel margine — un piccolo "-
       // 6" resta solo per non far nascere l'icona esattamente incollata al
       // pixel del bordo.
-      for (const s of stepAutoDefenseUpkeep(buildings, r12, dt)) {
+      for (const s of stepAutoDefenseUpkeep(st.buildings, st.r12, dt)) {
         const top = s.y - turretHitBox(s.type, 0).oy - 6;
-        for (let i = 0; i < s.count; i++) costFloaters.push({ x: s.x, y: top, t: -i * 0.2 });
+        for (let i = 0; i < s.count; i++) st.costFloaters.push({ x: s.x, y: top, t: -i * 0.2 });
       }
       // Il fuoco vero (game/src/projectiles.js): dopo la mira, cosi' spara
       // gia' nella direzione appena calcolata (b.aimAngle). Automatico resta
@@ -6612,17 +6615,17 @@ export async function mountMatch(ctx, params = {}) {
       // servono solo a quei rami, per il laser). Livello 1: le mongolfiere
       // si abbattono solo col tap manuale sul cannone (fireTurretManual piu'
       // sotto).
-      stepTurretFire(buildings, threats, dt, projectiles, explosions, r12, trails, beams, balloons, loot);
-      stepProjectiles(projectiles, balloons, threats, loot, explosions, trails, dt);
-      stepBeams(beams, dt);
-      stepSmoko(trails, dt);
-      if (messageT > 0) messageT -= dt;
+      stepTurretFire(st.buildings, st.threats, dt, st.projectiles, st.explosions, st.r12, st.trails, st.beams, st.balloons, st.loot);
+      stepProjectiles(st.projectiles, st.balloons, st.threats, st.loot, st.explosions, st.trails, dt);
+      stepBeams(st.beams, dt);
+      stepSmoko(st.trails, dt);
+      if (st.messageT > 0) st.messageT -= dt;
     }
 
     // --- lista di disegno di questo frame: mondo statico (placeholder consumati
     // esclusi) + edifici (sprite ricalcolato: cambia durante il cantiere) + decoro
     const dynamic = [];
-    for (const b of buildings) {
+    for (const b of st.buildings) {
       // `eolico` (b.animT, buildings.js/stepWindProduction): "eol" ha 8
       // sottoimmagini vere (le pale che girano), animate in loop invece che
       // ferme al frame 0 — vedi il commento su WIND_ANIM_FPS in buildings.js.
@@ -6641,7 +6644,7 @@ export async function mountMatch(ctx, params = {}) {
       // Stesso rosso puro (`_selfLit`, salta la tinta ambientale giorno/
       // notte) gia' usato per l'hover sui lotti-rudere del tutorial — [C]
       // ruin1|2/Mouse_MouseEnter.gml, action_sprite_color(255,1).
-      const ruspaTargeted = ruspaPending?.buildingId === b.id;
+      const ruspaTargeted = st.ruspaPending?.buildingId === b.id;
       dynamic.push({
         obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr, buildingFrameIdx),
         ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true } : {}),
@@ -6690,7 +6693,7 @@ export async function mountMatch(ctx, params = {}) {
       // sbloccato (stessa soglia gia' letta da tryStartUpgrade()) e nessun
       // cantiere e' gia' in corso. Depth -9001, un filo piu' avanti delle
       // monete blu (-9000): [C] upsign12/_object.json, sempre in primo piano.
-      if (!b.construction && upgradeUnlocked(b, r12, buildings)) {
+      if (!b.construction && upgradeUnlocked(b, st.r12, st.buildings)) {
         // `_selfLit`: come le luci delle finestre (stepLights() sopra), un
         // segnale simbolico dell'interfaccia — deve restare leggibile anche di
         // notte, non scurirsi con la tinta ambientale come un edificio vero.
@@ -6718,7 +6721,7 @@ export async function mountMatch(ctx, params = {}) {
       // (niente push, non solo alpha 0) mentre il pannello e' gia' aperto o
       // durante il cooldown dopo l'ultimo scambio (tradeCooldownT sopra) —
       // esattamente i due casi in cui l'originale spegne il proprio sprite.
-      if (b.type === "chies" && b.level >= 2 && !tradePanelOpen && tradeCooldownT <= 0) {
+      if (b.type === "chies" && b.level >= 2 && !st.tradePanelOpen && st.tradeCooldownT <= 0) {
         dynamic.push({ obj: "tradeIcon", ref: b, x: b.x - 60, y: b.y + 30, depth: -9100, _f: frameFor("tradobutt"), _selfLit: true });
       }
       // Popup si'/no della ruspa (ruspaPending, armato da input.onTap sotto)
@@ -6745,12 +6748,12 @@ export async function mountMatch(ctx, params = {}) {
       // cartellini in spazio mondo piu' sotto (drawCostTagWorld()): un DOM
       // overlay non fa parte di `dynamic`/frameList, quel batch resta solo
       // per gli sprite veri.
-      if (ruspaPending?.buildingId === b.id) {
+      if (st.ruspaPending?.buildingId === b.id) {
         dynamic.push({ obj: "ruspaNo", ref: b, x: b.x + 16 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: tagPillFrame(RUSPA_BTN_W, RUSPA_BTN_H), _selfLit: true, _tint: 0xef5350, _scale: UI_SCALE });
         dynamic.push({ obj: "ruspaYes", ref: b, x: b.x + 177 * UI_SCALE, y: b.y - 16 * UI_SCALE, depth: UPSIGN_DEPTH, _f: tagPillFrame(RUSPA_BTN_W, RUSPA_BTN_H), _selfLit: true, _tint: 0x43a047, _scale: UI_SCALE });
       }
     }
-    for (const d of decorEntities) dynamic.push(d);
+    for (const d of st.decorEntities) dynamic.push(d);
     // Ruderi (destroyBuilding() sopra) — sotto ruspa lasciano un placeholder
     // vuoto (clearedPlaceholder(), sopra) — stesso trattamento hover/tinta
     // rossa gia' in uso per i lotti-rudere del tutorial (`ruinLots` sotto),
@@ -6769,9 +6772,9 @@ export async function mountMatch(ctx, params = {}) {
     // (`!entry.clearing` sotto) proprio perche' un secondo tap durante il
     // ciclo di impalcature non fa piu' niente (guardia in input.onTap).
     const hoverWorld = input.hover && input.hoverPointerType === "mouse" ? cam.screenToWorld(input.hover.x, input.hover.y) : null;
-    for (const ru of ruins) {
-      const hovered = !ru.clearing && r12.selec === 11 && ru._f
-        && ((!!hoverWorld && inFrameRect(hoverWorld.x, hoverWorld.y, ru.x, ru.y, ru._f)) || ruinTapArmed === ru);
+    for (const ru of st.ruins) {
+      const hovered = !ru.clearing && st.r12.selec === 11 && ru._f
+        && ((!!hoverWorld && inFrameRect(hoverWorld.x, hoverWorld.y, ru.x, ru.y, ru._f)) || st.ruinTapArmed === ru);
       ru._hovered = hovered;
       dynamic.push({
         obj: "ruin", ref: ru, x: ru.x, y: ru.y, depth: ru.depth, _f: ru._f,
@@ -6789,13 +6792,13 @@ export async function mountMatch(ctx, params = {}) {
     // cutscene iniziale si disegna a parte, in spazio schermo (vedi sotto,
     // dopo il layer GUI) — copre l'intera canvas per davvero, indipendente
     // da dove punta la camera vera della room.
-    if (tutorialState) {
+    if (st.tutorialState) {
       const hw = hoverWorld;
-      for (const lot of ruinLots) {
+      for (const lot of st.ruinLots) {
         // Stesso principio di `ru`/`ruinTapArmed` appena sopra: il primo tap
         // mobile arma questa voce esattamente come l'hover del mouse.
-        const hovered = !lot.clearing && r12.selec === 11 && lot._f
-          && ((!!hw && inFrameRect(hw.x, hw.y, lot.x, lot.y, lot._f)) || ruinTapArmed === lot);
+        const hovered = !lot.clearing && st.r12.selec === 11 && lot._f
+          && ((!!hw && inFrameRect(hw.x, hw.y, lot.x, lot.y, lot._f)) || st.ruinTapArmed === lot);
         lot._hovered = hovered;
         // [C] ruin1|2/Mouse_MouseEnter.gml: action_sprite_color(255,1) — 255 e'
         // "puro rosso" nel formato colore di GameMaker (R+G*256+B*65536, vedi
@@ -6815,7 +6818,7 @@ export async function mountMatch(ctx, params = {}) {
     // stepCars() sopra — `c.frame` anima per davvero le svolte (STUDIO.md
     // "le auto sterzano davvero"), frameFor() lo ritaglia da solo sull'ultimo
     // frame disponibile per gli sprite a posa singola.
-    for (const c of cars) {
+    for (const c of st.cars) {
       dynamic.push({ obj: "car", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr, Math.floor(c.frame)), _tint: c.tint });
     }
     // Semafori (game/src/semaphores.js): il palo ("se") e' gia' in
@@ -6839,7 +6842,7 @@ export async function mountMatch(ctx, params = {}) {
     // differenza di monete/segnali, fissi sul loro edificio). L'animazione a
     // 70 frame di cc1/cc2/cc3 gira per davvero (frameIdx), oltre e non invece
     // dell'ingrandimento uniforme (_scale) — vedi smoke.js.
-    for (const p of smoke.active) {
+    for (const p of st.smoke.active) {
       const frameIdx = Math.min(SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
       dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, SMOKE_LIFE) });
     }
@@ -6850,7 +6853,7 @@ export async function mountMatch(ctx, params = {}) {
     // e' piu' uno sprite ("base") ancorato al mondo qui — vedi il rettangolo
     // a schermo intero disegnato piu' sotto, subito dopo il loop di
     // frameList, vicino a faroFlashes.
-    for (const s of lightning) {
+    for (const s of st.lightning) {
       dynamic.push({ obj: "decor", x: s.x, y: s.y, depth: -s.y - 5, _f: frameFor(boltSprite(s)) });
     }
     // `_sky: true` (qui e su ogni altra voce dichiaratamente in volo piu'
@@ -6863,19 +6866,19 @@ export async function mountMatch(ctx, params = {}) {
     for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr), _sky: true });
     // Pedoni (game/src/pedestrians.js): x/y/depth gia' avanzati da
     // stepPedestrians() sopra.
-    for (const p of pedestrians) dynamic.push({ obj: "pedestrian", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
+    for (const p of st.pedestrians) dynamic.push({ obj: "pedestrian", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
     // Mongolfiere (game/src/balloons.js): risorse/spia (obj: "flyingBalloon",
     // cliccabile — un tap la distrugge, vedi picking sotto: richiesto
     // dall'autore, non piu' le torrette da sole) + le casse che lasciano
     // cadere (obj: "loot", vedi picking sotto) + il pacco di cantiere di
     // casa/industria (obj: "balloon" invece — non cliccabile, sta solo
     // portando materiali a un cantiere, non e' un bersaglio).
-    for (const b of balloons) dynamic.push({ obj: "flyingBalloon", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr), _sky: true });
-    for (const l of loot) dynamic.push({ obj: "loot", ref: l, x: l.x, y: l.y, depth: l.depth, _f: frameFor(l.spr), _sky: true });
+    for (const b of st.balloons) dynamic.push({ obj: "flyingBalloon", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr), _sky: true });
+    for (const l of st.loot) dynamic.push({ obj: "loot", ref: l, x: l.x, y: l.y, depth: l.depth, _f: frameFor(l.spr), _sky: true });
     // Le monete (game/src/coins.js): "soldfade" anima per davvero (20 frame,
     // stesso schema delle svolte delle auto — frameFor legge il frame vero
     // invece di restare fermo al primo), "soldico" e' statica (un solo frame).
-    for (const c of coins) {
+    for (const c of st.coins) {
       const frameIdx = c.auto ? Math.min(19, Math.floor(c.t / TICK)) : 0;
       // `_selfLit`: stesso motivo di "upsign" sopra — un pulsante simbolico
       // dell'interfaccia, non un oggetto di mondo, deve restare visibile
@@ -6888,8 +6891,8 @@ export async function mountMatch(ctx, params = {}) {
     // solo sui segnali (stesso motivo di "upsign" sopra): i fari veri e la
     // nuova scenografia restano invece soggetti alla tinta giorno/notte come
     // ogni decoro.
-    if (platformState) {
-      for (const it of faroDecor(platformState, phaseT)) {
+    if (st.platformState) {
+      for (const it of faroDecor(st.platformState, st.phaseT)) {
         // `it.frame`: solo l'impalcato animato dei ponti levatoi (bridges.js,
         // bridgeDeckFrame()) lo passa, tutto il resto resta al frame 0.
         dynamic.push({ ...it, _f: frameFor(it.spr, it.frame ?? 0), _selfLit: FARO_SIGN_OBJS.has(it.obj) || undefined });
@@ -6910,18 +6913,18 @@ export async function mountMatch(ctx, params = {}) {
       // l'olio e' finito, invece di continuare a inseguire l'orologio
       // ambientale (che non si ferma mai, nemmeno a partita persa: guida
       // anche il ciclo giorno/notte, STUDIO.md).
-      const motorClockT = outcome?.kind === "defeat" && outcome.reason === "oil" ? outcome.motorFreezeT : phaseT;
+      const motorClockT = st.outcome?.kind === "defeat" && st.outcome.reason === "oil" ? st.outcome.motorFreezeT : st.phaseT;
       for (const it of r120MotorDecor(motorClockT)) dynamic.push({ ...it, _f: frameFor(it.spr) });
     }
-    for (const m of constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
-    for (const bx of constructionBoxes) dynamic.push({ obj: "decor", x: bx.x, y: bx.y, depth: bx.depth, _f: frameFor(bx.spr) });
+    for (const m of st.constructionBalloons) dynamic.push({ obj: "balloon", x: m.x, y: m.y, depth: m.depth, _f: frameFor(m.spr) });
+    for (const bx of st.constructionBoxes) dynamic.push({ obj: "decor", x: bx.x, y: bx.y, depth: bx.depth, _f: frameFor(bx.spr) });
     // Minacce vere (game/src/threats.js): nessuna e' cliccabile (nessun
     // evento Mouse nel decompilato), quindi "decor" come il pacco di
     // cantiere — non devono "rubare" il tap. `_scale` (solo per i caccia
     // "di sfondo", STUDIO.md "le minacce vere") e' la stessa `scale` gia'
     // supportata dal renderer per la GUI, qui riusata per la prima volta nel
     // mondo.
-    for (const th of threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale, _sky: true });
+    for (const th of st.threats) dynamic.push({ obj: "decor", x: th.x, y: th.y, depth: th.depth, _f: frameFor(th.spr), _scale: th.scale, _sky: true });
     // [Bug corretto, segnalato dall'autore: "la depth delle bombe sganciate
     // dai nemici spesso e' troppo bassa e sembra che le bombe volino dietro
     // gli edifici"] **[C]** `bomba1/Create.gml`: `depth = -y - 400`, non
@@ -6936,13 +6939,13 @@ export async function mountMatch(ctx, params = {}) {
     // quasi sempre MINORE della y di un edificio vicino — quindi per quasi
     // tutta la caduta appariva gia' "dietro" l'edificio invece che sopra di
     // lui, l'esatto difetto segnalato.
-    for (const bm of bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y - 400, _f: frameFor(bm.spr), _sky: true });
+    for (const bm of st.bombs) dynamic.push({ obj: "decor", x: bm.x, y: bm.y, depth: -bm.y - 400, _f: frameFor(bm.spr), _sky: true });
     // Pezzi di fusoliera del bombardiere abbattuto (game/src/threats.js,
     // spawnDebris): puramente cosmetici come le bombe, stessa regola di depth.
-    for (const d of debris) dynamic.push({ obj: "decor", x: d.x, y: d.y, depth: -d.y, _f: frameFor(d.spr), _sky: true });
+    for (const d of st.debris) dynamic.push({ obj: "decor", x: d.x, y: d.y, depth: -d.y, _f: frameFor(d.spr), _sky: true });
     // Esplosioni (game/src/threats.js): "fica" ha 60 frame veri, uno stop-motion
     // da animare con ex.t (EXPLOSION_FRAME_COUNT) invece del solo frame 0 statico.
-    for (const ex of explosions) {
+    for (const ex of st.explosions) {
       const frameIdx = Math.min(EXPLOSION_FRAME_COUNT - 1, Math.floor(ex.t / TICK));
       dynamic.push({ obj: "decor", x: ex.x, y: ex.y, depth: -4000, _f: frameFor(ex.spr, frameIdx), _scale: ex.scale, _sky: true });
     }
@@ -6950,16 +6953,16 @@ export async function mountMatch(ctx, params = {}) {
     // traccianti del gatling. `p.angle` (solo il gatling, projectiles.js/
     // spawnProjectile()) ruota lo sprite come "image_angle = direction" —
     // vedi `_angle` nel loop del layer mondo sopra.
-    for (const p of projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr), _angle: p.angle, _sky: true });
+    for (const p of st.projectiles) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -4000, _f: frameFor(p.spr), _angle: p.angle, _sky: true });
     // Fumo di scia (game/src/projectiles.js, spawnSmoko): depth -9000 fisso
     // come le monete blu ([C] smoko/_object.json), ma senza `_selfLit` — un
     // residuo di sparo, non un simbolo dell'interfaccia, si scurisce di
     // notte come qualunque altro decoro.
-    for (const p of trails) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr), _alpha: fadeAlpha(p.t, SMOKO_LIFE), _sky: true });
+    for (const p of st.trails) dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr), _alpha: fadeAlpha(p.t, SMOKO_LIFE), _sky: true });
     // Scia di fumo degli aerei (game/src/threats.js, spawnAerSmoke): stessa
     // animazione a 70 frame vera di smoke.js (cc2/cc3), ferma sul posto e in
     // crescita (_scale) — a differenza della scia dei proiettili sopra.
-    for (const p of aerSmoke) {
+    for (const p of st.aerSmoke) {
       const frameIdx = Math.min(AER_SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
       dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, AER_SMOKE_LIFE), _sky: true });
     }
@@ -7019,11 +7022,11 @@ export async function mountMatch(ctx, params = {}) {
         .filter((it) => !it._selfLit && it.obj !== "car" && it.obj !== "pedestrian")
         .map((it) => {
           if (it._sky) return it;
-          const y = it.y + crashFallY;
-          return it.depth === 0 ? { ...it, y } : { ...it, y, depth: it.depth - crashFallY };
+          const y = it.y + st.crashFallY;
+          return it.depth === 0 ? { ...it, y } : { ...it, y, depth: it.depth - st.crashFallY };
         });
     }
-    frameList = frameListNext.sort(sortWorld);
+    st.frameList = frameListNext.sort(sortWorld);
 
     // [C] src/objects/placeholder/Create.gml + Mouse_MouseEnter/Leave.gml: il
     // placeholder nasce con sprite "empty" (invisibile) e diventa "phold" (il
@@ -7039,7 +7042,7 @@ export async function mountMatch(ctx, params = {}) {
     // r12.selec = 0 }") — nessun edificio da piazzare, quindi il rombo
     // viola (il "qui puoi costruire") non ha piu' senso da mostrare.
     let hoveredPh = null;
-    if (input.hover && r12.selec !== 0) {
+    if (input.hover && st.r12.selec !== 0) {
       const w = cam.screenToWorld(input.hover.x, input.hover.y);
       for (const p of placeholders) {
         if (p.consumed) continue;
@@ -7052,7 +7055,7 @@ export async function mountMatch(ctx, params = {}) {
         // un'area di mappa dove non c'e' ancora nessuna piattaforma sotto.
         // Stesso gate qui, cosi' un placeholder inattivo non fa mai scattare
         // l'hover, indipendentemente da dove passa il mouse.
-        if (!isPlaceholderActive(p.x, p.y, platformState)) continue;
+        if (!isPlaceholderActive(p.x, p.y, st.platformState)) continue;
         if (inFrameDiamond(w.x, w.y, p.x, p.y, p._f)) { hoveredPh = p; break; }
       }
     }
@@ -7077,7 +7080,7 @@ export async function mountMatch(ctx, params = {}) {
     // posizione non e' valida, invece di sempre mostrarne uno che poi al
     // tocco fallirebbe con un messaggio d'errore.
     let multiTilePreview = null;
-    const selDefForPreview = selectedType ? BUILDING_TYPES[selectedType] : null;
+    const selDefForPreview = st.selectedType ? BUILDING_TYPES[st.selectedType] : null;
     if (hoveredPh && selDefForPreview?.multiTile) {
       const off = selDefForPreview.multiTile.anchorOffset;
       const anchorX = off ? hoveredPh.x + off.dx : hoveredPh.x;
@@ -7101,9 +7104,9 @@ export async function mountMatch(ctx, params = {}) {
     // cambiavano insieme. Qui SCENE_BG_RGB resta solo su `match_easy`, dove
     // `baura` non e' mai esistito nel decompilato (vedi il commento su
     // bauraColorAt() sotto).
-    const skyRgb = roomParam === "match_easy" ? SCENE_BG_RGB : bauraColorAt(phaseT);
+    const skyRgb = roomParam === "match_easy" ? SCENE_BG_RGB : bauraColorAt(st.phaseT);
     r.beginFrame(canvas.width, canvas.height, skyRgb);
-    const amb = ambientAt(phaseT);
+    const amb = ambientAt(st.phaseT);
 
     // --- layer mondo: segue la camera. La tinta giorno/notte e' moltiplicata
     // qui in JS invece che nello shader (u_ambient resta a [1,1,1,1], mai
@@ -7133,19 +7136,19 @@ export async function mountMatch(ctx, params = {}) {
     // cosi' la fase "battle" che segue riparte da uno stato coerente, non
     // "congelato"): resta `false` per "battle" (li' il mondo torna visibile
     // per davvero, STUDIO.md sopra) e per ogni altra room/fase di gioco.
-    const worldHidden = !!tutorialState?.cutscene && tutorialState.cutscene.phase !== "battle";
+    const worldHidden = !!st.tutorialState?.cutscene && st.tutorialState.cutscene.phase !== "battle";
     // Overlay giorno/notte (AURA_OVERLAY sopra) — un quad a tinta unita che
     // copre l'intera room, disegnato PRIMA di ogni sprite del layer mondo cosi'
     // resta sempre dietro. `_selfLit` lo attraversa intatto per lo stesso
     // motivo delle luci (sopra): nessuno qui, il quad stesso non e' un decoro.
-    const aura = auraOverlayAt(phaseT);
+    const aura = auraOverlayAt(st.phaseT);
     if (!worldHidden && aura.a > 0.002) {
       const auraTint = (Math.round(aura.rgb[0] * 255) << 16) | (Math.round(aura.rgb[1] * 255) << 8) | Math.round(aura.rgb[2] * 255);
       r.draw(solidFrame(white, scene.width, scene.height), 0, 0, 1, auraTint, aura.a);
     }
     const vw = cam.worldW, vh = cam.worldH;
     const l = cam.x - vw / 2, t = cam.y - vh / 2, rr = l + vw, bb = t + vh;
-    if (!worldHidden) for (const it of frameList) {
+    if (!worldHidden) for (const it of st.frameList) {
       if (it.obj === "placeholder" && !it._hovered && !it._armed) continue;
       const f = it._f;
       // Istanze senza sprite: nel decompilato sono esattamente questo, non
@@ -7184,9 +7187,9 @@ export async function mountMatch(ctx, params = {}) {
     // da ordinare per depth con il resto — vedi il commento in weather.js
     // su RAIN_DEPTH) ma sempre dentro la proiezione mondo di questo frame,
     // quindi seguono comunque la camera come ogni altro decoro.
-    if (weatherState.drops.active.length) {
+    if (st.weatherState.drops.active.length) {
       const rainFrame = { ...solidFrame(white, RAIN_STREAK_WIDTH, RAIN_STREAK_LENGTH), ox: RAIN_STREAK_WIDTH / 2, oy: RAIN_STREAK_LENGTH / 2 };
-      for (const d of weatherState.drops.active) drawRotated(rainFrame, d.x, d.y, rainDropAngle(d), 1, RAIN_TINT, RAIN_ALPHA);
+      for (const d of st.weatherState.drops.active) drawRotated(rainFrame, d.x, d.y, rainDropAngle(d), 1, RAIN_TINT, RAIN_ALPHA);
     }
     // Le "bolle" di raccolta moneta/cassa (coinPops sopra): un cerchio che
     // cresce e sfuma sul punto della moneta/cassa appena presa, in primo
@@ -7198,7 +7201,7 @@ export async function mountMatch(ctx, params = {}) {
     // Colore per particella (`p.color`, COIN_POP_COLOR/LOOT_POP_COLOR sopra):
     // azzurro di default (monete/biotech/gemme), verde per l'oil e giallo per
     // l'elettricita' — vedi collectLootAt() sopra.
-    for (const p of coinPops) {
+    for (const p of st.coinPops) {
       const k = p.t / COIN_POP_LIFE;
       const size = 36 + k * 94;
       r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, p.color ?? COIN_POP_COLOR, (1 - k) * 0.85);
@@ -7212,7 +7215,7 @@ export async function mountMatch(ctx, params = {}) {
     // ambientale (come coinPops/_selfLit sopra): e' un effetto luminoso, non
     // un pezzo di scena che si scurisce di notte — anzi e' visibile SOLO di
     // notte, come il bagliore f1lux da cui nasce.
-    for (const p of faroFlashes) {
+    for (const p of st.faroFlashes) {
       const k = p.t / FARO_FLASH_LIFE;
       const size = 40 + k * 260;
       r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, FARO_FLASH_COLOR, (1 - k) * 0.6);
@@ -7232,7 +7235,7 @@ export async function mountMatch(ctx, params = {}) {
     // colpo rispetto all'inquadratura. glowAlpha() (lightning.js) rifa la
     // stessa curva di dissolvenza (255->~10 di alpha in 30 tick, lineare)
     // gia' cotta nei 30 frame dello sprite originale, qui in continuo.
-    for (const s of lightning) {
+    for (const s of st.lightning) {
       if (s.t < LIGHTNING_GLOW_LIFE) r.draw(solidFrame(white, vw, vh), l, t, 1, 0x000000, glowAlpha(s));
     }
     // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva
@@ -7259,8 +7262,8 @@ export async function mountMatch(ctx, params = {}) {
     // "soldico" (60x88, STUDIO.md) per restare grande come le gocce blu
     // vere sugli edifici (coins.js, dynamic.push({obj:"coin",...}) piu'
     // sopra, anche loro senza `_scale`).
-    if (costFloaters.length) {
-      for (const p of costFloaters) {
+    if (st.costFloaters.length) {
+      for (const p of st.costFloaters) {
         if (p.t < 0) continue;
         const k = p.t / COST_FLOAT_LIFE;
         r.draw(costWarningIconFrame, p.x, p.y - k * COST_FLOAT_RISE, 1, 0xffffff, (1 - k) * 0.9);
@@ -7273,8 +7276,8 @@ export async function mountMatch(ctx, params = {}) {
     if (input.hover && input.hoverPointerType === "mouse") {
       const hw = cam.screenToWorld(input.hover.x, input.hover.y);
       const upicoFrame = frameFor("upico");
-      if (upicoFrame) for (const b of buildings) {
-        if (b.construction || !upgradeUnlocked(b, r12, buildings)) continue;
+      if (upicoFrame) for (const b of st.buildings) {
+        if (b.construction || !upgradeUnlocked(b, st.r12, st.buildings)) continue;
         if (!inFrameRect(hw.x, hw.y, b.x, b.y, upicoFrame)) continue;
         const tag = costParts(nextUpgrade(b)?.cost);
         if (tag) {
@@ -7296,7 +7299,7 @@ export async function mountMatch(ctx, params = {}) {
       // incluso — era l'unica vera lacuna rimasta della catena, notata solo
       // ripercorrendola punto per punto: [I] nuova funzionalita' coerente
       // con lo stile del resto del motore.
-      for (const it of frameList) {
+      for (const it of st.frameList) {
         if (!FARO_SIGN_OBJS.has(it.obj) || !it._f) continue;
         if (!inFrameRect(hw.x, hw.y, it.x, it.y, it._f)) continue;
         const tag = costParts(FARO_SIGN_COST[it.obj]);
@@ -7317,13 +7320,13 @@ export async function mountMatch(ctx, params = {}) {
     // puntare a un'istanza ormai orfana — se non lo trova piu' (demolito, o
     // la partita e' stata ricaricata) il timer si azzera subito invece di
     // restare armato a vuoto fino al prossimo timeout naturale.
-    if (isMobile && upgradeTagBuildingId != null) {
-      const elapsed = performance.now() - upgradeTagAt;
+    if (isMobile && st.upgradeTagBuildingId != null) {
+      const elapsed = performance.now() - st.upgradeTagAt;
       const total = UPGRADE_TAG_SHOW_MS + GRID_TAP_FADE_MS;
-      const b = elapsed < total ? buildings.find((bb) => bb.id === upgradeTagBuildingId) : null;
+      const b = elapsed < total ? st.buildings.find((bb) => bb.id === st.upgradeTagBuildingId) : null;
       if (!b) {
-        upgradeTagBuildingId = null;
-      } else if (!b.construction && upgradeUnlocked(b, r12, buildings)) {
+        st.upgradeTagBuildingId = null;
+      } else if (!b.construction && upgradeUnlocked(b, st.r12, st.buildings)) {
         const upicoFrame = frameFor("upico");
         const tag = upicoFrame && costParts(nextUpgrade(b)?.cost);
         if (tag) {
@@ -7335,7 +7338,7 @@ export async function mountMatch(ctx, params = {}) {
     // Cartellino costo sui lotti-rudere del tutorial (game/src/tutorial.js),
     // stesso schema del segnale di potenziamento sopra — [C] ruin1|2/
     // Mouse_MouseEnter.gml: `action_create_object(cc500|cc2000, 0, -50)`.
-    if (tutorialState) for (const lot of ruinLots) {
+    if (st.tutorialState) for (const lot of st.ruinLots) {
       if (!lot._hovered) continue;
       drawCostTagWorld(costParts({ mon: lot.cost }), lot.x, lot.y - 50);
       break;
@@ -7347,7 +7350,7 @@ export async function mountMatch(ctx, params = {}) {
     // (`ruins`, ogni room) — mancava anche su desktop (`ru._hovered`, gia'
     // vero all'hover del mouse: vedi il ciclo di disegno sopra), non solo
     // su mobile.
-    for (const ru of ruins) {
+    for (const ru of st.ruins) {
       if (!ru._hovered) continue;
       drawCostTagWorld(costParts({ mon: ru.cost }), ru.x, ru.y - 50);
       break;
@@ -7357,8 +7360,8 @@ export async function mountMatch(ctx, params = {}) {
     // e' solo il testo — drawHtmlText() non fa parte di quel batch) + il
     // cartellino del costo (drawCostTagWorld(), stessi offset di sempre —
     // vedi il commento sopra su dynamic.push({obj:"ruspaNo"...})).
-    if (ruspaPending) {
-      const b = buildings.find((bb) => bb.id === ruspaPending.buildingId);
+    if (st.ruspaPending) {
+      const b = st.buildings.find((bb) => bb.id === st.ruspaPending.buildingId);
       if (b) {
         const noX = b.x + 16 * UI_SCALE, noY = b.y - 16 * UI_SCALE;
         const yesX = b.x + 177 * UI_SCALE, yesY = b.y - 16 * UI_SCALE;
@@ -7366,7 +7369,7 @@ export async function mountMatch(ctx, params = {}) {
         drawHtmlText("No", s1.x, s1.y, { size: 17, color: "#ffffff" });
         const s2 = cam.worldToScreen(yesX + (RUSPA_BTN_W * UI_SCALE) / 2, yesY + (RUSPA_BTN_H * UI_SCALE) / 2);
         drawHtmlText("Yes!", s2.x, s2.y, { size: 17, color: "#ffffff" });
-        drawCostTagWorld(costParts({ mon: ruspaPending.cost }), b.x + 157 * UI_SCALE, b.y - 185 * UI_SCALE);
+        drawCostTagWorld(costParts({ mon: st.ruspaPending.cost }), b.x + 157 * UI_SCALE, b.y - 185 * UI_SCALE);
       }
     }
     drawBeams();
@@ -7391,7 +7394,7 @@ export async function mountMatch(ctx, params = {}) {
     // per la soglia/il perche' del minimo fra le due luminanze.
     function luma(rgb) { return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722; }
     const worldLuma = luma(amb.rgb);
-    const bauraRgb = roomParam === "match_easy" ? null : bauraColorAt(phaseT);
+    const bauraRgb = roomParam === "match_easy" ? null : bauraColorAt(st.phaseT);
     const vignetteLuma = bauraRgb ? luma(bauraRgb) : 1;
     const ICON_DARK_THRESHOLD = 0.4;
     const iconsDark = Math.min(worldLuma, vignetteLuma) < ICON_DARK_THRESHOLD;
@@ -7437,7 +7440,7 @@ export async function mountMatch(ctx, params = {}) {
     // com'era nel decompilato invece di una sola room (che puo' essere molto
     // piu' grande del viewport). Disegnato qui, insieme alla vignetta fuori
     // mappa: stesso layer GUI, stesso principio (un quad a tinta piena).
-    const stormFlash = stormFlashAlpha(r12);
+    const stormFlash = stormFlashAlpha(st.r12);
     if (stormFlash > 0.002) {
       r.draw(solidFrame(white, canvas.clientWidth, canvas.clientHeight), 0, 0, 1, STORM_FLASH_TINT, stormFlash);
     }
@@ -7522,7 +7525,7 @@ export async function mountMatch(ctx, params = {}) {
     // sotto al blur, coerente con la richiesta esplicita e con lo stesso
     // trattamento gia' dato al balloon/pollice del tutorial per questo
     // stesso pannello (vedi il commento li' sotto).
-    const hideResourceIcons = !!tutorialState?.cutscene || !!buildingInfoPanel;
+    const hideResourceIcons = !!st.tutorialState?.cutscene || !!st.buildingInfoPanel;
     // [Nuova disposizione, richiesta dall'autore: "le risorse in alto sono
     // caotiche su mobile, incolonniamole" — mockup concordato in chat]
     // `icone_oriz` (ramo desktop sotto) e' tarata per stare comoda su
@@ -7560,9 +7563,9 @@ export async function mountMatch(ctx, params = {}) {
     // blocchetto a destra: invisibili finche' il giocatore non ne possiede
     // almeno una, per non mostrare un contatore a "0" per una risorsa che
     // la sua partita potrebbe non aver ancora incontrato.
-    const mobileResKinds = [["pop", r12.pop], ["oil", r12.oil], ["ele", r12.ele], ["mon", r12.mon]];
-    if (r12.crys > 0) mobileResKinds.push(["crys", r12.crys]);
-    if (r12.biotech > 0) mobileResKinds.push(["bio", r12.biotech]);
+    const mobileResKinds = [["pop", st.r12.pop], ["oil", st.r12.oil], ["ele", st.r12.ele], ["mon", st.r12.mon]];
+    if (st.r12.crys > 0) mobileResKinds.push(["crys", st.r12.crys]);
+    if (st.r12.biotech > 0) mobileResKinds.push(["bio", st.r12.biotech]);
     // [Bug corretto, segnalato dall'autore: "le icone andrebbero centrate,
     // non allineate al bordo sinistro — i numeri invece allineati fra loro
     // sul bordo sinistro"] pop/ele (strette, ~9px scalati) e oil/mon/bio
@@ -7632,15 +7635,15 @@ export async function mountMatch(ctx, params = {}) {
     // numeri nudi restavano leggibili sopra a un fondale che dovrebbe
     // nasconderli. `hideResourceText` raccoglie tutti i casi in cui il resto
     // della barra risorse e' gia' coperto/oscurato da qualcos'altro.
-    const hideResourceText = paused || buildMenuOpen || !!tutorialState?.cutscene || !!buildingInfoPanel;
+    const hideResourceText = st.paused || st.buildMenuOpen || !!st.tutorialState?.cutscene || !!st.buildingInfoPanel;
     if (isMobile) {
       if (!hideResourceText) for (const row of mobileResLayout) {
         drawHtmlText(row.text, barX + TAG_PAD / 2 + mobileIconColW + TAG_GAP, row.y + MOBILE_ROW_H / 2,
           { size: TAG_TEXT_SIZE, align: "left", color: barTextColor });
       }
     } else {
-      const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
-                     [Math.round(r12.ele), 228], [Math.round(r12.mon), 340]];
+      const stats = [[Math.round(st.r12.pop), 30], [Math.round(st.r12.oil), 142],
+                     [Math.round(st.r12.ele), 228], [Math.round(st.r12.mon), 340]];
       if (!hideResourceText) for (const [value, x] of stats) {
         drawHtmlText(String(value), barX + x, barY + 19, { size: 15, align: "left", color: barTextColor });
       }
@@ -7760,13 +7763,13 @@ export async function mountMatch(ctx, params = {}) {
     // era `barY+5`, quasi al livello del solo mese).
     const hapPos = isMobile ? { x: ROW2_X + 84, y: (ROW2_Y + ROW2B_Y) / 2 } : { x: barX + 522, y: barY + 23 };
     if (!hideResourceText) {
-      drawHtmlText(monthName(r12.month ?? 1) ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(monthName(st.r12.month ?? 1) ?? "", monthPos.x, monthPos.y, { size: 15, align: "left", color: barTextColor });
     }
     r.setColorize(iconsDark);
     if (!hideResourceIcons && clockFrame) r.draw(clockFrame, clockPos.x, clockPos.y, clockScale, 0xffffff, 1);
     r.setColorize(false);
     if (!hideResourceText) {
-      drawHtmlText(String(Math.round(r12.time)), timePos.x, timePos.y, { size: 15, align: "left", color: barTextColor });
+      drawHtmlText(String(Math.round(st.r12.time)), timePos.x, timePos.y, { size: 15, align: "left", color: barTextColor });
     }
     // La "faccina" della felicita' (src/objects/hapware — segnalata
     // dall'autore giocando, non ricordava le sommosse ma "la faccina in GUI
@@ -7784,7 +7787,7 @@ export async function mountMatch(ctx, params = {}) {
     // trattamento gia' scelto per la barra risorse — STUDIO.md §9, "zero
     // zoom" sulla UI) su mobile; su desktop (stessa riga di pop/olio/
     // energia/denaro, vedi sopra) leggermente ridotta per starci in altezza.
-    const hapFrame = frameFor(r12.hap >= r12.pop ? "hap3" : "hap1");
+    const hapFrame = frameFor(st.r12.hap >= st.r12.pop ? "hap3" : "hap1");
     const hapScale = isMobile ? 0.62 : 0.55;
     r.setColorize(iconsDark);
     if (!hideResourceIcons && hapFrame) r.draw(hapFrame, hapPos.x, hapPos.y, hapScale, 0xffffff, 1);
@@ -7841,7 +7844,7 @@ export async function mountMatch(ctx, params = {}) {
     // il ciclo di `mobileResLayout` sopra (stessa riga di pop/olio/
     // energia/denaro): il blocco qui sotto resta solo per desktop, dove sta
     // ancora sulla riga unica a destra della faccina.
-    if (r12.crys > 0 && !isMobile) {
+    if (st.r12.crys > 0 && !isMobile) {
       const crysFrame = frameFor("crys_ico");
       const crysPos = { x: barX + 570, y: barY - 4 };
       const crysScale = 0.75;
@@ -7865,7 +7868,7 @@ export async function mountMatch(ctx, params = {}) {
       r.setColorize(true);
       if (!hideResourceIcons && crysFrame) r.draw(crysFrame, crysPos.x, crysPos.y, crysScale, iconsDark ? 0xffffff : 0x000000, 1);
       r.setColorize(false);
-      if (!hideResourceText) drawHtmlText(String(Math.round(r12.crys)), crysTextPos.x, crysTextPos.y, { size: 15, align: "left", color: barTextColor });
+      if (!hideResourceText) drawHtmlText(String(Math.round(st.r12.crys)), crysTextPos.x, crysTextPos.y, { size: 15, align: "left", color: barTextColor });
     }
     // Biotech (r12.biotech: coins.js, la moneta "bioico" delle ville, ava==0
     // — vedi il commento su STAR_BUILDINGS.grattacielo in questo file) —
@@ -7884,7 +7887,7 @@ export async function mountMatch(ctx, params = {}) {
     // vista una volta ricostruito l'atlas.
     // Su mobile questo contatore lo disegna gia' `mobileResLayout` sopra,
     // stesso motivo/stesso commento del blocco cristalli qui sopra.
-    if (r12.biotech > 0 && !isMobile) {
+    if (st.r12.biotech > 0 && !isMobile) {
       const bioFrame = frameFor("biot_ico");
       const bioPos = { x: barX + 650, y: barY - 4 };
       const bioScale = 0.75;
@@ -7892,7 +7895,7 @@ export async function mountMatch(ctx, params = {}) {
       r.setColorize(iconsDark);
       if (!hideResourceIcons && bioFrame) r.draw(bioFrame, bioPos.x, bioPos.y, bioScale, 0xffffff, 1);
       r.setColorize(false);
-      if (!hideResourceText) drawHtmlText(String(Math.round(r12.biotech)), bioTextPos.x, bioTextPos.y, { size: 15, align: "left", color: barTextColor });
+      if (!hideResourceText) drawHtmlText(String(Math.round(st.r12.biotech)), bioTextPos.x, bioTextPos.y, { size: 15, align: "left", color: barTextColor });
     }
 
     // Selettore edificio: sostituisce la ruota di scelta `cre1..cre4` non
@@ -7935,8 +7938,8 @@ export async function mountMatch(ctx, params = {}) {
     // e' una sola barra nera continua sotto tutti i bottoni. L'altra riga
     // (menoo 0: mano/gru/ruspa) non sono bottoni di costruzione e resta
     // staccata come prima.
-    const GAP = menoo === 1 ? 0 : (isMobile ? 3 : 4);
-    const row = menoo === 1
+    const GAP = st.menoo === 1 ? 0 : (isMobile ? 3 : 4);
+    const row = st.menoo === 1
       // menoo 1 "edifici" ([C] pu1/Create.gml li crea tutti insieme): i due
       // veri (casa/industria) + il resto del menu, segnaposto (vedi sopra).
       // `ruspa` esclusa (vedi sotto): non e' un edificio da costruire, non
@@ -7975,10 +7978,10 @@ export async function mountMatch(ctx, params = {}) {
     if (rowWidth > 0) rowWidth -= GAP;
     const visibleW = Math.max(0, canvas.clientWidth - UI_MARGIN * 2);
     const maxScroll = Math.max(0, rowWidth - visibleW);
-    uiScrollX = Math.min(Math.max(uiScrollX, 0), maxScroll);
+    st.uiScrollX = Math.min(Math.max(st.uiScrollX, 0), maxScroll);
 
-    uiButtons = [];
-    let rx = UI_MARGIN - uiScrollX;
+    st.uiButtons = [];
+    let rx = UI_MARGIN - st.uiScrollX;
     let rowTop = baseY;
     // [Nuova funzionalita', richiesta dall'autore: "le icone nere della UI,
     // quando lo sfondo diventa troppo scuro, rendiamole bianche con un
@@ -8027,8 +8030,8 @@ export async function mountMatch(ctx, params = {}) {
         // al posto del bianco neutro basta a segnalare "strumento attivo",
         // coerente con `r12.selec === 0` = mano/deselezionato gia' usato
         // sopra per spegnere l'hover viola dei placeholder.
-        const usingHandTint = b.kind === "deselect" && r12.selec === 0;
-        const usingSelBuilding = b.kind === "building" && selectedType === b.type;
+        const usingHandTint = b.kind === "deselect" && st.r12.selec === 0;
+        const usingSelBuilding = b.kind === "building" && st.selectedType === b.type;
         const tint = usingSelBuilding ? b.tint : (usingHandTint ? 0x66aaff : 0xffffff);
         // [Bug corretto, segnalato dall'autore: "la mano non si colora
         // quando selezionata"] `handee` e' una sagoma nera pura come le
@@ -8053,7 +8056,7 @@ export async function mountMatch(ctx, params = {}) {
         const locked = b.kind === "building" && buildingLocked(b.type);
         r.setColorize(usingSelBuilding || iconsDark || usingHandTint);
         r.draw(f, rx, baseY, UI_SCALE, tint, locked ? LOCKED_BUTTON_ALPHA : 1);
-        uiButtons.push({ x: rx, y: baseY - h, w, h, ...b });
+        st.uiButtons.push({ x: rx, y: baseY - h, w, h, ...b });
         rowTop = Math.min(rowTop, baseY - h);
       }
       rx += w + GAP;
@@ -8078,9 +8081,9 @@ export async function mountMatch(ctx, params = {}) {
     // "Buildings menu" che questo badge riassume — mostrarci sopra la sua
     // icona (rossa, "ru") suggerirebbe che il prossimo tap costruisce una
     // ruspa, non che sta per demolire/riparare qualcosa.
-    if (isMobile && selectedType && selectedType !== "ruspa") {
-      const menuBtn = uiButtons.find((btn) => btn.kind === "menu" && btn.menoo === 1);
-      const icon = menuBtn && findBuildingIcon(selectedType);
+    if (isMobile && st.selectedType && st.selectedType !== "ruspa") {
+      const menuBtn = st.uiButtons.find((btn) => btn.kind === "menu" && btn.menoo === 1);
+      const icon = menuBtn && findBuildingIcon(st.selectedType);
       const iconFrame = icon && frameFor(icon.spr);
       if (menuBtn && iconFrame) {
         const badgeD = 26;
@@ -8103,7 +8106,7 @@ export async function mountMatch(ctx, params = {}) {
     // bottoni, cosi' anche un dito che parte fra due bottoni o dopo l'ultimo
     // (schermo non del tutto riempito) scorre la riga invece di spostare la
     // mappa sotto. Nulla da intercettare se la riga sta gia' tutta a schermo.
-    uiRowBounds = (isMobile && maxScroll > 0)
+    st.uiRowBounds = (isMobile && maxScroll > 0)
       ? { x0: 0, y0: rowTop, x1: canvas.clientWidth, y1: canvas.clientHeight }
       : null;
 
@@ -8116,7 +8119,7 @@ export async function mountMatch(ctx, params = {}) {
     // (isMobile la nasconde sempre dietro drawBuildMenuOverlay() invece,
     // vedi il commento li' per il suo equivalente touch).
     if (input.hover && input.hoverPointerType === "mouse") {
-      const hb = uiButtons.find((btn) => btn.kind === "building"
+      const hb = st.uiButtons.find((btn) => btn.kind === "building"
         && input.hover.x >= btn.x && input.hover.x <= btn.x + btn.w
         && input.hover.y >= btn.y && input.hover.y <= btn.y + btn.h);
       const locked = hb && buildingLocked(hb.type);
@@ -8130,7 +8133,7 @@ export async function mountMatch(ctx, params = {}) {
     // `uiButtons` sopra): serve gia' fresca a input.onTap per il tap-test,
     // non solo al disegno vero e proprio di drawBuildMenuOverlay() piu'
     // avanti nel frame.
-    if (buildMenuOpen) buildMenuButtons = computeBuildMenuButtons();
+    if (st.buildMenuOpen) st.buildMenuButtons = computeBuildMenuButtons();
 
     // Freccia del tutorial (game/src/tutorial.js — [C]
     // freccia_tutorial/EndStep.gml): la tabella originale punta a coordinate
@@ -8149,9 +8152,9 @@ export async function mountMatch(ctx, params = {}) {
     // aprisse; la griglia stessa (con tutte le icone visibili in chiaro,
     // piu' il testo della fase che nomina gia' il bottone giusto) resta
     // guida sufficiente da qui in poi.
-    if (tutorialState && !tutorialState.cutscene && !buildMenuOpen) {
-      tutorialState.arrowFrame = (tutorialState.arrowFrame + dt * 20) % 20;
-      const byKind = (pred) => uiButtons.find(pred);
+    if (st.tutorialState && !st.tutorialState.cutscene && !st.buildMenuOpen) {
+      st.tutorialState.arrowFrame = (st.tutorialState.arrowFrame + dt * 20) % 20;
+      const byKind = (pred) => st.uiButtons.find(pred);
       // [Bug corretto, segnalato dall'autore: "quando l'oggetto da premere
       // non e' in quel menu' consiglia di premere lo strumento indietro
       // (sempre con la freccia indicante) e poi il sottomenu in cui
@@ -8176,13 +8179,13 @@ export async function mountMatch(ctx, params = {}) {
       // valido, cosi' la freccia non salta da un lotto all'altro ad ogni
       // frame.
       const suggestedPlotTarget = () => {
-        const sp = tutorialState.suggestedPlot;
-        if (!sp || sp.consumed || !isPlaceholderActive(sp.x, sp.y, platformState)) {
-          const free = placeholders.filter((p) => !p.consumed && isPlaceholderActive(p.x, p.y, platformState));
-          tutorialState.suggestedPlot = free.length ? free[(Math.random() * free.length) | 0] : null;
+        const sp = st.tutorialState.suggestedPlot;
+        if (!sp || sp.consumed || !isPlaceholderActive(sp.x, sp.y, st.platformState)) {
+          const free = placeholders.filter((p) => !p.consumed && isPlaceholderActive(p.x, p.y, st.platformState));
+          st.tutorialState.suggestedPlot = free.length ? free[(Math.random() * free.length) | 0] : null;
         }
-        if (!tutorialState.suggestedPlot) return null;
-        const s = cam.worldToScreen(tutorialState.suggestedPlot.x, tutorialState.suggestedPlot.y);
+        if (!st.tutorialState.suggestedPlot) return null;
+        const s = cam.worldToScreen(st.tutorialState.suggestedPlot.x, st.tutorialState.suggestedPlot.y);
         return { x: s.x, y: s.y - ARROW_GAP, angle: 270 };
       };
       // [Bug corretto] La punta della freccia (drawRotated() sopra, dopo il
@@ -8196,7 +8199,7 @@ export async function mountMatch(ctx, params = {}) {
       const ARROW_GAP = 12;
       const pointAtButton = (b) => b && { x: b.x + b.w / 2, y: b.y - ARROW_GAP, angle: 270 };
       let target = null;   // { x, y, angle }
-      switch (tutorialState.phase) {
+      switch (st.tutorialState.phase) {
         // [Aggiornato: la ruspa vive ora in menoo 0 (mano/costruzioni/ruspa),
         // non piu' nel sottomenu costruzioni — vedi il commento su OTHER_
         // BUILDINGS/riga bottoni sopra] Fallback diretto a "Indietro": se il
@@ -8210,8 +8213,8 @@ export async function mountMatch(ctx, params = {}) {
           break;
         }
         case 5: {
-          if (tutorialState.practiceCoinSpawned) {
-            const s = cam.worldToScreen(tutorialState.practiceCoinPos.x, tutorialState.practiceCoinPos.y);
+          if (st.tutorialState.practiceCoinSpawned) {
+            const s = cam.worldToScreen(st.tutorialState.practiceCoinPos.x, st.tutorialState.practiceCoinPos.y);
             target = { x: s.x, y: s.y - 100, angle: 270 };
           }
           break;
@@ -8235,7 +8238,7 @@ export async function mountMatch(ctx, params = {}) {
         // l'alto (`angle:90`, gia' la convenzione per "punta alla barra
         // risorse in alto" — solo le coordinate erano sbagliate).
         case 6: case 11: case 26: {
-          const resKind = tutorialState.phase === 6 ? "mon" : tutorialState.phase === 11 ? "ele" : "oil";
+          const resKind = st.tutorialState.phase === 6 ? "mon" : st.tutorialState.phase === 11 ? "ele" : "oil";
           // [Nuova disposizione] Su mobile le quattro risorse non sono piu'
           // una riga unica (i vecchi offset fissi "olio 142/energia 228/
           // denaro 340" sotto, ramo desktop) ma una colonna di pillole
@@ -8247,7 +8250,7 @@ export async function mountMatch(ctx, params = {}) {
             const row = mobileResLayout.find((r) => r.kind === resKind);
             target = row ? { x: barX + row.w / 2, y: row.y + MOBILE_ROW_H + 6, angle: 90 } : null;
           } else {
-            const resX = tutorialState.phase === 6 ? 340 : tutorialState.phase === 11 ? 228 : 142;
+            const resX = st.tutorialState.phase === 6 ? 340 : st.tutorialState.phase === 11 ? 228 : 142;
             target = { x: barX + resX, y: barY + 43, angle: 90 };
           }
           break;
@@ -8279,12 +8282,12 @@ export async function mountMatch(ctx, params = {}) {
         // farebbero sparire la freccia subito, PRIMA che il giocatore abbia
         // anche solo iniziato a costruire.
         case 9: {
-          target = buildings.filter((b) => b.type === "casa" && b.level <= 1).length >= 5 ? null : suggestedPlotTarget();
+          target = st.buildings.filter((b) => b.type === "casa" && b.level <= 1).length >= 5 ? null : suggestedPlotTarget();
           break;
         }
         case 8: case 12: case 16: case 19: {
-          const type = tutorialState.phase === 8 ? "casa" : tutorialState.phase === 12 ? "industria"
-            : tutorialState.phase === 16 ? "parco" : "missile";
+          const type = st.tutorialState.phase === 8 ? "casa" : st.tutorialState.phase === 12 ? "industria"
+            : st.tutorialState.phase === 16 ? "parco" : "missile";
           // 12/16/19 coprono SIA la selezione del tipo SIA il piazzamento
           // vero (a differenza di 8, che avanza gia' alla sola selezione,
           // fase 9 sopra): una volta selezionato il tipo giusto la freccia
@@ -8298,10 +8301,10 @@ export async function mountMatch(ctx, params = {}) {
           // cantiere, livello 0/1 — non gli edifici gia' maturi della room,
           // stesso motivo del filtro `b.level <= 1` in fase 9 sopra) la
           // freccia deve smettere di suggerire un altro lotto.
-          const neededCount = { industria: tutorialState.tutind + 1, parco: tutorialState.tutpar + 1, missile: tutorialState.tutrl + 1 }[type];
+          const neededCount = { industria: st.tutorialState.tutind + 1, parco: st.tutorialState.tutpar + 1, missile: st.tutorialState.tutrl + 1 }[type];
           const alreadyPlaced = neededCount !== undefined
-            && buildings.filter((b) => b.type === type && b.level <= 1).length >= neededCount;
-          target = selectedType === type && tutorialState.phase !== 8
+            && st.buildings.filter((b) => b.type === type && b.level <= 1).length >= neededCount;
+          target = st.selectedType === type && st.tutorialState.phase !== 8
             ? (alreadyPlaced ? null : suggestedPlotTarget())
             : pointAtButton(byKind((btn) => btn.kind === "building" && btn.type === type)
                 ?? byKind((btn) => btn.kind === "menu" && btn.menoo === 1)
@@ -8310,7 +8313,7 @@ export async function mountMatch(ctx, params = {}) {
         }
       }
       if (target) {
-        const arrowFrame = frameFor("fr_ros", Math.floor(tutorialState.arrowFrame));
+        const arrowFrame = frameFor("fr_ros", Math.floor(st.tutorialState.arrowFrame));
         // [Bug corretto, segnalato dall'autore: "la freccia del tutorial
         // dovrebbe diventare bianca quando il resto della GUI diventa
         // bianca di notte"] Stessa protezione gia' usata per la barra
@@ -8357,7 +8360,7 @@ export async function mountMatch(ctx, params = {}) {
     // sopra), il balloon di testo ci resterebbe sotto, visibile solo nel suo
     // HTML fuori canvas invece che coperto per davvero come il resto del
     // mondo.
-    if (tutorialState?.showText && !paused && !buildMenuOpen && !buildingInfoPanel) {
+    if (st.tutorialState?.showText && !st.paused && !st.buildMenuOpen && !st.buildingInfoPanel) {
       const pad = 20;
       // [Bug corretto, segnalato dall'autore: "su mobile il pollice e'
       // gigante e occupa troppo spazio"] Il box usa ora sempre tutta la
@@ -8367,22 +8370,22 @@ export async function mountMatch(ctx, params = {}) {
       // (vedi sotto) invece che di fianco: non serve piu' alcun vuoto qui.
       const boxLeft = 30, boxRight = canvas.clientWidth - 30;
       const textW = boxRight - boxLeft - pad * 2;
-      const textEl = drawHtmlText(tutorialText(Math.floor(tutorialState.phase)), boxLeft + pad, 0,
+      const textEl = drawHtmlText(tutorialText(Math.floor(st.tutorialState.phase)), boxLeft + pad, 0,
         { size: 16, maxWidth: textW, wrap: true });
       const boxH = textEl.getBoundingClientRect().height + pad * 2;
-      const boxBottom = canvas.clientHeight - tutorialState.uiGap;
+      const boxBottom = canvas.clientHeight - st.tutorialState.uiGap;
       const boxTop = boxBottom - boxH;
       textEl.style.top = `${boxTop + pad}px`;
       r.draw(tutorialBoxFrame(boxRight - boxLeft, boxH), boxLeft, boxTop, 1, 0xffffff, 0.7);
       // Letto subito sotto per agganciare il pollice sopra al box invece che
       // di fianco (stesso bordo destro di prima, solo impilato in verticale).
-      tutorialBoxRect = { left: boxLeft, right: boxRight, top: boxTop, bottom: boxBottom };
+      st.tutorialBoxRect = { left: boxLeft, right: boxRight, top: boxTop, bottom: boxBottom };
     }
     // Bottone "avanti/esci" del tutorial: il vero sprite `tut_ok` (STUDIO.md
     // — l'oggetto si chiama `tutorial_thumb`, un pollice in su, non testo
     // "OK") invece dell'HTML segnaposto di prima. `tutorialOkRect` (letto da
     // input.onTap) e' il suo rettangolo schermo di QUESTO frame.
-    tutorialOkRect = null;
+    st.tutorialOkRect = null;
     // `&& !buildMenuOpen`: stesso motivo di freccia/balloon sopra — resterebbe
     // comunque coperto dall'overlay costruzioni mobile, disegnato piu' tardi
     // nel frame; `tutorialOkRect` resta `null` (sopra), quindi non serve
@@ -8391,7 +8394,7 @@ export async function mountMatch(ctx, params = {}) {
     // (nascosto insieme, vedi il commento li') un pollice "avanti" da solo,
     // ancorato a un `tutorialBoxRect` ormai vecchio di un frame, galleggerebbe
     // senza senso sopra il pannello edificio appena aperto.
-    if (tutorialState?.showOkButton && !buildMenuOpen && !buildingInfoPanel) {
+    if (st.tutorialState?.showOkButton && !st.buildMenuOpen && !st.buildingInfoPanel) {
       // [Bug corretto, segnalato dall'autore: "su mobile il pollice e'
       // gigante e occupa troppo spazio"] Scala 1.3 -> 1: sagoma nativa
       // (45x52), gia' sopra il minimo ~44px comunemente raccomandato per un
@@ -8406,8 +8409,8 @@ export async function mountMatch(ctx, params = {}) {
       const okFrame = frameFor("tut_ok");
       if (okFrame) {
         const w = okFrame.w * okScale, h = okFrame.h * okScale;
-        const boxRight = tutorialBoxRect?.right ?? (canvas.clientWidth - 30);
-        const boxTop = tutorialBoxRect?.top ?? (canvas.clientHeight - tutorialState.uiGap);
+        const boxRight = st.tutorialBoxRect?.right ?? (canvas.clientWidth - 30);
+        const boxTop = st.tutorialBoxRect?.top ?? (canvas.clientHeight - st.tutorialState.uiGap);
         const x = boxRight - w, y = boxTop - okGap - h;
         // [Bug corretto, segnalato dall'autore: "il pollice in su del
         // tutorial dovrebbe diventare bianco di notte come il resto della
@@ -8418,7 +8421,7 @@ export async function mountMatch(ctx, params = {}) {
         r.setColorize(iconsDark);
         r.draw(okFrame, x, y, okScale, 0xffffff, 1);
         r.setColorize(false);
-        tutorialOkRect = { x, y, w, h };
+        st.tutorialOkRect = { x, y, w, h };
       }
     }
 
@@ -8476,10 +8479,10 @@ export async function mountMatch(ctx, params = {}) {
         drawHtmlText(word, cx, y, { size, maxWidth: canvas.clientWidth - 40 });
       });
     }
-    if (r12.alertT > 0 && !paused && Math.floor((ALERT_DURATION - r12.alertT) / 0.5) % 2 === 0) {
+    if (st.r12.alertT > 0 && !st.paused && Math.floor((ALERT_DURATION - st.r12.alertT) / 0.5) % 2 === 0) {
       drawBannerLines(["ATTACK", "INCOMING"], 48);
     }
-    if (r12.tincomT > 0 && !paused && Math.floor((TINCOM_DURATION - r12.tincomT) / 0.5) % 2 === 0) {
+    if (st.r12.tincomT > 0 && !st.paused && Math.floor((TINCOM_DURATION - st.r12.tincomT) / 0.5) % 2 === 0) {
       drawBannerLines(["THUNDERSTORM", "INCOMING"], 48);
     }
     // Pannello prestiti (bankPanelOpen) e pannello scambi (tradePanelOpen):
@@ -8521,7 +8524,7 @@ export async function mountMatch(ctx, params = {}) {
     // entrambi i casi, l'alpha 0 non cambia con la colorize mode.
     const PB_SIZE = 64;
     const pbX = canvas.clientWidth - UI_MARGIN - PB_SIZE, pbY = canvas.clientHeight - UI_MARGIN - PB_SIZE;
-    pauseBtnRect = { x: pbX, y: pbY, w: PB_SIZE, h: PB_SIZE };
+    st.pauseBtnRect = { x: pbX, y: pbY, w: PB_SIZE, h: PB_SIZE };
     r.setColorize(iconsDark);
     r.draw(pauseIconFrame, pbX, pbY, PB_SIZE / pauseIconTex.width, 0xffffff, 1);
     r.setColorize(false);
@@ -8541,18 +8544,18 @@ export async function mountMatch(ctx, params = {}) {
     // sotto (drawPauseOverlay/drawSavingOptionsOverlay/drawConfirmResetOverlay)
     // possono condividere la stessa cattura per tutta la sessione di pausa
     // invece di rifarla ad ogni frame di ognuno.
-    if (paused && !wasPaused) pauseBlurTex = null;
-    wasPaused = paused;
-    if (outcome) drawOutcomeOverlay();
-    else if (paused) {
-      if (pauseSubmenu === "saving") drawSavingOptionsOverlay();
-      else if (pauseSubmenu === "confirmReset") drawConfirmResetOverlay();
+    if (st.paused && !st.wasPaused) st.pauseBlurTex = null;
+    st.wasPaused = st.paused;
+    if (st.outcome) drawOutcomeOverlay();
+    else if (st.paused) {
+      if (st.pauseSubmenu === "saving") drawSavingOptionsOverlay();
+      else if (st.pauseSubmenu === "confirmReset") drawConfirmResetOverlay();
       else drawPauseOverlay();
     }
-    else if (bankPanelOpen) drawBankPanel();
-    else if (tradePanelOpen) drawTradePanel();
-    else if (buildingInfoPanel) drawBuildingInfoPanel();
-    else if (buildMenuOpen) drawBuildMenuOverlay();
+    else if (st.bankPanelOpen) drawBankPanel();
+    else if (st.tradePanelOpen) drawTradePanel();
+    else if (st.buildingInfoPanel) drawBuildingInfoPanel();
+    else if (st.buildMenuOpen) drawBuildMenuOverlay();
 
     // Cutscene iniziale del tutorial (game/src/tutorial.js): disegnata per
     // ultima, sopra a TUTTO il resto (mondo + UI vera) — quattro fasi
@@ -8584,9 +8587,9 @@ export async function mountMatch(ctx, params = {}) {
     //    la scena di combattimento vera e propria (bombar/air/dirig,
     //    stepThreats() sopra) direttamente sulla piattaforma, non un
     //    livello a parte.
-    if (tutorialState?.cutscene) {
+    if (st.tutorialState?.cutscene) {
       const cw = canvas.clientWidth, ch = canvas.clientHeight;
-      const phase = tutorialState.cutscene.phase;
+      const phase = st.tutorialState.cutscene.phase;
       if (phase === "planes") {
         setCutsceneText(null);
         r.setAmbient(1, 1, 1);
@@ -8599,14 +8602,14 @@ export async function mountMatch(ctx, params = {}) {
           // seamless: basta ridurre l'offset modulo la dimensione del
           // tassello e far partire il tappeto da un tassello "in piu'"
           // fuori bordo (in alto/a sinistra) cosi' non resta mai un buco.
-          const off = seaScrollOffset(tutorialState.cutscene.phaseT);
+          const off = seaScrollOffset(st.tutorialState.cutscene.phaseT);
           const wrap = (v, size) => (((v % size) + size) % size) - size;
           const ox = wrap(off.x, bgFrame.w), oy = wrap(off.y, bgFrame.h);
           for (let y = oy; y < ch; y += bgFrame.h) {
             for (let x = ox; x < cw; x += bgFrame.w) r.draw(bgFrame, x, y, 1, 0xffffff, 1);
           }
         }
-        for (const p of tutorialState.cutscene.planes) {
+        for (const p of st.tutorialState.cutscene.planes) {
           const f = frameFor(p.spr);
           if (!f) continue;
           // [Bug corretto, segnalato dall'autore: "vedo gli aerei fermi per
@@ -8667,7 +8670,7 @@ export async function mountMatch(ctx, params = {}) {
     // `!paused`: stesso principio dei banner "ATTACK INCOMING"/
     // "THUNDERSTORM INCOMING" appena sopra — un avviso sullo stato di
     // gioco non ha senso lampeggiare sopra al menu che lo ferma.
-    if (r12.oil <= LOW_OIL_THRESHOLD && !paused && Math.floor(phaseT / LOW_OIL_BLINK_PERIOD) % 2 === 0) {
+    if (st.r12.oil <= LOW_OIL_THRESHOLD && !st.paused && Math.floor(st.phaseT / LOW_OIL_BLINK_PERIOD) % 2 === 0) {
       const cw = canvas.clientWidth, ch = canvas.clientHeight;
       const f = frameFor("alertlowoil");
       if (f) {
@@ -8688,11 +8691,11 @@ export async function mountMatch(ctx, params = {}) {
     // Angolo in alto a destra, lontano dalla barra risorse (in alto a
     // sinistra, gia' stretta su schermi piccoli — STUDIO.md, il denaro si
     // taglia gia' al bordo su alcuni telefoni) cosi' non la sovrappone mai.
-    if (saveIconT !== null) {
+    if (st.saveIconT !== null) {
       const cw = canvas.clientWidth, ch = canvas.clientHeight;
       r.setAmbient(1, 1, 1);
       r.setProjection(screenProjection(cw, ch));
-      const frameIdx = Math.floor((saveIconT / SAVE_ICON_DURATION) * 60) % 30;
+      const frameIdx = Math.floor((st.saveIconT / SAVE_ICON_DURATION) * 60) % 30;
       const f = frameFor("savicona", frameIdx);
       if (f) r.draw(f, cw - UI_MARGIN - f.w, UI_MARGIN, 1, 0xffffff, 1);
       r.flush();
@@ -8708,7 +8711,7 @@ export async function mountMatch(ctx, params = {}) {
     requestAnimationFrame(frame);
     } catch (err) {
       console.error("nimbus: errore nel ciclo di frame di match, torno al menu", err);
-      stopped = true;
+      st.stopped = true;
       navigate("menu");
     }
   }
@@ -8716,49 +8719,50 @@ export async function mountMatch(ctx, params = {}) {
 
   // aggancio di debug, comodo per ispezionare senza aspettare il ciclo
   window.__nimbus = {
-    cam, scene, get world() { return frameList; }, get buildings() { return buildings; }, get r12() { return r12; },
+    get st() { return st; },
+    cam, scene, get world() { return st.frameList; }, get buildings() { return st.buildings; }, get r12() { return st.r12; },
     get drawCalls() { return r.drawCalls; },
-    get uiButtons() { return uiButtons; }, get cars() { return cars; }, semaphores, isMobile,
-    get tutorialState() { return tutorialState; }, get tutorialOkRect() { return tutorialOkRect; },
-    get paused() { return paused; }, setPaused: (v) => { paused = v; }, get pauseBtnRect() { return pauseBtnRect; },
-    get pauseMenuButtons() { return pauseMenuButtons; },
-    get pauseSubmenu() { return pauseSubmenu; }, setPauseSubmenu: (v) => { pauseSubmenu = v; },
-    get autosave() { return autosave; }, get autosaveT() { return autosaveT; }, setAutosaveT: (t) => { autosaveT = t; },
-    get saveIconT() { return saveIconT; }, showSaveIcon,
-    setSaveIconT: (v) => { saveIconT = v; },
-    get uiScrollX() { return uiScrollX; }, setUiScrollX: (x) => { uiScrollX = x; },
-    get carmakerT() { return carmakerT; }, setCarmakerT: (t) => { carmakerT = t; },
-    atmo, get pedestrians() { return pedestrians; },
-    get balloons() { return balloons; }, get loot() { return loot; }, get coins() { return coins; },
-    get coinPops() { return coinPops; }, get costFloaters() { return costFloaters; },
-    get constructionBalloons() { return constructionBalloons; }, get constructionBoxes() { return constructionBoxes; },
-    get threats() { return threats; }, get bombs() { return bombs; }, get explosions() { return explosions; },
-    get projectiles() { return projectiles; }, get smoke() { return smoke.active; }, get trails() { return trails; },
-    get lightning() { return lightning; }, get weatherState() { return weatherState; },
+    get uiButtons() { return st.uiButtons; }, get cars() { return st.cars; }, semaphores, isMobile,
+    get tutorialState() { return st.tutorialState; }, get tutorialOkRect() { return st.tutorialOkRect; },
+    get paused() { return st.paused; }, setPaused: (v) => { st.paused = v; }, get pauseBtnRect() { return st.pauseBtnRect; },
+    get pauseMenuButtons() { return st.pauseMenuButtons; },
+    get pauseSubmenu() { return st.pauseSubmenu; }, setPauseSubmenu: (v) => { st.pauseSubmenu = v; },
+    get autosave() { return st.autosave; }, get autosaveT() { return st.autosaveT; }, setAutosaveT: (t) => { st.autosaveT = t; },
+    get saveIconT() { return st.saveIconT; }, showSaveIcon,
+    setSaveIconT: (v) => { st.saveIconT = v; },
+    get uiScrollX() { return st.uiScrollX; }, setUiScrollX: (x) => { st.uiScrollX = x; },
+    get carmakerT() { return st.carmakerT; }, setCarmakerT: (t) => { st.carmakerT = t; },
+    atmo, get pedestrians() { return st.pedestrians; },
+    get balloons() { return st.balloons; }, get loot() { return st.loot; }, get coins() { return st.coins; },
+    get coinPops() { return st.coinPops; }, get costFloaters() { return st.costFloaters; },
+    get constructionBalloons() { return st.constructionBalloons; }, get constructionBoxes() { return st.constructionBoxes; },
+    get threats() { return st.threats; }, get bombs() { return st.bombs; }, get explosions() { return st.explosions; },
+    get projectiles() { return st.projectiles; }, get smoke() { return st.smoke.active; }, get trails() { return st.trails; },
+    get lightning() { return st.lightning; }, get weatherState() { return st.weatherState; },
     get fireworksState() { return fireworksState; },
-    get beams() { return beams; },
-    get aerSmoke() { return aerSmoke; }, get debris() { return debris; }, get ruins() { return ruins; },
-    get blockedSlots() { return blockedSlots; }, get placeholders() { return placeholders; },
-    get armedPlacement() { return armedPlacement; }, get selectedType() { return selectedType; }, get message() { return message; },
-    get bankPanelOpen() { return bankPanelOpen; }, setBankPanelOpen: (v) => { bankPanelOpen = v; },
+    get beams() { return st.beams; },
+    get aerSmoke() { return st.aerSmoke; }, get debris() { return st.debris; }, get ruins() { return st.ruins; },
+    get blockedSlots() { return st.blockedSlots; }, get placeholders() { return placeholders; },
+    get armedPlacement() { return st.armedPlacement; }, get selectedType() { return st.selectedType; }, get message() { return st.message; },
+    get bankPanelOpen() { return st.bankPanelOpen; }, setBankPanelOpen: (v) => { st.bankPanelOpen = v; },
     // Fine partita (`outcome` sopra) — comodo per testare le tre condizioni
     // senza aspettare che l'olio scenda a zero per davvero o costruire un
     // grattacielo da 200000 mon: `forceDefeat("oil"|"chies")`/`forceVictory()`
     // impostano lo stesso stato che il gioco raggiungerebbe da solo.
-    get outcome() { return outcome; }, get outcomeButtons() { return outcomeButtons; },
-    forceDefeat: (reason) => { outcome = { kind: "defeat", reason, t: 0, motorFreezeT: phaseT }; },
-    forceVictory: () => { victoryShown = true; outcome = { kind: "victory", t: 0 }; },
-    clearOutcome: () => { outcome = null; },
-    get bankButtons() { return bankButtons; },
-    setPhase: (t) => { phaseT = t; },
+    get outcome() { return st.outcome; }, get outcomeButtons() { return st.outcomeButtons; },
+    forceDefeat: (reason) => { st.outcome = { kind: "defeat", reason, t: 0, motorFreezeT: st.phaseT }; },
+    forceVictory: () => { st.victoryShown = true; st.outcome = { kind: "victory", t: 0 }; },
+    clearOutcome: () => { st.outcome = null; },
+    get bankButtons() { return st.bankButtons; },
+    setPhase: (t) => { st.phaseT = t; },
     phases: PHASES,
     save: doSave, load: doLoad,
-    get platformState() { return platformState; },
+    get platformState() { return st.platformState; },
   };
 
   return {
     dispose() {
-      stopped = true;
+      st.stopped = true;
       window.removeEventListener("keydown", onKeydown);
       delete window.__nimbus;
       gl.deleteTexture(pauseIconTex.tex);
@@ -8799,7 +8803,7 @@ export async function mountMatch(ctx, params = {}) {
     // (autoload, gia' il percorso "funziona sempre" segnalato dall'autore),
     // invece di uno schermo bloccato senza uscita.
     onContextLost() {
-      try { save(scene.name, r12, buildings, ruins, blockedSlots, platformState); } catch { /* niente da fare: meglio un reload senza quicksave che nessun reload */ }
+      try { save(scene.name, st.r12, st.buildings, st.ruins, st.blockedSlots, st.platformState); } catch { /* niente da fare: meglio un reload senza quicksave che nessun reload */ }
       location.reload();
     },
   };
