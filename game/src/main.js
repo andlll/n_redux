@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, syncTopperLife } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, syncTopperLife, syncNextId } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -1113,6 +1113,7 @@ export async function mountMatch(ctx, params = {}) {
 
   /** @type {ReturnType<typeof placeBuilding>[]} */
   st.buildings = [];
+  syncNextId(st.buildings);   // il contatore d'id di buildings.js sopravvive fra una mountMatch() e l'altra: riparte da 1
   st.decorEntities = [];      // ornamenti (permanenti a fine cantiere, o transitori durante)
   // I ruderi (game/src/buildings.js, ruinSpriteFor()): quando la vita di un
   // edificio finito arriva a 0, l'originale non lo rimuove — lo sostituisce
@@ -2419,6 +2420,7 @@ export async function mountMatch(ctx, params = {}) {
   function applyLoadedData(data) {
     st.r12 = data.r12;
     st.buildings = data.buildings;
+    syncNextId(st.buildings);   // riallinea il contatore agli id del salvataggio, altrimenti placeBuilding() ne riusa uno
     // `?.tier1`: scarta anche un salvataggio con la forma vecchia (prima
     // dei due livelli fari/piattaforma) invece di rompersi su di lui — lo
     // stesso principio "niente stato vecchio da onorare" gia' scelto per

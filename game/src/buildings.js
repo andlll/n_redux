@@ -2067,6 +2067,23 @@ export const BUILDING_TYPES = {
 
 let nextId = 1;
 
+// Esportata: main.js la chiama dopo aver sostituito `buildings` con un
+// array caricato (salvataggio) o svuotato (nuova partita/ritorno al menu),
+// per riallineare il generatore d'id qui sopra — altrimenti resta quello
+// della sessione precedente (modulo mai ricaricato fra una mountMatch() e
+// l'altra) e placeBuilding() puo' riassegnare un id gia' presente nel
+// salvataggio appena caricato. Solo id NUMERICI: altre liste che finiscono
+// per assomigliare a "edifici" usano id stringa in spazi propri (es.
+// `ruinClear${n}` di stepRuinClearing() in main.js) e vanno ignorati, non
+// riallineati da qui.
+export function syncNextId(buildings) {
+  let max = 0;
+  for (const b of buildings) {
+    if (typeof b.id === "number" && b.id > max) max = b.id;
+  }
+  nextId = max + 1;
+}
+
 // Esportata: stepRuinClearing() (main.js) la riusa per rigiocare a mano gli
 // stessi `up.steps` di un cantiere vero sui ruderi sotto ruspa — vedi il
 // commento li' sopra.
