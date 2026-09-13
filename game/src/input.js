@@ -31,6 +31,24 @@ export class Input {
 
     this.onDrag = null;              // (dxScreen, dyScreen)
     this.onTap = null;               // (sx, sy)
+    // [Bug corretto, segnalato dall'autore: "il caricamento da file quasi
+    // mai funziona su iOS dal menu di pausa, sempre dal menu principale"]
+    // `onTap` (sopra) scatta dentro il listener "pointerup" — sintetico ma
+    // comunque dentro un vero gesto utente, motivo per cui non e' quasi mai
+    // un problema (Chrome/Android/desktop). iOS Safari pero' concede
+    // l'attivazione "vera" (quella che serve a `<input type=file>.click()`
+    // per aprire il picker di sistema, save.js/loadFromFile()) in modo
+    // affidabile solo dentro l'evento "click" NATIVO — lo stesso che
+    // title.js gia' usa per il proprio bottone "Carica partita" (un
+    // `<button>` DOM vero, mai stato un problema). Un "pointerup" sintetico
+    // sullo stesso canvas non basta sempre: da qui il "quasi mai" (a volte
+    // funziona comunque, a seconda di timing/versione — mai un fallimento
+    // netto, solo inaffidabile). Il browser genera comunque un "click" vero
+    // sul canvas subito dopo il pointerup di un tap (nessun preventDefault
+    // lo blocca qui sotto) — `onClick` lo espone separato da `onTap` cosi'
+    // il chiamante (main.js) puo' far scattare la SOLA apertura del picker
+    // da li', invece che dal tap sintetico.
+    this.onClick = null;             // (sx, sy)
     this.onZoom = null;              // (factor, anchorSx, anchorSy)
     // Rilascio del puntatore, sempre — a differenza di `onTap` (solo se il
     // gesto non ha mai superato `TAP_SLOP`). Serve al piazzamento a
@@ -86,6 +104,10 @@ export class Input {
     el.addEventListener("pointerleave", () => { this.hover = null; this.hoverPointerType = null; });
     el.addEventListener("wheel", (e) => this._wheel(e), { passive: false });
     el.addEventListener("contextmenu", (e) => e.preventDefault());
+    // `onClick`, sopra: evento "click" nativo del browser, non un altro tap
+    // sintetico — nessuna soglia/logica di gesto qui, e' gia' tutta dentro
+    // pointerup/onTap.
+    el.addEventListener("click", (e) => { const p = this._pos(e); this.onClick?.(p.x, p.y); });
   }
 
   _pos(e) {

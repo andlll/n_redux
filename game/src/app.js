@@ -156,7 +156,7 @@ function reportProgress(key, loaded, total, label = t("loading.default")) {
 // dispose() e il montaggio del prossimo modulo (import() e' asincrono)
 // troverebbe ancora gli handler della schermata appena smontata.
 function resetInput() {
-  input.onDrag = null; input.onTap = null; input.onZoom = null;
+  input.onDrag = null; input.onTap = null; input.onClick = null; input.onZoom = null;
   input.onPointerDown = null; input.onPointerUp = null;
   input.uiHitTest = null; input.onUIDrag = null;
   input.hover = null; input.hoverPointerType = null;

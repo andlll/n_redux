@@ -5195,10 +5195,8 @@ export async function mountMatch(ctx, params = {}) {
         if (ok) { picked = null; outcome = null; crashVSpeed = 0; crashFallY = 0; }
         message = ok ? t("msg.gameLoaded") : t("msg.noSaveFound");
         messageT = 3;
-      } else if (hit?.action === "loadFile") {
-        doLoadFromFile().then((ok) => {
-          if (ok) { outcome = null; crashVSpeed = 0; crashFallY = 0; }
-        });
+      // "loadFile" e' gestito da `input.onClick` sotto, non da qui — vedi
+      // il commento li' per il perche' (iOS Safari/input.js).
       } else if (hit?.action === "resetGame") {
         doResetGame();
       } else if (hit?.action === "title") {
@@ -5271,8 +5269,8 @@ export async function mountMatch(ctx, params = {}) {
         pauseSubmenu = null;
       } else if (hit?.action === "saveFile") {
         doSaveToFile();   // async, messaggio gestito dentro (fuoco e dimentica)
-      } else if (hit?.action === "loadFile") {
-        doLoadFromFile();   // async, idem
+      // "loadFile" e' gestito da `input.onClick` sotto, non da qui — vedi
+      // il commento li' per il perche' (iOS Safari/input.js).
       } else if (hit?.action === "savingOptions") {
         pauseSubmenu = "saving";
       } else if (hit?.action === "setLang") {
@@ -5878,6 +5876,39 @@ export async function mountMatch(ctx, params = {}) {
       message = clickShip(picked.ref, r12) ?? "";
       messageT = 3;
       picked = null;
+    }
+  };
+
+  // [Bug corretto, segnalato dall'autore: "il caricamento da file su iOS in
+  // browser funziona quasi sempre dal menu principale, quasi mai dal menu
+  // di pausa dentro una partita"] Il bottone "Carica partita" di title.js e'
+  // un `<button>` DOM vero, ascolta l'evento "click" nativo — mai stato un
+  // problema. Questi due bottoni invece vivono dentro `input.onTap` sopra,
+  // che scatta durante "pointerup" (un gesto utente vero, ma non l'evento
+  // "click" nativo): su Chrome/Android l'attivazione richiesta da
+  // `<input type=file>.click()` (save.js/loadFromFile()) resta comunque
+  // valida, ma iOS Safari la concede in modo affidabile solo dentro un vero
+  // "click" — da cui il "quasi mai" (non un fallimento sistematico, solo
+  // inaffidabile). `input.onClick` (input.js) espone lo stesso "click" che
+  // il browser genera comunque subito dopo il pointerup di un tap (nessun
+  // preventDefault lo blocca in questo motore): stesso hit-test di sopra,
+  // ripetuto qui apposta invece di essere richiamato da onTap, cosi'
+  // l'apertura del picker parte SEMPRE da un "click" vero, mai da un tap
+  // sintetico. Le due azioni "loadFile" in `input.onTap` sopra sono state
+  // rimosse di conseguenza (restava solo il commento a spiegare perche').
+  input.onClick = (sx, sy) => {
+    if (outcome && outcome.kind !== "victory") {
+      const hit = outcomeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+      if (hit?.action === "loadFile") {
+        doLoadFromFile().then((ok) => {
+          if (ok) { outcome = null; crashVSpeed = 0; crashFallY = 0; }
+        });
+      }
+      return;
+    }
+    if (paused && pauseSubmenu == null) {
+      const hit = pauseMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+      if (hit?.action === "loadFile") doLoadFromFile();   // async, messaggio gestito dentro (fuoco e dimentica)
     }
   };
 
