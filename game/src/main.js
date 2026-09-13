@@ -7496,7 +7496,17 @@ export async function mountMatch(ctx, params = {}) {
     // motivo per cui lo erano gia' `barRowFrame`/`stats` sotto: vedi il
     // commento su `hideResourceText` due righe sotto (testo DOM, la
     // sfumatura di pausa non lo tocca).
-    const MOBILE_RES_GAP = 6;
+    // [Nuova disposizione, richiesta dall'autore: "togliamo la pillola nera
+    // dietro alle risorse mobile, e avviciniamo le risorse fra loro con lo
+    // spazio guadagnato"] Senza lo sfondo di tagPillFrame() (rimosso sotto)
+    // ogni riga non ha piu' bisogno dell'intera altezza di una pillola vera
+    // (TAG_PILL_H, 44px — pensata per un cartellino con margine visivo
+    // attorno al testo): MOBILE_ROW_H basta appena per icona+testo
+    // (iconH = TAG_TEXT_SIZE*1.35, layoutIconParts() sotto), e MOBILE_RES_GAP
+    // puo' scendere insieme, cosi' la colonna resta leggibile ma molto piu'
+    // compatta.
+    const MOBILE_ROW_H = 26;
+    const MOBILE_RES_GAP = 4;
     // [Nuova disposizione, richiesta dall'autore: "cristalli e biotech
     // incolonnati a sinistra con le altre, non nel blocchetto a destra"]
     // Le due risorse "extra" (aggiunte in questo motore, mai nel
@@ -7514,16 +7524,22 @@ export async function mountMatch(ctx, params = {}) {
         const text = String(Math.round(raw));
         const { resolved, total } = layoutIconParts([{ icon: kind }, { text }], TAG_TEXT_SIZE, TAG_GAP);
         const row = { kind, text, icon: resolved[0], y: rowY, w: Math.round(total + TAG_PAD) };
-        rowY += TAG_PILL_H + MOBILE_RES_GAP;
+        rowY += MOBILE_ROW_H + MOBILE_RES_GAP;
         return row;
       });
     })() : null;
     if (isMobile) {
       if (!hideResourceIcons) {
-        r.setColorize(true);
+        // [Bug corretto, segnalato dall'autore: "le risorse mobile devono
+        // tornare nere di giorno e bianche di notte come gli altri
+        // pulsanti"] Niente piu' pillola nera dietro (rimossa sopra) a
+        // garantire contrasto da sola: le iconcine (sagome nere, vedi il
+        // commento su drawCostTagAt() piu' sotto) seguono ora la stessa
+        // regola giorno/notte di crys/bio/orologio qui sotto, `iconsDark`
+        // calcolato una sola volta per frame poco piu' sopra.
+        r.setColorize(iconsDark);
         for (const row of mobileResLayout) {
-          r.draw(tagPillFrame(row.w, TAG_PILL_H), barX, row.y, 1, 0x000000, 0.72);
-          if (row.icon.frame) r.draw(row.icon.frame, barX + TAG_PAD / 2, row.y + (TAG_PILL_H - row.icon.iconH) / 2, row.icon.scale, 0xffffff, 1);
+          if (row.icon.frame) r.draw(row.icon.frame, barX + TAG_PAD / 2, row.y + (MOBILE_ROW_H - row.icon.iconH) / 2, row.icon.scale, iconsDark ? 0xffffff : 0x000000, 1);
         }
         r.setColorize(false);
       }
@@ -7556,8 +7572,8 @@ export async function mountMatch(ctx, params = {}) {
     const hideResourceText = paused || buildMenuOpen || !!tutorialState?.cutscene || !!buildingInfoPanel;
     if (isMobile) {
       if (!hideResourceText) for (const row of mobileResLayout) {
-        drawHtmlText(row.text, barX + TAG_PAD / 2 + row.icon.w + TAG_GAP, row.y + TAG_PILL_H / 2,
-          { size: TAG_TEXT_SIZE, align: "left", color: "#ffffff" });
+        drawHtmlText(row.text, barX + TAG_PAD / 2 + row.icon.w + TAG_GAP, row.y + MOBILE_ROW_H / 2,
+          { size: TAG_TEXT_SIZE, align: "left", color: barTextColor });
       }
     } else {
       const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
@@ -7751,7 +7767,7 @@ export async function mountMatch(ctx, params = {}) {
     // stessa riga), non piu' una riga a parte piu' in basso.
     // [Nuova disposizione, richiesta dall'autore: "cristalli e biotech
     // incolonnati a sinistra"] Su mobile questo contatore lo disegna gia'
-    // il ciclo di `mobileResLayout` sopra (stessa pillola di pop/olio/
+    // il ciclo di `mobileResLayout` sopra (stessa riga di pop/olio/
     // energia/denaro): il blocco qui sotto resta solo per desktop, dove sta
     // ancora sulla riga unica a destra della faccina.
     if (r12.crys > 0 && !isMobile) {
@@ -8158,7 +8174,7 @@ export async function mountMatch(ctx, params = {}) {
           // offset che ora cadrebbe a meta' di una riga diversa.
           if (isMobile) {
             const row = mobileResLayout.find((r) => r.kind === resKind);
-            target = row ? { x: barX + row.w / 2, y: row.y + TAG_PILL_H + 6, angle: 90 } : null;
+            target = row ? { x: barX + row.w / 2, y: row.y + MOBILE_ROW_H + 6, angle: 90 } : null;
           } else {
             const resX = tutorialState.phase === 6 ? 340 : tutorialState.phase === 11 ? 228 : 142;
             target = { x: barX + resX, y: barY + 43, angle: 90 };
