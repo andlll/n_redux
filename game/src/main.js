@@ -8770,5 +8770,37 @@ export async function mountMatch(ctx, params = {}) {
       for (const el of textPool) el.remove();
       cutsceneTextWrap.remove();
     },
+    // [Bug corretto, segnalato dall'autore: "il caricamento da file su iOS
+    // funziona quasi sempre dal menu principale, quasi mai dal menu di
+    // pausa dentro una partita — non fallisce ad aprire il file manager,
+    // fallisce proprio il caricamento una volta scelto il file"] L'atlas di
+    // `match` (~1 GB VRAM, tools/23_atlas.py — contro i ~75 MB di `title`)
+    // resta caricato per tutta la partita: aprire il picker di sistema
+    // (Files.app) mette Safari in secondo piano, ed e' proprio questo il
+    // momento in cui iOS reclama memoria dalle schede in background sotto
+    // pressione — il primo bersaglio e' il contesto WebGL delle pagine piu'
+    // pesanti (evento "webglcontextlost", mai gestito finora in questo
+    // motore: app.js). Perso il contesto, il ciclo di rendering continua a
+    // girare ma ogni chiamata WebGL diventa un no-op silenzioso (specifica
+    // — non lancia mai un errore): lo stato JS caricato da file (r12/
+    // buildings, applyLoadedData() sopra) e' comunque gia' corretto in
+    // memoria, ma lo schermo resta congelato sull'ultimo frame buono, cosi'
+    // il caricamento SEMBRA fallito anche quando i dati sono gia' a posto —
+    // proprio il sintomo segnalato. `onContextLost()` (chiamato da app.js
+    // su "webglcontextlost" del canvas condiviso) non tenta di ricostruire
+    // l'atlas perso sul posto (costruire di nuovo texture/shader su un
+    // contesto appena restituito e' un lavoro a parte, rischioso da
+    // improvvisare qui): salva lo stato VIVO adesso (save(), la stessa
+    // funzione del quicksave — MAI dietro il gate di doSave()/
+    // criticalSaveReason(), che servirebbe solo a scoraggiare un salvataggio
+    // volontario in un momento rischioso, non a bloccare un salvataggio di
+    // emergenza) e ricarica la pagina intera: al rientro il giocatore trova
+    // il menu principale con lo stesso quicksave pronto su "Start Nimbus"
+    // (autoload, gia' il percorso "funziona sempre" segnalato dall'autore),
+    // invece di uno schermo bloccato senza uscita.
+    onContextLost() {
+      try { save(scene.name, r12, buildings, ruins, blockedSlots, platformState); } catch { /* niente da fare: meglio un reload senza quicksave che nessun reload */ }
+      location.reload();
+    },
   };
 }
