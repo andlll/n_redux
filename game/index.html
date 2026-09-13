@@ -26,6 +26,18 @@
 <link rel="icon" href="./favicon.ico" sizes="any">
 <link rel="icon" type="image/png" href="./favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<!-- PWA: manifest (nome, icone 192/512 ricavate dallo stesso ritaglio del
+     caccia rosso della favicon, display fullscreen) + service worker
+     (./sw.js, network-first: installabile e avviabile offline senza mai
+     preferire una build vecchia a quella online). I due meta *-web-app-
+     capable coprono iOS < 16.4 e Chrome Android vecchi, che ignorano il
+     manifest per la modalita' a schermo intero. -->
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#0b1020">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NIMBUS">
 <style>
   html, body { margin: 0; height: 100%; background: #0b1020; overflow: hidden;
                touch-action: none; overscroll-behavior: none;
@@ -305,3 +317,8 @@
      richiesta gia' vera per gli atlas (`tools/23_atlas.py` + `24_blit.py`),
      non una novita' nel flusso di lavoro di questo repo. -->
 <script type="module" src="./dist/app.js"></script>
+<script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  }
+</script>

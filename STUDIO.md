@@ -4257,3 +4257,18 @@ paragrafo 8.
   riallineato dopo un caricamento ne' azzerato al mount, quindi una
   costruzione dopo il load poteva riusare un id gia' presente nel
   salvataggio (decor, monete e popup ruspa fanno join su `buildingId`).
+- **Il gioco e' una PWA installabile (game/manifest.webmanifest, game/sw.js)**:
+  `index.html` collega un manifest (nome NIMBUS, `display: fullscreen`,
+  `orientation: portrait` — il layout mobile e' pensato per il telefono in
+  verticale, vedi `resize()` in main.js — colori `#0b1020` come lo sfondo
+  della pagina) con icone 192/512 px + variante maskable, ricavate dallo
+  STESSO ritaglio del caccia rosso `figros` (page_065.png, 926,2,218x179)
+  della favicon, su fondo pieno navy come l'apple-touch-icon. Il service
+  worker e' network-first: con la rete si scarica sempre la versione online
+  (coerente con i meta no-cache di index.html), la cache serve solo da
+  ripiego offline; richieste non-GET o di altre origini non vengono toccate.
+  I meta `mobile-web-app-capable`/`apple-mobile-web-app-*` coprono i browser
+  che ignorano il manifest per lo schermo intero (iOS < 16.4). Tutti i
+  percorsi sono relativi (`./`) perche' su GitHub Pages il sito vive sotto
+  `/n_redux/`. Verificato in Chromium headless su un server statico locale:
+  SW attivo con scope giusto, manifest e icone senza 404.
