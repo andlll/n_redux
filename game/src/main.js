@@ -449,17 +449,31 @@ export async function mountMatch(ctx, params = {}) {
   // a mano sul PNG sorgente, stessa tecnica di RESOURCE_ICON_X) cosi' non
   // serve nessuna matematica di compensazione qui: l'icona si allinea da
   // sola alla pillola/testo esattamente come oil/ele/mon.
-  const CRYS_ICON_BBOX = { x0: 7, y0: 7, x1: 21, y1: 31 };
+  // [Bug corretto, segnalato dall'autore: "l'icona dei cristalli sembra
+  // tagliata"] Il bbox misurato qui (7,7 .. 21,31, un rettangolo 14x24
+  // dentro il frame 27x40) tagliava via la punta superiore/inferiore del
+  // rombo — verificato pixel per pixel sul PNG sorgente (assets/textures,
+  // stessa tecnica di RESOURCE_ICON_X): il frame nativo di "crys_ico" NON
+  // ha in realta' nessun margine trasparente reale (l'alpha e' > 0 fin dal
+  // primo/ultimo pixel su entrambi gli assi), a differenza di quanto
+  // assumeva il commento originale sotto. Bbox ora = il frame intero: la
+  // subFrameRect() resta comunque necessaria per azzerare ox/oy (il frame
+  // nativo li ha a -7/-16, letti da data/sprites.json — vedi il commento
+  // sotto), non piu' per ritagliare pixel veri.
+  const CRYS_ICON_BBOX = { x0: 0, y0: 0, x1: 27, y1: 40 };
   // [Nuova funzionalita', richiesta dall'autore: "risorse incolonnate su
   // mobile"] La popolazione non entra mai in un costo (RESOURCE_ICON_X
   // sopra copre solo le tre risorse scambiabili), quindi non aveva mai
   // avuto bisogno di un frame isolato — la colonna verticale della barra
   // risorse (sotto) ne ha invece bisogno anche lei, come le altre tre.
-  // Stessa tecnica di misura a mano di RESOURCE_ICON_X: l'icona "persona",
-  // la prima della striscia "icone_oriz", cade sulla colonna locale 9..22
-  // (centro 15.5, gia' misurato per allineare l'orologio della riga 2 —
-  // vedi il commento su clockPos piu' sotto), non un secondo file separato.
-  const POP_ICON_X = [9, 22];
+  // [Bug corretto, segnalato dall'autore: "l'icona della popolazione sembra
+  // tagliata"] Stessa tecnica di misura a mano di RESOURCE_ICON_X, ma la
+  // colonna locale 9..22 misurata in origine (un riferimento pensato solo
+  // per allineare l'orologio della riga 2, MAI per ritagliare l'icona vera)
+  // cadeva quasi tutta a destra della sagoma "persona" — verificato pixel
+  // per pixel: il pittogramma occupa in realta' la colonna locale 0..15,
+  // il primissimo pezzo della striscia (e' il primo pittogramma), non 9..22.
+  const POP_ICON_X = [0, 15];
   function resourceIconFrame(kind) {
     if (kind === "crys") {
       const full = frameFor("crys_ico");
@@ -5181,10 +5195,8 @@ export async function mountMatch(ctx, params = {}) {
         if (ok) { picked = null; outcome = null; crashVSpeed = 0; crashFallY = 0; }
         message = ok ? t("msg.gameLoaded") : t("msg.noSaveFound");
         messageT = 3;
-      } else if (hit?.action === "loadFile") {
-        doLoadFromFile().then((ok) => {
-          if (ok) { outcome = null; crashVSpeed = 0; crashFallY = 0; }
-        });
+      // "loadFile" e' gestito da `input.onClick` sotto, non da qui — vedi
+      // il commento li' per il perche' (iOS Safari/input.js).
       } else if (hit?.action === "resetGame") {
         doResetGame();
       } else if (hit?.action === "title") {
@@ -5257,8 +5269,8 @@ export async function mountMatch(ctx, params = {}) {
         pauseSubmenu = null;
       } else if (hit?.action === "saveFile") {
         doSaveToFile();   // async, messaggio gestito dentro (fuoco e dimentica)
-      } else if (hit?.action === "loadFile") {
-        doLoadFromFile();   // async, idem
+      // "loadFile" e' gestito da `input.onClick` sotto, non da qui — vedi
+      // il commento li' per il perche' (iOS Safari/input.js).
       } else if (hit?.action === "savingOptions") {
         pauseSubmenu = "saving";
       } else if (hit?.action === "setLang") {
@@ -5864,6 +5876,39 @@ export async function mountMatch(ctx, params = {}) {
       message = clickShip(picked.ref, r12) ?? "";
       messageT = 3;
       picked = null;
+    }
+  };
+
+  // [Bug corretto, segnalato dall'autore: "il caricamento da file su iOS in
+  // browser funziona quasi sempre dal menu principale, quasi mai dal menu
+  // di pausa dentro una partita"] Il bottone "Carica partita" di title.js e'
+  // un `<button>` DOM vero, ascolta l'evento "click" nativo — mai stato un
+  // problema. Questi due bottoni invece vivono dentro `input.onTap` sopra,
+  // che scatta durante "pointerup" (un gesto utente vero, ma non l'evento
+  // "click" nativo): su Chrome/Android l'attivazione richiesta da
+  // `<input type=file>.click()` (save.js/loadFromFile()) resta comunque
+  // valida, ma iOS Safari la concede in modo affidabile solo dentro un vero
+  // "click" — da cui il "quasi mai" (non un fallimento sistematico, solo
+  // inaffidabile). `input.onClick` (input.js) espone lo stesso "click" che
+  // il browser genera comunque subito dopo il pointerup di un tap (nessun
+  // preventDefault lo blocca in questo motore): stesso hit-test di sopra,
+  // ripetuto qui apposta invece di essere richiamato da onTap, cosi'
+  // l'apertura del picker parte SEMPRE da un "click" vero, mai da un tap
+  // sintetico. Le due azioni "loadFile" in `input.onTap` sopra sono state
+  // rimosse di conseguenza (restava solo il commento a spiegare perche').
+  input.onClick = (sx, sy) => {
+    if (outcome && outcome.kind !== "victory") {
+      const hit = outcomeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+      if (hit?.action === "loadFile") {
+        doLoadFromFile().then((ok) => {
+          if (ok) { outcome = null; crashVSpeed = 0; crashFallY = 0; }
+        });
+      }
+      return;
+    }
+    if (paused && pauseSubmenu == null) {
+      const hit = pauseMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
+      if (hit?.action === "loadFile") doLoadFromFile();   // async, messaggio gestito dentro (fuoco e dimentica)
     }
   };
 
@@ -7496,7 +7541,17 @@ export async function mountMatch(ctx, params = {}) {
     // motivo per cui lo erano gia' `barRowFrame`/`stats` sotto: vedi il
     // commento su `hideResourceText` due righe sotto (testo DOM, la
     // sfumatura di pausa non lo tocca).
-    const MOBILE_RES_GAP = 6;
+    // [Nuova disposizione, richiesta dall'autore: "togliamo la pillola nera
+    // dietro alle risorse mobile, e avviciniamo le risorse fra loro con lo
+    // spazio guadagnato"] Senza lo sfondo di tagPillFrame() (rimosso sotto)
+    // ogni riga non ha piu' bisogno dell'intera altezza di una pillola vera
+    // (TAG_PILL_H, 44px — pensata per un cartellino con margine visivo
+    // attorno al testo): MOBILE_ROW_H basta appena per icona+testo
+    // (iconH = TAG_TEXT_SIZE*1.35, layoutIconParts() sotto), e MOBILE_RES_GAP
+    // puo' scendere insieme, cosi' la colonna resta leggibile ma molto piu'
+    // compatta.
+    const MOBILE_ROW_H = 26;
+    const MOBILE_RES_GAP = 4;
     // [Nuova disposizione, richiesta dall'autore: "cristalli e biotech
     // incolonnati a sinistra con le altre, non nel blocchetto a destra"]
     // Le due risorse "extra" (aggiunte in questo motore, mai nel
@@ -7508,22 +7563,46 @@ export async function mountMatch(ctx, params = {}) {
     const mobileResKinds = [["pop", r12.pop], ["oil", r12.oil], ["ele", r12.ele], ["mon", r12.mon]];
     if (r12.crys > 0) mobileResKinds.push(["crys", r12.crys]);
     if (r12.biotech > 0) mobileResKinds.push(["bio", r12.biotech]);
+    // [Bug corretto, segnalato dall'autore: "le icone andrebbero centrate,
+    // non allineate al bordo sinistro — i numeri invece allineati fra loro
+    // sul bordo sinistro"] pop/ele (strette, ~9px scalati) e oil/mon/bio
+    // (larghe fino a ~20px) NON hanno la stessa larghezza scalata (ogni
+    // icona mantiene le proprie proporzioni native, solo l'altezza e'
+    // uniforme — iconH sopra): disegnarle tutte dallo stesso bordo sinistro
+    // (come prima) le allineava per il bordo ma le scentrava a vista, E
+    // spostava il testo di quanto la SUA icona era larga, cosi' i numeri
+    // non finivano mai sullo stesso bordo sinistro fra loro. Due passaggi:
+    // prima si calcola icona/testo di ogni riga senza ancora sapere `y`,
+    // poi `iconColW` (la piu' larga fra tutte, sotto) fa da colonna comune —
+    // ogni icona si centra dentro `iconColW`, ogni testo riparte sempre
+    // dallo stesso bordo dopo `iconColW`, qualunque sia la propria icona.
+    const mobileResRows = isMobile ? mobileResKinds.map(([kind, raw]) => {
+      const text = String(Math.round(raw));
+      const { resolved } = layoutIconParts([{ icon: kind }, { text }], TAG_TEXT_SIZE, TAG_GAP);
+      return { kind, text, icon: resolved[0], textW: resolved[1].w };
+    }) : null;
+    const mobileIconColW = isMobile ? Math.max(...mobileResRows.map((row) => row.icon.w)) : 0;
     const mobileResLayout = isMobile ? (() => {
       let rowY = barY;
-      return mobileResKinds.map(([kind, raw]) => {
-        const text = String(Math.round(raw));
-        const { resolved, total } = layoutIconParts([{ icon: kind }, { text }], TAG_TEXT_SIZE, TAG_GAP);
-        const row = { kind, text, icon: resolved[0], y: rowY, w: Math.round(total + TAG_PAD) };
-        rowY += TAG_PILL_H + MOBILE_RES_GAP;
-        return row;
-      });
+      for (const row of mobileResRows) {
+        row.y = rowY;
+        row.w = Math.round(TAG_PAD + mobileIconColW + TAG_GAP + row.textW);
+        rowY += MOBILE_ROW_H + MOBILE_RES_GAP;
+      }
+      return mobileResRows;
     })() : null;
     if (isMobile) {
       if (!hideResourceIcons) {
-        r.setColorize(true);
+        // [Bug corretto, segnalato dall'autore: "le risorse mobile devono
+        // tornare nere di giorno e bianche di notte come gli altri
+        // pulsanti"] Niente piu' pillola nera dietro (rimossa sopra) a
+        // garantire contrasto da sola: le iconcine (sagome nere, vedi il
+        // commento su drawCostTagAt() piu' sotto) seguono ora la stessa
+        // regola giorno/notte di crys/bio/orologio qui sotto, `iconsDark`
+        // calcolato una sola volta per frame poco piu' sopra.
+        r.setColorize(iconsDark);
         for (const row of mobileResLayout) {
-          r.draw(tagPillFrame(row.w, TAG_PILL_H), barX, row.y, 1, 0x000000, 0.72);
-          if (row.icon.frame) r.draw(row.icon.frame, barX + TAG_PAD / 2, row.y + (TAG_PILL_H - row.icon.iconH) / 2, row.icon.scale, 0xffffff, 1);
+          if (row.icon.frame) r.draw(row.icon.frame, barX + TAG_PAD / 2 + (mobileIconColW - row.icon.w) / 2, row.y + (MOBILE_ROW_H - row.icon.iconH) / 2, row.icon.scale, iconsDark ? 0xffffff : 0x000000, 1);
         }
         r.setColorize(false);
       }
@@ -7556,8 +7635,8 @@ export async function mountMatch(ctx, params = {}) {
     const hideResourceText = paused || buildMenuOpen || !!tutorialState?.cutscene || !!buildingInfoPanel;
     if (isMobile) {
       if (!hideResourceText) for (const row of mobileResLayout) {
-        drawHtmlText(row.text, barX + TAG_PAD / 2 + row.icon.w + TAG_GAP, row.y + TAG_PILL_H / 2,
-          { size: TAG_TEXT_SIZE, align: "left", color: "#ffffff" });
+        drawHtmlText(row.text, barX + TAG_PAD / 2 + mobileIconColW + TAG_GAP, row.y + MOBILE_ROW_H / 2,
+          { size: TAG_TEXT_SIZE, align: "left", color: barTextColor });
       }
     } else {
       const stats = [[Math.round(r12.pop), 30], [Math.round(r12.oil), 142],
@@ -7624,10 +7703,18 @@ export async function mountMatch(ctx, params = {}) {
     // `UI_MARGIN` gia' usato per ogni altro elemento ancorato a un bordo
     // (bottone pausa, `pbX` piu' sotto). Da quando cristalli/biotech si sono
     // spostati nella colonna a sinistra (mobileResLayout, sopra) riga2
-    // contiene solo orologio+data+faccina: 130px bastano per l'ultimo, la
-    // faccina a offset 84 (sotto) + la sua larghezza, col margine per il
-    // mese piu' lungo in italiano ("settembre") sulla colonna della data.
-    const ROW2_X = isMobile ? Math.round(canvas.clientWidth - UI_MARGIN - 130) : barX;
+    // contiene solo orologio+data+faccina: 130px riservati bastavano gia'
+    // per l'ultimo elemento, la faccina (offset 84, sotto, + la sua
+    // larghezza ~14px a scala 0.62 = ~98px), ma il calcolo originale
+    // presumeva erroneamente un mese scritto per esteso ("settembre") —
+    // `monthName()`/`month.*` (game/src/i18n.js) sono in realta' sigle di
+    // 3-4 lettere ("Set", "Mag", ...), misurate qui appena ~34px al piu'
+    // largo: ~24px di margine sprecato fra la faccina e il bordo. [Nuova
+    // disposizione, richiesta dall'autore: "smile e data possiamo ancora
+    // spostarli sulla destra"] 106px (98 + lo stesso margine di sicurezza
+    // di UI_MARGIN) bastano davvero, spostando tutto il blocco riga2 verso
+    // il bordo.
+    const ROW2_X = isMobile ? Math.round(canvas.clientWidth - UI_MARGIN - 106) : barX;
     const clockScale = isMobile ? 0.5 : 0.85;
     // [Bug corretto, segnalato dall'autore: "su desktop c'e' troppo gap fra
     // il denaro e orologio/data/faccina, avviciniamoli"] Tutto il blocco
@@ -7751,7 +7838,7 @@ export async function mountMatch(ctx, params = {}) {
     // stessa riga), non piu' una riga a parte piu' in basso.
     // [Nuova disposizione, richiesta dall'autore: "cristalli e biotech
     // incolonnati a sinistra"] Su mobile questo contatore lo disegna gia'
-    // il ciclo di `mobileResLayout` sopra (stessa pillola di pop/olio/
+    // il ciclo di `mobileResLayout` sopra (stessa riga di pop/olio/
     // energia/denaro): il blocco qui sotto resta solo per desktop, dove sta
     // ancora sulla riga unica a destra della faccina.
     if (r12.crys > 0 && !isMobile) {
@@ -8158,7 +8245,7 @@ export async function mountMatch(ctx, params = {}) {
           // offset che ora cadrebbe a meta' di una riga diversa.
           if (isMobile) {
             const row = mobileResLayout.find((r) => r.kind === resKind);
-            target = row ? { x: barX + row.w / 2, y: row.y + TAG_PILL_H + 6, angle: 90 } : null;
+            target = row ? { x: barX + row.w / 2, y: row.y + MOBILE_ROW_H + 6, angle: 90 } : null;
           } else {
             const resX = tutorialState.phase === 6 ? 340 : tutorialState.phase === 11 ? 228 : 142;
             target = { x: barX + resX, y: barY + 43, angle: 90 };
@@ -8682,6 +8769,38 @@ export async function mountMatch(ctx, params = {}) {
       // volte nella sessione (SPA, game/src/app.js) li accumulerebbe.
       for (const el of textPool) el.remove();
       cutsceneTextWrap.remove();
+    },
+    // [Bug corretto, segnalato dall'autore: "il caricamento da file su iOS
+    // funziona quasi sempre dal menu principale, quasi mai dal menu di
+    // pausa dentro una partita — non fallisce ad aprire il file manager,
+    // fallisce proprio il caricamento una volta scelto il file"] L'atlas di
+    // `match` (~1 GB VRAM, tools/23_atlas.py — contro i ~75 MB di `title`)
+    // resta caricato per tutta la partita: aprire il picker di sistema
+    // (Files.app) mette Safari in secondo piano, ed e' proprio questo il
+    // momento in cui iOS reclama memoria dalle schede in background sotto
+    // pressione — il primo bersaglio e' il contesto WebGL delle pagine piu'
+    // pesanti (evento "webglcontextlost", mai gestito finora in questo
+    // motore: app.js). Perso il contesto, il ciclo di rendering continua a
+    // girare ma ogni chiamata WebGL diventa un no-op silenzioso (specifica
+    // — non lancia mai un errore): lo stato JS caricato da file (r12/
+    // buildings, applyLoadedData() sopra) e' comunque gia' corretto in
+    // memoria, ma lo schermo resta congelato sull'ultimo frame buono, cosi'
+    // il caricamento SEMBRA fallito anche quando i dati sono gia' a posto —
+    // proprio il sintomo segnalato. `onContextLost()` (chiamato da app.js
+    // su "webglcontextlost" del canvas condiviso) non tenta di ricostruire
+    // l'atlas perso sul posto (costruire di nuovo texture/shader su un
+    // contesto appena restituito e' un lavoro a parte, rischioso da
+    // improvvisare qui): salva lo stato VIVO adesso (save(), la stessa
+    // funzione del quicksave — MAI dietro il gate di doSave()/
+    // criticalSaveReason(), che servirebbe solo a scoraggiare un salvataggio
+    // volontario in un momento rischioso, non a bloccare un salvataggio di
+    // emergenza) e ricarica la pagina intera: al rientro il giocatore trova
+    // il menu principale con lo stesso quicksave pronto su "Start Nimbus"
+    // (autoload, gia' il percorso "funziona sempre" segnalato dall'autore),
+    // invece di uno schermo bloccato senza uscita.
+    onContextLost() {
+      try { save(scene.name, r12, buildings, ruins, blockedSlots, platformState); } catch { /* niente da fare: meglio un reload senza quicksave che nessun reload */ }
+      location.reload();
     },
   };
 }

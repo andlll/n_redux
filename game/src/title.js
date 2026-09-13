@@ -689,5 +689,10 @@ export async function mountTitle(ctx) {
       titleWrap.remove();
       for (const b of BUTTONS) b._label.remove();
     },
+    // Vedi il commento su onContextLost() in main.js per il perche' — qui
+    // l'atlas e' molto piu' leggero (~75 MB contro ~1 GB di `match`, quindi
+    // molto meno a rischio) e non c'e' nessuno stato di partita da salvare
+    // prima di ricaricare: un reload semplice basta.
+    onContextLost() { location.reload(); },
   };
 }

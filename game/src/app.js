@@ -156,7 +156,7 @@ function reportProgress(key, loaded, total, label = t("loading.default")) {
 // dispose() e il montaggio del prossimo modulo (import() e' asincrono)
 // troverebbe ancora gli handler della schermata appena smontata.
 function resetInput() {
-  input.onDrag = null; input.onTap = null; input.onZoom = null;
+  input.onDrag = null; input.onTap = null; input.onClick = null; input.onZoom = null;
   input.onPointerDown = null; input.onPointerUp = null;
   input.uiHitTest = null; input.onUIDrag = null;
   input.hover = null; input.hoverPointerType = null;
@@ -194,6 +194,35 @@ const ctx = { gl, r, canvas, input, pauseBlur, white, hideLoading, navigate, rep
 
 let current = null;   // { dispose() } della schermata montata adesso
 let navigating = false;   // guardia contro un doppio navigate() in corsa
+
+// [Bug corretto, segnalato dall'autore: "il caricamento da file su iOS
+// funziona quasi sempre dal menu principale, quasi mai dal menu di pausa
+// dentro una partita — non fallisce ad aprire il file manager di sistema,
+// fallisce proprio il caricamento una volta scelto il file"] Un solo
+// contesto WebGL condiviso per tutta la sessione (`gl` sopra): aprire il
+// picker di sistema (Files.app) mette la pagina in secondo piano, il momento
+// in cui iOS reclama piu' volentieri memoria dalle schede in background —
+// il contesto WebGL delle pagine piu' pesanti e' il primo bersaglio
+// ("webglcontextlost", mai gestito finora in questo motore). L'atlas di
+// `match` (~1 GB VRAM, tools/23_atlas.py) e' molto piu' a rischio di quello
+// di `title` (~75 MB): perso il contesto durante una partita, il ciclo di
+// rendering continua a girare ma ogni chiamata WebGL diventa un no-op
+// silenzioso (specifica — mai un errore), quindi lo schermo resta congelato
+// sull'ultimo frame buono anche se lo stato JS caricato da file e' gia'
+// corretto in memoria: il caricamento SEMBRA fallito. Nessun tentativo di
+// ricostruire l'atlas perso sul contesto appena restituito qui (un lavoro a
+// se', main.js/title.js non lo sanno fare): la schermata montata (`current`)
+// decide da sola come recuperare (`onContextLost()`, opzionale — main.js
+// salva lo stato vivo e ricarica la pagina, title.js ricarica e basta,
+// niente da salvare li'). `preventDefault()`: senza di lui il browser non
+// prova nemmeno a restituire il contesto in futuro — ininfluente per la
+// strategia di recupero scelta (un reload pieno la aggira comunque), ma e'
+// il riconoscimento "giusto" dell'evento per specifica, costa zero.
+canvas.addEventListener("webglcontextlost", (e) => {
+  e.preventDefault();
+  console.error("nimbus: contesto WebGL perso");
+  current?.onContextLost?.();
+});
 
 // [Bug corretto, segnalato dall'autore: "problemi col caricamento del
 // livello match" — schermo nero bloccato per sempre, senza nessun modo di
