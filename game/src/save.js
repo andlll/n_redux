@@ -91,10 +91,10 @@ function verify(signed) {
   return checksumOf(JSON.stringify(data)) === _checksum ? data : null;
 }
 
-// `ruins` (game/src/main.js, destroyBuilding()): posizione/sprite/livello
-// bastano a ricrearli, il resto (`_f`/`cost`, quest'ultimo derivabile da
-// `level` con `ruinRebuildCost()`, buildings.js) e' derivato a runtime, non
-// serializzato — stesso principio gia' scelto per `buildings` sopra (niente
+// `ruins` (game/src/main.js, destroyBuilding()): posizione/sprite/livello/
+// lotti bastano a ricrearli, il resto (`_f`/`cost`, quest'ultimo derivabile
+// da `level` con `ruinRebuildCost()`, buildings.js) e' derivato a runtime,
+// non serializzato — stesso principio gia' scelto per `buildings` sopra (niente
 // `_f`, ricalcolato al caricamento). `level` [Bug corretto, richiesto
 // dall'autore: "in match non riesco a demolire le rovine"]: serve a
 // ricostruire il rudere per davvero sotto ruspa (main.js) — un salvataggio
@@ -142,7 +142,15 @@ export function serializeSave(sceneName, r12, buildings, ruins, blockedSlots, pl
       overpark: b.overpark, oversolar: b.oversolar, tiles: b.tiles,
       autoDefenseLevel: b.autoDefenseLevel,
     })),
-    ruins: ruins.map((r) => ({ x: r.x, y: r.y, spr: r.spr, level: r.level })),
+    // `tiles` [Bug corretto, segnalato dall'autore: "verifica che demolire
+    // la rovina della pala eolica liberi davvero i 4 lotti"]: stessa
+    // convenzione di `b.tiles` sugli edifici vivi (sopra) — main.js,
+    // destroyBuilding(), TUTTI i lotti realmente consumati da un edificio
+    // multi-tile prima di diventare rudere. Senza, un giro salva/carica
+    // perdeva l'informazione e uno sgombero post-caricamento tornava a
+    // liberare solo l'ancora visiva invece dei lotti veri. `undefined` per
+    // ogni rudere a un solo lotto, nessun campo in piu' nel suo salvataggio.
+    ruins: ruins.map((r) => ({ x: r.x, y: r.y, spr: r.spr, level: r.level, tiles: r.tiles })),
     blockedSlots: blockedSlots.map((s) => ({ x: s.x, y: s.y })),
     platformState,
   };

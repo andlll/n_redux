@@ -2331,8 +2331,18 @@ export function ruinSpriteFor(b) {
 // colonna "taglia" che ruinSpriteFor() sopra legge dallo stesso `b`;
 // main.js lo salva sul rudere insieme allo sprite scelto, solo per
 // calcolare questo costo (non piu' per scegliere cosa ricostruire).
+//
+// [Decisione dell'autore: "dimezziamo il costo di sgombero delle rovine"]
+// Valori dimezzati rispetto all'originale (500/2000/5000 -> 250/1000/2500),
+// deviazione esplicita non piu' fedele al decompilato su questo punto —
+// stessa colonna "taglia" di prima, nessun'altra logica toccata. Si applica
+// a OGNI rudere che passa da qui in base al solo `level` (nessun ramo per
+// tipo): `eolico` (dimensione 4 lotti, mai un upgrade, sempre livello 1 ->
+// 250 mon) e i ruderi "a due lotti" di palazzo/museo (`ru41`/`ru41d`,
+// livello 1 o 2 a seconda di quando muoiono — "stesso rudere del livello
+// 1", BUILDING_TYPES.palazzo.upgrades[0] sopra) inclusi.
 export function ruinRebuildCost(level) {
-  return level === 1 ? 500 : level === 2 ? 2000 : 5000;
+  return level === 1 ? 250 : level === 2 ? 1000 : 2500;
 }
 
 /** Il potenziamento che l'edificio potrebbe iniziare ora, se lo tocchi (null se il tipo non ne ha). */
@@ -2805,7 +2815,30 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     // ricostruzione ruspa: caso diverso (demolizione, non upgrade), non
     // toccato da questa indagine.
     if (!c.finished && !clearingLot) b.spr = c.curSpr;
-    b.frontSpr = clearingLot ? null : frontSprFor(c.curSpr);
+    const curFrontSpr = clearingLot ? null : frontSprFor(c.curSpr);
+    b.frontSpr = curFrontSpr;
+    // [Bug corretto, segnalato dall'autore: "l'impalcatura si smonta solo
+    // davanti, non dietro, come se sparisse col topper"] Verificato sui GML
+    // decompilati (es. `impa1to2r/Alarm_0.gml`, tic 0..10): la traccia "r"
+    // NON diventa mai l'edificio vero — sale (ir13-16->ir12->ir11->ir23-26->
+    // ir22->ir21), resta ferma, poi SCENDE con la stessa sequenza specchiata
+    // (ir21->ir23-26->ir11->ir12->ir13-16) e solo alla fine si autodistrugge
+    // (`action_kill_object()`). L'edificio vero (`casa2`) e' una TERZA
+    // istanza separata, creata a meta' di questa discesa da `impa1to2f`
+    // (`applyLevelFinish()` sopra) — "r" continua a smontarsi per conto suo
+    // dietro di lei, non sparisce di scatto al reveal. Qui sopra invece
+    // `b.spr` (l'unica istanza di questo porting) viene dirottato
+    // sull'edificio finito esattamente a `c.finished`, perdendo per sempre i
+    // passi di discesa della traccia "r" (mentre `b.frontSpr`, sopra, li
+    // mostra gia' correttamente: e' ricalcolato ad ogni passo senza guardare
+    // `c.finished`). `b.rearSpr` replica qui la stessa istanza "r" fantasma,
+    // SOLO dal reveal in poi (prima `b.spr` la mostra gia' da solo, nessun
+    // doppione) e solo per le catene che hanno davvero una traccia "f"
+    // corrispondente (`curFrontSpr`: niente per `grattacielo`, il cui
+    // `m3x*` non e' affatto uno sprite di impalcatura "r"/"f" — vedi
+    // game/src/scaffold.js per la sua vera impalcatura). main.js la disegna
+    // dietro all'edificio (stesso ordine -y+1 dell'originale).
+    b.rearSpr = (c.finished && !clearingLot && curFrontSpr) ? c.curSpr : null;
     // [C] `c.rebuilding` (tryRuspaRebuild() sopra): il primo passo di un
     // cantiere avviato dalla ruspa dura `ruspaFirstStepDur`, non `cur.dur`
     // — solo il primo, il resto della catena e' identico a un cantiere
@@ -2889,6 +2922,7 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       if (c.pendingDecor !== undefined) { onDecor?.(b, c.pendingDecor); c.pendingDecor = undefined; }
       b.construction = null;
       b.frontSpr = null;
+      b.rearSpr = null;
       b.oldSpr = null;   // difensivo: applyLevelFinish() sopra lo sgombera gia' sempre prima d'ora
       onFinish?.(b);
     }

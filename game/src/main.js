@@ -2212,9 +2212,23 @@ export async function mountMatch(ctx, params = {}) {
     st.coins = st.coins.filter((c) => c.buildingId !== b.id);
     if (st.picked?.obj === "building" && st.picked.ref === b) st.picked = null;
     if (st.buildingInfoPanel === b) st.buildingInfoPanel = null;
+    // [Bug corretto, segnalato dall'autore: "verifica che demolire la rovina
+    // della pala eolica liberi davvero i 4 lotti"] `b.tiles` (placeAt(),
+    // sopra — TUTTI i lotti realmente consumati da un edificio multi-tile,
+    // eolico/`def.multiTile` incluso) va portato sul rudere: senza, uno
+    // sgombero sotto ruspa (stepRuinClearing() piu' sotto, `clearedPlaceholder
+    // (ru.x, ru.y)`) liberava solo l'ANCORA VISIVA di `b.x/b.y` — per un
+    // edificio multi-tile quella non e' nemmeno un placeholder vero
+    // (`anchorOffset`, buildings.js, la sposta lontano dal lotto toccato:
+    // stesso motivo gia' corretto per `demolishMultiTile()`, il percorso
+    // "ruspa diretta su un edificio vivo") — creava un placeholder fantasma
+    // fuori griglia, mentre i 4 lotti VERI restavano bloccati per sempre in
+    // `blockedSlots`. `undefined` per ogni rudere a un solo lotto, nessun
+    // campo in piu' nel suo salvataggio (save.js, stessa convenzione gia'
+    // scelta per `b.tiles` sugli edifici vivi).
     st.ruins.push({
       x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr),
-      level: b.level, cost: ruinRebuildCost(b.level),
+      level: b.level, cost: ruinRebuildCost(b.level), tiles: b.tiles,
     });
   }
 
@@ -2321,6 +2335,27 @@ export async function mountMatch(ctx, params = {}) {
     st.buildings = st.buildings.filter((x) => x !== b);
     if (st.picked?.obj === "building" && st.picked.ref === b) st.picked = null;
     if (st.buildingInfoPanel === b) st.buildingInfoPanel = null;
+  }
+
+  // [Bug corretto, segnalato dall'autore: "verifica che demolire la rovina
+  // della pala eolica liberi davvero i 4 lotti"] Chiamata da stepRuinClearing()
+  // (piu' sotto) a sgombero completato, per `ruins`/`ruinLots` — stessa
+  // logica di demolishMultiTile() sopra (`tiles`, pulizia `blockedSlots`),
+  // ma su un RUDERE gia' morto (mai in `buildings`) invece che su un
+  // edificio vivo. `ru.tiles` (destroyBuilding()/doLoad() sopra): TUTTI i
+  // lotti realmente consumati da vivo, non solo l'ancora visiva di `ru.x/
+  // ru.y` — per un edificio multi-tile quella non e' nemmeno un
+  // placeholder vero (`anchorOffset`, buildings.js), quindi `clearedPlaceholder()`
+  // da sola ne creava uno fantasma fuori griglia mentre i lotti veri
+  // restavano bloccati per sempre. `?? [{x:ru.x,y:ru.y}]`: ogni altro
+  // rudere (`ruinLots` del tutorial inclusi, mai multi-tile) non ha mai
+  // `tiles` — stesso singolo lotto di sempre, nessuna differenza di
+  // comportamento per loro.
+  function freeRuinTiles(ru) {
+    for (const t of ru.tiles ?? [{ x: ru.x, y: ru.y }]) {
+      clearedPlaceholder(t.x, t.y);
+      st.blockedSlots = st.blockedSlots.filter((s) => !(s.x === t.x && s.y === t.y));
+    }
   }
 
   // -------------------------------------------------------------- salvataggio
@@ -2454,9 +2489,12 @@ export async function mountMatch(ctx, params = {}) {
     // placeholder, ci nasce sopra un cantiere vero): stesso ciclo `usedIds`
     // di sopra, cosi' un edificio e un rudere non litigano mai per lo
     // stesso slot.
+    // `tiles` [Bug corretto, sgombero rudere multi-tile]: portato in giro
+    // cosi' com'e' (save.js, stessa convenzione di `b.tiles` sugli edifici
+    // vivi) — `undefined` per ogni rudere a un solo lotto.
     st.ruins = (data.ruins ?? []).map((ru) => ({
       x: ru.x, y: ru.y, depth: -ru.y, spr: ru.spr, _f: frameFor(ru.spr),
-      level: ru.level ?? 1, cost: ruinRebuildCost(ru.level ?? 1),
+      level: ru.level ?? 1, cost: ruinRebuildCost(ru.level ?? 1), tiles: ru.tiles,
     }));
     for (const ru of st.ruins) {
       const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === ru.x && p.y === ru.y);
@@ -5913,7 +5951,19 @@ export async function mountMatch(ctx, params = {}) {
     }
     if (st.paused && st.pauseSubmenu == null) {
       const hit = st.pauseMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
-      if (hit?.action === "loadFile") doLoadFromFile();   // async, messaggio gestito dentro (fuoco e dimentica)
+      // [Bug corretto, segnalato dall'autore: "il caricamento dal menu di
+      // pausa funziona ma l'utente non se ne accorge, resta sul menu"] Il
+      // messaggio (`st.message`, dentro doLoadFromFile()) da solo non basta:
+      // il menu di pausa resta disegnato SOPRA di lui, quindi si vede lo
+      // stesso identico schermo di prima anche a caricamento riuscito. Come
+      // gia' fa il game over qui sopra (`st.outcome = null`), un caricamento
+      // riuscito (`ok`) chiude il menu esattamente come "resume" — stessi due
+      // campi, stesso identico stato di "pausa tolta".
+      if (hit?.action === "loadFile") {
+        doLoadFromFile().then((ok) => {
+          if (ok) { st.paused = false; st.pauseSubmenu = null; }
+        });
+      }
     }
   };
 
@@ -6265,8 +6315,8 @@ export async function mountMatch(ctx, params = {}) {
       // sopra) — stesso principio di stepConstructions() appena sopra, un
       // timer a parte perche' un rudere in `ruins`/`ruinLots` non e' un
       // `buildings` vero (niente `.construction`).
-      stepRuinClearing(st.ruins, dt, (ru) => clearedPlaceholder(ru.x, ru.y));
-      stepRuinClearing(st.ruinLots, dt, (lot) => clearedPlaceholder(lot.x, lot.y));
+      stepRuinClearing(st.ruins, dt, freeRuinTiles);
+      stepRuinClearing(st.ruinLots, dt, freeRuinTiles);
       // Vittoria (`outcome` sopra): il grattacielo (STAR_BUILDINGS, l'ultima
       // delle tre "stelle") appena finito di costruire — `b.construction`
       // diventa `null` proprio dentro stepConstructions() appena chiamata
@@ -6647,6 +6697,17 @@ export async function mountMatch(ctx, params = {}) {
       // notte) gia' usato per l'hover sui lotti-rudere del tutorial — [C]
       // ruin1|2/Mouse_MouseEnter.gml, action_sprite_color(255,1).
       const ruspaTargeted = st.ruspaPending?.buildingId === b.id;
+      // [Bug corretto, segnalato dall'autore: "l'impalcatura si smonta solo
+      // davanti, non dietro, come se sparisse col topper"] `b.rearSpr`
+      // (buildings.js, commento li' sopra sull'archeologia GML): la traccia
+      // "r" originale (`impa1to2r` e affini) non diventa mai l'edificio
+      // vero, resta viva come istanza a se' e scende con la stessa sequenza
+      // specchiata della salita, `depth=-y+1` — un filo piu' indietro
+      // dell'edificio vero (`-y`, sotto) invece di sparire di scatto al
+      // reveal. Spinto PRIMA di "building" cosi' l'ordine d'inserimento a
+      // depth pari (-b.y, STUDIO.md su sortWorld/effDepth) lo stratifica
+      // dietro a tutto il resto, come l'originale.
+      if (b.rearSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.rearSpr) });
       dynamic.push({
         obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr, buildingFrameIdx),
         ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true } : {}),
@@ -6664,7 +6725,10 @@ export async function mountMatch(ctx, params = {}) {
       // Stesso ordine qui: spinto DOPO "building" (retro, sopra) ma PRIMA di
       // "scaffold" (fronte, sotto) cosi' l'ordine d'inserimento a depth
       // pari (-b.y per tutti e tre, STUDIO.md su sortWorld/effDepth) li
-      // stratifica nello stesso ordine dell'originale.
+      // stratifica nello stesso ordine dell'originale. `b.rearSpr` (sopra) e
+      // `b.oldSpr` non compaiono mai insieme (il primo solo dopo il reveal
+      // di un cantiere ex novo, il secondo solo durante un upgrade), quindi
+      // il loro ordine relativo non e' mai osservabile.
       if (b.oldSpr) dynamic.push({ obj: "oldBuilding", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.oldSpr) });
       // Impalcatura in sovraimpressione + coperchio di fine cantiere (vedi
       // buildings.js): stessa x/y dell'edificio, spinti sopra di lui
@@ -8406,7 +8470,21 @@ export async function mountMatch(ctx, params = {}) {
       // rubava fino a un quarto della larghezza schermo al box su un
       // telefono stretto, ora il box usa tutta la larghezza (vedi sopra) e
       // il pollice sta per conto suo in una riga propria.
-      const okScale = 1;
+      // [Decisione dell'autore: "rimpiccioliamolo un po', e se non e' gia'
+      // pixel perfect come scala rendiamolo tale"] Non lo era: questo disegno
+      // gira in GUI space (`screenProjection(canvas.clientWidth, ...)`, sotto
+      // — coordinate in pixel CSS), che il viewport fisico riempie a
+      // `clientWidth * dpr` — esattamente il motivo per cui `pixelPerfectZoom()`
+      // esiste per la camera di mondo (sopra, `zoom == dpr` per 1 texel = 1
+      // pixel fisico): `scale=1` qui disegna la sagoma nativa 45x52 su
+      // altrettanti pixel CSS, cioe' `45*dpr x 52*dpr` pixel fisici — un
+      // ingrandimento (sgranato) su ogni schermo hidpi (dpr>1, la stragrande
+      // maggioranza dei telefoni). `1 / pixelPerfectZoom()` la riporta a 1
+      // texel = 1 pixel fisico vero (nessun ingrandimento), che su questi
+      // schermi la fa anche apparire piu' piccola in pixel CSS — le due
+      // richieste dell'autore risolte dalla stessa correzione. Su un display
+      // non-hidpi (dpr==1, `pixelPerfectZoom()==1`) resta scala 1, invariato.
+      const okScale = 1 / pixelPerfectZoom();
       const okGap = 12;
       const okFrame = frameFor("tut_ok");
       if (okFrame) {
