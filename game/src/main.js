@@ -5913,7 +5913,19 @@ export async function mountMatch(ctx, params = {}) {
     }
     if (st.paused && st.pauseSubmenu == null) {
       const hit = st.pauseMenuButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
-      if (hit?.action === "loadFile") doLoadFromFile();   // async, messaggio gestito dentro (fuoco e dimentica)
+      // [Bug corretto, segnalato dall'autore: "il caricamento dal menu di
+      // pausa funziona ma l'utente non se ne accorge, resta sul menu"] Il
+      // messaggio (`st.message`, dentro doLoadFromFile()) da solo non basta:
+      // il menu di pausa resta disegnato SOPRA di lui, quindi si vede lo
+      // stesso identico schermo di prima anche a caricamento riuscito. Come
+      // gia' fa il game over qui sopra (`st.outcome = null`), un caricamento
+      // riuscito (`ok`) chiude il menu esattamente come "resume" — stessi due
+      // campi, stesso identico stato di "pausa tolta".
+      if (hit?.action === "loadFile") {
+        doLoadFromFile().then((ok) => {
+          if (ok) { st.paused = false; st.pauseSubmenu = null; }
+        });
+      }
     }
   };
 
