@@ -8470,7 +8470,21 @@ export async function mountMatch(ctx, params = {}) {
       // rubava fino a un quarto della larghezza schermo al box su un
       // telefono stretto, ora il box usa tutta la larghezza (vedi sopra) e
       // il pollice sta per conto suo in una riga propria.
-      const okScale = 1;
+      // [Decisione dell'autore: "rimpiccioliamolo un po', e se non e' gia'
+      // pixel perfect come scala rendiamolo tale"] Non lo era: questo disegno
+      // gira in GUI space (`screenProjection(canvas.clientWidth, ...)`, sotto
+      // — coordinate in pixel CSS), che il viewport fisico riempie a
+      // `clientWidth * dpr` — esattamente il motivo per cui `pixelPerfectZoom()`
+      // esiste per la camera di mondo (sopra, `zoom == dpr` per 1 texel = 1
+      // pixel fisico): `scale=1` qui disegna la sagoma nativa 45x52 su
+      // altrettanti pixel CSS, cioe' `45*dpr x 52*dpr` pixel fisici — un
+      // ingrandimento (sgranato) su ogni schermo hidpi (dpr>1, la stragrande
+      // maggioranza dei telefoni). `1 / pixelPerfectZoom()` la riporta a 1
+      // texel = 1 pixel fisico vero (nessun ingrandimento), che su questi
+      // schermi la fa anche apparire piu' piccola in pixel CSS — le due
+      // richieste dell'autore risolte dalla stessa correzione. Su un display
+      // non-hidpi (dpr==1, `pixelPerfectZoom()==1`) resta scala 1, invariato.
+      const okScale = 1 / pixelPerfectZoom();
       const okGap = 12;
       const okFrame = frameFor("tut_ok");
       if (okFrame) {
