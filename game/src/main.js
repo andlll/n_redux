@@ -6647,6 +6647,17 @@ export async function mountMatch(ctx, params = {}) {
       // notte) gia' usato per l'hover sui lotti-rudere del tutorial — [C]
       // ruin1|2/Mouse_MouseEnter.gml, action_sprite_color(255,1).
       const ruspaTargeted = st.ruspaPending?.buildingId === b.id;
+      // [Bug corretto, segnalato dall'autore: "l'impalcatura si smonta solo
+      // davanti, non dietro, come se sparisse col topper"] `b.rearSpr`
+      // (buildings.js, commento li' sopra sull'archeologia GML): la traccia
+      // "r" originale (`impa1to2r` e affini) non diventa mai l'edificio
+      // vero, resta viva come istanza a se' e scende con la stessa sequenza
+      // specchiata della salita, `depth=-y+1` — un filo piu' indietro
+      // dell'edificio vero (`-y`, sotto) invece di sparire di scatto al
+      // reveal. Spinto PRIMA di "building" cosi' l'ordine d'inserimento a
+      // depth pari (-b.y, STUDIO.md su sortWorld/effDepth) lo stratifica
+      // dietro a tutto il resto, come l'originale.
+      if (b.rearSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.rearSpr) });
       dynamic.push({
         obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr, buildingFrameIdx),
         ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true } : {}),
@@ -6664,7 +6675,10 @@ export async function mountMatch(ctx, params = {}) {
       // Stesso ordine qui: spinto DOPO "building" (retro, sopra) ma PRIMA di
       // "scaffold" (fronte, sotto) cosi' l'ordine d'inserimento a depth
       // pari (-b.y per tutti e tre, STUDIO.md su sortWorld/effDepth) li
-      // stratifica nello stesso ordine dell'originale.
+      // stratifica nello stesso ordine dell'originale. `b.rearSpr` (sopra) e
+      // `b.oldSpr` non compaiono mai insieme (il primo solo dopo il reveal
+      // di un cantiere ex novo, il secondo solo durante un upgrade), quindi
+      // il loro ordine relativo non e' mai osservabile.
       if (b.oldSpr) dynamic.push({ obj: "oldBuilding", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.oldSpr) });
       // Impalcatura in sovraimpressione + coperchio di fine cantiere (vedi
       // buildings.js): stessa x/y dell'edificio, spinti sopra di lui

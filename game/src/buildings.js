@@ -2805,7 +2805,30 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     // ricostruzione ruspa: caso diverso (demolizione, non upgrade), non
     // toccato da questa indagine.
     if (!c.finished && !clearingLot) b.spr = c.curSpr;
-    b.frontSpr = clearingLot ? null : frontSprFor(c.curSpr);
+    const curFrontSpr = clearingLot ? null : frontSprFor(c.curSpr);
+    b.frontSpr = curFrontSpr;
+    // [Bug corretto, segnalato dall'autore: "l'impalcatura si smonta solo
+    // davanti, non dietro, come se sparisse col topper"] Verificato sui GML
+    // decompilati (es. `impa1to2r/Alarm_0.gml`, tic 0..10): la traccia "r"
+    // NON diventa mai l'edificio vero — sale (ir13-16->ir12->ir11->ir23-26->
+    // ir22->ir21), resta ferma, poi SCENDE con la stessa sequenza specchiata
+    // (ir21->ir23-26->ir11->ir12->ir13-16) e solo alla fine si autodistrugge
+    // (`action_kill_object()`). L'edificio vero (`casa2`) e' una TERZA
+    // istanza separata, creata a meta' di questa discesa da `impa1to2f`
+    // (`applyLevelFinish()` sopra) — "r" continua a smontarsi per conto suo
+    // dietro di lei, non sparisce di scatto al reveal. Qui sopra invece
+    // `b.spr` (l'unica istanza di questo porting) viene dirottato
+    // sull'edificio finito esattamente a `c.finished`, perdendo per sempre i
+    // passi di discesa della traccia "r" (mentre `b.frontSpr`, sopra, li
+    // mostra gia' correttamente: e' ricalcolato ad ogni passo senza guardare
+    // `c.finished`). `b.rearSpr` replica qui la stessa istanza "r" fantasma,
+    // SOLO dal reveal in poi (prima `b.spr` la mostra gia' da solo, nessun
+    // doppione) e solo per le catene che hanno davvero una traccia "f"
+    // corrispondente (`curFrontSpr`: niente per `grattacielo`, il cui
+    // `m3x*` non e' affatto uno sprite di impalcatura "r"/"f" — vedi
+    // game/src/scaffold.js per la sua vera impalcatura). main.js la disegna
+    // dietro all'edificio (stesso ordine -y+1 dell'originale).
+    b.rearSpr = (c.finished && !clearingLot && curFrontSpr) ? c.curSpr : null;
     // [C] `c.rebuilding` (tryRuspaRebuild() sopra): il primo passo di un
     // cantiere avviato dalla ruspa dura `ruspaFirstStepDur`, non `cur.dur`
     // — solo il primo, il resto della catena e' identico a un cantiere
@@ -2889,6 +2912,7 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       if (c.pendingDecor !== undefined) { onDecor?.(b, c.pendingDecor); c.pendingDecor = undefined; }
       b.construction = null;
       b.frontSpr = null;
+      b.rearSpr = null;
       b.oldSpr = null;   // difensivo: applyLevelFinish() sopra lo sgombera gia' sempre prima d'ora
       onFinish?.(b);
     }
