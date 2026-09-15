@@ -2212,9 +2212,23 @@ export async function mountMatch(ctx, params = {}) {
     st.coins = st.coins.filter((c) => c.buildingId !== b.id);
     if (st.picked?.obj === "building" && st.picked.ref === b) st.picked = null;
     if (st.buildingInfoPanel === b) st.buildingInfoPanel = null;
+    // [Bug corretto, segnalato dall'autore: "verifica che demolire la rovina
+    // della pala eolica liberi davvero i 4 lotti"] `b.tiles` (placeAt(),
+    // sopra — TUTTI i lotti realmente consumati da un edificio multi-tile,
+    // eolico/`def.multiTile` incluso) va portato sul rudere: senza, uno
+    // sgombero sotto ruspa (stepRuinClearing() piu' sotto, `clearedPlaceholder
+    // (ru.x, ru.y)`) liberava solo l'ANCORA VISIVA di `b.x/b.y` — per un
+    // edificio multi-tile quella non e' nemmeno un placeholder vero
+    // (`anchorOffset`, buildings.js, la sposta lontano dal lotto toccato:
+    // stesso motivo gia' corretto per `demolishMultiTile()`, il percorso
+    // "ruspa diretta su un edificio vivo") — creava un placeholder fantasma
+    // fuori griglia, mentre i 4 lotti VERI restavano bloccati per sempre in
+    // `blockedSlots`. `undefined` per ogni rudere a un solo lotto, nessun
+    // campo in piu' nel suo salvataggio (save.js, stessa convenzione gia'
+    // scelta per `b.tiles` sugli edifici vivi).
     st.ruins.push({
       x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr),
-      level: b.level, cost: ruinRebuildCost(b.level),
+      level: b.level, cost: ruinRebuildCost(b.level), tiles: b.tiles,
     });
   }
 
@@ -2321,6 +2335,27 @@ export async function mountMatch(ctx, params = {}) {
     st.buildings = st.buildings.filter((x) => x !== b);
     if (st.picked?.obj === "building" && st.picked.ref === b) st.picked = null;
     if (st.buildingInfoPanel === b) st.buildingInfoPanel = null;
+  }
+
+  // [Bug corretto, segnalato dall'autore: "verifica che demolire la rovina
+  // della pala eolica liberi davvero i 4 lotti"] Chiamata da stepRuinClearing()
+  // (piu' sotto) a sgombero completato, per `ruins`/`ruinLots` — stessa
+  // logica di demolishMultiTile() sopra (`tiles`, pulizia `blockedSlots`),
+  // ma su un RUDERE gia' morto (mai in `buildings`) invece che su un
+  // edificio vivo. `ru.tiles` (destroyBuilding()/doLoad() sopra): TUTTI i
+  // lotti realmente consumati da vivo, non solo l'ancora visiva di `ru.x/
+  // ru.y` — per un edificio multi-tile quella non e' nemmeno un
+  // placeholder vero (`anchorOffset`, buildings.js), quindi `clearedPlaceholder()`
+  // da sola ne creava uno fantasma fuori griglia mentre i lotti veri
+  // restavano bloccati per sempre. `?? [{x:ru.x,y:ru.y}]`: ogni altro
+  // rudere (`ruinLots` del tutorial inclusi, mai multi-tile) non ha mai
+  // `tiles` — stesso singolo lotto di sempre, nessuna differenza di
+  // comportamento per loro.
+  function freeRuinTiles(ru) {
+    for (const t of ru.tiles ?? [{ x: ru.x, y: ru.y }]) {
+      clearedPlaceholder(t.x, t.y);
+      st.blockedSlots = st.blockedSlots.filter((s) => !(s.x === t.x && s.y === t.y));
+    }
   }
 
   // -------------------------------------------------------------- salvataggio
@@ -2454,9 +2489,12 @@ export async function mountMatch(ctx, params = {}) {
     // placeholder, ci nasce sopra un cantiere vero): stesso ciclo `usedIds`
     // di sopra, cosi' un edificio e un rudere non litigano mai per lo
     // stesso slot.
+    // `tiles` [Bug corretto, sgombero rudere multi-tile]: portato in giro
+    // cosi' com'e' (save.js, stessa convenzione di `b.tiles` sugli edifici
+    // vivi) — `undefined` per ogni rudere a un solo lotto.
     st.ruins = (data.ruins ?? []).map((ru) => ({
       x: ru.x, y: ru.y, depth: -ru.y, spr: ru.spr, _f: frameFor(ru.spr),
-      level: ru.level ?? 1, cost: ruinRebuildCost(ru.level ?? 1),
+      level: ru.level ?? 1, cost: ruinRebuildCost(ru.level ?? 1), tiles: ru.tiles,
     }));
     for (const ru of st.ruins) {
       const ph = placeholders.find((p) => !usedIds.has(p.id) && p.x === ru.x && p.y === ru.y);
@@ -6277,8 +6315,8 @@ export async function mountMatch(ctx, params = {}) {
       // sopra) — stesso principio di stepConstructions() appena sopra, un
       // timer a parte perche' un rudere in `ruins`/`ruinLots` non e' un
       // `buildings` vero (niente `.construction`).
-      stepRuinClearing(st.ruins, dt, (ru) => clearedPlaceholder(ru.x, ru.y));
-      stepRuinClearing(st.ruinLots, dt, (lot) => clearedPlaceholder(lot.x, lot.y));
+      stepRuinClearing(st.ruins, dt, freeRuinTiles);
+      stepRuinClearing(st.ruinLots, dt, freeRuinTiles);
       // Vittoria (`outcome` sopra): il grattacielo (STAR_BUILDINGS, l'ultima
       // delle tre "stelle") appena finito di costruire — `b.construction`
       // diventa `null` proprio dentro stepConstructions() appena chiamata

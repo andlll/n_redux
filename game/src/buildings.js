@@ -2331,8 +2331,18 @@ export function ruinSpriteFor(b) {
 // colonna "taglia" che ruinSpriteFor() sopra legge dallo stesso `b`;
 // main.js lo salva sul rudere insieme allo sprite scelto, solo per
 // calcolare questo costo (non piu' per scegliere cosa ricostruire).
+//
+// [Decisione dell'autore: "dimezziamo il costo di sgombero delle rovine"]
+// Valori dimezzati rispetto all'originale (500/2000/5000 -> 250/1000/2500),
+// deviazione esplicita non piu' fedele al decompilato su questo punto —
+// stessa colonna "taglia" di prima, nessun'altra logica toccata. Si applica
+// a OGNI rudere che passa da qui in base al solo `level` (nessun ramo per
+// tipo): `eolico` (dimensione 4 lotti, mai un upgrade, sempre livello 1 ->
+// 250 mon) e i ruderi "a due lotti" di palazzo/museo (`ru41`/`ru41d`,
+// livello 1 o 2 a seconda di quando muoiono — "stesso rudere del livello
+// 1", BUILDING_TYPES.palazzo.upgrades[0] sopra) inclusi.
 export function ruinRebuildCost(level) {
-  return level === 1 ? 500 : level === 2 ? 2000 : 5000;
+  return level === 1 ? 250 : level === 2 ? 1000 : 2500;
 }
 
 /** Il potenziamento che l'edificio potrebbe iniziare ora, se lo tocchi (null se il tipo non ne ha). */
