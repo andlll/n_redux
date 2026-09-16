@@ -1439,22 +1439,19 @@ export async function mountMatch(ctx, params = {}) {
   // si solleva), un TAP secco su un bottone (onTap, sotto) arma invece
   // questi due — GRID_TAP_SHOW_MS pieno seguito da GRID_TAP_FADE_MS di
   // dissolvenza (drawBuildMenuOverlay(), sotto).
-  // [Nuova funzionalita', richiesta dall'autore: "su mobile come fa
-  // l'utente a vedere il prezzo di un edificio? facciamolo in dissolvenza
-  // come 'level N to unlock', ma confermiamo la scelta al primo tap e
-  // facciamo apparire il cartellino insieme — un secondo tap per
-  // confermare diventa poco chiaro"] Un bottone gia' SBLOCCATO selezionava
-  // (r12.selec) e chiudeva l'overlay al primo tocco (sotto) senza lasciare
-  // mai il tempo di leggere il cartellino prezzo — l'unico altro modo per
-  // vederlo era un dito fermo sopra SENZA sollevarlo (`input.hover`, il
-  // vero hover desktop qui sotto), un gesto che un tap normale non fa mai.
-  // La selezione resta immediata al primo tap (invariata) — solo la
-  // CHIUSURA dell'overlay si ritarda: il tap arma anche `gridTapTagType`/
-  // `At`, drawBuildMenuOverlay() mostra il cartellino sopra il bottone
-  // appena scelto, e chiude l'overlay DA SOLA quando il cartellino e'
-  // finito di dissolversi (mai su un bottone ancora bloccato: quello non
-  // seleziona mai, vedi il commento li'). Il nome non e' piu' "locked": lo
-  // stesso stato copre ora entrambi i casi (prezzo o "Level N to unlock").
+  // [Nuova funzionalita', poi ripristinata — richiesto dall'autore: "su
+  // mobile come fa l'utente a vedere il prezzo di un edificio? facciamolo
+  // in dissolvenza come 'level N to unlock', confermando la scelta al
+  // primo tap"] Per un periodo un bottone SBLOCCATO ritardava anche lui la
+  // CHIUSURA dell'overlay di un istante (`gridTapTagType`/`At` armati da
+  // entrambi i rami, non solo da quello bloccato) per lasciar leggere il
+  // cartellino prezzo appena scelto. [Bug corretto, richiesto dall'autore:
+  // "una volta selezionato un edificio da questa finestra chiudi la
+  // finestra"] Quel ritardo lasciava la finestra a schermo un attimo di
+  // troppo proprio quando l'utente si aspetta di tornare subito alla
+  // mappa — un bottone SBLOCCATO chiude di nuovo l'overlay ISTANTANEAMENTE
+  // al tap (input.onTap sotto), senza piu' passare da qui: `gridTapTagType`
+  // resta armato solo dal ramo BLOCCATO qui sotto ("Level N to unlock").
   st.gridTapTagType = null;
   st.gridTapTagAt = 0;
   const GRID_TAP_SHOW_MS = 500;
@@ -4085,31 +4082,25 @@ export async function mountMatch(ctx, params = {}) {
       const locked = buildingLocked(tagBtn.type);
       drawMenuTag(tagBtn, locked ? unlockTagText(tagBtn.type) : costParts(BUILDING_TYPES[tagBtn.type]?.placeCost), 1);
     }
-    // [Bug corretto/Nuova funzionalita', vedi il commento su gridTapTagType/
-    // At sopra] Un tap secco su QUALUNQUE bottone (bloccato o no) lo arma
-    // con un timestamp assoluto invece del "linger" di `buildMenuTagType`/
-    // `Until` (pensato per un dito che scorre e si solleva, non per questo
-    // caso) — pieno per GRID_TAP_SHOW_MS, poi dissolto in GRID_TAP_FADE_MS
-    // invece di sparire di scatto. Stesso testo scelto dal resto della
-    // funzione (locked ? unlockTagText : costParts, sopra).
+    // [Bug corretto, richiesto dall'autore: "una volta selezionato un
+    // edificio da questa finestra chiudi la finestra"] Un bottone SBLOCCATO
+    // chiude l'overlay all'istante al tap (input.onTap sopra), quindi non
+    // arma mai piu' `gridTapTagType` — resta solo per un bottone ancora
+    // BLOCCATO (che non seleziona mai nulla, invariato dal decompilato):
+    // il tap lo arma con un timestamp assoluto invece del "linger" di
+    // `buildMenuTagType`/`Until` sopra (pensato per un dito che scorre e si
+    // solleva, non per un tap secco), mostrando "Level N to unlock" pieno
+    // per GRID_TAP_SHOW_MS poi dissolto in GRID_TAP_FADE_MS invece di
+    // sparire di scatto — l'overlay resta comunque aperto, non c'e' mai
+    // nulla da chiudere per una scelta che non e' stata fatta.
     if (st.gridTapTagType) {
       const elapsed = performance.now() - st.gridTapTagAt;
       const total = GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
       const btn = elapsed < total && st.buildMenuButtons.find((b) => b.type === st.gridTapTagType);
       if (btn) {
         const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
-        const locked = buildingLocked(btn.type);
-        drawMenuTag(btn, locked ? unlockTagText(btn.type) : costParts(BUILDING_TYPES[btn.type]?.placeCost), alpha);
+        drawMenuTag(btn, unlockTagText(btn.type), alpha);
       } else {
-        // Il cartellino e' svanito del tutto: se era quello di un bottone
-        // GIA' selezionato al tap (input.onTap sopra: un bloccato non
-        // seleziona mai, quindi non arriva mai qui), la sua unica ragione
-        // di restare a schermo era mostrare il prezzo — l'overlay si chiude
-        // da sola, lo stesso "tap seleziona e chiude" di sempre, solo
-        // ritardato quel tanto che serve a leggere il prezzo. Un bottone
-        // ancora bloccato invece resta aperto: non ha mai selezionato
-        // nulla, non c'e' alcuna scelta da cui "tornare al mondo".
-        if (!buildingLocked(st.gridTapTagType)) st.buildMenuOpen = false;
         st.gridTapTagType = null;
       }
     }
@@ -5462,23 +5453,21 @@ export async function mountMatch(ctx, params = {}) {
       // il ramo che scrive `r12.selec` e' innestato dentro `if (unlosei==1)`
       // — un tocco su un bottone ancora bloccato (buildingLocked(), sopra)
       // non fa NIENTE nel decompilato, non solo "non seleziona".
-      // [Bug corretto/Nuova funzionalita', richiesto dall'autore: "su mobile
-      // deve comparire 'level 2 to unlock' quando si seleziona un edificio
-      // non sbloccato" + "su mobile come fa l'utente a vedere il prezzo di
-      // un edificio? facciamolo in dissolvenza come 'level N to unlock',
-      // ma confermiamo la scelta al primo tap e facciamo apparire il
-      // cartellino insieme, altrimenti un secondo tap per confermare
-      // diventa poco chiaro"] Un bottone SBLOCCATO seleziona ancora al
-      // PRIMO tap, come sempre — ma non chiude piu' l'overlay all'istante:
-      // arma anche `gridTapTagType`/`gridTapTagAt` (sopra), cosi'
-      // drawBuildMenuOverlay() disegna il cartellino prezzo sopra il
-      // bottone mezzo secondo pieno poi lo dissolve (GRID_TAP_SHOW_MS/
-      // GRID_TAP_FADE_MS), e chiude l'overlay DA SOLA quando il
-      // cartellino e' del tutto svanito (vedi il commento li'). Un bottone
-      // ancora BLOCCATO non seleziona mai (invariato): arma solo lo stesso
-      // cartellino ("Level N to unlock" invece del prezzo), che pero' non
-      // fa chiudere l'overlay da solo alla fine — resta aperto per un
-      // altro tentativo.
+      // [Bug corretto, richiesto dall'autore: "una volta selezionato un
+      // edificio da questa finestra (tutorial e non) chiudi la finestra"]
+      // Un bottone ancora BLOCCATO non seleziona mai (invariato dal
+      // decompilato, vedi il commento sopra): arma solo il cartellino
+      // "Level N to unlock" (drawBuildMenuOverlay(), gridTapTagType/At
+      // sopra — dissolvenza dopo GRID_TAP_SHOW_MS/GRID_TAP_FADE_MS) e
+      // resta aperto per un altro tentativo. Un bottone SBLOCCATO invece
+      // chiude l'overlay SUBITO alla selezione, non piu' dopo il cartellino
+      // prezzo in dissolvenza di prima (mezzo secondo pieno + la
+      // dissolvenza stessa): quel ritardo lasciava la finestra a schermo
+      // un attimo di troppo proprio nel momento in cui l'utente ha gia'
+      // scelto e si aspetta di tornare alla mappa — coerente anche con la
+      // freccia del tutorial appena aggiunta dentro questa stessa griglia,
+      // che punta un bottone che ora sparisce subito una volta premuto
+      // invece di restare a schermo ancora quasi un secondo.
       if (hit?.type && buildingLocked(hit.type)) {
         st.gridTapTagType = hit.type;
         st.gridTapTagAt = performance.now();
@@ -5487,8 +5476,7 @@ export async function mountMatch(ctx, params = {}) {
       if (hit?.type) {
         st.selectedType = hit.type;
         st.r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
-        st.gridTapTagType = hit.type;
-        st.gridTapTagAt = performance.now();
+        st.buildMenuOpen = false;
         return;
       }
       // "Indietro" (`hit` esiste ma senza `.type`) o un tocco fuori da ogni
