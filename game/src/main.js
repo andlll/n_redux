@@ -7943,19 +7943,26 @@ export async function mountMatch(ctx, params = {}) {
     // nella GUI come per le gemme") ora che biotech ha uno scopo vero da
     // mostrare (prima non aveva senso: un numero senza alcun collegamento
     // visibile in gioco). `biot_ico`, non `crys_ico`: icona nera dedicata,
-    // stessa famiglia/taglia (data/sprites.json). **[Da verificare a
-    // schermo]** posizione/scala qui accanto a `crysPos` per coerenza, MAI
-    // vista a schermo da questa sessione (l'atlas coi due sprite nuovi,
-    // `bioico`/`biot_ico`, non e' stato ancora ricostruito — vedi il
-    // commit sui pannelli prestiti/scambi per il motivo, 24_blit.ps1 e'
-    // Windows-only): a differenza di `crysPos`, "misurato pixel per pixel"
-    // dall'autore in precedenza, questa e' una prima stima da rifinire a
-    // vista una volta ricostruito l'atlas.
-    // Su mobile questo contatore lo disegna gia' `mobileResLayout` sopra,
+    // stessa famiglia/taglia (data/sprites.json).
+    // [Bug corretto, segnalato dall'autore: "l'icona del biotech sembra
+    // troppo alta rispetto alle altre della riga"] Verificato a schermo
+    // (atlas ricostruito con `tools/24_blit.py`, l'equivalente
+    // multipiattaforma di `24_blit.ps1`): l'icona compariva ~10-11px piu' in
+    // alto delle altre. Causa: `bioPos.y = barY - 4` era stato copiato da
+    // `crysPos.y` per coerenza (commento sopra) ma la formula del centro
+    // visivo (`r.draw()`, game/src/gl.js: `y - oy*scale + h*scale/2`)
+    // dipende dal frame — e "crys_ico" (w=27,h=40, ox=-7,oy=-16,
+    // data/sprites.json) e "biot_ico" (w=32,h=32, ox=-5,oy=-5) non
+    // condividono ne' l'altezza ne' l'origine, solo lo stesso bounding box
+    // 62x55. Stessa derivazione gia' usata per `crysPos.y` (farlo combaciare
+    // col centro di `hapPos`, `barY+23`): a `bioScale` sotto, `barY + 23 -
+    // (32/2 - (-5)) * 0.75 = barY + 23 - 15.75 = barY + 7.25`.
+    // Su mobile questo contatore lo disegna gia' `mobileResLayout` sopra
+    // (centra ogni icona sulla propria `iconH`, mai avuto questo bug),
     // stesso motivo/stesso commento del blocco cristalli qui sopra.
     if (st.r12.biotech > 0 && !isMobile) {
       const bioFrame = frameFor("biot_ico");
-      const bioPos = { x: barX + 650, y: barY - 4 };
+      const bioPos = { x: barX + 650, y: barY + 7.25 };
       const bioScale = 0.75;
       const bioTextPos = { x: barX + 686, y: barY + 19 };
       r.setColorize(iconsDark);
