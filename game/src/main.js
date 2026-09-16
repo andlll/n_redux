@@ -3914,6 +3914,18 @@ export async function mountMatch(ctx, params = {}) {
     ["palazzo", "solare", "club", "gatling"],
     ["villa", "eolico", "museo", "laser"],
   ];
+  // [Nuova funzionalita', richiesta dall'autore: "anche nel sottomenu
+  // costruzioni mobile una freccia che punta l'edificio giusto"] Le quattro
+  // fasi del tutorial che chiedono di costruire un tipo preciso (game/src/
+  // tutorial.js, stepTutorialAuto()): 8 casa, 12 industria, 16 parco, 19
+  // missile. Fattorizzata qui (invece che solo dentro lo switch della
+  // freccia "normale" piu' sotto in questo file) perche' serve ANCHE a
+  // drawBuildMenuOverlay(), sotto — stessa mappatura, due punti di disegno
+  // diversi (la freccia normale e' coperta dall'overlay una volta aperto,
+  // vedi il commento li').
+  function tutorialTargetBuildingType(phase) {
+    return phase === 8 ? "casa" : phase === 12 ? "industria" : phase === 16 ? "parco" : phase === 19 ? "missile" : null;
+  }
   function buildMenuEntries() {
     const byType = Object.fromEntries([
       { type: "casa", spr: "p1", tint: 0x114f1f },
@@ -3974,8 +3986,15 @@ export async function mountMatch(ctx, params = {}) {
    * stata affiancata da testo). Selezionare un edificio chiude subito
    * l'overlay (input.onTap sotto) — un picker, non un pannello da tenere
    * aperto.
+   *
+   * `iconsDark` passato dal chiamante (frame(), sotto): calcolato la' come
+   * `const` per-frame (giorno/notte), questa funzione vive nello scope
+   * ESTERNO a frame() (definita piu' in alto nel file, prima della sua
+   * dichiarazione — cfr. drawRotated/UI_SCALE, accessibili invece per
+   * hoisting perche' condividono lo scope di setup, non quello per-frame),
+   * quindi non lo vedrebbe altrimenti.
    */
-  function drawBuildMenuOverlay() {
+  function drawBuildMenuOverlay(iconsDark) {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
     const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
     r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
@@ -4097,6 +4116,34 @@ export async function mountMatch(ctx, params = {}) {
     const backBtn = st.buildMenuButtons[st.buildMenuButtons.length - 1];
     r.draw(pauseButtonFrame(backBtn.w, backBtn.h), backBtn.x, backBtn.y, 1, BUTTON_TINT, BUTTON_ALPHA);
     drawHtmlText("Back", backBtn.x + backBtn.w / 2, backBtn.y + backBtn.h / 2, { size: 17, maxWidth: backBtn.w - 20 });
+
+    // [Nuova funzionalita', richiesta dall'autore: "anche nel sottomenu
+    // costruzioni mobile una freccia che punta l'edificio giusto"] La
+    // freccia "normale" (frame(), sotto in questo file — stesso sprite
+    // fr_ros/stessa animazione, `st.tutorialState.arrowFrame`) smette
+    // apposta di disegnarsi quando questo overlay e' aperto (coperta
+    // comunque dal blur pieno schermo sopra, disegnato PRIMA nel frame):
+    // qui e' il suo equivalente DENTRO la griglia, stesso identico sprite/
+    // stessa identica convenzione "sopra il bottone, punta in giu'"
+    // (pointAtButton(), stesso file), solo il bersaglio e' un bottone della
+    // griglia vera (`st.buildMenuButtons`, gia' ricalcolata per questo
+    // frame prima di chiamare questa funzione) invece che della riga
+    // scorrevole desktop (`st.uiButtons`). Nessun bersaglio (fase senza un
+    // tipo preciso, o tipo non presente in questa griglia — non dovrebbe
+    // succedere, ma `find` torna undefined in sicurezza) = nessuna freccia,
+    // silenziosamente.
+    if (st.tutorialState && !st.tutorialState.cutscene) {
+      const targetType = tutorialTargetBuildingType(st.tutorialState.phase);
+      const targetBtn = targetType && st.buildMenuButtons.find((b) => b.type === targetType);
+      if (targetBtn) {
+        const arrowFrame = frameFor("fr_ros", Math.floor(st.tutorialState.arrowFrame));
+        if (arrowFrame) {
+          r.setColorize(iconsDark);
+          drawRotated(arrowFrame, targetBtn.x + targetBtn.w / 2, targetBtn.y - 12, 270, UI_SCALE, 0xffffff, 1);
+          r.setColorize(false);
+        }
+      }
+    }
 
     r.flush();
   }
@@ -8219,6 +8266,17 @@ export async function mountMatch(ctx, params = {}) {
     // avanti nel frame.
     if (st.buildMenuOpen) st.buildMenuButtons = computeBuildMenuButtons();
 
+    // [Bug corretto, richiesto dall'autore: "anche nel sottomenu
+    // costruzioni mobile una freccia che punta l'edificio giusto"]
+    // Aggiornata QUI, fuori dal blocco sotto (`!buildMenuOpen`): l'animazione
+    // deve continuare anche mentre l'overlay e' aperto, visto che ora
+    // drawBuildMenuOverlay() (sopra in questo file) disegna la SUA freccia
+    // riusando lo stesso `arrowFrame` — se fosse rimasta congelata dentro il
+    // blocco sotto, la freccia della griglia sarebbe partita gia' ferma su
+    // un singolo fotogramma invece di animarsi.
+    if (st.tutorialState && !st.tutorialState.cutscene) {
+      st.tutorialState.arrowFrame = (st.tutorialState.arrowFrame + dt * 20) % 20;
+    }
     // Freccia del tutorial (game/src/tutorial.js — [C]
     // freccia_tutorial/EndStep.gml): la tabella originale punta a coordinate
     // fisse del layout GameMaker, gia' diverso dal selettore ricostruito qui
@@ -8233,11 +8291,9 @@ export async function mountMatch(ctx, params = {}) {
     // affatto mentre l'overlay e' aperto invece di sprecare lavoro su
     // qualcosa di invisibile. La freccia ha comunque gia' fatto il suo
     // lavoro guidando fino al bottone "costruzioni" prima che l'overlay si
-    // aprisse; la griglia stessa (con tutte le icone visibili in chiaro,
-    // piu' il testo della fase che nomina gia' il bottone giusto) resta
-    // guida sufficiente da qui in poi.
+    // aprisse; da li' in poi tocca alla freccia DENTRO la griglia (sopra,
+    // drawBuildMenuOverlay()) continuare a indicare, non piu' a questa.
     if (st.tutorialState && !st.tutorialState.cutscene && !st.buildMenuOpen) {
-      st.tutorialState.arrowFrame = (st.tutorialState.arrowFrame + dt * 20) % 20;
       const byKind = (pred) => st.uiButtons.find(pred);
       // [Bug corretto, segnalato dall'autore: "quando l'oggetto da premere
       // non e' in quel menu' consiglia di premere lo strumento indietro
@@ -8370,8 +8426,7 @@ export async function mountMatch(ctx, params = {}) {
           break;
         }
         case 8: case 12: case 16: case 19: {
-          const type = st.tutorialState.phase === 8 ? "casa" : st.tutorialState.phase === 12 ? "industria"
-            : st.tutorialState.phase === 16 ? "parco" : "missile";
+          const type = tutorialTargetBuildingType(st.tutorialState.phase);
           // 12/16/19 coprono SIA la selezione del tipo SIA il piazzamento
           // vero (a differenza di 8, che avanza gia' alla sola selezione,
           // fase 9 sopra): una volta selezionato il tipo giusto la freccia
@@ -8653,7 +8708,7 @@ export async function mountMatch(ctx, params = {}) {
     else if (st.bankPanelOpen) drawBankPanel();
     else if (st.tradePanelOpen) drawTradePanel();
     else if (st.buildingInfoPanel) drawBuildingInfoPanel();
-    else if (st.buildMenuOpen) drawBuildMenuOverlay();
+    else if (st.buildMenuOpen) drawBuildMenuOverlay(iconsDark);
 
     // Cutscene iniziale del tutorial (game/src/tutorial.js): disegnata per
     // ultima, sopra a TUTTO il resto (mondo + UI vera) — quattro fasi
