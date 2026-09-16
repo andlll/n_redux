@@ -7621,6 +7621,17 @@ export async function mountMatch(ctx, params = {}) {
     // compatta.
     const MOBILE_ROW_H = 26;
     const MOBILE_RES_GAP = 4;
+    // [Bug corretto, segnalato dall'autore: "su mobile la colonna
+    // icone+testo delle risorse si puo' avvicinare un po' di piu' al bordo
+    // sinistro"] Ancora dedicata invece di ritoccare `barX`/`UI_MARGIN`
+    // (condivisi con la barra desktop, il bottone pausa in basso a destra e
+    // gli altri elementi ancorati a un bordo, sopra): sposta solo questa
+    // colonna, riusata identica sia per disegnarla (icone/testo sotto) sia
+    // per il bersaglio della freccia del tutorial che la indica (case
+    // 6/11/26 piu' sotto), cosi' i due restano sempre allineati fra loro.
+    // 4px (meta' di UI_MARGIN): un avvicinamento percepibile ma che lascia
+    // comunque un margine reale dal bordo/eventuale notch.
+    const MOBILE_RES_X = isMobile ? barX - 4 : barX;
     // [Nuova disposizione, richiesta dall'autore: "cristalli e biotech
     // incolonnati a sinistra con le altre, non nel blocchetto a destra"]
     // Le due risorse "extra" (aggiunte in questo motore, mai nel
@@ -7671,7 +7682,7 @@ export async function mountMatch(ctx, params = {}) {
         // calcolato una sola volta per frame poco piu' sopra.
         r.setColorize(iconsDark);
         for (const row of mobileResLayout) {
-          if (row.icon.frame) r.draw(row.icon.frame, barX + TAG_PAD / 2 + (mobileIconColW - row.icon.w) / 2, row.y + (MOBILE_ROW_H - row.icon.iconH) / 2, row.icon.scale, iconsDark ? 0xffffff : 0x000000, 1);
+          if (row.icon.frame) r.draw(row.icon.frame, MOBILE_RES_X + TAG_PAD / 2 + (mobileIconColW - row.icon.w) / 2, row.y + (MOBILE_ROW_H - row.icon.iconH) / 2, row.icon.scale, iconsDark ? 0xffffff : 0x000000, 1);
         }
         r.setColorize(false);
       }
@@ -7704,7 +7715,7 @@ export async function mountMatch(ctx, params = {}) {
     const hideResourceText = st.paused || st.buildMenuOpen || !!st.tutorialState?.cutscene || !!st.buildingInfoPanel;
     if (isMobile) {
       if (!hideResourceText) for (const row of mobileResLayout) {
-        drawHtmlText(row.text, barX + TAG_PAD / 2 + mobileIconColW + TAG_GAP, row.y + MOBILE_ROW_H / 2,
+        drawHtmlText(row.text, MOBILE_RES_X + TAG_PAD / 2 + mobileIconColW + TAG_GAP, row.y + MOBILE_ROW_H / 2,
           { size: TAG_TEXT_SIZE, align: "left", color: barTextColor });
       }
     } else {
@@ -8321,7 +8332,7 @@ export async function mountMatch(ctx, params = {}) {
           // offset che ora cadrebbe a meta' di una riga diversa.
           if (isMobile) {
             const row = mobileResLayout.find((r) => r.kind === resKind);
-            target = row ? { x: barX + row.w / 2, y: row.y + MOBILE_ROW_H + 6, angle: 90 } : null;
+            target = row ? { x: MOBILE_RES_X + row.w / 2, y: row.y + MOBILE_ROW_H + 6, angle: 90 } : null;
           } else {
             const resX = st.tutorialState.phase === 6 ? 340 : st.tutorialState.phase === 11 ? 228 : 142;
             target = { x: barX + resX, y: barY + 43, angle: 90 };
