@@ -4612,24 +4612,26 @@ export async function mountMatch(ctx, params = {}) {
   // [Nuova funzionalita', richiesta dall'autore: "i prezzi non si vedono
   // mai" (drawBuildMenuOverlay() chiude subito l'overlay alla selezione,
   // commit precedente — senza piu' il cartellino "a tap" nessuno vede il
-  // prezzo prima di scegliere)] Testo semplice e compatto per l'etichetta
-  // permanente sotto ogni bottone della griglia costruzioni mobile: niente
-  // pillola/icona (drawCostTagAt() sopra — pensata per un cartellino isolato
-  // "a tap", troppo ingombrante ripetuta 12+ volte) e numeri abbreviati
-  // ("5k"/"35k") perche' una cella e' larga solo ~68px. Ogni `placeCost`
-  // reale oggi e' un singolo `{mon: N}` (buildings.js), ma resta generico
-  // (stesse entries di costParts() sopra) per qualunque costo futuro/multi-
-  // risorsa invece di assumere sempre e solo "mon".
-  function compactCostAmount(v) {
-    if (v < 1000) return `${v}`;
-    const k = v / 1000;
-    return `${Number.isInteger(k) ? k : k.toFixed(1)}k`;
-  }
+  // prezzo prima di scegliere)] Testo semplice per l'etichetta permanente
+  // sotto ogni bottone della griglia costruzioni mobile: niente pillola/
+  // icona (drawCostTagAt() sopra — pensata per un cartellino isolato "a
+  // tap", troppo ingombrante ripetuta 12+ volte). [Bug corretto, richiesto
+  // dall'autore: "il numero per esteso (2000/3000...), non abbreviato
+  // (2k/3k...)"] Prima abbreviava sopra i 1000 per stare nei ~68px di una
+  // cella — l'autore preferisce il numero intero anche se piu' lungo:
+  // drawHtmlText() (chiamante, sotto) tronca gia' da solo con l'ellissi se
+  // mai non ci stesse (`maxWidth`, nessun altro caso in questo motore che
+  // deve gestire un overflow di testo diverso da "vai a capo" lo fa gia'
+  // cosi', drawMenuTag() qui sopra escluso: quello ha spazio garantito
+  // perche' la pillola SI ADATTA al testo, l'opposto di una cella fissa).
+  // Ogni `placeCost` reale oggi e' un singolo `{mon: N}` (buildings.js), ma
+  // resta generico (stesse entries di costParts() sopra) per qualunque
+  // costo futuro/multi-risorsa invece di assumere sempre e solo "mon".
   function compactCostText(cost) {
     if (!cost) return null;
     const entries = Object.entries(cost);
     if (!entries.length) return t("msg.itsFree");
-    return entries.map(([k, v]) => compactCostAmount(v) + (k === "mon" ? "" : ` ${k}`)).join(", ");
+    return entries.map(([k, v]) => `${v}` + (k === "mon" ? "" : ` ${k}`)).join(", ");
   }
 
   /**
