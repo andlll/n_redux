@@ -318,6 +318,11 @@ const STRINGS = {
   "upgrade.needResources": { en: "need {list}", it: "servono {list}", es: "necesitas {list}", pt: "precisa de {list}", de: "brauchst {list}", fr: "il faut {list}" },
   "upgrade.notRebuildable": { en: "not rebuildable with the bulldozer", it: "non ricostruibile con la ruspa", es: "no reconstruible con el buldócer", pt: "não reconstruível com o buldôzer", de: "mit der Planierraupe nicht wiederaufbaubar", fr: "non reconstructible avec le bulldozer" },
   "unlock.atLevel": { en: "Unlock at level {level}", it: "Sblocca al livello {level}", es: "Se desbloquea en el nivel {level}", pt: "Desbloqueia no nível {level}", de: "Freischaltung auf Stufe {level}", fr: "Débloqué au niveau {level}" },
+  // Versione compatta della chiave sopra: stessa informazione, per
+  // un'etichetta piccola sempre visibile sotto ogni bottone della griglia
+  // costruzioni mobile (troppo stretta per la frase intera) invece del
+  // solo cartellino "a tap" che usa la versione lunga.
+  "unlock.levelShort": { en: "Lv {level}", it: "Lv {level}", es: "Nv {level}", pt: "Nv {level}", de: "St {level}", fr: "Niv {level}" },
 
   // ---------------------------------------------------------------- loading
   "loading.default": { en: "loading", it: "caricamento", es: "cargando", pt: "carregando", de: "lädt", fr: "chargement" },

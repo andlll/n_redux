@@ -3943,21 +3943,31 @@ export async function mountMatch(ctx, params = {}) {
   // prima — vedi il commento sulla freccia piu' sotto) sia da
   // drawBuildMenuOverlay() per disegnare, senza calcolare due volte cose
   // diverse che dovrebbero combaciare a pixel.
+  // [Nuova funzionalita', richiesta dall'autore: "i prezzi non si vedono
+  // mai, mostriamo un'etichetta sempre visibile sotto ogni icona"]
+  // `labelH`: riga in piu' riservata sotto ogni cella per il testo
+  // compatto di compactCostText()/unlockTagTextShort() (drawBuildMenuOverlay(),
+  // sotto) — la cella icona (`cell`/`trueCell` sotto) resta la stessa
+  // taglia di sempre, solo il PASSO verticale fra una riga e la prossima
+  // (`rowPitch`) cresce per farci stare il testo, cosi' l'area toccabile
+  // dell'icona (`b.w/b.h`, computeBuildMenuButtons() sotto) non cambia.
+  const BUILD_MENU_LABEL_H = 14;
   function buildMenuLayout(cw, ch) {
     const rows = buildMenuEntries();
     const cell = 76, gridPad = 16;
     const panelW = Math.min(BUILD_GRID_COLS * cell + gridPad * 2, cw - 40);
     const trueCell = (panelW - gridPad * 2) / BUILD_GRID_COLS;
+    const rowPitch = trueCell + BUILD_MENU_LABEL_H;
     // headerH: prima 56px, spazio per l'etichetta "BUILDINGS" ora rimossa
     // (drawBuildMenuOverlay(), sotto) — ridotto a un margine puro sopra la
     // griglia, non piu' un'intestazione vuota.
     const headerH = 20, btnH = 46;
-    const panelH = headerH + rows.length * trueCell + 16 + btnH + 20;
+    const panelH = headerH + rows.length * rowPitch + 16 + btnH + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
-    return { rows, px, py, panelW, panelH, cell: trueCell, gridPad, headerH, btnH };
+    return { rows, px, py, panelW, panelH, cell: trueCell, rowPitch, gridPad, headerH, btnH };
   }
   function computeBuildMenuButtons() {
-    const { rows, px, py, panelW, panelH, cell, gridPad, headerH, btnH } =
+    const { rows, px, py, panelW, panelH, cell, rowPitch, gridPad, headerH, btnH } =
       buildMenuLayout(canvas.clientWidth, canvas.clientHeight);
     const buttons = [];
     let gy = py + headerH;
@@ -3967,7 +3977,7 @@ export async function mountMatch(ctx, params = {}) {
         buttons.push({ x: gx, y: gy, w: cell, h: cell, type: b.type, spr: b.spr });
         gx += cell;
       }
-      gy += cell;
+      gy += rowPitch;
     }
     const btnW = panelW - 60;
     buttons.push({ x: px + (panelW - btnW) / 2, y: py + panelH - 20 - btnH, w: btnW, h: btnH });   // "Back"
@@ -4052,6 +4062,18 @@ export async function mountMatch(ctx, params = {}) {
       r.setColorize(isSelected);
       r.draw(f, iconX, iconY, scale, isSelected ? (icon?.tint ?? 0xffffff) : 0xffffff, locked ? LOCKED_BUTTON_ALPHA : 1);
       r.setColorize(false);
+      // [Nuova funzionalita', richiesta dall'autore: "i prezzi non si
+      // vedono mai, mostriamo un'etichetta sempre visibile sotto ogni
+      // icona" — testo nero piccolo, senza pillola] compactCostText()/
+      // unlockTagTextShort() (sopra): stesso testo del cartellino "a tap"
+      // sotto in questa funzione, versione breve — qui non c'e' spazio per
+      // la pillola/la frase intera, e a differenza del cartellino questa
+      // etichetta e' SEMPRE a schermo, non serve un tocco per vederla.
+      const label = locked ? unlockTagTextShort(b.type) : compactCostText(BUILDING_TYPES[b.type]?.placeCost);
+      if (label) {
+        drawHtmlText(label, b.x + b.w / 2, b.y + b.h + BUILD_MENU_LABEL_H / 2,
+          { size: 11, maxWidth: b.w - 4, color: locked ? "rgba(0,0,0,0.5)" : "#000000" });
+      }
     }
     // Cartellino prezzo/"Unlock at level N" (unlockTagText()/costParts(),
     // sopra) — l'equivalente touch dell'hover mouse della riga scorrevole
@@ -4587,6 +4609,28 @@ export async function mountMatch(ctx, params = {}) {
     });
     return parts;
   }
+  // [Nuova funzionalita', richiesta dall'autore: "i prezzi non si vedono
+  // mai" (drawBuildMenuOverlay() chiude subito l'overlay alla selezione,
+  // commit precedente — senza piu' il cartellino "a tap" nessuno vede il
+  // prezzo prima di scegliere)] Testo semplice e compatto per l'etichetta
+  // permanente sotto ogni bottone della griglia costruzioni mobile: niente
+  // pillola/icona (drawCostTagAt() sopra — pensata per un cartellino isolato
+  // "a tap", troppo ingombrante ripetuta 12+ volte) e numeri abbreviati
+  // ("5k"/"35k") perche' una cella e' larga solo ~68px. Ogni `placeCost`
+  // reale oggi e' un singolo `{mon: N}` (buildings.js), ma resta generico
+  // (stesse entries di costParts() sopra) per qualunque costo futuro/multi-
+  // risorsa invece di assumere sempre e solo "mon".
+  function compactCostAmount(v) {
+    if (v < 1000) return `${v}`;
+    const k = v / 1000;
+    return `${Number.isInteger(k) ? k : k.toFixed(1)}k`;
+  }
+  function compactCostText(cost) {
+    if (!cost) return null;
+    const entries = Object.entries(cost);
+    if (!entries.length) return t("msg.itsFree");
+    return entries.map(([k, v]) => compactCostAmount(v) + (k === "mon" ? "" : ` ${k}`)).join(", ");
+  }
 
   /**
    * [Nuova funzionalita', richiesta dall'autore: "la barra della vita deve
@@ -5077,6 +5121,14 @@ export async function mountMatch(ctx, params = {}) {
   function unlockTagText(type) {
     const need = CHIES_UNLOCK_BY_TYPE[type];
     return need != null ? t("unlock.atLevel", { level: need }) : null;
+  }
+  // Versione compatta di unlockTagText() sopra ("Lv N" invece di "Unlock at
+  // level N"): usata dalla nuova etichetta permanente sotto ogni bottone
+  // della griglia costruzioni mobile (drawBuildMenuOverlay(), sotto — vedi
+  // il commento li' vicino), troppo stretta per la frase intera.
+  function unlockTagTextShort(type) {
+    const need = CHIES_UNLOCK_BY_TYPE[type];
+    return need != null ? t("unlock.levelShort", { level: need }) : null;
   }
   /** [C] vedi il commento su `chiesUnlock` sopra: `true` finche' `chies`
    * (l'unica istanza, STUDIO.md §5.3) non ha raggiunto il livello richiesto —
