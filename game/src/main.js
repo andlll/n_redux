@@ -1439,22 +1439,19 @@ export async function mountMatch(ctx, params = {}) {
   // si solleva), un TAP secco su un bottone (onTap, sotto) arma invece
   // questi due — GRID_TAP_SHOW_MS pieno seguito da GRID_TAP_FADE_MS di
   // dissolvenza (drawBuildMenuOverlay(), sotto).
-  // [Nuova funzionalita', richiesta dall'autore: "su mobile come fa
-  // l'utente a vedere il prezzo di un edificio? facciamolo in dissolvenza
-  // come 'level N to unlock', ma confermiamo la scelta al primo tap e
-  // facciamo apparire il cartellino insieme — un secondo tap per
-  // confermare diventa poco chiaro"] Un bottone gia' SBLOCCATO selezionava
-  // (r12.selec) e chiudeva l'overlay al primo tocco (sotto) senza lasciare
-  // mai il tempo di leggere il cartellino prezzo — l'unico altro modo per
-  // vederlo era un dito fermo sopra SENZA sollevarlo (`input.hover`, il
-  // vero hover desktop qui sotto), un gesto che un tap normale non fa mai.
-  // La selezione resta immediata al primo tap (invariata) — solo la
-  // CHIUSURA dell'overlay si ritarda: il tap arma anche `gridTapTagType`/
-  // `At`, drawBuildMenuOverlay() mostra il cartellino sopra il bottone
-  // appena scelto, e chiude l'overlay DA SOLA quando il cartellino e'
-  // finito di dissolversi (mai su un bottone ancora bloccato: quello non
-  // seleziona mai, vedi il commento li'). Il nome non e' piu' "locked": lo
-  // stesso stato copre ora entrambi i casi (prezzo o "Level N to unlock").
+  // [Nuova funzionalita', poi ripristinata — richiesto dall'autore: "su
+  // mobile come fa l'utente a vedere il prezzo di un edificio? facciamolo
+  // in dissolvenza come 'level N to unlock', confermando la scelta al
+  // primo tap"] Per un periodo un bottone SBLOCCATO ritardava anche lui la
+  // CHIUSURA dell'overlay di un istante (`gridTapTagType`/`At` armati da
+  // entrambi i rami, non solo da quello bloccato) per lasciar leggere il
+  // cartellino prezzo appena scelto. [Bug corretto, richiesto dall'autore:
+  // "una volta selezionato un edificio da questa finestra chiudi la
+  // finestra"] Quel ritardo lasciava la finestra a schermo un attimo di
+  // troppo proprio quando l'utente si aspetta di tornare subito alla
+  // mappa — un bottone SBLOCCATO chiude di nuovo l'overlay ISTANTANEAMENTE
+  // al tap (input.onTap sotto), senza piu' passare da qui: `gridTapTagType`
+  // resta armato solo dal ramo BLOCCATO qui sotto ("Level N to unlock").
   st.gridTapTagType = null;
   st.gridTapTagAt = 0;
   const GRID_TAP_SHOW_MS = 500;
@@ -3914,6 +3911,18 @@ export async function mountMatch(ctx, params = {}) {
     ["palazzo", "solare", "club", "gatling"],
     ["villa", "eolico", "museo", "laser"],
   ];
+  // [Nuova funzionalita', richiesta dall'autore: "anche nel sottomenu
+  // costruzioni mobile una freccia che punta l'edificio giusto"] Le quattro
+  // fasi del tutorial che chiedono di costruire un tipo preciso (game/src/
+  // tutorial.js, stepTutorialAuto()): 8 casa, 12 industria, 16 parco, 19
+  // missile. Fattorizzata qui (invece che solo dentro lo switch della
+  // freccia "normale" piu' sotto in questo file) perche' serve ANCHE a
+  // drawBuildMenuOverlay(), sotto — stessa mappatura, due punti di disegno
+  // diversi (la freccia normale e' coperta dall'overlay una volta aperto,
+  // vedi il commento li').
+  function tutorialTargetBuildingType(phase) {
+    return phase === 8 ? "casa" : phase === 12 ? "industria" : phase === 16 ? "parco" : phase === 19 ? "missile" : null;
+  }
   function buildMenuEntries() {
     const byType = Object.fromEntries([
       { type: "casa", spr: "p1", tint: 0x114f1f },
@@ -3934,21 +3943,31 @@ export async function mountMatch(ctx, params = {}) {
   // prima — vedi il commento sulla freccia piu' sotto) sia da
   // drawBuildMenuOverlay() per disegnare, senza calcolare due volte cose
   // diverse che dovrebbero combaciare a pixel.
+  // [Nuova funzionalita', richiesta dall'autore: "i prezzi non si vedono
+  // mai, mostriamo un'etichetta sempre visibile sotto ogni icona"]
+  // `labelH`: riga in piu' riservata sotto ogni cella per il testo
+  // compatto di compactCostText()/unlockTagTextShort() (drawBuildMenuOverlay(),
+  // sotto) — la cella icona (`cell`/`trueCell` sotto) resta la stessa
+  // taglia di sempre, solo il PASSO verticale fra una riga e la prossima
+  // (`rowPitch`) cresce per farci stare il testo, cosi' l'area toccabile
+  // dell'icona (`b.w/b.h`, computeBuildMenuButtons() sotto) non cambia.
+  const BUILD_MENU_LABEL_H = 14;
   function buildMenuLayout(cw, ch) {
     const rows = buildMenuEntries();
     const cell = 76, gridPad = 16;
     const panelW = Math.min(BUILD_GRID_COLS * cell + gridPad * 2, cw - 40);
     const trueCell = (panelW - gridPad * 2) / BUILD_GRID_COLS;
+    const rowPitch = trueCell + BUILD_MENU_LABEL_H;
     // headerH: prima 56px, spazio per l'etichetta "BUILDINGS" ora rimossa
     // (drawBuildMenuOverlay(), sotto) — ridotto a un margine puro sopra la
     // griglia, non piu' un'intestazione vuota.
     const headerH = 20, btnH = 46;
-    const panelH = headerH + rows.length * trueCell + 16 + btnH + 20;
+    const panelH = headerH + rows.length * rowPitch + 16 + btnH + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
-    return { rows, px, py, panelW, panelH, cell: trueCell, gridPad, headerH, btnH };
+    return { rows, px, py, panelW, panelH, cell: trueCell, rowPitch, gridPad, headerH, btnH };
   }
   function computeBuildMenuButtons() {
-    const { rows, px, py, panelW, panelH, cell, gridPad, headerH, btnH } =
+    const { rows, px, py, panelW, panelH, cell, rowPitch, gridPad, headerH, btnH } =
       buildMenuLayout(canvas.clientWidth, canvas.clientHeight);
     const buttons = [];
     let gy = py + headerH;
@@ -3958,7 +3977,7 @@ export async function mountMatch(ctx, params = {}) {
         buttons.push({ x: gx, y: gy, w: cell, h: cell, type: b.type, spr: b.spr });
         gx += cell;
       }
-      gy += cell;
+      gy += rowPitch;
     }
     const btnW = panelW - 60;
     buttons.push({ x: px + (panelW - btnW) / 2, y: py + panelH - 20 - btnH, w: btnW, h: btnH });   // "Back"
@@ -3974,8 +3993,15 @@ export async function mountMatch(ctx, params = {}) {
    * stata affiancata da testo). Selezionare un edificio chiude subito
    * l'overlay (input.onTap sotto) — un picker, non un pannello da tenere
    * aperto.
+   *
+   * `iconsDark` passato dal chiamante (frame(), sotto): calcolato la' come
+   * `const` per-frame (giorno/notte), questa funzione vive nello scope
+   * ESTERNO a frame() (definita piu' in alto nel file, prima della sua
+   * dichiarazione — cfr. drawRotated/UI_SCALE, accessibili invece per
+   * hoisting perche' condividono lo scope di setup, non quello per-frame),
+   * quindi non lo vedrebbe altrimenti.
    */
-  function drawBuildMenuOverlay() {
+  function drawBuildMenuOverlay(iconsDark) {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
     const blurTex = pauseBlur.blurScreen(canvas.width, canvas.height);
     r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
@@ -4036,6 +4062,18 @@ export async function mountMatch(ctx, params = {}) {
       r.setColorize(isSelected);
       r.draw(f, iconX, iconY, scale, isSelected ? (icon?.tint ?? 0xffffff) : 0xffffff, locked ? LOCKED_BUTTON_ALPHA : 1);
       r.setColorize(false);
+      // [Nuova funzionalita', richiesta dall'autore: "i prezzi non si
+      // vedono mai, mostriamo un'etichetta sempre visibile sotto ogni
+      // icona" — testo nero piccolo, senza pillola] compactCostText()/
+      // unlockTagTextShort() (sopra): stesso testo del cartellino "a tap"
+      // sotto in questa funzione, versione breve — qui non c'e' spazio per
+      // la pillola/la frase intera, e a differenza del cartellino questa
+      // etichetta e' SEMPRE a schermo, non serve un tocco per vederla.
+      const label = locked ? unlockTagTextShort(b.type) : compactCostText(BUILDING_TYPES[b.type]?.placeCost);
+      if (label) {
+        drawHtmlText(label, b.x + b.w / 2, b.y + b.h + BUILD_MENU_LABEL_H / 2,
+          { size: 11, maxWidth: b.w - 4, color: locked ? "rgba(0,0,0,0.5)" : "#000000" });
+      }
     }
     // Cartellino prezzo/"Unlock at level N" (unlockTagText()/costParts(),
     // sopra) — l'equivalente touch dell'hover mouse della riga scorrevole
@@ -4066,37 +4104,59 @@ export async function mountMatch(ctx, params = {}) {
       const locked = buildingLocked(tagBtn.type);
       drawMenuTag(tagBtn, locked ? unlockTagText(tagBtn.type) : costParts(BUILDING_TYPES[tagBtn.type]?.placeCost), 1);
     }
-    // [Bug corretto/Nuova funzionalita', vedi il commento su gridTapTagType/
-    // At sopra] Un tap secco su QUALUNQUE bottone (bloccato o no) lo arma
-    // con un timestamp assoluto invece del "linger" di `buildMenuTagType`/
-    // `Until` (pensato per un dito che scorre e si solleva, non per questo
-    // caso) — pieno per GRID_TAP_SHOW_MS, poi dissolto in GRID_TAP_FADE_MS
-    // invece di sparire di scatto. Stesso testo scelto dal resto della
-    // funzione (locked ? unlockTagText : costParts, sopra).
+    // [Bug corretto, richiesto dall'autore: "una volta selezionato un
+    // edificio da questa finestra chiudi la finestra"] Un bottone SBLOCCATO
+    // chiude l'overlay all'istante al tap (input.onTap sopra), quindi non
+    // arma mai piu' `gridTapTagType` — resta solo per un bottone ancora
+    // BLOCCATO (che non seleziona mai nulla, invariato dal decompilato):
+    // il tap lo arma con un timestamp assoluto invece del "linger" di
+    // `buildMenuTagType`/`Until` sopra (pensato per un dito che scorre e si
+    // solleva, non per un tap secco), mostrando "Level N to unlock" pieno
+    // per GRID_TAP_SHOW_MS poi dissolto in GRID_TAP_FADE_MS invece di
+    // sparire di scatto — l'overlay resta comunque aperto, non c'e' mai
+    // nulla da chiudere per una scelta che non e' stata fatta.
     if (st.gridTapTagType) {
       const elapsed = performance.now() - st.gridTapTagAt;
       const total = GRID_TAP_SHOW_MS + GRID_TAP_FADE_MS;
       const btn = elapsed < total && st.buildMenuButtons.find((b) => b.type === st.gridTapTagType);
       if (btn) {
         const alpha = elapsed < GRID_TAP_SHOW_MS ? 1 : 1 - (elapsed - GRID_TAP_SHOW_MS) / GRID_TAP_FADE_MS;
-        const locked = buildingLocked(btn.type);
-        drawMenuTag(btn, locked ? unlockTagText(btn.type) : costParts(BUILDING_TYPES[btn.type]?.placeCost), alpha);
+        drawMenuTag(btn, unlockTagText(btn.type), alpha);
       } else {
-        // Il cartellino e' svanito del tutto: se era quello di un bottone
-        // GIA' selezionato al tap (input.onTap sopra: un bloccato non
-        // seleziona mai, quindi non arriva mai qui), la sua unica ragione
-        // di restare a schermo era mostrare il prezzo — l'overlay si chiude
-        // da sola, lo stesso "tap seleziona e chiude" di sempre, solo
-        // ritardato quel tanto che serve a leggere il prezzo. Un bottone
-        // ancora bloccato invece resta aperto: non ha mai selezionato
-        // nulla, non c'e' alcuna scelta da cui "tornare al mondo".
-        if (!buildingLocked(st.gridTapTagType)) st.buildMenuOpen = false;
         st.gridTapTagType = null;
       }
     }
     const backBtn = st.buildMenuButtons[st.buildMenuButtons.length - 1];
     r.draw(pauseButtonFrame(backBtn.w, backBtn.h), backBtn.x, backBtn.y, 1, BUTTON_TINT, BUTTON_ALPHA);
     drawHtmlText("Back", backBtn.x + backBtn.w / 2, backBtn.y + backBtn.h / 2, { size: 17, maxWidth: backBtn.w - 20 });
+
+    // [Nuova funzionalita', richiesta dall'autore: "anche nel sottomenu
+    // costruzioni mobile una freccia che punta l'edificio giusto"] La
+    // freccia "normale" (frame(), sotto in questo file — stesso sprite
+    // fr_ros/stessa animazione, `st.tutorialState.arrowFrame`) smette
+    // apposta di disegnarsi quando questo overlay e' aperto (coperta
+    // comunque dal blur pieno schermo sopra, disegnato PRIMA nel frame):
+    // qui e' il suo equivalente DENTRO la griglia, stesso identico sprite/
+    // stessa identica convenzione "sopra il bottone, punta in giu'"
+    // (pointAtButton(), stesso file), solo il bersaglio e' un bottone della
+    // griglia vera (`st.buildMenuButtons`, gia' ricalcolata per questo
+    // frame prima di chiamare questa funzione) invece che della riga
+    // scorrevole desktop (`st.uiButtons`). Nessun bersaglio (fase senza un
+    // tipo preciso, o tipo non presente in questa griglia — non dovrebbe
+    // succedere, ma `find` torna undefined in sicurezza) = nessuna freccia,
+    // silenziosamente.
+    if (st.tutorialState && !st.tutorialState.cutscene) {
+      const targetType = tutorialTargetBuildingType(st.tutorialState.phase);
+      const targetBtn = targetType && st.buildMenuButtons.find((b) => b.type === targetType);
+      if (targetBtn) {
+        const arrowFrame = frameFor("fr_ros", Math.floor(st.tutorialState.arrowFrame));
+        if (arrowFrame) {
+          r.setColorize(iconsDark);
+          drawRotated(arrowFrame, targetBtn.x + targetBtn.w / 2, targetBtn.y - 12, 270, UI_SCALE, 0xffffff, 1);
+          r.setColorize(false);
+        }
+      }
+    }
 
     r.flush();
   }
@@ -4548,6 +4608,30 @@ export async function mountMatch(ctx, params = {}) {
       else parts.push({ text: `${v} ${k}` });
     });
     return parts;
+  }
+  // [Nuova funzionalita', richiesta dall'autore: "i prezzi non si vedono
+  // mai" (drawBuildMenuOverlay() chiude subito l'overlay alla selezione,
+  // commit precedente — senza piu' il cartellino "a tap" nessuno vede il
+  // prezzo prima di scegliere)] Testo semplice per l'etichetta permanente
+  // sotto ogni bottone della griglia costruzioni mobile: niente pillola/
+  // icona (drawCostTagAt() sopra — pensata per un cartellino isolato "a
+  // tap", troppo ingombrante ripetuta 12+ volte). [Bug corretto, richiesto
+  // dall'autore: "il numero per esteso (2000/3000...), non abbreviato
+  // (2k/3k...)"] Prima abbreviava sopra i 1000 per stare nei ~68px di una
+  // cella — l'autore preferisce il numero intero anche se piu' lungo:
+  // drawHtmlText() (chiamante, sotto) tronca gia' da solo con l'ellissi se
+  // mai non ci stesse (`maxWidth`, nessun altro caso in questo motore che
+  // deve gestire un overflow di testo diverso da "vai a capo" lo fa gia'
+  // cosi', drawMenuTag() qui sopra escluso: quello ha spazio garantito
+  // perche' la pillola SI ADATTA al testo, l'opposto di una cella fissa).
+  // Ogni `placeCost` reale oggi e' un singolo `{mon: N}` (buildings.js), ma
+  // resta generico (stesse entries di costParts() sopra) per qualunque
+  // costo futuro/multi-risorsa invece di assumere sempre e solo "mon".
+  function compactCostText(cost) {
+    if (!cost) return null;
+    const entries = Object.entries(cost);
+    if (!entries.length) return t("msg.itsFree");
+    return entries.map(([k, v]) => `${v}` + (k === "mon" ? "" : ` ${k}`)).join(", ");
   }
 
   /**
@@ -5040,6 +5124,14 @@ export async function mountMatch(ctx, params = {}) {
     const need = CHIES_UNLOCK_BY_TYPE[type];
     return need != null ? t("unlock.atLevel", { level: need }) : null;
   }
+  // Versione compatta di unlockTagText() sopra ("Lv N" invece di "Unlock at
+  // level N"): usata dalla nuova etichetta permanente sotto ogni bottone
+  // della griglia costruzioni mobile (drawBuildMenuOverlay(), sotto — vedi
+  // il commento li' vicino), troppo stretta per la frase intera.
+  function unlockTagTextShort(type) {
+    const need = CHIES_UNLOCK_BY_TYPE[type];
+    return need != null ? t("unlock.levelShort", { level: need }) : null;
+  }
   /** [C] vedi il commento su `chiesUnlock` sopra: `true` finche' `chies`
    * (l'unica istanza, STUDIO.md §5.3) non ha raggiunto il livello richiesto —
    * `>=`, non `==2`/`==3` come il decompilato (`unlosei`/`unlos`/`unlocinque`
@@ -5415,23 +5507,21 @@ export async function mountMatch(ctx, params = {}) {
       // il ramo che scrive `r12.selec` e' innestato dentro `if (unlosei==1)`
       // — un tocco su un bottone ancora bloccato (buildingLocked(), sopra)
       // non fa NIENTE nel decompilato, non solo "non seleziona".
-      // [Bug corretto/Nuova funzionalita', richiesto dall'autore: "su mobile
-      // deve comparire 'level 2 to unlock' quando si seleziona un edificio
-      // non sbloccato" + "su mobile come fa l'utente a vedere il prezzo di
-      // un edificio? facciamolo in dissolvenza come 'level N to unlock',
-      // ma confermiamo la scelta al primo tap e facciamo apparire il
-      // cartellino insieme, altrimenti un secondo tap per confermare
-      // diventa poco chiaro"] Un bottone SBLOCCATO seleziona ancora al
-      // PRIMO tap, come sempre — ma non chiude piu' l'overlay all'istante:
-      // arma anche `gridTapTagType`/`gridTapTagAt` (sopra), cosi'
-      // drawBuildMenuOverlay() disegna il cartellino prezzo sopra il
-      // bottone mezzo secondo pieno poi lo dissolve (GRID_TAP_SHOW_MS/
-      // GRID_TAP_FADE_MS), e chiude l'overlay DA SOLA quando il
-      // cartellino e' del tutto svanito (vedi il commento li'). Un bottone
-      // ancora BLOCCATO non seleziona mai (invariato): arma solo lo stesso
-      // cartellino ("Level N to unlock" invece del prezzo), che pero' non
-      // fa chiudere l'overlay da solo alla fine — resta aperto per un
-      // altro tentativo.
+      // [Bug corretto, richiesto dall'autore: "una volta selezionato un
+      // edificio da questa finestra (tutorial e non) chiudi la finestra"]
+      // Un bottone ancora BLOCCATO non seleziona mai (invariato dal
+      // decompilato, vedi il commento sopra): arma solo il cartellino
+      // "Level N to unlock" (drawBuildMenuOverlay(), gridTapTagType/At
+      // sopra — dissolvenza dopo GRID_TAP_SHOW_MS/GRID_TAP_FADE_MS) e
+      // resta aperto per un altro tentativo. Un bottone SBLOCCATO invece
+      // chiude l'overlay SUBITO alla selezione, non piu' dopo il cartellino
+      // prezzo in dissolvenza di prima (mezzo secondo pieno + la
+      // dissolvenza stessa): quel ritardo lasciava la finestra a schermo
+      // un attimo di troppo proprio nel momento in cui l'utente ha gia'
+      // scelto e si aspetta di tornare alla mappa — coerente anche con la
+      // freccia del tutorial appena aggiunta dentro questa stessa griglia,
+      // che punta un bottone che ora sparisce subito una volta premuto
+      // invece di restare a schermo ancora quasi un secondo.
       if (hit?.type && buildingLocked(hit.type)) {
         st.gridTapTagType = hit.type;
         st.gridTapTagAt = performance.now();
@@ -5440,8 +5530,7 @@ export async function mountMatch(ctx, params = {}) {
       if (hit?.type) {
         st.selectedType = hit.type;
         st.r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
-        st.gridTapTagType = hit.type;
-        st.gridTapTagAt = performance.now();
+        st.buildMenuOpen = false;
         return;
       }
       // "Indietro" (`hit` esiste ma senza `.type`) o un tocco fuori da ogni
@@ -7621,6 +7710,17 @@ export async function mountMatch(ctx, params = {}) {
     // compatta.
     const MOBILE_ROW_H = 26;
     const MOBILE_RES_GAP = 4;
+    // [Bug corretto, segnalato dall'autore: "su mobile la colonna
+    // icone+testo delle risorse si puo' avvicinare un po' di piu' al bordo
+    // sinistro"] Ancora dedicata invece di ritoccare `barX`/`UI_MARGIN`
+    // (condivisi con la barra desktop, il bottone pausa in basso a destra e
+    // gli altri elementi ancorati a un bordo, sopra): sposta solo questa
+    // colonna, riusata identica sia per disegnarla (icone/testo sotto) sia
+    // per il bersaglio della freccia del tutorial che la indica (case
+    // 6/11/26 piu' sotto), cosi' i due restano sempre allineati fra loro.
+    // 4px (meta' di UI_MARGIN): un avvicinamento percepibile ma che lascia
+    // comunque un margine reale dal bordo/eventuale notch.
+    const MOBILE_RES_X = isMobile ? barX - 4 : barX;
     // [Nuova disposizione, richiesta dall'autore: "cristalli e biotech
     // incolonnati a sinistra con le altre, non nel blocchetto a destra"]
     // Le due risorse "extra" (aggiunte in questo motore, mai nel
@@ -7671,7 +7771,7 @@ export async function mountMatch(ctx, params = {}) {
         // calcolato una sola volta per frame poco piu' sopra.
         r.setColorize(iconsDark);
         for (const row of mobileResLayout) {
-          if (row.icon.frame) r.draw(row.icon.frame, barX + TAG_PAD / 2 + (mobileIconColW - row.icon.w) / 2, row.y + (MOBILE_ROW_H - row.icon.iconH) / 2, row.icon.scale, iconsDark ? 0xffffff : 0x000000, 1);
+          if (row.icon.frame) r.draw(row.icon.frame, MOBILE_RES_X + TAG_PAD / 2 + (mobileIconColW - row.icon.w) / 2, row.y + (MOBILE_ROW_H - row.icon.iconH) / 2, row.icon.scale, iconsDark ? 0xffffff : 0x000000, 1);
         }
         r.setColorize(false);
       }
@@ -7704,7 +7804,7 @@ export async function mountMatch(ctx, params = {}) {
     const hideResourceText = st.paused || st.buildMenuOpen || !!st.tutorialState?.cutscene || !!st.buildingInfoPanel;
     if (isMobile) {
       if (!hideResourceText) for (const row of mobileResLayout) {
-        drawHtmlText(row.text, barX + TAG_PAD / 2 + mobileIconColW + TAG_GAP, row.y + MOBILE_ROW_H / 2,
+        drawHtmlText(row.text, MOBILE_RES_X + TAG_PAD / 2 + mobileIconColW + TAG_GAP, row.y + MOBILE_ROW_H / 2,
           { size: TAG_TEXT_SIZE, align: "left", color: barTextColor });
       }
     } else {
@@ -7943,19 +8043,26 @@ export async function mountMatch(ctx, params = {}) {
     // nella GUI come per le gemme") ora che biotech ha uno scopo vero da
     // mostrare (prima non aveva senso: un numero senza alcun collegamento
     // visibile in gioco). `biot_ico`, non `crys_ico`: icona nera dedicata,
-    // stessa famiglia/taglia (data/sprites.json). **[Da verificare a
-    // schermo]** posizione/scala qui accanto a `crysPos` per coerenza, MAI
-    // vista a schermo da questa sessione (l'atlas coi due sprite nuovi,
-    // `bioico`/`biot_ico`, non e' stato ancora ricostruito — vedi il
-    // commit sui pannelli prestiti/scambi per il motivo, 24_blit.ps1 e'
-    // Windows-only): a differenza di `crysPos`, "misurato pixel per pixel"
-    // dall'autore in precedenza, questa e' una prima stima da rifinire a
-    // vista una volta ricostruito l'atlas.
-    // Su mobile questo contatore lo disegna gia' `mobileResLayout` sopra,
+    // stessa famiglia/taglia (data/sprites.json).
+    // [Bug corretto, segnalato dall'autore: "l'icona del biotech sembra
+    // troppo alta rispetto alle altre della riga"] Verificato a schermo
+    // (atlas ricostruito con `tools/24_blit.py`, l'equivalente
+    // multipiattaforma di `24_blit.ps1`): l'icona compariva ~10-11px piu' in
+    // alto delle altre. Causa: `bioPos.y = barY - 4` era stato copiato da
+    // `crysPos.y` per coerenza (commento sopra) ma la formula del centro
+    // visivo (`r.draw()`, game/src/gl.js: `y - oy*scale + h*scale/2`)
+    // dipende dal frame — e "crys_ico" (w=27,h=40, ox=-7,oy=-16,
+    // data/sprites.json) e "biot_ico" (w=32,h=32, ox=-5,oy=-5) non
+    // condividono ne' l'altezza ne' l'origine, solo lo stesso bounding box
+    // 62x55. Stessa derivazione gia' usata per `crysPos.y` (farlo combaciare
+    // col centro di `hapPos`, `barY+23`): a `bioScale` sotto, `barY + 23 -
+    // (32/2 - (-5)) * 0.75 = barY + 23 - 15.75 = barY + 7.25`.
+    // Su mobile questo contatore lo disegna gia' `mobileResLayout` sopra
+    // (centra ogni icona sulla propria `iconH`, mai avuto questo bug),
     // stesso motivo/stesso commento del blocco cristalli qui sopra.
     if (st.r12.biotech > 0 && !isMobile) {
       const bioFrame = frameFor("biot_ico");
-      const bioPos = { x: barX + 650, y: barY - 4 };
+      const bioPos = { x: barX + 650, y: barY + 7.25 };
       const bioScale = 0.75;
       const bioTextPos = { x: barX + 686, y: barY + 19 };
       r.setColorize(iconsDark);
@@ -8201,6 +8308,17 @@ export async function mountMatch(ctx, params = {}) {
     // avanti nel frame.
     if (st.buildMenuOpen) st.buildMenuButtons = computeBuildMenuButtons();
 
+    // [Bug corretto, richiesto dall'autore: "anche nel sottomenu
+    // costruzioni mobile una freccia che punta l'edificio giusto"]
+    // Aggiornata QUI, fuori dal blocco sotto (`!buildMenuOpen`): l'animazione
+    // deve continuare anche mentre l'overlay e' aperto, visto che ora
+    // drawBuildMenuOverlay() (sopra in questo file) disegna la SUA freccia
+    // riusando lo stesso `arrowFrame` — se fosse rimasta congelata dentro il
+    // blocco sotto, la freccia della griglia sarebbe partita gia' ferma su
+    // un singolo fotogramma invece di animarsi.
+    if (st.tutorialState && !st.tutorialState.cutscene) {
+      st.tutorialState.arrowFrame = (st.tutorialState.arrowFrame + dt * 20) % 20;
+    }
     // Freccia del tutorial (game/src/tutorial.js — [C]
     // freccia_tutorial/EndStep.gml): la tabella originale punta a coordinate
     // fisse del layout GameMaker, gia' diverso dal selettore ricostruito qui
@@ -8215,11 +8333,9 @@ export async function mountMatch(ctx, params = {}) {
     // affatto mentre l'overlay e' aperto invece di sprecare lavoro su
     // qualcosa di invisibile. La freccia ha comunque gia' fatto il suo
     // lavoro guidando fino al bottone "costruzioni" prima che l'overlay si
-    // aprisse; la griglia stessa (con tutte le icone visibili in chiaro,
-    // piu' il testo della fase che nomina gia' il bottone giusto) resta
-    // guida sufficiente da qui in poi.
+    // aprisse; da li' in poi tocca alla freccia DENTRO la griglia (sopra,
+    // drawBuildMenuOverlay()) continuare a indicare, non piu' a questa.
     if (st.tutorialState && !st.tutorialState.cutscene && !st.buildMenuOpen) {
-      st.tutorialState.arrowFrame = (st.tutorialState.arrowFrame + dt * 20) % 20;
       const byKind = (pred) => st.uiButtons.find(pred);
       // [Bug corretto, segnalato dall'autore: "quando l'oggetto da premere
       // non e' in quel menu' consiglia di premere lo strumento indietro
@@ -8314,7 +8430,7 @@ export async function mountMatch(ctx, params = {}) {
           // offset che ora cadrebbe a meta' di una riga diversa.
           if (isMobile) {
             const row = mobileResLayout.find((r) => r.kind === resKind);
-            target = row ? { x: barX + row.w / 2, y: row.y + MOBILE_ROW_H + 6, angle: 90 } : null;
+            target = row ? { x: MOBILE_RES_X + row.w / 2, y: row.y + MOBILE_ROW_H + 6, angle: 90 } : null;
           } else {
             const resX = st.tutorialState.phase === 6 ? 340 : st.tutorialState.phase === 11 ? 228 : 142;
             target = { x: barX + resX, y: barY + 43, angle: 90 };
@@ -8352,8 +8468,7 @@ export async function mountMatch(ctx, params = {}) {
           break;
         }
         case 8: case 12: case 16: case 19: {
-          const type = st.tutorialState.phase === 8 ? "casa" : st.tutorialState.phase === 12 ? "industria"
-            : st.tutorialState.phase === 16 ? "parco" : "missile";
+          const type = tutorialTargetBuildingType(st.tutorialState.phase);
           // 12/16/19 coprono SIA la selezione del tipo SIA il piazzamento
           // vero (a differenza di 8, che avanza gia' alla sola selezione,
           // fase 9 sopra): una volta selezionato il tipo giusto la freccia
@@ -8635,7 +8750,7 @@ export async function mountMatch(ctx, params = {}) {
     else if (st.bankPanelOpen) drawBankPanel();
     else if (st.tradePanelOpen) drawTradePanel();
     else if (st.buildingInfoPanel) drawBuildingInfoPanel();
-    else if (st.buildMenuOpen) drawBuildMenuOverlay();
+    else if (st.buildMenuOpen) drawBuildMenuOverlay(iconsDark);
 
     // Cutscene iniziale del tutorial (game/src/tutorial.js): disegnata per
     // ultima, sopra a TUTTO il resto (mondo + UI vera) — quattro fasi
