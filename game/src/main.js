@@ -2471,6 +2471,58 @@ export async function mountMatch(ctx, params = {}) {
     // stesso principio "niente stato vecchio da onorare" gia' scelto per
     // l'autoload (commento sopra).
     if (st.platformState) st.platformState = data.platformState?.tier1 ? data.platformState : createFaroState();
+    // [Bug corretto, segnalato dall'autore: "vedo apparire luci di edifici
+    // che non ci sono, come se il decoro rimanesse" + "monete che sbucano da
+    // un lotto vuoto"] Solo `decorEntities`/`buildings`/`ruins`/`blockedSlots`
+    // venivano azzerati e ricostruiti qui — ogni ALTRO array di stato "vivo"
+    // legato a edifici/posizioni (coins, pedestrians, balloons/loot, il fumo
+    // delle centrali, fulmini, lampo dei fari, bolle di raccolta, minacce/
+    // bombe/esplosioni/proiettili, auto) restava quello della sessione
+    // PRECEDENTE alla chiamata — invisibile al primo autoload (dove sono gia'
+    // vuoti, appena inizializzati qualche riga sopra) ma non a un caricamento
+    // a PARTITA GIA' IN CORSO ("Load from file" nel menu di pausa, "Load last
+    // save" nella schermata di sconfitta): una moneta (`coins`, con tag
+    // `buildingId`) ancorata a un edificio della partita abbandonata, che nel
+    // salvataggio appena caricato magari non esiste piu' in quel lotto,
+    // restava a schermo per sempre (nessun edificio la rigenera ne' la
+    // consuma piu') — esattamente il difetto segnalato, e la stessa identica
+    // causa (mai un solo array dimenticato) vale per ognuno degli altri qui
+    // sotto. Ogni array va resettato allo stesso stato "vuoto" di un mount
+    // pulito (i valori iniziali qualche centinaio di righe sopra), mai
+    // lasciato intatto attraverso un caricamento.
+    st.coins = [];
+    st.pedestrians = [];
+    st.balloons = [];
+    st.loot = [];
+    st.constructionBalloons = [];
+    st.constructionBoxes = [];
+    st.coinPops = [];
+    st.faroFlashes = [];
+    st.faroFlashT1 = 0;
+    st.faroFlashT2 = 0;
+    st.costFloaters = [];
+    st.smoke.clear();
+    st.lightning = [];
+    st.weatherState.drops.clear();
+    st.weatherState.spawnT = 0;
+    if (fireworksState) fireworksState.sparks.clear();
+    st.threats = [];
+    st.bombs = [];
+    st.explosions = [];
+    st.aerSmoke = [];
+    st.debris = [];
+    st.projectiles = [];
+    st.trails = [];
+    st.beams = [];
+    // Le auto (game/src/cars.js) sono pura decorazione senza posizione
+    // salvata: azzerate come le altre invece di trascinarsi quelle
+    // dell'ultima sessione, `carmakerIdx`/`carmakerT` riportati a zero cosi'
+    // lo scadenzario (CARMAKER_SCHEDULE) le rigenera da solo nei minuti
+    // successivi invece di restare vuoto per sempre (gia' esaurito prima del
+    // caricamento, nel caso comune di un salvataggio a partita avanzata).
+    st.cars = [];
+    st.carmakerT = 0;
+    st.carmakerIdx = roomName === "tutorial" ? 1 : 0;
     st.decorEntities = [];
     const usedIds = new Set();
     for (const b of st.buildings) {
