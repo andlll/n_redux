@@ -29,6 +29,7 @@ import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
+import { loadGraphicsOptions, saveGraphicsOptions } from "./graphicsOptions.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   tutorialText, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN, seaScrollOffset,
@@ -1207,6 +1208,18 @@ export async function mountMatch(ctx, params = {}) {
   // una casa (vedi spawnDecor() piu' sotto) — vuoto all'avvio, match_easy
   // parte senza nessuna casa gia' costruita.
   st.pedestrians = [];
+  // [Nuova funzionalita', richiesta dall'autore: "un pannello di opzioni
+  // grafiche molto semplici, toggle singoli per nascondere pioggia/auto/
+  // pedoni/effetti minori e guadagnarne in performance"] Stessa
+  // storia/persistenza di st.autosave piu' sotto (graphicsOptions.js,
+  // localStorage GLOBALE, non per-scena) — ma va caricata QUI, molto prima
+  // di dove vive st.autosave: spawnDecor() piu' sotto legge gia'
+  // st.graphics.pedestrians ed e' raggiungibile PRIMA di li', durante il
+  // caricamento sincrono di una partita salvata (applyLoadedData()/doLoad()
+  // sotto, chiamati durante il mount stesso se params.loadedData/autoload
+  // sono gia' pronti) — inizializzarla vicino a st.autosave l'avrebbe
+  // lasciata undefined esattamente in quella finestra.
+  st.graphics = loadGraphicsOptions();
   // Mongolfiere (game/src/balloons.js): `balloons`/`loot` sono le mongolfiere
   // di risorse/spia e le casse che lasciano cadere (r12/Alarm_1.gml, ogni 5s);
   // `constructionBalloons`/`constructionBoxes` sono il pacco che ogni `casa`/
@@ -1506,7 +1519,7 @@ export async function mountMatch(ctx, params = {}) {
     // casa, ma una volta sola (villa e' un solo livello, questo "salto" e'
     // anche l'unico) — altri se ne aggiungono poi durante la crescita
     // (`g.pedestrianDice`, stepGrowth() in buildings.js).
-    if (building.type === "casa" || building.type === "villa") st.pedestrians.push(spawnPedestrian(building.x, building.y));
+    if (st.graphics.pedestrians && (building.type === "casa" || building.type === "villa")) st.pedestrians.push(spawnPedestrian(building.x, building.y));
   }
 
   /** Decoro transitorio (gru/macerie durante un cantiere): si aggiunge senza
@@ -2458,6 +2471,58 @@ export async function mountMatch(ctx, params = {}) {
     // stesso principio "niente stato vecchio da onorare" gia' scelto per
     // l'autoload (commento sopra).
     if (st.platformState) st.platformState = data.platformState?.tier1 ? data.platformState : createFaroState();
+    // [Bug corretto, segnalato dall'autore: "vedo apparire luci di edifici
+    // che non ci sono, come se il decoro rimanesse" + "monete che sbucano da
+    // un lotto vuoto"] Solo `decorEntities`/`buildings`/`ruins`/`blockedSlots`
+    // venivano azzerati e ricostruiti qui — ogni ALTRO array di stato "vivo"
+    // legato a edifici/posizioni (coins, pedestrians, balloons/loot, il fumo
+    // delle centrali, fulmini, lampo dei fari, bolle di raccolta, minacce/
+    // bombe/esplosioni/proiettili, auto) restava quello della sessione
+    // PRECEDENTE alla chiamata — invisibile al primo autoload (dove sono gia'
+    // vuoti, appena inizializzati qualche riga sopra) ma non a un caricamento
+    // a PARTITA GIA' IN CORSO ("Load from file" nel menu di pausa, "Load last
+    // save" nella schermata di sconfitta): una moneta (`coins`, con tag
+    // `buildingId`) ancorata a un edificio della partita abbandonata, che nel
+    // salvataggio appena caricato magari non esiste piu' in quel lotto,
+    // restava a schermo per sempre (nessun edificio la rigenera ne' la
+    // consuma piu') — esattamente il difetto segnalato, e la stessa identica
+    // causa (mai un solo array dimenticato) vale per ognuno degli altri qui
+    // sotto. Ogni array va resettato allo stesso stato "vuoto" di un mount
+    // pulito (i valori iniziali qualche centinaio di righe sopra), mai
+    // lasciato intatto attraverso un caricamento.
+    st.coins = [];
+    st.pedestrians = [];
+    st.balloons = [];
+    st.loot = [];
+    st.constructionBalloons = [];
+    st.constructionBoxes = [];
+    st.coinPops = [];
+    st.faroFlashes = [];
+    st.faroFlashT1 = 0;
+    st.faroFlashT2 = 0;
+    st.costFloaters = [];
+    st.smoke.clear();
+    st.lightning = [];
+    st.weatherState.drops.clear();
+    st.weatherState.spawnT = 0;
+    if (fireworksState) fireworksState.sparks.clear();
+    st.threats = [];
+    st.bombs = [];
+    st.explosions = [];
+    st.aerSmoke = [];
+    st.debris = [];
+    st.projectiles = [];
+    st.trails = [];
+    st.beams = [];
+    // Le auto (game/src/cars.js) sono pura decorazione senza posizione
+    // salvata: azzerate come le altre invece di trascinarsi quelle
+    // dell'ultima sessione, `carmakerIdx`/`carmakerT` riportati a zero cosi'
+    // lo scadenzario (CARMAKER_SCHEDULE) le rigenera da solo nei minuti
+    // successivi invece di restare vuoto per sempre (gia' esaurito prima del
+    // caricamento, nel caso comune di un salvataggio a partita avanzata).
+    st.cars = [];
+    st.carmakerT = 0;
+    st.carmakerIdx = roomName === "tutorial" ? 1 : 0;
     st.decorEntities = [];
     const usedIds = new Set();
     for (const b of st.buildings) {
@@ -3406,6 +3471,7 @@ export async function mountMatch(ctx, params = {}) {
       { label: t("pause.saveToFile"), action: "saveFile" },
       { label: t("pause.loadFromFile"), action: "loadFile" },
       { label: t("pause.savingOptions"), action: "savingOptions" },
+      { label: t("pause.graphicsOptions"), action: "graphicsOptions" },
     ];
     const rowsAfter = [
       { label: t("pause.resetGame"), action: "resetGame" },
@@ -3531,6 +3597,53 @@ export async function mountMatch(ctx, params = {}) {
     by += INTERVAL_SEG_H + btnGap;
 
     for (const row of rowsAfter) {
+      r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
+      drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
+      st.pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
+      by += btnH + btnGap;
+    }
+    r.flush();
+  }
+
+  /**
+   * Sotto-pannello "Graphics options" del menu di pausa (pauseSubmenu ===
+   * "graphics", aperto dalla voce omonima di drawPauseOverlay()) — stessa
+   * identica struttura pannello/bottoni/blur di drawSavingOptionsOverlay()
+   * sopra, qui pero' quattro soli bottoni ON/OFF (mai un controllo
+   * segmentato: ogni voce e' gia' binaria, st.graphics/graphicsOptions.js)
+   * piu' "Back". Toccare una voce la inverte subito e la persiste
+   * (saveGraphicsOptions()) — gli stessi punti di spawn/step/disegno del
+   * mondo leggono st.graphics ad ogni frame, quindi l'effetto si vede gia'
+   * dal frame successivo, anche a partita in corso.
+   */
+  function drawGraphicsOptionsOverlay() {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const blurTex = getCachedPauseBlur();
+    r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
+    r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
+
+    const onOff = (v) => (v ? t("common.on") : t("common.off"));
+    const rows = [
+      { label: t("graphicsOptions.rain", { state: onOff(st.graphics.rain) }), action: "toggleRain" },
+      { label: t("graphicsOptions.cars", { state: onOff(st.graphics.cars) }), action: "toggleCars" },
+      { label: t("graphicsOptions.pedestrians", { state: onOff(st.graphics.pedestrians) }), action: "togglePedestrians" },
+      { label: t("graphicsOptions.minorEffects", { state: onOff(st.graphics.minorEffects) }), action: "toggleMinorEffects" },
+      { label: t("savingOptions.back"), action: "back" },
+    ];
+    const btnH = 46, btnGap = 14;
+    const panelW = Math.min(360, cw - 40);
+    const panelH = 96 + rows.length * (btnH + btnGap) + 20;
+    const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
+    r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
+
+    const title = t("graphicsOptions.title");
+    drawHtmlText(title, px + panelW / 2, py + 38, { size: 22, maxWidth: panelW - 24 });
+
+    st.pauseMenuButtons = [];
+    const btnW = panelW - 60;
+    const bx = px + (panelW - btnW) / 2;
+    let by = py + 96;
+    for (const row of rows) {
       r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
       drawHtmlText(row.label, bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
       st.pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
@@ -5272,7 +5385,7 @@ export async function mountMatch(ctx, params = {}) {
     const bubbleY = f ? item.y - (f.oy - f.w / 2) : item.y;
     // BIOTECH_POP_COLOR sopra: solo "soldbio" (item.kind === "biotech",
     // coins.js) cambia colore — sold1..18/sold19..30 (kind "mon") restano blu.
-    st.coinPops.push({ x: item.x, y: bubbleY, t: 0, color: item.kind === "biotech" ? BIOTECH_POP_COLOR : COIN_POP_COLOR });
+    if (st.graphics.minorEffects) st.coinPops.push({ x: item.x, y: bubbleY, t: 0, color: item.kind === "biotech" ? BIOTECH_POP_COLOR : COIN_POP_COLOR });
     collectCoin(st.coins, item, st.r12);
   }
 
@@ -5291,7 +5404,7 @@ export async function mountMatch(ctx, params = {}) {
   function collectLootAt(item) {
     const f = frameFor(item.spr);
     const bubbleY = f ? item.y - f.oy + f.h / 2 : item.y;
-    st.coinPops.push({ x: item.x, y: bubbleY, t: 0, color: LOOT_POP_COLOR[item.key] ?? COIN_POP_COLOR });
+    if (st.graphics.minorEffects) st.coinPops.push({ x: item.x, y: bubbleY, t: 0, color: LOOT_POP_COLOR[item.key] ?? COIN_POP_COLOR });
     collectLoot(st.loot, item, st.r12);
   }
 
@@ -5385,6 +5498,27 @@ export async function mountMatch(ctx, params = {}) {
         }
         return;
       }
+      // "Graphics options" (pauseSubmenu === "graphics", drawGraphicsOptionsOverlay()
+      // sopra): stessa struttura di "saving" appena sopra — quattro toggle
+      // ON/OFF, un tap inverte e persiste subito (saveGraphicsOptions()).
+      if (st.pauseSubmenu === "graphics") {
+        if (hit?.action === "toggleRain") {
+          st.graphics.rain = !st.graphics.rain;
+          saveGraphicsOptions(st.graphics);
+        } else if (hit?.action === "toggleCars") {
+          st.graphics.cars = !st.graphics.cars;
+          saveGraphicsOptions(st.graphics);
+        } else if (hit?.action === "togglePedestrians") {
+          st.graphics.pedestrians = !st.graphics.pedestrians;
+          saveGraphicsOptions(st.graphics);
+        } else if (hit?.action === "toggleMinorEffects") {
+          st.graphics.minorEffects = !st.graphics.minorEffects;
+          saveGraphicsOptions(st.graphics);
+        } else if (hit?.action === "back") {
+          st.pauseSubmenu = null;
+        }
+        return;
+      }
       // "Reset game" (pauseSubmenu === "confirmReset", drawConfirmResetOverlay()
       // sopra): stesso `pauseMenuButtons` dei pannelli sopra, azioni proprie —
       // un tap su "Reset game" qui e' la CONFERMA vera (irreversibile,
@@ -5408,6 +5542,8 @@ export async function mountMatch(ctx, params = {}) {
       // il commento li' per il perche' (iOS Safari/input.js).
       } else if (hit?.action === "savingOptions") {
         st.pauseSubmenu = "saving";
+      } else if (hit?.action === "graphicsOptions") {
+        st.pauseSubmenu = "graphics";
       } else if (hit?.action === "setLang") {
         setLang(hit.value);
       } else if (hit?.action === "resetGame") {
@@ -6437,10 +6573,16 @@ export async function mountMatch(ctx, params = {}) {
       // Fumo delle centrali (game/src/smoke.js): dopo stepProduction(), cosi'
       // "oil>0" gia' rispecchia il consumo di questo frame, come per le monete
       // blu sotto (stesso ordine gia' scelto per stepCoinSpawner()).
-      stepSmokeSpawner(st.buildings, st.smoke, dt, st.r12);
+      // st.graphics.minorEffects (menu di pausa, "Graphics options"): solo
+      // la NASCITA di nuovi sbuffi si ferma, quelli gia' vivi continuano a
+      // dissolversi da soli — stessa idea gia' in uso per "oil<=0" dentro
+      // smoke.js (stepSmokeSpawner() salta se non c'e' olio, stepSmoke()
+      // gira comunque), coerente col resto del motore che preferisce
+      // spegnimenti morbidi a sparizioni istantanee.
+      if (st.graphics.minorEffects) stepSmokeSpawner(st.buildings, st.smoke, dt, st.r12);
       stepSmoke(st.smoke, dt);
       stepLightning(st.lightning, dt);
-      stepGrowth(st.buildings, dt, st.r12, (b) => st.pedestrians.push(spawnPedestrian(b.x, b.y)));
+      stepGrowth(st.buildings, dt, st.r12, (b) => { if (st.graphics.pedestrians) st.pedestrians.push(spawnPedestrian(b.x, b.y)); });
       stepConsumption(st.buildings, dt, st.r12, night);
       stepWeather(st.r12, dt, scene.name === "match", scene.name === "match_easy");
       stepStormDamage(st.buildings, dt, st.r12, (x, y) => st.lightning.push(spawnLightning(x, y)));
@@ -6459,12 +6601,19 @@ export async function mountMatch(ctx, params = {}) {
       // l'area appena scoperta senza pioggia per un istante) — legandola
       // all'intera room invece, la pioggia e' gia' presente ovunque la
       // camera possa mai inquadrare, qualunque sia la velocita' del pan.
-      // Vedi il commento in cima a weather.js.
-      stepRain(st.weatherState, dt, !!(st.r12.storm || st.r12.stormeasy), 0, scene.width, 0, scene.height);
+      // Vedi il commento in cima a weather.js. st.graphics.rain (menu di
+      // pausa, "Graphics options"): un AND in piu' sulla condizione di
+      // pioggia riusa gia' il ramo `!raining` dentro stepRain() (svuota
+      // `drops` di scatto appena falsa) — nessuna modifica a weather.js,
+      // disattivare il toggle si comporta esattamente come "il temporale e'
+      // appena finito".
+      stepRain(st.weatherState, dt, !!(st.r12.storm || st.r12.stormeasy) && st.graphics.rain, 0, scene.width, 0, scene.height);
       // Fuochi d'artificio sopra chies (game/src/fireworks.js) — sempre
       // "in ascolto", scoppiano davvero solo a Gennaio (r12.month === 1,
-      // state.js/stepCalendar()).
-      if (fireworksState) stepFireworks(fireworksState, dt, st.r12.month === 1);
+      // state.js/stepCalendar()) E con st.graphics.minorEffects attivo:
+      // stesso principio del fumo sopra, si ferma solo la nascita di nuovi
+      // burst, le scintille gia' in volo finiscono di dissolversi da sole.
+      if (fireworksState) stepFireworks(fireworksState, dt, st.r12.month === 1 && st.graphics.minorEffects);
       // [Bug corretto, segnalato dall'autore: "avevi inserito popolazione (e
       // forse anche soldi?) che salgono da soli a ogni secondo, rimuoviamolo"]
       // Qui prima girava anche `tickR12()` (state.js, rimossa): una
@@ -6494,27 +6643,37 @@ export async function mountMatch(ctx, params = {}) {
         st.outcome = { kind: "defeat", reason: "oil", t: 0, motorFreezeT: st.phaseT };
       }
       stepCalendar(st.r12, dt);
-      stepCars(st.cars, dt, st.r12, night);
-      st.carmakerT += dt;
-      // [Bug corretto, segnalato dall'autore: "le auto vanno spesso fuori
-      // strada e invadono gli spazi per gli edifici" su `match`] `nudge`
-      // (game/src/cars.js, CAR_TYPES.honda3..9.matchEasyNudge): il gate
-      // `action_if_number(736,1,0)` di ciascun honda3..9/Create.gml e' vero
-      // SOLO su `match_easy` — questo stesso ciclo pero' gira su OGNI room
-      // (`carmaker` esiste ovunque, commento sopra), quindi va passato qui
-      // in base alla room vera invece di restare cablato nella coordinata
-      // di spawn (che prima valeva sempre "con nudge", sbagliato su
-      // `match`/`tutorial`: l'intero percorso di ogni honda3..9 nasceva
-      // ~21-27px fuori dal punto vero, abbastanza da tagliare dentro un
-      // lotto o fuori dalla strada — sette tipi diversi, uno ogni 60s).
-      while (st.carmakerIdx < CARMAKER_SCHEDULE.length && st.carmakerT >= CARMAKER_SCHEDULE[st.carmakerIdx].at) {
-        st.cars.push(spawnCar(CARMAKER_SCHEDULE[st.carmakerIdx].type, night, roomName === "match_easy"));
-        st.carmakerIdx++;
+      // st.graphics.cars (menu di pausa, "Graphics options"): l'intero
+      // sotto-sistema (avanzamento + il carmaker che ne fa nascere di
+      // nuove) si ferma in blocco, non solo il disegno — e' la logica per
+      // istanza piu' pesante fra i quattro toggle (stati di svolta multi-
+      // frame, cars.js). `carmakerT` resta congelato mentre il toggle e'
+      // spento invece di continuare ad accumulare: riattivandolo lo
+      // scadenzario riprende da dove si era fermato, non "recupera" di
+      // colpo le auto perse nel frattempo.
+      if (st.graphics.cars) {
+        stepCars(st.cars, dt, st.r12, night);
+        st.carmakerT += dt;
+        // [Bug corretto, segnalato dall'autore: "le auto vanno spesso fuori
+        // strada e invadono gli spazi per gli edifici" su `match`] `nudge`
+        // (game/src/cars.js, CAR_TYPES.honda3..9.matchEasyNudge): il gate
+        // `action_if_number(736,1,0)` di ciascun honda3..9/Create.gml e' vero
+        // SOLO su `match_easy` — questo stesso ciclo pero' gira su OGNI room
+        // (`carmaker` esiste ovunque, commento sopra), quindi va passato qui
+        // in base alla room vera invece di restare cablato nella coordinata
+        // di spawn (che prima valeva sempre "con nudge", sbagliato su
+        // `match`/`tutorial`: l'intero percorso di ogni honda3..9 nasceva
+        // ~21-27px fuori dal punto vero, abbastanza da tagliare dentro un
+        // lotto o fuori dalla strada — sette tipi diversi, uno ogni 60s).
+        while (st.carmakerIdx < CARMAKER_SCHEDULE.length && st.carmakerT >= CARMAKER_SCHEDULE[st.carmakerIdx].at) {
+          st.cars.push(spawnCar(CARMAKER_SCHEDULE[st.carmakerIdx].type, night, roomName === "match_easy"));
+          st.carmakerIdx++;
+        }
       }
       stepLights(st.decorEntities, dt, night, st.r12);
       stepTransientDecor(dt);
       stepSemaphores(semaphores, dt);
-      stepPedestrians(st.pedestrians, dt);
+      if (st.graphics.pedestrians) stepPedestrians(st.pedestrians, dt);
       // I pulsanti blu delle monete (game/src/coins.js): casa1|2|3/Alarm_4.gml,
       // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
       stepCoinSpawner(st.buildings, st.coins, dt, st.r12, st.platformState);
@@ -6547,7 +6706,12 @@ export async function mountMatch(ctx, params = {}) {
         // ENTRAMBI i fari gemelli (FARO1 e FARO2), tier2 solo FARO3.
         const tier1Lit = st.platformState.tier1.stage === "lit" || st.platformState.tier1.stage === "expanding";
         const tier2Lit = st.platformState.tier2.stage === "lit" || st.platformState.tier2.stage === "expanding";
-        if (tier1Lit) {
+        // st.graphics.minorEffects (menu di pausa, "Graphics options"): un
+        // AND in piu' sulla condizione "acceso", stesso trattamento di
+        // tier1Lit/tier2Lit quando il faro stesso e' spento — il timer si
+        // azzera invece di accumulare, niente raffica di lampi arretrati al
+        // riaccendere il toggle.
+        if (tier1Lit && st.graphics.minorEffects) {
           st.faroFlashT1 += dt;
           while (st.faroFlashT1 >= FARO_FLASH_PERIOD) {
             st.faroFlashT1 -= FARO_FLASH_PERIOD;
@@ -6555,7 +6719,7 @@ export async function mountMatch(ctx, params = {}) {
             st.faroFlashes.push({ x: FARO2.x, y: FARO2.y - 280, t: 0 });
           }
         } else st.faroFlashT1 = 0;
-        if (tier2Lit) {
+        if (tier2Lit && st.graphics.minorEffects) {
           st.faroFlashT2 += dt;
           while (st.faroFlashT2 >= FARO_FLASH_PERIOD) {
             st.faroFlashT2 -= FARO_FLASH_PERIOD;
@@ -6973,7 +7137,7 @@ export async function mountMatch(ctx, params = {}) {
     // stepCars() sopra — `c.frame` anima per davvero le svolte (STUDIO.md
     // "le auto sterzano davvero"), frameFor() lo ritaglia da solo sull'ultimo
     // frame disponibile per gli sprite a posa singola.
-    for (const c of st.cars) {
+    if (st.graphics.cars) for (const c of st.cars) {
       dynamic.push({ obj: "car", x: c.x, y: c.y, depth: c.depth, _f: frameFor(c.spr, Math.floor(c.frame)), _tint: c.tint });
     }
     // Semafori (game/src/semaphores.js): il palo ("se") e' gia' in
@@ -7021,7 +7185,7 @@ export async function mountMatch(ctx, params = {}) {
     for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr), _sky: true });
     // Pedoni (game/src/pedestrians.js): x/y/depth gia' avanzati da
     // stepPedestrians() sopra.
-    for (const p of st.pedestrians) dynamic.push({ obj: "pedestrian", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
+    if (st.graphics.pedestrians) for (const p of st.pedestrians) dynamic.push({ obj: "pedestrian", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
     // Mongolfiere (game/src/balloons.js): risorse/spia (obj: "flyingBalloon",
     // cliccabile — un tap la distrugge, vedi picking sotto: richiesto
     // dall'autore, non piu' le torrette da sole) + le casse che lasciano
@@ -8744,6 +8908,7 @@ export async function mountMatch(ctx, params = {}) {
     if (st.outcome) drawOutcomeOverlay();
     else if (st.paused) {
       if (st.pauseSubmenu === "saving") drawSavingOptionsOverlay();
+      else if (st.pauseSubmenu === "graphics") drawGraphicsOptionsOverlay();
       else if (st.pauseSubmenu === "confirmReset") drawConfirmResetOverlay();
       else drawPauseOverlay();
     }
@@ -8923,6 +9088,7 @@ export async function mountMatch(ctx, params = {}) {
     get pauseMenuButtons() { return st.pauseMenuButtons; },
     get pauseSubmenu() { return st.pauseSubmenu; }, setPauseSubmenu: (v) => { st.pauseSubmenu = v; },
     get autosave() { return st.autosave; }, get autosaveT() { return st.autosaveT; }, setAutosaveT: (t) => { st.autosaveT = t; },
+    get graphics() { return st.graphics; },
     get saveIconT() { return st.saveIconT; }, showSaveIcon,
     setSaveIconT: (v) => { st.saveIconT = v; },
     get uiScrollX() { return st.uiScrollX; }, setUiScrollX: (x) => { st.uiScrollX = x; },

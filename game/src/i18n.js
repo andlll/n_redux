@@ -62,6 +62,7 @@ const STRINGS = {
   "pause.saveToFile": { en: "Save to file", it: "Salva su file", es: "Guardar en archivo", pt: "Salvar em arquivo", de: "In Datei speichern", fr: "Enregistrer dans un fichier" },
   "pause.loadFromFile": { en: "Load from file", it: "Carica da file", es: "Cargar desde archivo", pt: "Carregar de arquivo", de: "Aus Datei laden", fr: "Charger depuis un fichier" },
   "pause.savingOptions": { en: "Saving options", it: "Opzioni di salvataggio", es: "Opciones de guardado", pt: "Opções de salvamento", de: "Speicheroptionen", fr: "Options de sauvegarde" },
+  "pause.graphicsOptions": { en: "Graphics options", it: "Opzioni grafiche", es: "Opciones gráficas", pt: "Opções gráficas", de: "Grafikoptionen", fr: "Options graphiques" },
   "pause.resetGame": { en: "Reset game", it: "Ricomincia partita", es: "Reiniciar partida", pt: "Reiniciar partida", de: "Spiel neu starten", fr: "Recommencer la partie" },
   "pause.backToMenu": { en: "Back to menu", it: "Torna al menu", es: "Volver al menú", pt: "Voltar ao menu", de: "Zurück zum Menü", fr: "Retour au menu" },
   // Didascalia sopra il controllo segmentato lingua (drawPauseOverlay(),
@@ -86,6 +87,13 @@ const STRINGS = {
   "savingOptions.back": { en: "Back", it: "Indietro", es: "Atrás", pt: "Voltar", de: "Zurück", fr: "Retour" },
   "common.on": { en: "ON", it: "ON", es: "ON", pt: "ON", de: "ON", fr: "ON" },
   "common.off": { en: "OFF", it: "OFF", es: "OFF", pt: "OFF", de: "OFF", fr: "OFF" },
+
+  // ------------------------------------------------------ opzioni grafiche
+  "graphicsOptions.title": { en: "GRAPHICS OPTIONS", it: "OPZIONI GRAFICHE", es: "OPCIONES GRÁFICAS", pt: "OPÇÕES GRÁFICAS", de: "GRAFIKOPTIONEN", fr: "OPTIONS GRAPHIQUES" },
+  "graphicsOptions.rain": { en: "Rain: {state}", it: "Pioggia: {state}", es: "Lluvia: {state}", pt: "Chuva: {state}", de: "Regen: {state}", fr: "Pluie : {state}" },
+  "graphicsOptions.cars": { en: "Vehicles: {state}", it: "Veicoli: {state}", es: "Vehículos: {state}", pt: "Veículos: {state}", de: "Fahrzeuge: {state}", fr: "Véhicules : {state}" },
+  "graphicsOptions.pedestrians": { en: "Pedestrians: {state}", it: "Pedoni: {state}", es: "Peatones: {state}", pt: "Pedestres: {state}", de: "Fußgänger: {state}", fr: "Piétons : {state}" },
+  "graphicsOptions.minorEffects": { en: "Minor effects: {state}", it: "Effetti minori: {state}", es: "Efectos menores: {state}", pt: "Efeitos menores: {state}", de: "Kleinere Effekte: {state}", fr: "Effets mineurs : {state}" },
 
   "confirmReset.title": { en: "RESET GAME", it: "RICOMINCIA PARTITA", es: "REINICIAR PARTIDA", pt: "REINICIAR PARTIDA", de: "SPIEL NEU STARTEN", fr: "RECOMMENCER LA PARTIE" },
   "confirmReset.warning": {
