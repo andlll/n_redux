@@ -130,6 +130,20 @@ export const THREAT_TYPES = {
   },
 };
 
+// [Nuova funzionalita', richiesta dall'autore: "stesso fix dei pedoni/auto
+// (niente trigonometria per frame) anche per gli aerei"] `piro.dir`/`piro.
+// speed` sono costanti PER TIPO (mai per istanza, mai per frame) — eppure
+// stepThreats() sotto ricalcolava `Math.cos`/`Math.sin` ad ogni aereo in
+// caduta ad ogni frame per una direzione che e' sempre la stessa dei suoi
+// simili dello stesso tipo. Precalcolati qui una volta sola (3 tipi, non 3
+// per istanza): stepThreats() legge solo `def.piro.vx`/`vy`.
+for (const def of Object.values(THREAT_TYPES)) {
+  const rad = (def.piro.dir * Math.PI) / 180;
+  const pxPerSec = def.piro.speed * 60;
+  def.piro.vx = Math.cos(rad) * pxPerSec;
+  def.piro.vy = -Math.sin(rad) * pxPerSec;
+}
+
 // [C] dirig/Step.gml (durante il piro) E dirig/Destroy.gml (alla morte
 // vera, qualunque sia la causa — STUDIO.md, vedi spawnDeathEffect sotto):
 // stessi 5 offset per entrambi, non una coincidenza.
@@ -332,10 +346,8 @@ export function stepThreats(threats, bombs, explosions, dt, r12, trails, debris)
       // [C] Step.gml, ramo piro: la diagonale di pattugliamento lascia il
       // posto alla traiettoria di caduta (direzione/velocita' proprie del
       // tipo, non piu' quelle di volo).
-      const rad = (def.piro.dir * Math.PI) / 180;
-      const pxPerSec = def.piro.speed * 60;
-      th.x += Math.cos(rad) * pxPerSec * dt;
-      th.y -= Math.sin(rad) * pxPerSec * dt;
+      th.x += def.piro.vx * dt;
+      th.y += def.piro.vy * dt;
     } else {
       const pxPerSec = th.spd * 60;
       th.x += COS30 * pxPerSec * dt;

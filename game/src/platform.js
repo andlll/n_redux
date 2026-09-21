@@ -344,6 +344,12 @@ function spawnCloudWave(clusterClouds, night) {
 
 const CLOUD_RAD = (CLOUD_DIR * Math.PI) / 180;
 const CLOUD_PX_PER_SEC = CLOUD_SPEED * 60;
+// Direzione unica e fissa per ogni nuvola (stesso principio del fix pedoni/
+// auto/aerei/navi: niente trigonometria per frame per una direzione che non
+// cambia mai) — precalcolata una volta sola invece che ad ogni nuvola ad
+// ogni frame.
+const CLOUD_VX = Math.cos(CLOUD_RAD) * CLOUD_PX_PER_SEC;
+const CLOUD_VY = -Math.sin(CLOUD_RAD) * CLOUD_PX_PER_SEC;
 
 /** Fa partire le ondate ancora dovute (in base a `dockerT`, gia' avanzato
  * da chi chiama) e avanza/scarta le nuvole gia' in volo — chiamata per
@@ -365,8 +371,8 @@ function advanceClouds(clusterClouds, dt) {
     const c = clusterClouds[i];
     c.t += dt;
     if (c.t >= CLOUD_LIFE_SECONDS) { clusterClouds.splice(i, 1); continue; }
-    c.x += Math.cos(CLOUD_RAD) * CLOUD_PX_PER_SEC * dt;
-    c.y -= Math.sin(CLOUD_RAD) * CLOUD_PX_PER_SEC * dt;
+    c.x += CLOUD_VX * dt;
+    c.y += CLOUD_VY * dt;
   }
 }
 
