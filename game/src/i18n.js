@@ -122,7 +122,6 @@ const STRINGS = {
   "buildingInfo.energyPrefix": { en: "Energy: +", it: "Energia: +", es: "Energía: +", pt: "Energia: +", de: "Energie: +", fr: "Énergie : +" },
   "buildingInfo.energyMiddle": { en: "/cycle (uses ", it: "/ciclo (consuma ", es: "/ciclo (consume ", pt: "/ciclo (consome ", de: "/Zyklus (verbraucht ", fr: "/cycle (consomme " },
   "buildingInfo.energySuffix": { en: ")", it: ")", es: ")", pt: ")", de: ")", fr: ")" },
-  "buildingInfo.levelSuffix": { en: " — Level {level}/{max}", it: " — Livello {level}/{max}", es: " — Nivel {level}/{max}", pt: " — Nível {level}/{max}", de: " — Stufe {level}/{max}", fr: " — Niveau {level}/{max}" },
   "buildingInfo.close": { en: "Close", it: "Chiudi", es: "Cerrar", pt: "Fechar", de: "Schließen", fr: "Fermer" },
 
   "autoDefense.level1.name": { en: "Real threats only", it: "Solo minacce reali", es: "Solo amenazas reales", pt: "Apenas ameaças reais", de: "Nur echte Bedrohungen", fr: "Menaces réelles uniquement" },
@@ -206,13 +205,38 @@ const STRINGS = {
 
   // ---------------------------------------------------------------- edifici
   "building.chies": { en: "City center", it: "Municipio", es: "Ayuntamiento", pt: "Prefeitura", de: "Rathaus", fr: "Hôtel de ville" },
+  // [Nuova funzionalita', richiesta dall'autore: "gli edifici con i livelli
+  // hanno dei nomi molto semplici, possiamo fare delle proposte migliori?"]
+  // Nomi per-livello (buildingLabel(type, level), sotto): solo dove il nome
+  // CAMBIA rispetto alla voce base sopra — il livello 1 di chies/palazzo
+  // (identico alla base) non ha una chiave propria, buildingLabel() ricade
+  // sulla base quando non trova ".2"/".3". `chies` (Municipio) e' un
+  // edificio unico (un solo esemplare per partita, mai un "tipo" che si
+  // piazza in serie come casa/industria/palazzo) ma cresce comunque di
+  // livello (STUDIO.md, oilCap()/state.js) — cresce di nome con lui, da
+  // "sede comunale" a "sede di governo".
+  "building.chies.2": { en: "Town Hall", it: "Palazzo comunale", es: "Palacio Municipal", pt: "Palácio Municipal", de: "Verwaltungspalast", fr: "Palais municipal" },
+  "building.chies.3": { en: "Government Palace", it: "Palazzo del Governo", es: "Palacio de Gobierno", pt: "Palácio do Governo", de: "Regierungspalast", fr: "Palais du gouvernement" },
   // [Bug corretto, segnalato dall'autore: "'industria' non ha senso come
   // nome, produce energia elettrica (buildings.js: production ele), e' una
   // centrale"] "Industry"/"Industria" in tutte le lingue -> "Power
   // Plant"/"Centrale elettrica"/ecc, coerente con come il tutorial (gia'
   // corretto in inglese, tutorial.js) la descrive da sempre.
   "building.industria": { en: "Power Plant", it: "Centrale elettrica", es: "Central eléctrica", pt: "Usina Elétrica", de: "Kraftwerk", fr: "Centrale électrique" },
+  // Livello 3 (il piu' grande, production[2] in buildings.js) ricade sulla
+  // voce base sopra — "Centrale elettrica" e basta, nessun aggettivo,
+  // stesso principio di chies/palazzo.
+  "building.industria.1": { en: "Small Power Plant", it: "Centrale elettrica piccola", es: "Central eléctrica pequeña", pt: "Usina Elétrica Pequena", de: "Kleines Kraftwerk", fr: "Petite centrale électrique" },
+  "building.industria.2": { en: "Medium Power Plant", it: "Centrale elettrica media", es: "Central eléctrica mediana", pt: "Usina Elétrica Média", de: "Mittleres Kraftwerk", fr: "Centrale électrique moyenne" },
   "building.casa": { en: "House", it: "Casa", es: "Casa", pt: "Casa", de: "Haus", fr: "Maison" },
+  // Tutti e tre distinti dalla base ("Casa"): a differenza di chies/
+  // industria/palazzo, nessun livello di casa condivide il nome col tipo
+  // generico usato nel menu di piazzamento (sempre livello 1 alla nascita,
+  // ma la voce di menu resta "Casa" — coerente, e' quello che si sta per
+  // piazzare, non ancora un caseggiato).
+  "building.casa.1": { en: "Tenement House", it: "Caseggiato", es: "Bloque de viviendas", pt: "Prédio de Habitação", de: "Mietshaus", fr: "Immeuble d'habitation" },
+  "building.casa.2": { en: "Apartment Building", it: "Palazzina", es: "Edificio de apartamentos", pt: "Edifício de Apartamentos", de: "Wohngebäude", fr: "Immeuble résidentiel" },
+  "building.casa.3": { en: "Condominium", it: "Condominio", es: "Condominio", pt: "Condomínio", de: "Wohnanlage", fr: "Copropriété" },
   "building.missile": { en: "Missile Launcher", it: "Lanciamissili", es: "Lanzamisiles", pt: "Lançador de Mísseis", de: "Raketenwerfer", fr: "Lance-missiles" },
   "building.solare": { en: "Solar Panels", it: "Pannelli solari", es: "Paneles solares", pt: "Painéis Solares", de: "Solarpanele", fr: "Panneaux solaires" },
   "building.parco": { en: "Park", it: "Parco", es: "Parque", pt: "Parque", de: "Park", fr: "Parc" },
@@ -223,6 +247,12 @@ const STRINGS = {
   "building.eolico": { en: "Wind Turbine", it: "Turbina eolica", es: "Turbina eólica", pt: "Turbina Eólica", de: "Windturbine", fr: "Éolienne" },
   "building.palazzo": { en: "Building", it: "Palazzo", es: "Edificio", pt: "Prédio", de: "Gebäude", fr: "Immeuble" },
   "building.palazzoRd": { en: "Building", it: "Palazzo", es: "Edificio", pt: "Prédio", de: "Gebäude", fr: "Immeuble" },
+  // Livello 1 (identico alla base, "Palazzo"/"Building") ricade sulla voce
+  // sopra — solo il livello 2 ha un nome proprio, stesso per entrambe le
+  // varianti speculari (`palazzo`/`palazzoRd`, STUDIO.md: stesso edificio,
+  // solo l'orientamento diagonale di piazzamento cambia).
+  "building.palazzo.2": { en: "Residential Tower", it: "Torre residenziale", es: "Torre residencial", pt: "Torre Residencial", de: "Wohnturm", fr: "Tour résidentielle" },
+  "building.palazzoRd.2": { en: "Residential Tower", it: "Torre residenziale", es: "Torre residencial", pt: "Torre Residencial", de: "Wohnturm", fr: "Tour résidentielle" },
   "building.museo": { en: "Museum", it: "Museo", es: "Museo", pt: "Museu", de: "Museum", fr: "Musée" },
   "building.museoRd": { en: "Museum", it: "Museo", es: "Museo", pt: "Museu", de: "Museum", fr: "Musée" },
   "building.monum": { en: "Monument", it: "Monumento", es: "Monumento", pt: "Monumento", de: "Denkmal", fr: "Monument" },
@@ -396,5 +426,13 @@ export function t(key, vars) {
 // BUILDING_TYPES in buildings.js) — un solo punto per la traduzione, riusato
 // sia da buildings.js (BUILDING_TYPES[x].label, letta dal pannello
 // informativo/titoli) sia da main.js (OTHER_BUILDINGS/STAR_BUILDINGS/
-// BUILDING_LABEL, la riga costruzioni e i suoi messaggi).
-export function buildingLabel(type) { return t(`building.${type}`); }
+// BUILDING_LABEL, la riga costruzioni e i suoi messaggi). `level` (opzionale):
+// se una chiave "building.<type>.<level>" esiste (STRINGS sopra) prevale
+// sulla voce base — "Casa" -> "Caseggiato"/"Palazzina"/"Condominio" per
+// livello 1/2/3 — altrimenti ricade sulla base (ogni chiamante che non
+// passa un livello, o un livello senza voce propria: quasi sempre il
+// livello 1, identico al nome del tipo nel menu di piazzamento).
+export function buildingLabel(type, level) {
+  const key = level != null ? `building.${type}.${level}` : null;
+  return t(key && STRINGS[key] ? key : `building.${type}`);
+}

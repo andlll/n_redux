@@ -3822,7 +3822,6 @@ export async function mountMatch(ctx, params = {}) {
     r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
-    const maxLevel = 1 + (def.upgrades?.length ?? 0);
     const maxLife = currentMaxLife(b);
     const residents = !b.construction ? currentResidents(b) : null;
     // `def.production` (industria, indicizzata per livello come `growth`):
@@ -3885,7 +3884,15 @@ export async function mountMatch(ctx, params = {}) {
     const py = (ch - panelH) / 2;
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
-    const title = def.label + (maxLevel > 1 && !b.construction ? t("buildingInfo.levelSuffix", { level: b.level, max: maxLevel }) : "");
+    // [Nuova funzionalita', richiesta dall'autore: "gli edifici con i
+    // livelli hanno dei nomi molto semplici, possiamo fare delle proposte
+    // migliori?"] Nome per-livello (buildingLabel(type,level), i18n.js) al
+    // posto del vecchio "Casa — Livello 2/3": durante il cantiere l'edificio
+    // non e' ancora salito di livello per davvero (`b.level` resta quello
+    // vecchio finche' stepConstructions() non lo incrementa a fine catena),
+    // quindi mostra ancora il nome-tipo generico di `def.label` invece di
+    // anticipare un nome che non ha ancora.
+    const title = b.construction ? def.label : buildingLabel(b.type, b.level);
     drawHtmlText(title, px + panelW / 2, py + 32, { size: 20, maxWidth: panelW - 30 });
 
     st.buildingInfoSegRect = null;
