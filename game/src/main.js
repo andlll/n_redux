@@ -750,6 +750,23 @@ export async function mountMatch(ctx, params = {}) {
     pedestrianBounds.top -= PEDESTRIAN_BOUNDS_MARGIN;
     pedestrianBounds.bottom += PEDESTRIAN_BOUNDS_MARGIN;
   }
+  // [Bug corretto, segnalato dall'autore: "ogni tanto trovo qualcuno che va a
+  // farsi un giro sull'ala destra"] `pedestrianBounds` sopra e' un solo
+  // rettangolo globale: dove la piattaforma si restringe (l'ala destra,
+  // un'unica fila di lotti stretta fra il vuoto sopra e sotto) non segue la
+  // vera sagoma, e HOME_RADIUS (pedestrians.js) da solo puo' comunque
+  // spingere un pedone oltre il bordo vero in quei punti. `pepazzittecollider`
+  // (invisibile, solid=1, mask_sprite "_") e' il VERO muro dell'originale
+  // (`pplo/Collision_124.gml: action_bounce`) — mai letto finora — 83
+  // istanze che tracciano il perimetro reale. `mask_sprite "_"` (data/
+  // sprites.json) e' un rombo isometrico ~406x236 (stessa forma/aspect
+  // ratio di `phold`, il placeholder — confermato: nessun placeholder reale
+  // cade dentro il rombo di un collider vicino, con margine), letto con lo
+  // stesso test di `inFrameDiamond()` sotto invece di un rettangolo pieno
+  // (che avrebbe inglobato lotti edificabili legittimi vicino al bordo).
+  const pedestrianColliders = staticWorld
+    .filter((it) => it.obj === "pepazzittecollider")
+    .map((c) => ({ x: c.x, y: c.y }));
   // [I] depth: la room dichiara -5000 (data/objects.json: sempre in primissimo
   // piano, davanti persino agli edifici — cosi' com'era nell'originale, mai
   // letto/cambiato a runtime). Qui invece il rombo viola, quando appare sotto
@@ -1540,7 +1557,7 @@ export async function mountMatch(ctx, params = {}) {
     // casa, ma una volta sola (villa e' un solo livello, questo "salto" e'
     // anche l'unico) — altri se ne aggiungono poi durante la crescita
     // (`g.pedestrianDice`, stepGrowth() in buildings.js).
-    if (st.graphics.pedestrians && (building.type === "casa" || building.type === "villa")) st.pedestrians.push(spawnPedestrian(building.x, building.y));
+    if (st.graphics.pedestrians && (building.type === "casa" || building.type === "villa")) st.pedestrians.push(spawnPedestrian(building.x, building.y, pedestrianColliders));
   }
 
   /** Decoro transitorio (gru/macerie durante un cantiere): si aggiunge senza
@@ -6603,7 +6620,7 @@ export async function mountMatch(ctx, params = {}) {
       if (st.graphics.minorEffects) stepSmokeSpawner(st.buildings, st.smoke, dt, st.r12);
       stepSmoke(st.smoke, dt);
       stepLightning(st.lightning, dt);
-      stepGrowth(st.buildings, dt, st.r12, (b) => { if (st.graphics.pedestrians) st.pedestrians.push(spawnPedestrian(b.x, b.y)); });
+      stepGrowth(st.buildings, dt, st.r12, (b) => { if (st.graphics.pedestrians) st.pedestrians.push(spawnPedestrian(b.x, b.y, pedestrianColliders)); });
       stepConsumption(st.buildings, dt, st.r12, night);
       stepWeather(st.r12, dt, scene.name === "match", scene.name === "match_easy");
       stepStormDamage(st.buildings, dt, st.r12, (x, y) => st.lightning.push(spawnLightning(x, y)));
