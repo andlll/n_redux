@@ -15,6 +15,21 @@
 
 const TICK = 1 / 60;
 
+// [Nuova funzionalita', richiesta dall'autore: "stesso fix dei pedoni (niente
+// trigonometria per frame) anche per le auto"] `c.dir`/`c.spd` cambiano solo
+// quando Create() o una fase di `schedule` li tocca — mai ad ogni frame —
+// eppure stepCars() sotto ricalcolava `Math.cos`/`Math.sin` per OGNI auto ad
+// OGNI frame per integrare una velocita' che nel 99% dei frame e' identica a
+// quella del frame precedente. `velocityFor()` fa lo stesso calcolo ma solo
+// nei due punti in cui dir/spd cambiano per davvero (makeCar()/stepCars()
+// sotto): il risultato (`vx`/`vy`, px/s) resta poi in cache sull'istanza
+// finche' non arriva la prossima fase dello schedule.
+function velocityFor(dir, spd) {
+  const rad = (dir * Math.PI) / 180;
+  const pxPerSec = spd * 60;   // "speed" e' px/tick a room_speed 60
+  return { vx: Math.cos(rad) * pxPerSec, vy: -Math.sin(rad) * pxPerSec };
+}
+
 export const CAR_TYPES = {
   // [C] honda_facile_1/Create.gml arma SOLO alarm[0] (durata di vita, 900
   // tick): gli Alarm_1..6 dell'oggetto esistono nel decompilato ma non
@@ -938,9 +953,10 @@ function makeCar(type, night, pos, nudge) {
   const p = pos ?? def.spawn;
   const x = nudge && def.matchEasyNudge ? p.x + MATCH_EASY_NUDGE.dx : p.x;
   const y = nudge && def.matchEasyNudge ? p.y + MATCH_EASY_NUDGE.dy : p.y;
+  const v = velocityFor(def.initial.dir, def.initial.spd);
   return {
     type, x, y,
-    dir: def.initial.dir, spd: def.initial.spd, spr: def.spr,
+    dir: def.initial.dir, spd: def.initial.spd, vx: v.vx, vy: v.vy, spr: def.spr,
     t: 0, schedIdx: 0, depth: -y - def.depthOffset,
     tint: night ? NIGHT_TINT : 0xffffff,
     frame: 0,   // tick trascorsi da quando `spr` e' stato scelto l'ultima volta
@@ -998,13 +1014,13 @@ export function stepCars(cars, dt, r12, night) {
     while (c.schedIdx < def.schedule.length && c.t >= def.schedule[c.schedIdx].at * TICK) {
       const step = def.schedule[c.schedIdx++];
       c.dir = step.dir; c.spd = step.spd;
+      const v = velocityFor(c.dir, c.spd);
+      c.vx = v.vx; c.vy = v.vy;
       if (step.spr) { c.spr = step.spr; spriteChanged = true; }
     }
     c.frame = spriteChanged ? 0 : c.frame + dt / TICK;
-    const rad = (c.dir * Math.PI) / 180;
-    const pxPerSec = c.spd * 60;   // "speed" e' px/tick a room_speed 60
-    c.x += Math.cos(rad) * pxPerSec * dt;
-    c.y -= Math.sin(rad) * pxPerSec * dt;
+    c.x += c.vx * dt;
+    c.y += c.vy * dt;
     // [C] .../Step.gml: depth = -y - N, ricalcolato ogni Step perche' l'auto
     // si muove (a differenza di edifici/alberi, fermi dopo Create) — N e'
     // 2 per honda_facile_1/2, 16 per honda3..9 (def.depthOffset), sempre

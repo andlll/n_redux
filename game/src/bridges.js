@@ -126,6 +126,11 @@ const SHIP_SPAWN_CHANCE = 1 / 10;      // [C] bridge_des2/Alarm_2.gml: action_if
 const SHIP_LIFE_SECONDS = 3000 / 60;   // [C] cargoN/Create.gml: action_set_alarm(3000, 0)
 const SHIP_DIR_RAD = (150 * Math.PI) / 180;   // [C] action_set_motion(150, 2)
 const SHIP_PX_PER_SEC = 2 * 60;
+// Rotta unica e fissa per ogni nave (stesso principio del fix pedoni/auto/
+// aerei: niente trigonometria per frame per una direzione che non cambia
+// mai) — precalcolata una volta sola invece che ad ogni nave ad ogni frame.
+const SHIP_VX = Math.cos(SHIP_DIR_RAD) * SHIP_PX_PER_SEC;
+const SHIP_VY = -Math.sin(SHIP_DIR_RAD) * SHIP_PX_PER_SEC;
 const SHIP_SMOKE_PERIOD = 40 / 60;     // [C] cargoN/Alarm_1.gml: action_set_alarm(40, 1)
 const SHIP_SMOKE_OFFSET = { x: 555, y: 238 };   // [C] action_create_object(smoke_ind, 555, 238), relativo
 
@@ -150,8 +155,8 @@ export function stepCargoShips(ships, smoke, dt) {
   for (let i = ships.length - 1; i >= 0; i--) {
     const s = ships[i];
     s.t += dt;
-    s.x += Math.cos(SHIP_DIR_RAD) * SHIP_PX_PER_SEC * dt;
-    s.y -= Math.sin(SHIP_DIR_RAD) * SHIP_PX_PER_SEC * dt;
+    s.x += SHIP_VX * dt;
+    s.y += SHIP_VY * dt;
     s.smokeT += dt;
     while (s.smokeT >= SHIP_SMOKE_PERIOD) {
       s.smokeT -= SHIP_SMOKE_PERIOD;
