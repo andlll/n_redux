@@ -729,6 +729,27 @@ export async function mountMatch(ctx, params = {}) {
   // preesistente a centro mappa (STUDIO.md §9), non un tipo che il
   // giocatore piazza.
   const placeholders = staticWorld.filter((it) => it.obj === "placeholder");
+  // [Nuova funzionalita', richiesta dall'autore: "evitiamo che i pedoni
+  // scappino dallo sprite della piattaforma"] Bounding box dei lotti
+  // edificabili VERI, calcolato una volta sola qui (mai per frame) e passato
+  // a stepPedestrians() (pedestrians.js) come secondo clamp oltre a
+  // HOME_RADIUS — vedi il commento li' per il perche' non e' una vera
+  // maschera di collisione (sproporzionata per un dettaglio decorativo).
+  // `PEDESTRIAN_BOUNDS_MARGIN` copre meta' lotto (`phold`, ~198x115,
+  // data/sprites.json) oltre il centro del placeholder piu' estremo: un
+  // pedone puo' ancora stare "sul proprio lotto" fino al suo bordo vero,
+  // invece di venire tagliato proprio sul centro dell'ultima fila edificabile.
+  const PEDESTRIAN_BOUNDS_MARGIN = 100;
+  const pedestrianBounds = placeholders.length ? placeholders.reduce((b, p) => ({
+    left: Math.min(b.left, p.x), right: Math.max(b.right, p.x),
+    top: Math.min(b.top, p.y), bottom: Math.max(b.bottom, p.y),
+  }), { left: placeholders[0].x, right: placeholders[0].x, top: placeholders[0].y, bottom: placeholders[0].y }) : null;
+  if (pedestrianBounds) {
+    pedestrianBounds.left -= PEDESTRIAN_BOUNDS_MARGIN;
+    pedestrianBounds.right += PEDESTRIAN_BOUNDS_MARGIN;
+    pedestrianBounds.top -= PEDESTRIAN_BOUNDS_MARGIN;
+    pedestrianBounds.bottom += PEDESTRIAN_BOUNDS_MARGIN;
+  }
   // [I] depth: la room dichiara -5000 (data/objects.json: sempre in primissimo
   // piano, davanti persino agli edifici — cosi' com'era nell'originale, mai
   // letto/cambiato a runtime). Qui invece il rombo viola, quando appare sotto
@@ -6673,7 +6694,7 @@ export async function mountMatch(ctx, params = {}) {
       stepLights(st.decorEntities, dt, night, st.r12);
       stepTransientDecor(dt);
       stepSemaphores(semaphores, dt);
-      if (st.graphics.pedestrians) stepPedestrians(st.pedestrians, dt);
+      if (st.graphics.pedestrians) stepPedestrians(st.pedestrians, dt, pedestrianBounds);
       // I pulsanti blu delle monete (game/src/coins.js): casa1|2|3/Alarm_4.gml,
       // dopo che stepConstructions() sopra ha gia' avanzato ava/hap di questo frame.
       stepCoinSpawner(st.buildings, st.coins, dt, st.r12, st.platformState);
@@ -7185,7 +7206,15 @@ export async function mountMatch(ctx, params = {}) {
     for (const b of atmo.birds) dynamic.push({ obj: "bird", x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr), _sky: true });
     // Pedoni (game/src/pedestrians.js): x/y/depth gia' avanzati da
     // stepPedestrians() sopra.
-    if (st.graphics.pedestrians) for (const p of st.pedestrians) dynamic.push({ obj: "pedestrian", x: p.x, y: p.y, depth: p.depth, _f: frameFor(p.spr) });
+    // `p._f` (pedestrians.js/spawnPedestrian()): sprite fisso per tutta la
+    // vita del pedone, ripescato/messo in cache qui una volta sola invece di
+    // richiamare frameFor() (un lookup + una nuova allocazione ad ogni
+    // chiamata) per ognuno ad ogni frame — stessa idea di staticWorld/
+    // healMissingArt() sopra, qui inline perche' non serve un ciclo a parte.
+    if (st.graphics.pedestrians) for (const p of st.pedestrians) {
+      if (!p._f) p._f = frameFor(p.spr);
+      dynamic.push({ obj: "pedestrian", x: p.x, y: p.y, depth: p.depth, _f: p._f });
+    }
     // Mongolfiere (game/src/balloons.js): risorse/spia (obj: "flyingBalloon",
     // cliccabile — un tap la distrugge, vedi picking sotto: richiesto
     // dall'autore, non piu' le torrette da sole) + le casse che lasciano
