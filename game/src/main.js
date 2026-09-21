@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, syncTopperLife, syncNextId } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -574,6 +574,32 @@ export async function mountMatch(ctx, params = {}) {
       if (p.frame) r.draw(p.frame, x, cy - p.iconH / 2, p.scale, 0xffffff, 1);
       else if (p.text) drawHtmlText(p.text, x, cy, { size, align: "left", color });
       x += p.w + gap;
+    }
+  }
+  /** [Nuova funzionalita', richiesta dall'autore: "per le icone del toggle
+   * di resa della centrale usa quella del fulmine (una due o tre saette)"]
+   * `count` copie della stessa icona ("ele" — resourceIconFrame() sopra,
+   * gia' il fulmine giallo della barra risorse/dei cartellini costo, non lo
+   * sprite decompilato `th1`/`th2` del colpo di fulmine vero, lightning.js:
+   * quello e' un effetto a schermo intero (650x1137, quasi tutto lo sviluppo
+   * verticale e' contenuto vero, non margine ritagliabile) che a dimensione
+   * icona si ridurrebbe a un filo appena visibile) affiancate e centrate su
+   * (cx,cy), alte `maxH` — un segmento del controllo mostra tante saette
+   * quant'e' il suo livello (1/2/3), stesso principio delle "barre di
+   * segnale". Frame gia' ancorato in alto a sinistra (ox=oy=0,
+   * resourceIconFrame()/subFrameRight() sopra), nessuna correzione
+   * d'origine da fare qui, a differenza degli `eyeeN` dell'autodifesa
+   * sotto. */
+  function drawBoltIcons(count, cx, cy, maxH, gap = 3) {
+    const f = resourceIconFrame("ele");
+    if (!f) return;
+    const scale = maxH / f.h;
+    const w = f.w * scale, h = f.h * scale;
+    const totalW = w * count + gap * (count - 1);
+    let x = cx - totalW / 2;
+    for (let i = 0; i < count; i++) {
+      r.draw(f, x, cy - h / 2, scale, 0xffffff, 1);
+      x += w + gap;
     }
   }
   // [Bug corretto, segnalato dall'autore: "l'area di tap delle strutture di
@@ -3814,6 +3840,22 @@ export async function mountMatch(ctx, params = {}) {
     { get name() { return t("autoDefense.level2.name"); }, get desc() { return t("autoDefense.level2.desc"); } },
     { get name() { return t("autoDefense.level3.name"); }, get desc() { return t("autoDefense.level3.desc"); } },
   ];
+  // [Nuova funzionalita', richiesta dall'autore: "un toggle per regolare la
+  // produzione della centrale, produce di meno ma consuma meno oil, come
+  // una barra del volume, stile lanciarazzi"] Stesso principio/stesso
+  // controllo a tre segmenti di AUTO_DEFENSE_LEVELS sopra, ma per
+  // `b.throttle` (industria — buildings.js: THROTTLE_MULT) invece di
+  // `b.autoDefenseLevel`: nessun costo mon/min (a differenza
+  // dell'autodifesa, non e' un servizio extra ma un compromesso
+  // produzione/consumo dello stesso edificio), quindi niente riga
+  // costo-o-gratis sotto la descrizione — i numeri veri si leggono gia'
+  // nella riga statistiche sotto (statLines, piu' sotto in
+  // drawBuildingInfoPanel — gia' scalata dal moltiplicatore corrente).
+  const THROTTLE_LEVELS = [
+    { get name() { return t("throttle.level1.name"); }, get desc() { return t("throttle.level1.desc"); } },
+    { get name() { return t("throttle.level2.name"); }, get desc() { return t("throttle.level2.desc"); } },
+    { get name() { return t("throttle.level3.name"); }, get desc() { return t("throttle.level3.desc"); } },
+  ];
   function drawBuildingInfoPanel() {
     const b = st.buildingInfoPanel;
     const def = BUILDING_TYPES[b.type];
@@ -3827,8 +3869,17 @@ export async function mountMatch(ctx, params = {}) {
     // `def.production` (industria, indicizzata per livello come `growth`):
     // energia generata/olio consumato ad ogni ciclo al livello attuale —
     // l'unico altro numero "di stato" oltre vita/abitanti gia' pronto in
-    // BUILDING_TYPES senza dover ricostruire nulla, buildings.js.
-    const production = !b.construction ? def.production?.[b.level - 1] : null;
+    // BUILDING_TYPES senza dover ricostruire nulla, buildings.js. Scalata
+    // dal moltiplicatore di resa corrente (THROTTLE_MULT[b.throttle ?? 2],
+    // buildings.js) cosi' la riga statistiche sotto mostra sempre i numeri
+    // VERI di questo momento — si aggiorna da sola ad ogni tocco sul
+    // controllo di resa sotto, stessa idea di "niente conferma separata"
+    // gia' scelta per l'autodifesa.
+    const rawProduction = !b.construction ? def.production?.[b.level - 1] : null;
+    const production = rawProduction ? {
+      ele: Math.round(rawProduction.ele * THROTTLE_MULT[b.throttle ?? 2]),
+      oil: Math.round(rawProduction.oil * THROTTLE_MULT[b.throttle ?? 2]),
+    } : null;
     // [Nuova funzionalita', richiesta dall'autore: "nelle descrizioni degli
     // edifici sostituiamo mon/oil/ecc. con i simboli delle risorse, come gia'
     // fatto per banca/scambi"] `statLines` puo' ora contenere anche
@@ -3847,6 +3898,7 @@ export async function mountMatch(ctx, params = {}) {
 
     const autoDefenseCosts = AUTO_DEFENSE_COST_PER_MIN[b.type];
     const showControl = !b.construction && autoDefenseCosts != null;
+    const showThrottle = !b.construction && b.type === "industria";
     const SEG_H = 40;
 
     const panelW = Math.min(320, cw - 40);
@@ -3870,14 +3922,28 @@ export async function mountMatch(ctx, params = {}) {
     // (raddoppierebbe l'elemento nel pool per lo stesso testo).
     let descEl = null, descH = 0;
     const autoDefLevel = showControl ? (b.autoDefenseLevel ?? 1) : null;
+    // `b.throttle` default 2 ("Normale", THROTTLE_MULT[2] = 1x): coerente
+    // col default gia' scelto in buildings.js/smoke.js, le tre letture
+    // DEVONO restare allineate o un salvataggio senza `b.throttle` ancora
+    // mostrerebbe un livello diverso da quello davvero applicato.
+    const throttleLevel = showThrottle ? (b.throttle ?? 2) : null;
     if (showControl) {
       const info = AUTO_DEFENSE_LEVELS[autoDefLevel - 1];
+      descEl = drawHtmlText(info.desc, barX, 0, { size: 12.5, maxWidth: barW, wrap: true, align: "center" });
+      descH = descEl.getBoundingClientRect().height;
+    } else if (showThrottle) {
+      const info = THROTTLE_LEVELS[throttleLevel - 1];
       descEl = drawHtmlText(info.desc, barX, 0, { size: 12.5, maxWidth: barW, wrap: true, align: "center" });
       descH = descEl.getBoundingClientRect().height;
     }
     const DESC_GAP = 14;
     const autoDefBlockH = showControl ? (SEG_H + 12 + 20 + descH + DESC_GAP + 22) : 0;
-    const bodyH = b.construction ? 30 : (22 + barH + 20 + (showControl ? autoDefBlockH + 16 : 0));
+    // Niente riga costo-o-gratis (il +22 finale di autoDefBlockH sopra): il
+    // toggle di resa non ha mai un costo mon/min a parte, vedi il commento
+    // su THROTTLE_LEVELS.
+    const throttleBlockH = showThrottle ? (SEG_H + 12 + 20 + descH + DESC_GAP) : 0;
+    const bodyH = b.construction ? 30
+      : (22 + barH + 20 + (showControl ? autoDefBlockH + 16 : 0) + (showThrottle ? throttleBlockH + 16 : 0));
     const statsH = statLines.length * 26;
     const btnH = 46;
     const panelH = headerH + bodyH + statsH + 16 + btnH + 20;
@@ -3917,7 +3983,14 @@ export async function mountMatch(ctx, params = {}) {
         // con una pillola sovrapposta solo sul selezionato — cosi' anche i
         // due non selezionati si leggono come bottoni a se stanti, non come
         // sfondo neutro. SEG_GAP li stacca visibilmente l'uno dall'altro.
-        st.buildingInfoSegRect = { x: barX, y: cy, w: barW, h: SEG_H };
+        // `field`: onTap (sotto) scrive il livello scelto su
+        // `st.buildingInfoPanel[field]` — generico apposta cosi' lo stesso
+        // tap handler serve sia questo controllo (autoDefenseLevel) sia
+        // quello di resa (throttle, showThrottle sotto): i due tipi di
+        // edificio sono mutualmente esclusivi (una torretta non e' mai
+        // anche industria), quindi non c'e' mai ambiguita' su quale dei due
+        // rettangoli sia "quello vero" in un dato momento.
+        st.buildingInfoSegRect = { x: barX, y: cy, w: barW, h: SEG_H, field: "autoDefenseLevel" };
         const segW = barW / 3, SEG_GAP = 6;
         // [Nuova funzionalita', richiesta dall'autore: "al posto dei numeri
         // 1/2/3 usiamo i tre simboli dell'occhio inutilizzati che hanno gia'
@@ -3962,6 +4035,28 @@ export async function mountMatch(ctx, params = {}) {
           ], px + panelW / 2, cy, { size: 14, color: "#c65050" });
         }
         cy += 22;
+      } else if (showThrottle) {
+        // [Nuova funzionalita', richiesta dall'autore: "un toggle per
+        // regolare la produzione della centrale, per le icone usa quella
+        // del fulmine (una due o tre saette)"] Stesso controllo a tre
+        // segmenti di showControl sopra (bottoni/selezione/nome/
+        // descrizione), ma senza riga di costo finale — vedi il commento su
+        // THROTTLE_LEVELS.
+        const level = throttleLevel;
+        st.buildingInfoSegRect = { x: barX, y: cy, w: barW, h: SEG_H, field: "throttle" };
+        const segW = barW / 3, SEG_GAP = 6;
+        for (let i = 0; i < 3; i++) {
+          const bx = barX + i * segW + SEG_GAP / 2, bw = segW - SEG_GAP;
+          const selected = level === i + 1;
+          r.draw(pauseButtonFrame(bw, SEG_H), bx, cy, 1, selected ? 0x4caf50 : BUTTON_TINT, selected ? 0.88 : BUTTON_ALPHA);
+          drawBoltIcons(i + 1, bx + bw / 2, cy + SEG_H / 2, SEG_H * 0.55);
+        }
+        cy += SEG_H + 12;
+        const info = THROTTLE_LEVELS[level - 1];
+        drawHtmlText(info.name, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
+        cy += 20;
+        descEl.style.top = `${cy}px`;
+        cy += descH + DESC_GAP;
       }
     }
     for (const line of statLines) {
@@ -5689,14 +5784,17 @@ export async function mountMatch(ctx, params = {}) {
     // trattamento modale di bankPanelOpen appena sopra: un tocco QUALUNQUE
     // lo chiude (non solo il bottone dedicato, disegnato per scoperta/
     // chiarezza), mai raggiunge il mondo sotto mentre e' aperto. Un tocco
-    // sul controllo a tre segmenti di autodifesa (buildingInfoSegRect,
-    // drawBuildingInfoPanel() sopra — solo torrette) e' l'unica eccezione:
-    // sceglie il livello sotto il dito e TIENE il pannello aperto, stesso
-    // principio "chainable" di tradePanelOpen.
+    // sul controllo a tre segmenti (buildingInfoSegRect, drawBuildingInfoPanel()
+    // sopra — autodifesa per le torrette, resa per industria, mai insieme)
+    // e' l'unica eccezione: sceglie il livello sotto il dito e TIENE il
+    // pannello aperto, stesso principio "chainable" di tradePanelOpen.
+    // `t.field` ("autoDefenseLevel"/"throttle"): quale campo dell'edificio
+    // scrivere, deciso da drawBuildingInfoPanel() insieme al rettangolo
+    // stesso — lo stesso tap handler serve entrambi i controlli.
     if (st.buildingInfoPanel) {
       const t = st.buildingInfoSegRect;
       if (t && sx >= t.x && sx <= t.x + t.w && sy >= t.y && sy <= t.y + t.h) {
-        st.buildingInfoPanel.autoDefenseLevel = Math.floor((sx - t.x) / (t.w / 3)) + 1;
+        st.buildingInfoPanel[t.field] = Math.floor((sx - t.x) / (t.w / 3)) + 1;
         return;
       }
       // registerChiesTap() (sopra): il pannello di chies e' gia' aperto —

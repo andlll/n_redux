@@ -2929,13 +2929,29 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
   }
 }
 
+// [Nuova funzionalita', richiesta dall'autore: "un toggle per regolare la
+// produzione della centrale, produce di meno ma consuma meno oil, come una
+// barra del volume"] Nessuna base decompilata: [I] tre livelli, stesso
+// schema a segmenti di `b.autoDefenseLevel` (sopra) ma su `b.throttle` — a
+// differenza di quello pero' non e' un costo aggiuntivo, scala ENTRAMBI i
+// lati della stessa proporzione di `production[]` (sopra), quindi il
+// rapporto ele/oil di ogni livello resta invariato qualunque resa si
+// scelga. Default 2 (100%, `production[]` cosi' com'e'): un salvataggio
+// vecchio senza `b.throttle` si comporta esattamente come prima di questa
+// funzionalita'. Letto anche da smoke.js (stepSmokeSpawner()) per scalare
+// la frequenza degli sbuffi allo stesso ritmo della produzione vera.
+export const THROTTLE_MULT = { 1: 0.5, 2: 1, 3: 1.5 };
+
 /**
  * Avanza la produzione elettrica degli edifici finiti (non in cantiere) che
  * dichiarano `production` per livello (oggi solo `industria`). [C]
  * industria1|2|3/Alarm_2.gml: ogni `every` tick, se r12.oil > 0, consuma
  * `oil` e genera `ele`; l'alarm si riarma comunque (anche a olio esaurito,
  * il ciclo "salta" senza produrre). `b.makee` conta i cicli riusciti ed e'
- * la soglia reale che sblocca il potenziamento (vedi upgradeProgress sopra).
+ * la soglia reale che sblocca il potenziamento (vedi upgradeProgress sopra)
+ * — non scalata da THROTTLE_MULT: e' un contatore di CICLI (il tempo di
+ * funzionamento), non di energia totale prodotta, stesso significato a
+ * qualunque resa scelta.
  */
 export function stepProduction(buildings, dt, r12) {
   for (const b of buildings) {
@@ -2945,11 +2961,12 @@ export function stepProduction(buildings, dt, r12) {
     if (!prod) continue;
     b.prodT = (b.prodT ?? 0) + dt;
     const period = prod.every * TICK;
+    const mult = THROTTLE_MULT[b.throttle ?? 2];
     while (b.prodT >= period) {
       b.prodT -= period;
       if (r12.oil > 0) {
-        r12.oil -= prod.oil;
-        r12.ele += prod.ele;
+        r12.oil -= prod.oil * mult;
+        r12.ele += prod.ele * mult;
         b.makee = (b.makee ?? 0) + 1;
       }
     }

@@ -13,6 +13,8 @@
 // gli offset che l'originale userebbe per QUELLA variante specifica (xi==1
 // per industria1, il ramo "else" di industria2/Create.gml per industria2,
 // l'unica ciminiera di industria3, che non ha dado di variante).
+import { THROTTLE_MULT } from "./buildings.js";
+
 const TICK = 1 / 60;
 const SMOKE_PERIOD = 20 * TICK;      // [C] action_set_alarm(20, N): riarmo regolare, tutte le ciminiere
 export const SMOKE_LIFE = 69 * TICK; // [C] smoke_ind|smoke_ind_2/Create.gml: action_set_alarm(69, 0)
@@ -77,11 +79,20 @@ export function stepSmokeSpawner(buildings, smoke, dt, r12) {
       b._smokeT = chimneys.map(() => 0);
       b._smokeNext = chimneys.map((c) => c.firstDelay * TICK);
     }
+    // [Nuova funzionalita', richiesta dall'autore: "regoliamo anche la
+    // quantita' di fumo in base a quanto e' impostata la barra"] Stesso
+    // moltiplicatore del toggle di resa (buildings.js: THROTTLE_MULT,
+    // b.throttle) applicato al periodo di riarmo — meno resa, ciminiera
+    // piu' lenta; resa massima, ciminiera piu' frequente. [I] Nessuna base
+    // decompilata (il fumo stesso e' gia' un gap colmato, vedi il commento
+    // in cima al file): non tocca `firstDelay` (il primo riarmo, letto una
+    // sola volta all'inizio), solo i riarmi successivi.
+    const mult = THROTTLE_MULT[b.throttle ?? 2];
     for (let i = 0; i < chimneys.length; i++) {
       b._smokeT[i] += dt;
       while (b._smokeT[i] >= b._smokeNext[i]) {
         b._smokeT[i] -= b._smokeNext[i];
-        b._smokeNext[i] = SMOKE_PERIOD;
+        b._smokeNext[i] = SMOKE_PERIOD / mult;
         if (r12.oil <= 0) continue;          // [C] with(r12) oil>0 — niente fumo a olio esaurito
         if (Math.random() < 0.25) continue;  // [C] action_if_dice(4): 1/4 si autodistrugge appena nata
         const ch = chimneys[i];

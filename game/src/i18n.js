@@ -158,6 +158,39 @@ const STRINGS = {
   // "mon" diventano valore+iconcina in drawBuildingInfoPanel().
   "autoDefense.costPerMin": { en: "/min", it: "/min", es: "/min", pt: "/min", de: "/min", fr: "/min" },
 
+  // [Nuova funzionalita', richiesta dall'autore: "un toggle per regolare la
+  // produzione della centrale, come una barra del volume"] Stesso schema di
+  // autoDefense.* sopra (nome + descrizione per livello), letto da
+  // THROTTLE_LEVELS (main.js) — qui pero' i tre livelli scalano PRODUZIONE E
+  // CONSUMO insieme (buildings.js: THROTTLE_MULT), mai un costo separato.
+  "throttle.level1.name": { en: "Power Saving", it: "Risparmio", es: "Ahorro", pt: "Economia", de: "Energiesparen", fr: "Économie" },
+  "throttle.level1.desc": {
+    en: "Halves energy output and oil consumption.",
+    it: "Dimezza produzione di energia e consumo di olio.",
+    es: "Reduce a la mitad la producción de energía y el consumo de petróleo.",
+    pt: "Reduz pela metade a produção de energia e o consumo de petróleo.",
+    de: "Halbiert Energieerzeugung und Ölverbrauch.",
+    fr: "Réduit de moitié la production d'énergie et la consommation de pétrole.",
+  },
+  "throttle.level2.name": { en: "Normal", it: "Normale", es: "Normal", pt: "Normal", de: "Normal", fr: "Normal" },
+  "throttle.level2.desc": {
+    en: "Standard output and consumption.",
+    it: "Produzione e consumo standard.",
+    es: "Producción y consumo estándar.",
+    pt: "Produção e consumo padrão.",
+    de: "Standardleistung und -verbrauch.",
+    fr: "Production et consommation standard.",
+  },
+  "throttle.level3.name": { en: "Maximum Output", it: "Massima resa", es: "Rendimiento máximo", pt: "Rendimento máximo", de: "Maximale Leistung", fr: "Rendement maximal" },
+  "throttle.level3.desc": {
+    en: "Increases energy output and oil consumption by 50%.",
+    it: "Aumenta del 50% produzione di energia e consumo di olio.",
+    es: "Aumenta un 50% la producción de energía y el consumo de petróleo.",
+    pt: "Aumenta em 50% a produção de energia e o consumo de petróleo.",
+    de: "Erhöht Energieerzeugung und Ölverbrauch um 50%.",
+    fr: "Augmente de 50% la production d'énergie et la consommation de pétrole.",
+  },
+
   // ---------------------------------------------------------- banca/scambi
   "bank.title": { en: "GET A LOAN", it: "RICHIEDI UN PRESTITO", es: "SOLICITAR UN PRÉSTAMO", pt: "SOLICITAR UM EMPRÉSTIMO", de: "KREDIT AUFNEHMEN", fr: "OBTENIR UN PRÊT" },
   "bank.subtitle": { en: "20% interest rate", it: "Tasso d'interesse 20%", es: "Tasa de interés del 20%", pt: "Taxa de juros de 20%", de: "20 % Zinssatz", fr: "Taux d'intérêt de 20 %" },
