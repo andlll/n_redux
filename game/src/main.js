@@ -2338,6 +2338,36 @@ export async function mountMatch(ctx, params = {}) {
     return startUpgrade(b);
   }
 
+  // [Bug corretto, segnalato dall'autore: "il pulsante upgrade sul faro mi
+  // fa vedere il tag col costo quando ci clicco sopra? su mobile almeno
+  // sembra non andare"] Stesso identico principio di attemptUpgradeTap()
+  // sopra, ma per i sei pulsanti cliccabili della catena fari->ponti
+  // (FARO_SIGN_OBJS/FARO_SIGN_COST, sotto): prima di questo fix il tap li
+  // eseguiva SEMPRE subito (clickFaroButton()/clickWaveSignal()/
+  // clickDockerSignal()/ecc., scalando mon/crys/oil per davvero al primo
+  // tocco), l'unico acquisto del gioco senza nessuna anteprima ne' conferma
+  // su mobile — il cartellino hover (piu' sotto) esiste gia' per questi sei
+  // pulsanti, ma SOLO per il mouse (`input.hoverPointerType === "mouse"`),
+  // mai raggiungibile su touch. Chiave per oggetto (`obj`, "faroButton" ecc.)
+  // invece di un id istanza: platform.js ne mostra al piu' UNA per tipo alla
+  // volta (un solo stadio della catena e' "cliccabile" per volta), stesso
+  // motivo per cui FARO_SIGN_OBJS/FARO_SIGN_COST sotto sono gia' chiavate su
+  // `obj`.
+  st.faroTagObj = null;
+  st.faroTagAt = 0;
+  function attemptFaroTap(obj, doClick) {
+    if (isMobile) {
+      const peeking = st.faroTagObj === obj
+        && performance.now() - st.faroTagAt < UPGRADE_TAG_SHOW_MS + GRID_TAP_FADE_MS;
+      if (!peeking) {
+        st.faroTagObj = obj;
+        st.faroTagAt = performance.now();
+        return undefined;
+      }
+    }
+    return doClick();
+  }
+
   /** Stessa correzione di startUpgrade() sopra, per il cantiere riavviato
    * dalla ruspa (tryRuspaRebuild() — un impalcatura torna comunque sopra
    * all'edificio, con lo stesso decoro vecchio da spegnere subito). */
@@ -6145,35 +6175,37 @@ export async function mountMatch(ctx, params = {}) {
     } else if (st.picked.obj === "faroButton") {
       // [C] upfaro1/Mouse_LeftPressed.gml (game/src/platform.js): -2000 mon,
       // faro1 si accende e compare il segnale successivo (wavesig1).
-      st.message = clickFaroButton(st.platformState, st.r12) ?? "";
-      st.messageT = 3;
+      // attemptFaroTap() (sopra): su mobile il primo tap qui rivela solo il
+      // cartellino prezzo, non avvia ancora niente.
+      const err = attemptFaroTap("faroButton", () => clickFaroButton(st.platformState, st.r12));
+      if (err !== undefined) { st.message = err ?? ""; st.messageT = 3; }
       st.picked = null;
     } else if (st.picked.obj === "faroWaveSignal") {
       // [C] wavesig1/Mouse_LeftReleased.gml: attivo solo di notte, -20 crys.
-      st.message = clickWaveSignal(st.platformState, st.r12, isNight(st.phaseT)) ?? "";
-      st.messageT = 3;
+      const err = attemptFaroTap("faroWaveSignal", () => clickWaveSignal(st.platformState, st.r12, isNight(st.phaseT)));
+      if (err !== undefined) { st.message = err ?? ""; st.messageT = 3; }
       st.picked = null;
     } else if (st.picked.obj === "faroDockerSignal") {
       // [C] dockersig1/Mouse_LeftPressed.gml: -5000 mon -9000 oil, avvia
       // l'attracco (~14s) che finisce nella seconda piattaforma (`r32`).
-      st.message = clickDockerSignal(st.platformState, st.r12) ?? "";
-      st.messageT = 3;
+      const err = attemptFaroTap("faroDockerSignal", () => clickDockerSignal(st.platformState, st.r12));
+      if (err !== undefined) { st.message = err ?? ""; st.messageT = 3; }
       st.picked = null;
     } else if (st.picked.obj === "faro3Button") {
       // [C] upfaro3/Mouse_LeftPressed.gml: -5000 mon, faro3 si accende.
-      st.message = clickFaro3Button(st.platformState, st.r12) ?? "";
-      st.messageT = 3;
+      const err = attemptFaroTap("faro3Button", () => clickFaro3Button(st.platformState, st.r12));
+      if (err !== undefined) { st.message = err ?? ""; st.messageT = 3; }
       st.picked = null;
     } else if (st.picked.obj === "faro3WaveSignal") {
       // [C] wavesig3/Mouse_LeftReleased.gml: attivo solo di notte, -50 crys.
-      st.message = clickWaveSignal3(st.platformState, st.r12, isNight(st.phaseT)) ?? "";
-      st.messageT = 3;
+      const err = attemptFaroTap("faro3WaveSignal", () => clickWaveSignal3(st.platformState, st.r12, isNight(st.phaseT)));
+      if (err !== undefined) { st.message = err ?? ""; st.messageT = 3; }
       st.picked = null;
     } else if (st.picked.obj === "faro3DockerSignal") {
       // [C] dockersig3/Mouse_LeftPressed.gml: -15000 mon -27000 oil, avvia
       // l'attracco (~10s) che finisce nella terza piattaforma (`r22`/`r220`).
-      st.message = clickDockerSignal3(st.platformState, st.r12) ?? "";
-      st.messageT = 3;
+      const err = attemptFaroTap("faro3DockerSignal", () => clickDockerSignal3(st.platformState, st.r12));
+      if (err !== undefined) { st.message = err ?? ""; st.messageT = 3; }
       st.picked = null;
     } else if (st.picked.obj === "cargoShip") {
       // [C] cargo1|2|4/Mouse_LeftPressed.gml: una tantum, +2000..3000 alla
@@ -7697,6 +7729,29 @@ export async function mountMatch(ctx, params = {}) {
         if (tag) {
           const alpha = elapsed < UPGRADE_TAG_SHOW_MS ? 1 : 1 - (elapsed - UPGRADE_TAG_SHOW_MS) / GRID_TAP_FADE_MS;
           drawCostTagWorld(tag, b.x, b.y - upicoFrame.oy - 15, { alpha });
+        }
+      }
+    }
+    // Stesso "tap to reveal" di sopra, ma per i sei pulsanti della catena
+    // fari->ponti (attemptFaroTap()/faroTagObj, sopra) — chiave per `obj`
+    // invece che per id istanza, vedi il commento li' per il perche'. Cerca
+    // l'istanza viva in `st.frameList` (ricostruito ogni frame da
+    // faroDecor()) invece di tenerne un riferimento diretto: se lo stadio
+    // della catena e' avanzato nel frattempo (secondo tap altrove, o la
+    // partita e' stata ricaricata) quell'`obj` smette semplicemente di
+    // comparire nella lista, stesso effetto di "edificio non trovato piu'"
+    // per gli edifici sopra.
+    if (isMobile && st.faroTagObj != null) {
+      const elapsed = performance.now() - st.faroTagAt;
+      const total = UPGRADE_TAG_SHOW_MS + GRID_TAP_FADE_MS;
+      const it = elapsed < total ? st.frameList.find((f) => f.obj === st.faroTagObj && f._f) : null;
+      if (!it) {
+        st.faroTagObj = null;
+      } else {
+        const tag = costParts(FARO_SIGN_COST[it.obj]);
+        if (tag) {
+          const alpha = elapsed < UPGRADE_TAG_SHOW_MS ? 1 : 1 - (elapsed - UPGRADE_TAG_SHOW_MS) / GRID_TAP_FADE_MS;
+          drawCostTagWorld(tag, it.x, it.y - it._f.oy - 15, { alpha });
         }
       }
     }
