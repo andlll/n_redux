@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, syncTopperLife, syncNextId } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -576,6 +576,32 @@ export async function mountMatch(ctx, params = {}) {
       x += p.w + gap;
     }
   }
+  /** [Nuova funzionalita', richiesta dall'autore: "per le icone del toggle
+   * di resa della centrale usa quella del fulmine (una due o tre saette)"]
+   * `count` copie della stessa icona ("ele" — resourceIconFrame() sopra,
+   * gia' il fulmine giallo della barra risorse/dei cartellini costo, non lo
+   * sprite decompilato `th1`/`th2` del colpo di fulmine vero, lightning.js:
+   * quello e' un effetto a schermo intero (650x1137, quasi tutto lo sviluppo
+   * verticale e' contenuto vero, non margine ritagliabile) che a dimensione
+   * icona si ridurrebbe a un filo appena visibile) affiancate e centrate su
+   * (cx,cy), alte `maxH` — un segmento del controllo mostra tante saette
+   * quant'e' il suo livello (1/2/3), stesso principio delle "barre di
+   * segnale". Frame gia' ancorato in alto a sinistra (ox=oy=0,
+   * resourceIconFrame()/subFrameRight() sopra), nessuna correzione
+   * d'origine da fare qui, a differenza degli `eyeeN` dell'autodifesa
+   * sotto. */
+  function drawBoltIcons(count, cx, cy, maxH, gap = 3) {
+    const f = resourceIconFrame("ele");
+    if (!f) return;
+    const scale = maxH / f.h;
+    const w = f.w * scale, h = f.h * scale;
+    const totalW = w * count + gap * (count - 1);
+    let x = cx - totalW / 2;
+    for (let i = 0; i < count; i++) {
+      r.draw(f, x, cy - h / 2, scale, 0xffffff, 1);
+      x += w + gap;
+    }
+  }
   // [Bug corretto, segnalato dall'autore: "l'area di tap delle strutture di
   // difesa deve coprire tutto l'oggetto (un rettangolo grande come tutte le
   // coordinate dello sprite)"] Il tap sulle torrette (missile/gatling/laser)
@@ -750,6 +776,23 @@ export async function mountMatch(ctx, params = {}) {
     pedestrianBounds.top -= PEDESTRIAN_BOUNDS_MARGIN;
     pedestrianBounds.bottom += PEDESTRIAN_BOUNDS_MARGIN;
   }
+  // [Bug corretto, segnalato dall'autore: "ogni tanto trovo qualcuno che va a
+  // farsi un giro sull'ala destra"] `pedestrianBounds` sopra e' un solo
+  // rettangolo globale: dove la piattaforma si restringe (l'ala destra,
+  // un'unica fila di lotti stretta fra il vuoto sopra e sotto) non segue la
+  // vera sagoma, e HOME_RADIUS (pedestrians.js) da solo puo' comunque
+  // spingere un pedone oltre il bordo vero in quei punti. `pepazzittecollider`
+  // (invisibile, solid=1, mask_sprite "_") e' il VERO muro dell'originale
+  // (`pplo/Collision_124.gml: action_bounce`) — mai letto finora — 83
+  // istanze che tracciano il perimetro reale. `mask_sprite "_"` (data/
+  // sprites.json) e' un rombo isometrico ~406x236 (stessa forma/aspect
+  // ratio di `phold`, il placeholder — confermato: nessun placeholder reale
+  // cade dentro il rombo di un collider vicino, con margine), letto con lo
+  // stesso test di `inFrameDiamond()` sotto invece di un rettangolo pieno
+  // (che avrebbe inglobato lotti edificabili legittimi vicino al bordo).
+  const pedestrianColliders = staticWorld
+    .filter((it) => it.obj === "pepazzittecollider")
+    .map((c) => ({ x: c.x, y: c.y }));
   // [I] depth: la room dichiara -5000 (data/objects.json: sempre in primissimo
   // piano, davanti persino agli edifici — cosi' com'era nell'originale, mai
   // letto/cambiato a runtime). Qui invece il rombo viola, quando appare sotto
@@ -1540,7 +1583,7 @@ export async function mountMatch(ctx, params = {}) {
     // casa, ma una volta sola (villa e' un solo livello, questo "salto" e'
     // anche l'unico) — altri se ne aggiungono poi durante la crescita
     // (`g.pedestrianDice`, stepGrowth() in buildings.js).
-    if (st.graphics.pedestrians && (building.type === "casa" || building.type === "villa")) st.pedestrians.push(spawnPedestrian(building.x, building.y));
+    if (st.graphics.pedestrians && (building.type === "casa" || building.type === "villa")) st.pedestrians.push(spawnPedestrian(building.x, building.y, pedestrianColliders));
   }
 
   /** Decoro transitorio (gru/macerie durante un cantiere): si aggiunge senza
@@ -2319,6 +2362,36 @@ export async function mountMatch(ctx, params = {}) {
       }
     }
     return startUpgrade(b);
+  }
+
+  // [Bug corretto, segnalato dall'autore: "il pulsante upgrade sul faro mi
+  // fa vedere il tag col costo quando ci clicco sopra? su mobile almeno
+  // sembra non andare"] Stesso identico principio di attemptUpgradeTap()
+  // sopra, ma per i sei pulsanti cliccabili della catena fari->ponti
+  // (FARO_SIGN_OBJS/FARO_SIGN_COST, sotto): prima di questo fix il tap li
+  // eseguiva SEMPRE subito (clickFaroButton()/clickWaveSignal()/
+  // clickDockerSignal()/ecc., scalando mon/crys/oil per davvero al primo
+  // tocco), l'unico acquisto del gioco senza nessuna anteprima ne' conferma
+  // su mobile — il cartellino hover (piu' sotto) esiste gia' per questi sei
+  // pulsanti, ma SOLO per il mouse (`input.hoverPointerType === "mouse"`),
+  // mai raggiungibile su touch. Chiave per oggetto (`obj`, "faroButton" ecc.)
+  // invece di un id istanza: platform.js ne mostra al piu' UNA per tipo alla
+  // volta (un solo stadio della catena e' "cliccabile" per volta), stesso
+  // motivo per cui FARO_SIGN_OBJS/FARO_SIGN_COST sotto sono gia' chiavate su
+  // `obj`.
+  st.faroTagObj = null;
+  st.faroTagAt = 0;
+  function attemptFaroTap(obj, doClick) {
+    if (isMobile) {
+      const peeking = st.faroTagObj === obj
+        && performance.now() - st.faroTagAt < UPGRADE_TAG_SHOW_MS + GRID_TAP_FADE_MS;
+      if (!peeking) {
+        st.faroTagObj = obj;
+        st.faroTagAt = performance.now();
+        return undefined;
+      }
+    }
+    return doClick();
   }
 
   /** Stessa correzione di startUpgrade() sopra, per il cantiere riavviato
@@ -3767,6 +3840,22 @@ export async function mountMatch(ctx, params = {}) {
     { get name() { return t("autoDefense.level2.name"); }, get desc() { return t("autoDefense.level2.desc"); } },
     { get name() { return t("autoDefense.level3.name"); }, get desc() { return t("autoDefense.level3.desc"); } },
   ];
+  // [Nuova funzionalita', richiesta dall'autore: "un toggle per regolare la
+  // produzione della centrale, produce di meno ma consuma meno oil, come
+  // una barra del volume, stile lanciarazzi"] Stesso principio/stesso
+  // controllo a tre segmenti di AUTO_DEFENSE_LEVELS sopra, ma per
+  // `b.throttle` (industria — buildings.js: THROTTLE_MULT) invece di
+  // `b.autoDefenseLevel`: nessun costo mon/min (a differenza
+  // dell'autodifesa, non e' un servizio extra ma un compromesso
+  // produzione/consumo dello stesso edificio), quindi niente riga
+  // costo-o-gratis sotto la descrizione — i numeri veri si leggono gia'
+  // nella riga statistiche sotto (statLines, piu' sotto in
+  // drawBuildingInfoPanel — gia' scalata dal moltiplicatore corrente).
+  const THROTTLE_LEVELS = [
+    { get name() { return t("throttle.level1.name"); }, get desc() { return t("throttle.level1.desc"); } },
+    { get name() { return t("throttle.level2.name"); }, get desc() { return t("throttle.level2.desc"); } },
+    { get name() { return t("throttle.level3.name"); }, get desc() { return t("throttle.level3.desc"); } },
+  ];
   function drawBuildingInfoPanel() {
     const b = st.buildingInfoPanel;
     const def = BUILDING_TYPES[b.type];
@@ -3775,14 +3864,22 @@ export async function mountMatch(ctx, params = {}) {
     r.draw({ tex: blurTex, u0: 0, v0: 1, u1: 1, v1: 0, w: cw, h: ch, ox: 0, oy: 0 }, 0, 0, 1, 0xffffff, 1);
     r.draw(solidFrame(white, cw, ch), 0, 0, 1, 0x000000, 0.4);
 
-    const maxLevel = 1 + (def.upgrades?.length ?? 0);
     const maxLife = currentMaxLife(b);
     const residents = !b.construction ? currentResidents(b) : null;
     // `def.production` (industria, indicizzata per livello come `growth`):
     // energia generata/olio consumato ad ogni ciclo al livello attuale —
     // l'unico altro numero "di stato" oltre vita/abitanti gia' pronto in
-    // BUILDING_TYPES senza dover ricostruire nulla, buildings.js.
-    const production = !b.construction ? def.production?.[b.level - 1] : null;
+    // BUILDING_TYPES senza dover ricostruire nulla, buildings.js. Scalata
+    // dal moltiplicatore di resa corrente (THROTTLE_MULT[b.throttle ?? 2],
+    // buildings.js) cosi' la riga statistiche sotto mostra sempre i numeri
+    // VERI di questo momento — si aggiorna da sola ad ogni tocco sul
+    // controllo di resa sotto, stessa idea di "niente conferma separata"
+    // gia' scelta per l'autodifesa.
+    const rawProduction = !b.construction ? def.production?.[b.level - 1] : null;
+    const production = rawProduction ? {
+      ele: Math.round(rawProduction.ele * THROTTLE_MULT[b.throttle ?? 2]),
+      oil: Math.round(rawProduction.oil * THROTTLE_MULT[b.throttle ?? 2]),
+    } : null;
     // [Nuova funzionalita', richiesta dall'autore: "nelle descrizioni degli
     // edifici sostituiamo mon/oil/ecc. con i simboli delle risorse, come gia'
     // fatto per banca/scambi"] `statLines` puo' ora contenere anche
@@ -3801,6 +3898,7 @@ export async function mountMatch(ctx, params = {}) {
 
     const autoDefenseCosts = AUTO_DEFENSE_COST_PER_MIN[b.type];
     const showControl = !b.construction && autoDefenseCosts != null;
+    const showThrottle = !b.construction && b.type === "industria";
     const SEG_H = 40;
 
     const panelW = Math.min(320, cw - 40);
@@ -3824,21 +3922,43 @@ export async function mountMatch(ctx, params = {}) {
     // (raddoppierebbe l'elemento nel pool per lo stesso testo).
     let descEl = null, descH = 0;
     const autoDefLevel = showControl ? (b.autoDefenseLevel ?? 1) : null;
+    // `b.throttle` default 2 ("Normale", THROTTLE_MULT[2] = 1x): coerente
+    // col default gia' scelto in buildings.js/smoke.js, le tre letture
+    // DEVONO restare allineate o un salvataggio senza `b.throttle` ancora
+    // mostrerebbe un livello diverso da quello davvero applicato.
+    const throttleLevel = showThrottle ? (b.throttle ?? 2) : null;
     if (showControl) {
       const info = AUTO_DEFENSE_LEVELS[autoDefLevel - 1];
+      descEl = drawHtmlText(info.desc, barX, 0, { size: 12.5, maxWidth: barW, wrap: true, align: "center" });
+      descH = descEl.getBoundingClientRect().height;
+    } else if (showThrottle) {
+      const info = THROTTLE_LEVELS[throttleLevel - 1];
       descEl = drawHtmlText(info.desc, barX, 0, { size: 12.5, maxWidth: barW, wrap: true, align: "center" });
       descH = descEl.getBoundingClientRect().height;
     }
     const DESC_GAP = 14;
     const autoDefBlockH = showControl ? (SEG_H + 12 + 20 + descH + DESC_GAP + 22) : 0;
-    const bodyH = b.construction ? 30 : (22 + barH + 20 + (showControl ? autoDefBlockH + 16 : 0));
+    // Niente riga costo-o-gratis (il +22 finale di autoDefBlockH sopra): il
+    // toggle di resa non ha mai un costo mon/min a parte, vedi il commento
+    // su THROTTLE_LEVELS.
+    const throttleBlockH = showThrottle ? (SEG_H + 12 + 20 + descH + DESC_GAP) : 0;
+    const bodyH = b.construction ? 30
+      : (22 + barH + 20 + (showControl ? autoDefBlockH + 16 : 0) + (showThrottle ? throttleBlockH + 16 : 0));
     const statsH = statLines.length * 26;
     const btnH = 46;
     const panelH = headerH + bodyH + statsH + 16 + btnH + 20;
     const py = (ch - panelH) / 2;
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
-    const title = def.label + (maxLevel > 1 && !b.construction ? t("buildingInfo.levelSuffix", { level: b.level, max: maxLevel }) : "");
+    // [Nuova funzionalita', richiesta dall'autore: "gli edifici con i
+    // livelli hanno dei nomi molto semplici, possiamo fare delle proposte
+    // migliori?"] Nome per-livello (buildingLabel(type,level), i18n.js) al
+    // posto del vecchio "Casa — Livello 2/3": durante il cantiere l'edificio
+    // non e' ancora salito di livello per davvero (`b.level` resta quello
+    // vecchio finche' stepConstructions() non lo incrementa a fine catena),
+    // quindi mostra ancora il nome-tipo generico di `def.label` invece di
+    // anticipare un nome che non ha ancora.
+    const title = b.construction ? def.label : buildingLabel(b.type, b.level);
     drawHtmlText(title, px + panelW / 2, py + 32, { size: 20, maxWidth: panelW - 30 });
 
     st.buildingInfoSegRect = null;
@@ -3863,7 +3983,14 @@ export async function mountMatch(ctx, params = {}) {
         // con una pillola sovrapposta solo sul selezionato — cosi' anche i
         // due non selezionati si leggono come bottoni a se stanti, non come
         // sfondo neutro. SEG_GAP li stacca visibilmente l'uno dall'altro.
-        st.buildingInfoSegRect = { x: barX, y: cy, w: barW, h: SEG_H };
+        // `field`: onTap (sotto) scrive il livello scelto su
+        // `st.buildingInfoPanel[field]` — generico apposta cosi' lo stesso
+        // tap handler serve sia questo controllo (autoDefenseLevel) sia
+        // quello di resa (throttle, showThrottle sotto): i due tipi di
+        // edificio sono mutualmente esclusivi (una torretta non e' mai
+        // anche industria), quindi non c'e' mai ambiguita' su quale dei due
+        // rettangoli sia "quello vero" in un dato momento.
+        st.buildingInfoSegRect = { x: barX, y: cy, w: barW, h: SEG_H, field: "autoDefenseLevel" };
         const segW = barW / 3, SEG_GAP = 6;
         // [Nuova funzionalita', richiesta dall'autore: "al posto dei numeri
         // 1/2/3 usiamo i tre simboli dell'occhio inutilizzati che hanno gia'
@@ -3908,6 +4035,28 @@ export async function mountMatch(ctx, params = {}) {
           ], px + panelW / 2, cy, { size: 14, color: "#c65050" });
         }
         cy += 22;
+      } else if (showThrottle) {
+        // [Nuova funzionalita', richiesta dall'autore: "un toggle per
+        // regolare la produzione della centrale, per le icone usa quella
+        // del fulmine (una due o tre saette)"] Stesso controllo a tre
+        // segmenti di showControl sopra (bottoni/selezione/nome/
+        // descrizione), ma senza riga di costo finale — vedi il commento su
+        // THROTTLE_LEVELS.
+        const level = throttleLevel;
+        st.buildingInfoSegRect = { x: barX, y: cy, w: barW, h: SEG_H, field: "throttle" };
+        const segW = barW / 3, SEG_GAP = 6;
+        for (let i = 0; i < 3; i++) {
+          const bx = barX + i * segW + SEG_GAP / 2, bw = segW - SEG_GAP;
+          const selected = level === i + 1;
+          r.draw(pauseButtonFrame(bw, SEG_H), bx, cy, 1, selected ? 0x4caf50 : BUTTON_TINT, selected ? 0.88 : BUTTON_ALPHA);
+          drawBoltIcons(i + 1, bx + bw / 2, cy + SEG_H / 2, SEG_H * 0.55);
+        }
+        cy += SEG_H + 12;
+        const info = THROTTLE_LEVELS[level - 1];
+        drawHtmlText(info.name, px + panelW / 2, cy, { size: 15, maxWidth: panelW - 30 });
+        cy += 20;
+        descEl.style.top = `${cy}px`;
+        cy += descH + DESC_GAP;
       }
     }
     for (const line of statLines) {
@@ -5635,14 +5784,17 @@ export async function mountMatch(ctx, params = {}) {
     // trattamento modale di bankPanelOpen appena sopra: un tocco QUALUNQUE
     // lo chiude (non solo il bottone dedicato, disegnato per scoperta/
     // chiarezza), mai raggiunge il mondo sotto mentre e' aperto. Un tocco
-    // sul controllo a tre segmenti di autodifesa (buildingInfoSegRect,
-    // drawBuildingInfoPanel() sopra — solo torrette) e' l'unica eccezione:
-    // sceglie il livello sotto il dito e TIENE il pannello aperto, stesso
-    // principio "chainable" di tradePanelOpen.
+    // sul controllo a tre segmenti (buildingInfoSegRect, drawBuildingInfoPanel()
+    // sopra — autodifesa per le torrette, resa per industria, mai insieme)
+    // e' l'unica eccezione: sceglie il livello sotto il dito e TIENE il
+    // pannello aperto, stesso principio "chainable" di tradePanelOpen.
+    // `t.field` ("autoDefenseLevel"/"throttle"): quale campo dell'edificio
+    // scrivere, deciso da drawBuildingInfoPanel() insieme al rettangolo
+    // stesso — lo stesso tap handler serve entrambi i controlli.
     if (st.buildingInfoPanel) {
       const t = st.buildingInfoSegRect;
       if (t && sx >= t.x && sx <= t.x + t.w && sy >= t.y && sy <= t.y + t.h) {
-        st.buildingInfoPanel.autoDefenseLevel = Math.floor((sx - t.x) / (t.w / 3)) + 1;
+        st.buildingInfoPanel[t.field] = Math.floor((sx - t.x) / (t.w / 3)) + 1;
         return;
       }
       // registerChiesTap() (sopra): il pannello di chies e' gia' aperto —
@@ -6128,35 +6280,37 @@ export async function mountMatch(ctx, params = {}) {
     } else if (st.picked.obj === "faroButton") {
       // [C] upfaro1/Mouse_LeftPressed.gml (game/src/platform.js): -2000 mon,
       // faro1 si accende e compare il segnale successivo (wavesig1).
-      st.message = clickFaroButton(st.platformState, st.r12) ?? "";
-      st.messageT = 3;
+      // attemptFaroTap() (sopra): su mobile il primo tap qui rivela solo il
+      // cartellino prezzo, non avvia ancora niente.
+      const err = attemptFaroTap("faroButton", () => clickFaroButton(st.platformState, st.r12));
+      if (err !== undefined) { st.message = err ?? ""; st.messageT = 3; }
       st.picked = null;
     } else if (st.picked.obj === "faroWaveSignal") {
       // [C] wavesig1/Mouse_LeftReleased.gml: attivo solo di notte, -20 crys.
-      st.message = clickWaveSignal(st.platformState, st.r12, isNight(st.phaseT)) ?? "";
-      st.messageT = 3;
+      const err = attemptFaroTap("faroWaveSignal", () => clickWaveSignal(st.platformState, st.r12, isNight(st.phaseT)));
+      if (err !== undefined) { st.message = err ?? ""; st.messageT = 3; }
       st.picked = null;
     } else if (st.picked.obj === "faroDockerSignal") {
       // [C] dockersig1/Mouse_LeftPressed.gml: -5000 mon -9000 oil, avvia
       // l'attracco (~14s) che finisce nella seconda piattaforma (`r32`).
-      st.message = clickDockerSignal(st.platformState, st.r12) ?? "";
-      st.messageT = 3;
+      const err = attemptFaroTap("faroDockerSignal", () => clickDockerSignal(st.platformState, st.r12));
+      if (err !== undefined) { st.message = err ?? ""; st.messageT = 3; }
       st.picked = null;
     } else if (st.picked.obj === "faro3Button") {
       // [C] upfaro3/Mouse_LeftPressed.gml: -5000 mon, faro3 si accende.
-      st.message = clickFaro3Button(st.platformState, st.r12) ?? "";
-      st.messageT = 3;
+      const err = attemptFaroTap("faro3Button", () => clickFaro3Button(st.platformState, st.r12));
+      if (err !== undefined) { st.message = err ?? ""; st.messageT = 3; }
       st.picked = null;
     } else if (st.picked.obj === "faro3WaveSignal") {
       // [C] wavesig3/Mouse_LeftReleased.gml: attivo solo di notte, -50 crys.
-      st.message = clickWaveSignal3(st.platformState, st.r12, isNight(st.phaseT)) ?? "";
-      st.messageT = 3;
+      const err = attemptFaroTap("faro3WaveSignal", () => clickWaveSignal3(st.platformState, st.r12, isNight(st.phaseT)));
+      if (err !== undefined) { st.message = err ?? ""; st.messageT = 3; }
       st.picked = null;
     } else if (st.picked.obj === "faro3DockerSignal") {
       // [C] dockersig3/Mouse_LeftPressed.gml: -15000 mon -27000 oil, avvia
       // l'attracco (~10s) che finisce nella terza piattaforma (`r22`/`r220`).
-      st.message = clickDockerSignal3(st.platformState, st.r12) ?? "";
-      st.messageT = 3;
+      const err = attemptFaroTap("faro3DockerSignal", () => clickDockerSignal3(st.platformState, st.r12));
+      if (err !== undefined) { st.message = err ?? ""; st.messageT = 3; }
       st.picked = null;
     } else if (st.picked.obj === "cargoShip") {
       // [C] cargo1|2|4/Mouse_LeftPressed.gml: una tantum, +2000..3000 alla
@@ -6603,7 +6757,7 @@ export async function mountMatch(ctx, params = {}) {
       if (st.graphics.minorEffects) stepSmokeSpawner(st.buildings, st.smoke, dt, st.r12);
       stepSmoke(st.smoke, dt);
       stepLightning(st.lightning, dt);
-      stepGrowth(st.buildings, dt, st.r12, (b) => { if (st.graphics.pedestrians) st.pedestrians.push(spawnPedestrian(b.x, b.y)); });
+      stepGrowth(st.buildings, dt, st.r12, (b) => { if (st.graphics.pedestrians) st.pedestrians.push(spawnPedestrian(b.x, b.y, pedestrianColliders)); });
       stepConsumption(st.buildings, dt, st.r12, night);
       stepWeather(st.r12, dt, scene.name === "match", scene.name === "match_easy");
       stepStormDamage(st.buildings, dt, st.r12, (x, y) => st.lightning.push(spawnLightning(x, y)));
@@ -7680,6 +7834,29 @@ export async function mountMatch(ctx, params = {}) {
         if (tag) {
           const alpha = elapsed < UPGRADE_TAG_SHOW_MS ? 1 : 1 - (elapsed - UPGRADE_TAG_SHOW_MS) / GRID_TAP_FADE_MS;
           drawCostTagWorld(tag, b.x, b.y - upicoFrame.oy - 15, { alpha });
+        }
+      }
+    }
+    // Stesso "tap to reveal" di sopra, ma per i sei pulsanti della catena
+    // fari->ponti (attemptFaroTap()/faroTagObj, sopra) — chiave per `obj`
+    // invece che per id istanza, vedi il commento li' per il perche'. Cerca
+    // l'istanza viva in `st.frameList` (ricostruito ogni frame da
+    // faroDecor()) invece di tenerne un riferimento diretto: se lo stadio
+    // della catena e' avanzato nel frattempo (secondo tap altrove, o la
+    // partita e' stata ricaricata) quell'`obj` smette semplicemente di
+    // comparire nella lista, stesso effetto di "edificio non trovato piu'"
+    // per gli edifici sopra.
+    if (isMobile && st.faroTagObj != null) {
+      const elapsed = performance.now() - st.faroTagAt;
+      const total = UPGRADE_TAG_SHOW_MS + GRID_TAP_FADE_MS;
+      const it = elapsed < total ? st.frameList.find((f) => f.obj === st.faroTagObj && f._f) : null;
+      if (!it) {
+        st.faroTagObj = null;
+      } else {
+        const tag = costParts(FARO_SIGN_COST[it.obj]);
+        if (tag) {
+          const alpha = elapsed < UPGRADE_TAG_SHOW_MS ? 1 : 1 - (elapsed - UPGRADE_TAG_SHOW_MS) / GRID_TAP_FADE_MS;
+          drawCostTagWorld(tag, it.x, it.y - it._f.oy - 15, { alpha });
         }
       }
     }

@@ -178,16 +178,26 @@ export function applyTrade(r12, index) {
 }
 
 /**
- * Tetto dell'olio: nell'originale sale quando la chiesa (`chies`) raggiunge
- * livello 2/3/4 — 20000/30000/50000 — letto identico da `r12/Step.gml`.
- * [C] Fedele: e' l'unica regola di cap che il codice dichiara esplicitamente.
+ * Tetto dell'olio: [C] `r12/Step.gml`, tre controlli INDIPENDENTI (non una
+ * catena "else if"), ciascuno `with(chies){ level, N, 1 }` (operatore 1 =
+ * "<", stesso operatore del clamp min di `shifta` in `pu1/Step.gml` —
+ * `action_if_variable(shifta,-1000,1)` — e coerente con `action_if_variable(
+ * level,1,2)`/`(pop,3000,4)` per lo sblocco banca, "level>1 && pop>=3000")
+ * seguito da `oil, N, 4` (operatore 4 = ">=") che abbassa `oil` a N.
+ * [Bug corretto]: una prima lettura aveva scambiato l'ordine — nessun tetto
+ * sotto level 2, 20000/30000/50000 a partire da level 2/3/4 — ma
+ * `level<2`/`level<3`/`level<4` e' l'esatto opposto: level 1 (iniziale) e'
+ * GIA' sotto tetto (20000), che sale a 30000 a level 2 e 50000 a level 3;
+ * solo da level 4 in poi (mai raggiunto in questo porting — `chies` in
+ * buildings.js ha solo 2 upgrade, livello massimo 3) l'olio resta senza
+ * tetto. Quindi qui l'olio non e' MAI davvero infinito in partita.
  */
 export function oilCap(buildings) {
   let maxLevel = 0;
   for (const b of buildings) if (b.type === "chies") maxLevel = Math.max(maxLevel, b.level);
-  if (maxLevel >= 4) return 50000;
-  if (maxLevel >= 3) return 30000;
-  if (maxLevel >= 2) return 20000;
+  if (maxLevel < 2) return 20000;
+  if (maxLevel < 3) return 30000;
+  if (maxLevel < 4) return 50000;
   return Infinity;
 }
 
