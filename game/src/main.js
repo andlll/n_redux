@@ -28,7 +28,7 @@ import {
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
-import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
+import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings, fileSystemAccessSupported } from "./save.js";
 import { loadGraphicsOptions, saveGraphicsOptions } from "./graphicsOptions.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
@@ -2690,9 +2690,27 @@ export async function mountMatch(ctx, params = {}) {
   async function doSaveToFile() {
     const reason = criticalSaveReason();
     if (reason) { st.message = t("msg.cantSaveNow", { reason: reason.text }); st.messageT = 3; return; }
+    // [Nuova funzionalita', richiesta dall'autore: "poter salvare con nome i
+    // file di salvataggio, altrimenti a forza di salvarli col nome standard
+    // si rischia di non trovarli piu'"] Solo sui browser SENZA File System
+    // Access (save.js/fileSystemAccessSupported() — Safari, Firefox: niente
+    // dialog nativo "Salva come", il fallback scarica sempre e solo col
+    // nome suggerito, l'unico vero punto in cui il giocatore puo' scegliere
+    // un nome e' qui). Su Chrome/Edge il dialog nativo del sistema operativo
+    // gia' lascia scegliere/cambiare il nome ad ogni salvataggio — chiedere
+    // ANCHE qui sarebbe un doppio passaggio ridondante per chi ha gia' un
+    // modo comodo. `st.fileHandle` gia' impostato (un file scelto in
+    // precedenza in questa stessa sessione) non passa nemmeno da qui: quel
+    // ramo riscrive lo stesso file senza aprire alcun dialog, un'etichetta
+    // nuova non avrebbe comunque nessun nome da cambiare (vedi il commento
+    // su `label` in saveToFile(), save.js).
+    let label = "";
+    if (!fileSystemAccessSupported()) {
+      label = window.prompt(t("msg.saveFileNamePrompt")) ?? "";
+    }
     const data = serializeSave(scene.name, st.r12, st.buildings, st.ruins, st.blockedSlots, st.platformState);
     try {
-      const h = await saveToFile(data, st.fileHandle);
+      const h = await saveToFile(data, st.fileHandle, label);
       if (h === undefined) return;   // dialog annullato dall'utente, nessun messaggio
       if (h) st.fileHandle = h;
       st.message = t("msg.gameSavedToFile"); st.messageT = 3;
@@ -6546,9 +6564,42 @@ export async function mountMatch(ctx, params = {}) {
     // frame VERO, non clampato, gia' calcolato sopra per la cutscene — un
     // `dt` limitato a 0.05s nasconderebbe proprio i frame lenti che deve
     // individuare.
-    renderScale.sample(cutsceneDt);
+    // [Bug corretto, segnalato dall'autore: "la sgranatura da renderScale non
+    // dovrebbe applicarsi durante il menu di pausa — non e' una parte di
+    // gioco reale, ed e' normale che gli fps scendano durante l'effetto
+    // blur"] `st.paused` non fermava questo campionamento: il costo (non
+    // periodico, solo al momento in cui il menu si apre o il canvas cambia
+    // dimensione — vedi `pauseBlurTex`/`blurScreen()` piu' sotto) della
+    // cattura/sfocatura dello sfondo poteva quindi far scendere un
+    // gradino la risoluzione di rendering pur non essendo affatto
+    // rappresentativo delle prestazioni della SIMULAZIONE vera — un calo
+    // rimasto poi attivo anche dopo aver ripreso a giocare, finche' l'EMA
+    // non fosse tornata a salire da sola. A pausa attiva il campionamento
+    // si ferma semplicemente (nessun sample perso in modo dannoso: `cooldownT`
+    // resta congelato invece di scorrere su dati non significativi), riparte
+    // da dove si trovava non appena si riprende.
+    if (!st.paused) renderScale.sample(cutsceneDt);
     st.last = now;
-    st.phaseT += dt;
+    // [Bug corretto, segnalato dall'autore: "altre cose dovrebbero fermarsi
+    // durante la pausa e non lo fanno, es. ciclo giorno/notte, timer..."]
+    // A differenza di ogni timer di SIMULAZIONE vera (buildings/economia/
+    // traffico/meteo, tutti gia' dietro `frozen`/`skyAlive` piu' sotto),
+    // `phaseT` guidava anche il ciclo giorno/notte/alba (`isNight`/`isDawn`
+    // sotto, `bauraColorAt()`/`ambientAt()` nel disegno piu' in fondo, MAI
+    // condizionato da `frozen`: il mondo va ridisegnato comunque mentre e'
+    // fermo, vedi il commento su `frozen` piu' sotto) restando fuori da
+    // QUALUNQUE guardia — l'unico orologio del motore che continuava a
+    // scorrere durante la pausa. Il pannello di pausa copre lo schermo con
+    // uno screenshot sfocato STATICO (`pauseBlurTex` sotto, catturato una
+    // sola volta all'apertura, mai piu' ridisegnato dal vivo finche' non
+    // cambia la dimensione del canvas), quindi il cielo che scorre non si
+    // vedeva scorrere in diretta — ma il tempo passava comunque "dietro" al
+    // pannello: una pausa di qualche minuto faceva ritrovare il giocatore a
+    // un'ora del giorno diversa da quella in cui aveva messo in pausa,
+    // esattamente la sensazione segnalata. `st.paused` qui, non `frozen`:
+    // la sconfitta ha gia' il proprio comportamento discusso sopra per
+    // `outcome.t`, non toccato da questo fix.
+    if (!st.paused) st.phaseT += dt;
     resize();
     cam.update(dt);
     const night = isNight(st.phaseT);

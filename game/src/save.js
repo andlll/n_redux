@@ -258,8 +258,29 @@ export function fileSystemAccessSupported() {
 // continuare a poter aprire i salvataggi vecchi gia' sul dispositivo di
 // qualcuno — i salvataggi NUOVI usano sempre `.nimbus` (suggestedFileName()
 // sotto).
-function suggestedFileName(sceneName) {
-  return `nimbus-${sceneName}.nimbus`;
+// [Nuova funzionalita', richiesta dall'autore: "poter salvare con nome i
+// file di salvataggio, altrimenti a forza di salvarli col nome standard si
+// rischia di non trovarli piu'"] `label` (opzionale, gia' passato per
+// `doSaveToFile()` in main.js): un'etichetta scelta dal giocatore, ripulita
+// qui da qualunque carattere problematico per un nome file sui tre sistemi
+// operativi principali (`\/:*?"<>|`, gia' esclusi anche dalla propria
+// estensione `.nimbus` — nessun conflitto possibile) e limitata in
+// lunghezza, cosi' non finisce mai per produrre un nome illeggibile o
+// rifiutato dal filesystem. Senza etichetta (o dopo la ripulitura non ne
+// resta nessuna) il nome resta esattamente quello di sempre.
+function sanitizeFileLabel(label) {
+  const clean = (label ?? "")
+    .trim()
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 40);
+  return clean;
+}
+
+function suggestedFileName(sceneName, label) {
+  const clean = sanitizeFileLabel(label);
+  return clean ? `nimbus-${sceneName}-${clean}.nimbus` : `nimbus-${sceneName}.nimbus`;
 }
 
 const FILE_PICKER_TYPES = [{
@@ -290,16 +311,24 @@ function downloadJSON(text, filename) {
  * gia' scelto da una `saveToFile()` precedente nella stessa sessione): se
  * presente lo riscrive direttamente, senza aprire nessun dialog — cosi' un
  * "Salva" ripetuto (pausa/S da tastiera) dopo il primo "Salva su file" non
- * chiede piu' dove ogni volta. Ritorna il nuovo handle (da tenere per la
- * prossima chiamata) o `null` se e' stato solo un download (nessun handle
- * possibile) o l'utente ha annullato il dialog.
+ * chiede piu' dove ogni volta (`label` sotto non conta nulla in quel caso:
+ * si sta riscrivendo lo STESSO file gia' nominato, non scegliendone uno
+ * nuovo). Ritorna il nuovo handle (da tenere per la prossima chiamata) o
+ * `null` se e' stato solo un download (nessun handle possibile) o l'utente
+ * ha annullato il dialog. `label` (opzionale): un'etichetta scelta dal
+ * giocatore (main.js/doSaveToFile()) che finisce nel nome suggerito
+ * (suggestedFileName() sopra) — sul ramo File System Access resta comunque
+ * solo un SUGGERIMENTO, l'utente puo' cambiarlo nel dialog nativo; sul
+ * fallback (downloadJSON() sopra, l'unico caso in cui il browser non offre
+ * NESSUN altro modo di scegliere un nome) e' invece l'unica occasione reale
+ * di dargli un nome parlante.
  */
-export async function saveToFile(data, handle = null) {
+export async function saveToFile(data, handle = null, label = "") {
   const json = JSON.stringify(sign(data));
   if (fileSystemAccessSupported()) {
     try {
       const h = handle ?? await window.showSaveFilePicker({
-        suggestedName: suggestedFileName(data.scene),
+        suggestedName: suggestedFileName(data.scene, label),
         types: FILE_PICKER_TYPES,
       });
       const writable = await h.createWritable();
@@ -313,7 +342,7 @@ export async function saveToFile(data, handle = null) {
       throw err;
     }
   }
-  downloadJSON(json, suggestedFileName(data.scene));
+  downloadJSON(json, suggestedFileName(data.scene, label));
   return null;
 }
 

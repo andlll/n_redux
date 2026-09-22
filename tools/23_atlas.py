@@ -672,19 +672,44 @@ GAMEPLAY_SPRITES = {
     # json ha gia' 56 istanze statiche `albe`/"a1" (quelle A TERRA, uccise a
     # runtime su `match`; quelle appese a `r120` sono le STESSE 14 istanze
     # dello stesso sprite, create con offset diversi — nessuno sprite nuovo).
-    "platform": ["baa12", "motor11", "motor12", "motor13", "f1b", "f2b", "moor12"],
+    # [Bug corretto, segnalato dall'autore: "il pulsante upgrade del faro da
+    # 20 cristalli non risponde piu' al tap su mobile, dopo aver gia' visto
+    # il cartellino del costo"] "wavesin"/"bridgesin" (le icone dei due
+    # segnali cliccabili wavesig1/dockersig1|3, gia' spiegate sotto) sono
+    # qui invece che in "platform2" per lo STESSO identico motivo per cui
+    # gli upgrade di `chies` sono interamente "core" in tools/
+    # 27_sprite_tiers.mjs: `faroButton` (icona "upico", gia' core) compare
+    # alla stessa identica soglia (chies.level>=2) che fa scattare lo
+    # scaglione "advanced" (game/src/main.js) — un giocatore che tocca
+    # subito quel bottone (costa solo 2000 mon, quasi sempre gia'
+    # disponibili) puo' raggiungere `wavesigShown` ben prima che le pagine
+    # "advanced" (game/data/match.atlas.json, ~27 pagine) finiscano di
+    # scaricarsi in background su una rete mobile reale: `frameFor("wavesin")`
+    # (game/src/main.js) resta `null` finche' la pagina non arriva, quindi
+    # sia il disegno sia il picking del tap (`inFrameRect()`, richiede un
+    # frame vero) restano bloccati — riprodotto dal vivo (Playwright:
+    # `platformState.tier1.stage` forzato a "wavesigShown" subito dopo
+    # `chies.level=2`, prima che lo scaglione "advanced" fosse arrivato: il
+    # tap non colpiva mai l'icona, ne' per il cartellino ne' per l'azione).
+    # A differenza del resto di "platform2" sotto (raggiungibile solo dopo
+    # l'animazione di attracco da ~14s, margine reale per lo scaricamento in
+    # bg, come casa/industria), "bridgesin" e' vulnerabile allo STESSO
+    # identico problema un tap dopo: compare appena wavesig1 va a buon fine
+    # (stage "lit"), ancora ben dentro la finestra di rischio.
+    "platform": ["baa12", "motor11", "motor12", "motor13", "f1b", "f2b", "moor12", "wavesin", "bridgesin"],
     # Catena fari -> seconda piattaforma (STUDIO.md, chies.level>=2 ->
     # upfaro1 -> wavesig1 -> farolux -> dockersig1 -> r32): "f1" e' faro1
     # acceso (contro "f1b" spento, gia' sopra), "f1lux" il fascio di luce
-    # vero, "wavesin"/"bridgesin" le icone dei due segnali cliccabili
-    # (wavesig1/dockersig1), "nimbuscluster1" l'effetto nuvola durante
-    # l'attracco (n_cluster1), "monviola_bar" il gettone di cristalli
-    # raccoglibile (barviola). "baa31"/"f3b" sono la base e il terzo faro
-    # (spento, mai potenziato in questo giro) della piattaforma nuova,
-    # "bridr1"/"bridl1"/"moor31..34"/"robbobase"/"motor2" la sua scenografia
-    # fissa (ponti, moli, il palo "robbobaseobj").
+    # vero ("wavesin"/"bridgesin", le icone dei due segnali cliccabili
+    # wavesig1/dockersig1, sono sopra in "platform" — vedi il commento li'
+    # per il perche'), "nimbuscluster1" l'effetto nuvola durante l'attracco
+    # (n_cluster1), "monviola_bar" il gettone di cristalli raccoglibile
+    # (barviola). "baa31"/"f3b" sono la base e il terzo faro (spento, mai
+    # potenziato in questo giro) della piattaforma nuova, "bridr1"/"bridl1"/
+    # "moor31..34"/"robbobase"/"motor2" la sua scenografia fissa (ponti,
+    # moli, il palo "robbobaseobj").
     "platform2": [
-        "f1", "f1lux", "wavesin", "bridgesin", "nimbuscluster1", "monviola_bar", "monviola",
+        "f1", "f1lux", "nimbuscluster1", "monviola_bar", "monviola",
         "baa31", "f3b", "f3", "bridr1", "bridl1", "moor31", "moor32", "moor33", "moor34",
         "robbobase", "motor2", "baa21", "moor21",
         # "baa22"/"baa32": la SECONDA meta' di r32/r22 (r320/r220, creati
