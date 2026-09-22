@@ -6562,7 +6562,26 @@ export async function mountMatch(ctx, params = {}) {
     // da dove si trovava non appena si riprende.
     if (!st.paused) renderScale.sample(cutsceneDt);
     st.last = now;
-    st.phaseT += dt;
+    // [Bug corretto, segnalato dall'autore: "altre cose dovrebbero fermarsi
+    // durante la pausa e non lo fanno, es. ciclo giorno/notte, timer..."]
+    // A differenza di ogni timer di SIMULAZIONE vera (buildings/economia/
+    // traffico/meteo, tutti gia' dietro `frozen`/`skyAlive` piu' sotto),
+    // `phaseT` guidava anche il ciclo giorno/notte/alba (`isNight`/`isDawn`
+    // sotto, `bauraColorAt()`/`ambientAt()` nel disegno piu' in fondo, MAI
+    // condizionato da `frozen`: il mondo va ridisegnato comunque mentre e'
+    // fermo, vedi il commento su `frozen` piu' sotto) restando fuori da
+    // QUALUNQUE guardia — l'unico orologio del motore che continuava a
+    // scorrere durante la pausa. Il pannello di pausa copre lo schermo con
+    // uno screenshot sfocato STATICO (`pauseBlurTex` sotto, catturato una
+    // sola volta all'apertura, mai piu' ridisegnato dal vivo finche' non
+    // cambia la dimensione del canvas), quindi il cielo che scorre non si
+    // vedeva scorrere in diretta — ma il tempo passava comunque "dietro" al
+    // pannello: una pausa di qualche minuto faceva ritrovare il giocatore a
+    // un'ora del giorno diversa da quella in cui aveva messo in pausa,
+    // esattamente la sensazione segnalata. `st.paused` qui, non `frozen`:
+    // la sconfitta ha gia' il proprio comportamento discusso sopra per
+    // `outcome.t`, non toccato da questo fix.
+    if (!st.paused) st.phaseT += dt;
     resize();
     cam.update(dt);
     const night = isNight(st.phaseT);
