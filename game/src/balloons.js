@@ -111,10 +111,17 @@ export const BALLOON_TYPES = {
   // resto della famiglia. Rimosso `dir` (recogn ora usa la stessa diagonale
   // di default di `spawnBalloon()` sotto, nessun override serve piu').
   // [Bug corretto, richiesto dall'autore, stesso rallentamento di monspi
-  // sopra] 11/13 originali (**[C]**).
+  // sopra] 11/13 originali (**[C]**), rallentati a 8/10.
+  // [Nuova funzionalita', richiesta dall'autore: "aumentiamo un po' la
+  // velocita' dell'aereo spia (non la mongolfiera, solo l'aereo spia)"]
+  // Solo `recogn` (l'aereo da ricognizione, sopra) — `monspi` (la
+  // mongolfiera rossa, l'ALTRA "spia" della stessa famiglia isSpy) resta
+  // invariata, l'autore l'ha esclusa esplicitamente. 10/12: un rialzo
+  // moderato rispetto a 8/10, ma senza tornare fino agli 11/13 originali
+  // che il rallentamento precedente aveva gia' escluso apposta.
   recogn: {
     spr: "reconspr", life: 550, stormDice: 68, isSpy: true,
-    speed: () => (dice(2) ? 8 : 10),
+    speed: () => (dice(2) ? 10 : 12),
   },
 };
 

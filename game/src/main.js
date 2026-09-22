@@ -6546,7 +6546,21 @@ export async function mountMatch(ctx, params = {}) {
     // frame VERO, non clampato, gia' calcolato sopra per la cutscene — un
     // `dt` limitato a 0.05s nasconderebbe proprio i frame lenti che deve
     // individuare.
-    renderScale.sample(cutsceneDt);
+    // [Bug corretto, segnalato dall'autore: "la sgranatura da renderScale non
+    // dovrebbe applicarsi durante il menu di pausa — non e' una parte di
+    // gioco reale, ed e' normale che gli fps scendano durante l'effetto
+    // blur"] `st.paused` non fermava questo campionamento: il costo (non
+    // periodico, solo al momento in cui il menu si apre o il canvas cambia
+    // dimensione — vedi `pauseBlurTex`/`blurScreen()` piu' sotto) della
+    // cattura/sfocatura dello sfondo poteva quindi far scendere un
+    // gradino la risoluzione di rendering pur non essendo affatto
+    // rappresentativo delle prestazioni della SIMULAZIONE vera — un calo
+    // rimasto poi attivo anche dopo aver ripreso a giocare, finche' l'EMA
+    // non fosse tornata a salire da sola. A pausa attiva il campionamento
+    // si ferma semplicemente (nessun sample perso in modo dannoso: `cooldownT`
+    // resta congelato invece di scorrere su dati non significativi), riparte
+    // da dove si trovava non appena si riprende.
+    if (!st.paused) renderScale.sample(cutsceneDt);
     st.last = now;
     st.phaseT += dt;
     resize();
