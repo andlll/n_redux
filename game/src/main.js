@@ -28,7 +28,7 @@ import {
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
-import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings } from "./save.js";
+import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings, fileSystemAccessSupported } from "./save.js";
 import { loadGraphicsOptions, saveGraphicsOptions } from "./graphicsOptions.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
@@ -2690,9 +2690,27 @@ export async function mountMatch(ctx, params = {}) {
   async function doSaveToFile() {
     const reason = criticalSaveReason();
     if (reason) { st.message = t("msg.cantSaveNow", { reason: reason.text }); st.messageT = 3; return; }
+    // [Nuova funzionalita', richiesta dall'autore: "poter salvare con nome i
+    // file di salvataggio, altrimenti a forza di salvarli col nome standard
+    // si rischia di non trovarli piu'"] Solo sui browser SENZA File System
+    // Access (save.js/fileSystemAccessSupported() — Safari, Firefox: niente
+    // dialog nativo "Salva come", il fallback scarica sempre e solo col
+    // nome suggerito, l'unico vero punto in cui il giocatore puo' scegliere
+    // un nome e' qui). Su Chrome/Edge il dialog nativo del sistema operativo
+    // gia' lascia scegliere/cambiare il nome ad ogni salvataggio — chiedere
+    // ANCHE qui sarebbe un doppio passaggio ridondante per chi ha gia' un
+    // modo comodo. `st.fileHandle` gia' impostato (un file scelto in
+    // precedenza in questa stessa sessione) non passa nemmeno da qui: quel
+    // ramo riscrive lo stesso file senza aprire alcun dialog, un'etichetta
+    // nuova non avrebbe comunque nessun nome da cambiare (vedi il commento
+    // su `label` in saveToFile(), save.js).
+    let label = "";
+    if (!fileSystemAccessSupported()) {
+      label = window.prompt(t("msg.saveFileNamePrompt")) ?? "";
+    }
     const data = serializeSave(scene.name, st.r12, st.buildings, st.ruins, st.blockedSlots, st.platformState);
     try {
-      const h = await saveToFile(data, st.fileHandle);
+      const h = await saveToFile(data, st.fileHandle, label);
       if (h === undefined) return;   // dialog annullato dall'utente, nessun messaggio
       if (h) st.fileHandle = h;
       st.message = t("msg.gameSavedToFile"); st.messageT = 3;
