@@ -1437,6 +1437,25 @@ export async function mountMatch(ctx, params = {}) {
   // "mano" scrive lui stesso: nessun edificio armato finche' il giocatore
   // non ne sceglie uno davvero.
   st.selectedType = null;
+  // [Nuova funzionalita', richiesta dall'autore: "su mobile, il tasto gru
+  // seleziona uno strumento come gia' fa ora, ma poi mettiamolo subito a
+  // destra della gru cosi' si puo' richiamare in fretta — di default
+  // (inizio partita) impostiamolo sulla casa"] `st.lastBuildingType` e'
+  // deliberatamente SEPARATO da `st.selectedType` sopra: quello segue lo
+  // strumento davvero ARMATO in questo istante (null quando e' la mano,
+  // "ruspa" quando e' la ruspa — vedi il commento sopra) e deve restare
+  // null all'avvio per il fix appena spiegato; questo invece e' solo "quale
+  // edificio propone il bottone di richiamo rapido su mobile" (uiButtons,
+  // riga menoo 0 piu' sotto) — resta valorizzato ANCHE quando la mano/la
+  // ruspa sono attive, cosi' il bottone continua a mostrare l'ultima scelta
+  // pronta da riarmare con un tap, invece di sparire/svuotarsi ogni volta
+  // che si deseleziona. Aggiornato SOLO dalle due selezioni vere di un
+  // edificio (griglia mobile e riga desktop, input.onTap piu' sotto) — mai
+  // dalla ruspa, che ha gia' un proprio bottone fisso e non ha senso da
+  // "richiamare" li'. "casa" e' gia' l'unico tipo mai bloccato da
+  // buildingLocked() (nessun `chiesUnlock`), quindi e' sempre un default
+  // sicuro da mostrare/riarmare fin dal primissimo frame.
+  st.lastBuildingType = "casa";
 
   // La ruspa (`puruspa`, `selec===11`, STUDIO.md/OTHER_BUILDINGS sotto): tocco
   // su un edificio finito con la ruspa selezionata NON demolisce subito — apre
@@ -5925,6 +5944,7 @@ export async function mountMatch(ctx, params = {}) {
       if (hit?.type) {
         st.selectedType = hit.type;
         st.r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
+        st.lastBuildingType = hit.type;   // ruspa esclusa da questa griglia a monte (OTHER_BUILDINGS.filter sopra) — sempre un edificio vero
         st.buildMenuOpen = false;
         return;
       }
@@ -5986,7 +6006,24 @@ export async function mountMatch(ctx, params = {}) {
           } else {
             st.selectedType = btn.type;
             st.r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
+            // La ruspa vive in questa stessa riga (kind:"building" anche lei,
+            // vedi il commento su OTHER_BUILDINGS piu' sotto) ma ha gia' un
+            // proprio bottone fisso — non e' "l'ultimo edificio scelto" da
+            // proporre nel richiamo rapido.
+            if (btn.type !== "ruspa") st.lastBuildingType = btn.type;
           }
+        }
+        else if (btn.kind === "quickBuild") {
+          // [Nuova funzionalita', richiesta dall'autore, vedi il commento su
+          // `st.lastBuildingType` sopra] Stesso identico effetto del ramo
+          // "building" sopra (riarma lo stesso strumento) — nessun controllo
+          // buildingLocked() qui: `lastBuildingType` puo' contenere SOLO un
+          // tipo gia' scelto una volta dai due rami sopra, entrambi dietro
+          // quello stesso gate, e uno sblocco (soglia di livello chiesa) non
+          // torna mai indietro — non puo' quindi essere ribloccato nel
+          // frattempo.
+          st.selectedType = btn.type;
+          st.r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
         }
         return;
       }
@@ -8627,6 +8664,23 @@ export async function mountMatch(ctx, params = {}) {
       : [
           { kind: "deselect", spr: "handee", label: "Deselect" },
           { kind: "menu", menoo: 1, spr: "groo", label: "Buildings menu" },
+          // [Nuova funzionalita', richiesta dall'autore: "il tasto gru
+          // seleziona uno strumento come gia' fa, ma mettiamolo subito a
+          // destra della gru cosi' si puo' richiamare in fretta" — vedi il
+          // commento su `st.lastBuildingType` piu' sopra] Solo mobile: su
+          // desktop l'intera riga edifici (menoo 1) resta gia' a vista con
+          // la propria evidenziazione, un richiamo rapido separato
+          // sarebbe ridondante li'. Stesso `kind: "building"` mai usato
+          // qui apposta (un tap su QUESTO bottone non deve "consumare" la
+          // sua posizione nella riga costruzioni, ne' essere scambiato per
+          // il bottone vero nella griglia — gestito a parte in
+          // input.onTap, sotto).
+          ...(isMobile
+            ? (() => {
+                const icon = findBuildingIcon(st.lastBuildingType);
+                return icon ? [{ kind: "quickBuild", type: st.lastBuildingType, spr: icon.spr, tint: icon.tint }] : [];
+              })()
+            : []),
           ...OTHER_BUILDINGS.filter((b) => b.type === "ruspa").map((b) => ({ kind: "building", type: b.type, spr: b.spr, tint: b.tint })),
         ];
     // Prima passata, solo misure: serve la larghezza totale della riga PRIMA
@@ -8693,7 +8747,15 @@ export async function mountMatch(ctx, params = {}) {
         // coerente con `r12.selec === 0` = mano/deselezionato gia' usato
         // sopra per spegnere l'hover viola dei placeholder.
         const usingHandTint = b.kind === "deselect" && st.r12.selec === 0;
-        const usingSelBuilding = b.kind === "building" && st.selectedType === b.type;
+        // `kind === "quickBuild"` (il bottone di richiamo rapido mobile,
+        // st.lastBuildingType sopra): si accende con la stessa identica
+        // regola di un bottone edificio vero — armato quando lo strumento
+        // che rappresenta e' proprio quello attivo in questo istante, non
+        // sempre (a differenza della vecchia mini-icona sulla gru che
+        // rimpiazza, sempre visibile finche' un edificio restava scelto:
+        // qui invece torna neutro appena si passa a mano o ruspa, esattamente
+        // come farebbe lo stesso bottone dentro la griglia costruzioni).
+        const usingSelBuilding = (b.kind === "building" || b.kind === "quickBuild") && st.selectedType === b.type;
         const tint = usingSelBuilding ? b.tint : (usingHandTint ? 0x66aaff : 0xffffff);
         // [Bug corretto, segnalato dall'autore: "la mano non si colora
         // quando selezionata"] `handee` e' una sagoma nera pura come le
@@ -8724,45 +8786,15 @@ export async function mountMatch(ctx, params = {}) {
       rx += w + GAP;
     }
     r.setColorize(false);
-    // [Nuova funzionalita', richiesta dall'autore: "trovare il modo di
-    // mostrare l'edificio attualmente selezionato anche in piccolo fuori
-    // dalla finestra Buildings"] Su mobile `menoo` resta sempre a 0 (onTap
-    // sopra: toccare "groo" apre solo l'overlay a griglia, non passa mai a
-    // menoo=1) — la riga appena disegnata quindi non mostra MAI quale tipo
-    // e' selezionato in questo momento, a differenza di desktop (dove la
-    // riga edifici vera resta a vista con l'evidenziazione di
-    // `usingSelBuilding` sopra). Un piccolo badge sul bottone stesso
-    // "Buildings menu" colma il buco: una miniatura dell'edificio scelto,
-    // sempre visibile anche a finestra chiusa, stesso sprite/tint gia'
-    // usati dentro l'overlay (findBuildingIcon(), sopra) — non uno stato
-    // duplicato da tenere sincronizzato a parte.
-    // [Bug corretto, richiesto dall'autore: "quando la ruspa e' selezionata
-    // non mostrare il mini indicatore sopra il pulsante costruzioni"] La
-    // ruspa (`selectedType === "ruspa"`) e' uno STRUMENTO (demolizione/
-    // riparazione), non un edificio piazzabile come quelli della griglia
-    // "Buildings menu" che questo badge riassume — mostrarci sopra la sua
-    // icona (rossa, "ru") suggerirebbe che il prossimo tap costruisce una
-    // ruspa, non che sta per demolire/riparare qualcosa.
-    if (isMobile && st.selectedType && st.selectedType !== "ruspa") {
-      const menuBtn = st.uiButtons.find((btn) => btn.kind === "menu" && btn.menoo === 1);
-      const icon = menuBtn && findBuildingIcon(st.selectedType);
-      const iconFrame = icon && frameFor(icon.spr);
-      if (menuBtn && iconFrame) {
-        const badgeD = 26;
-        const bx = menuBtn.x + menuBtn.w - 4, by = menuBtn.y + 4;
-        // Anello chiaro sottile prima del disco scuro: alcuni tint edificio
-        // (`icon.tint`, es. il verde molto scuro di "casa") si confondono
-        // altrimenti con la sagoma nera piena dell'icona "groo" proprio
-        // sotto — un bordo chiaro separa sempre il badge dal suo sfondo,
-        // qualunque sia il colore dell'edificio selezionato in quel momento.
-        r.draw(solidFrame(bubbleTex, badgeD + 3, badgeD + 3), bx - (badgeD + 3) / 2, by - (badgeD + 3) / 2, 1, 0xe8eaf0, 0.9);
-        r.draw(solidFrame(bubbleTex, badgeD, badgeD), bx - badgeD / 2, by - badgeD / 2, 1, 0x14161c, 0.92);
-        const iconScale = Math.min((badgeD - 8) / iconFrame.w, (badgeD - 8) / iconFrame.h);
-        r.setColorize(true);
-        r.draw(iconFrame, bx - (iconFrame.w * iconScale) / 2, by + (iconFrame.h * iconScale) / 2, iconScale, icon.tint, 1);
-        r.setColorize(false);
-      }
-    }
+    // [Nuova funzionalita', richiesta dall'autore: "togliamo la mini icona
+    // sulla gru visto che ora esiste il bottone di richiamo rapido a destra
+    // della gru"] Il badge che viveva qui (una miniatura dell'edificio
+    // scelto disegnata sopra "groo") e' stato rimosso: il bottone
+    // `kind: "quickBuild"` appena aggiunto alla riga (st.lastBuildingType,
+    // sopra) mostra la stessa informazione in modo piu' diretto — un
+    // bottone vero e proprio, gia' toccabile per riarmare lo strumento,
+    // non solo un'icona di sola lettura — quindi il badge era diventato
+    // ridondante.
     // Banda di trascinamento per lo scroll: tutta la larghezza schermo, dal
     // bordo superiore della riga fino in fondo — non solo i pixel dei
     // bottoni, cosi' anche un dito che parte fra due bottoni o dopo l'ultimo
