@@ -400,6 +400,14 @@ const STRINGS = {
   "loading.default": { en: "loading", it: "caricamento", es: "cargando", pt: "carregando", de: "lädt", fr: "chargement" },
   "loading.interface": { en: "loading interface", it: "caricamento interfaccia", es: "cargando interfaz", pt: "carregando interface", de: "Oberfläche wird geladen", fr: "chargement de l'interface" },
   "loading.city": { en: "loading city", it: "caricamento città", es: "cargando ciudad", pt: "carregando cidade", de: "Stadt wird geladen", fr: "chargement de la ville" },
+  // [Nuova funzionalita', richiesta dall'autore: "quando carico una partita
+  // avanzata non vedo tutti gli edifici per il primo minuto — mettiamo una
+  // seconda barra 'caricamento texture avanzate'"] Etichetta della seconda
+  // barra di progresso (main.js, needsAdvancedTier()) mostrata SOLO quando
+  // un salvataggio gia' avanzato (o il tutorial precostruito) costringe ad
+  // aspettare lo scaglione "advanced" (assets.js) prima del primo frame —
+  // una partita nuova non la vede mai.
+  "loading.advancedTextures": { en: "loading advanced textures", it: "caricamento texture avanzate", es: "cargando texturas avanzadas", pt: "carregando texturas avançadas", de: "Erweiterte Texturen werden geladen", fr: "chargement des textures avancées" },
   "hwWarning.text": {
     en: "Hardware acceleration unavailable on this device/browser — performance may be very limited. Try updating your browser or switching to Chrome.",
     it: "Accelerazione hardware non disponibile su questo dispositivo/browser — le prestazioni potrebbero essere molto limitate. Prova ad aggiornare il browser o a passare a Chrome.",

@@ -2671,6 +2671,17 @@ export async function mountMatch(ctx, params = {}) {
     if (!data) return false;
     return applyLoadedData(data);
   }
+  // [I] Condizione unica per lo scaglione "advanced" (assets.js/
+  // loadDeferredGroup()), condivisa fra il preload sincrono qui sotto
+  // (subito dopo applyLoadedData()/doLoad(), prima del primo frame) e il
+  // trigger a runtime piu' sotto (dentro `if (skyAlive)`, quando un
+  // edificio sblocca un potenziamento MENTRE si gioca) — stesso identico
+  // criterio in un solo posto, cosi' i due non possono disallinearsi
+  // silenziosamente col tempo. Vedi il commento sul trigger a runtime per
+  // il dettaglio di ogni condizione.
+  function needsAdvancedTier() {
+    return st.buildings.some((b) => b.level >= 2 || upgradeUnlocked(b, st.r12, st.buildings));
+  }
   // "Reset game" (menu di pausa, drawConfirmResetOverlay() piu' sotto):
   // ripristina il livello da zero come una partita mai iniziata — cancella
   // il quicksave localStorage di questa scena (altrimenti "Load game"/il
@@ -2777,6 +2788,44 @@ export async function mountMatch(ctx, params = {}) {
   // title.js non manda mai entrambi insieme (vedi navigate() li').
   if (params.loadedData) applyLoadedData(params.loadedData);
   else if (autoloadOnBoot) doLoad();
+  // [Nuova funzionalita', richiesta dall'autore: "quando carico una partita
+  // in fase avanzata non vedo tutti gli edifici per il primo minuto di
+  // gioco — mettiamo una seconda barra 'caricamento texture avanzate' cosi'
+  // quando finisce vedo gia' tutta la citta'"] Il trigger a runtime (sotto,
+  // dentro `if (skyAlive)`) avvia lo scaglione "advanced" in BACKGROUND, un
+  // frame dopo l'altro, MAI aspettato — perfetto per una partita che
+  // raggiunge quella soglia mentre gia' gira (nessuna barra avrebbe senso
+  // per un singolo edificio che matura mentre si gioca), ma sbagliato per
+  // un salvataggio che la supera GIA' al momento del caricamento: senza
+  // aspettarlo qui il primo frame disegnato mostrerebbe quegli edifici
+  // mancanti (frameFor() -> null, "niente da disegnare", piu' sotto)
+  // finche' lo scaglione non arriva da solo in sottofondo — esattamente il
+  // difetto segnalato. Copre OGNI ingresso che puo' portare gia' edifici
+  // avanzati: l'autoload dal bottone "Avvia Nimbus"/"Avvia Nimbus — Facile"
+  // del menu principale (`doLoad()` sopra), "Carica partita" da file
+  // (`params.loadedData`, sempre dal menu principale — title.js/
+  // loadFileBtn), E il tutorial (i suoi edifici precostruiti, seedTutorial
+  // Buildings() piu' sopra, possono gia' essere oltre il livello 1 senza
+  // nessun salvataggio di mezzo — stesso identico sintomo gia' corretto per
+  // `needsAdvancedTier()` a runtime, vedi il suo commento). Stessa idea gia'
+  // in uso qualche riga sopra per lo scaglione "combat" del solo tutorial
+  // (vedi il commento li'), qui generalizzata a QUALUNQUE room con lo
+  // stesso identico meccanismo: una seconda barra di progresso (stessa
+  // `reportProgress()` delle pagine core sopra, etichetta dedicata
+  // "loading.advancedTextures") resta a schermo finche' lo scaglione non e'
+  // arrivato per davvero. Una partita nuova (nessun salvataggio, tutti gli
+  // edifici a livello 1) non fa mai scattare `needsAdvancedTier()`: zero
+  // secondo giro di barra per chi non ne ha bisogno, comportamento
+  // identico a prima di questo fix.
+  if (needsAdvancedTier()) {
+    let advancedLoaded = 0;
+    const coreCount = atlas.corePages ?? atlas.pages.length;
+    const combatCount = atlas.combatPages ?? 0;
+    const advancedTotal = Math.max(0, atlas.pages.length - coreCount - combatCount);
+    await loadDeferredGroup(gl, atlasKeyFor(roomName), "advanced", {
+      onPage: () => { advancedLoaded++; reportProgress(roomName, advancedLoaded, advancedTotal, t("loading.advancedTextures")); },
+    });
+  }
 
   function onKeydown(e) {
     // Scorciatoia da tastiera per lo stesso bottone di pausa in basso a
@@ -6735,7 +6784,7 @@ export async function mountMatch(ctx, params = {}) {
       // istante (precostruito o ricaricato, non solo "sta per crescere")
       // copre il gap, sia per il tutorial sia per un salvataggio che
       // riprende una partita avanzata.
-      if (st.buildings.some((b) => b.level >= 2 || upgradeUnlocked(b, st.r12, st.buildings))) {
+      if (needsAdvancedTier()) {
         loadDeferredGroup(gl, atlasKeyFor(roomName), "advanced");
       }
       // [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Nuvole veloci
