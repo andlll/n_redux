@@ -670,19 +670,42 @@ export async function mountMatch(ctx, params = {}) {
    * stesso pannello ad altri edifici senza dover toccare di nuovo il
    * picking. Stessa area di tocco allargata delle torrette
    * (`turretHitBox()`, sopra) per quelle tre, sagoma vera (`it._f`) per
-   * ogni altro edificio — stessa convenzione "ultimo disegnato vince" del
-   * secondo giro di picking di onTap (frameList e' gia' back-to-front,
-   * l'ultimo che combacia e' il piu' vicino alla telecamera). */
+   * ogni altro edificio.
+   * [Nuova funzionalita', richiesta dall'autore: "se ci sono sovrapposizioni
+   * prediligi l'apertura della finestra di un edificio con opzioni: edifici
+   * di difesa > centrali > altri edifici"] Non piu' semplicemente "ultimo
+   * disegnato vince" (il picking generico di onTap, che resta cosi' per
+   * tutto il resto): un tocco prolungato puo' cadere su un punto dove due
+   * sagome si sovrappongono (es. una torretta dietro una casa, o una
+   * centrale dietro un edificio comune) — qui si raccoglie il primo match
+   * di OGNI fascia (torrette, poi centrali — industria/solare/eolico,
+   * riconosciute da `def.production`/`solarProduction`/`windProduction`,
+   * gli unici tre "produttori" del motore, invece di elencare i tre tipi a
+   * mano — poi tutto il resto) e si preferisce sempre la fascia piu' in
+   * alto, perche' sono gli edifici il cui pannello ha davvero "opzioni" da
+   * regolare (autodifesa/torretta, resa/throttle) contro il pannello di
+   * sola lettura di un edificio comune. Dentro la STESSA fascia resta la
+   * vecchia convenzione "ultimo disegnato vince" (frameList e' gia'
+   * back-to-front: il primo match incontrato scorrendo all'indietro e' il
+   * piu' vicino alla telecamera) — cambia solo l'ordine FRA fasce diverse,
+   * non dentro la stessa.
+   */
   function buildingAt(sx, sy) {
     const w = cam.screenToWorld(sx, sy);
+    let turretMatch = null, plantMatch = null, otherMatch = null;
     for (let i = st.frameList.length - 1; i >= 0; i--) {
       const it = st.frameList[i];
       if (it.obj !== "building") continue;
-      const isTurret = !!BUILDING_TYPES[it.ref.type]?.turret;
+      const def = BUILDING_TYPES[it.ref.type];
+      const isTurret = !!def?.turret;
       const box = isTurret ? turretHitBox(it.ref.type) : it._f;
-      if (box && inFrameRect(w.x, w.y, it.x, it.y, box)) return it.ref;
+      if (!box || !inFrameRect(w.x, w.y, it.x, it.y, box)) continue;
+      if (isTurret) { turretMatch = it.ref; break; }   // fascia massima gia' trovata, nessun altro giro puo' batterla
+      const isPlant = !!(def?.production || def?.solarProduction || def?.windProduction);
+      if (isPlant) { if (!plantMatch) plantMatch = it.ref; }
+      else if (!otherMatch) otherMatch = it.ref;
     }
-    return null;
+    return turretMatch ?? plantMatch ?? otherMatch;
   }
   /** Frame corrente per uno sprite di CANTIERE con sottoimmagini vere
    * ("impvent1"/"impvent3" della pala eolica — `c.curSpd`, buildings.js/

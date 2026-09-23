@@ -271,7 +271,11 @@ const STRINGS = {
   "building.casa.2": { en: "Apartment Building", it: "Palazzina", es: "Edificio de apartamentos", pt: "Edifício de Apartamentos", de: "Wohngebäude", fr: "Immeuble résidentiel" },
   "building.casa.3": { en: "Condominium", it: "Condominio", es: "Condominio", pt: "Condomínio", de: "Wohnanlage", fr: "Copropriété" },
   "building.missile": { en: "Missile Launcher", it: "Lanciamissili", es: "Lanzamisiles", pt: "Lançador de Mísseis", de: "Raketenwerfer", fr: "Lance-missiles" },
-  "building.solare": { en: "Solar Panels", it: "Pannelli solari", es: "Paneles solares", pt: "Painéis Solares", de: "Solarpanele", fr: "Panneaux solaires" },
+  // [Nuova funzionalita', richiesta dall'autore: "in italiano cambiamo
+  // 'pannelli solari' in 'impianto fotovoltaico'"] Solo l'italiano — le
+  // altre lingue non sono state toccate, nessuna richiesta equivalente per
+  // loro.
+  "building.solare": { en: "Solar Panels", it: "Impianto fotovoltaico", es: "Paneles solares", pt: "Painéis Solares", de: "Solarpanele", fr: "Panneaux solaires" },
   "building.parco": { en: "Park", it: "Parco", es: "Parque", pt: "Parque", de: "Park", fr: "Parc" },
   "building.club": { en: "Club", it: "Club", es: "Club", pt: "Clube", de: "Club", fr: "Club" },
   "building.villa": { en: "Villa", it: "Villa", es: "Villa", pt: "Villa", de: "Villa", fr: "Villa" },
