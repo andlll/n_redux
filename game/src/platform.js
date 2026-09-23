@@ -180,10 +180,28 @@ function blinkMotorVisible(t) {
 // della mappa da' un -y piu' negativo di questo). moto12/moto13 restano
 // invariati (depth:0, -y vero, gia' corretto).
 const MOTOR11_FIXED_DEPTH = -0.01;
+// [Bug corretto, segnalato dall'autore: "sulla piattaforma di espansione 1
+// (quella in basso) è sbagliata la depth della turbina sopra la
+// piattaforma, le macchine ci passano sopra"] moto2 e' fedele al
+// decompilato (depth fisso 3, mai riassegnato — vedi sopra), ma quel "3" e'
+// un numero minuscolo nella stessa scala di depth in cui questo motore
+// ordina le auto con `-y - N` (cars.js: N=2..16, quindi tipicamente
+// -1000..-3000 su questa mappa) — un fisso "3" perde SEMPRE il confronto
+// con QUALUNQUE auto (3 > -y-N per ogni y>0), la disegna sempre PRIMA
+// (main.js/effDepth: piu' alto = disegnato prima = piu' lontano dalla
+// camera), quindi la turbina resta sempre "sotto" a qualunque macchina le
+// passi vicino sullo schermo, indipendentemente da quale delle due sia
+// davvero piu' vicina alla camera in quel punto (a differenza di
+// motor12/motor13, gia' ordinati per -y vero: verificato ritagliando
+// "baa31"/il traffico "maghene" di r32 dalla texture vera, tools/, le due
+// istanze moto2 di R32_MOTORS sotto stanno proprio a bordo piattaforma,
+// sulla stessa corsia della carreggiata). Stesso trattamento di
+// motor12/motor13 (return 0, -y vero): la turbina torna a poter stare
+// DAVANTI a un'auto che le passa dietro (y minore) e dietro a una che le
+// passa davanti (y maggiore), come qualunque altro oggetto di mondo.
 function motorDepth(spr) {
   if (spr === "motor11") return MOTOR11_FIXED_DEPTH;
-  if (spr === "motor2") return 3;   // [C] moto2/_object.json: depth fisso 3, mai riassegnato in nessun evento
-  return 0;                          // motor12/motor13 (moto12/moto13): depth = -y vero, Create.gml
+  return 0;   // motor2/motor12/motor13: depth = -y vero
 }
 
 // [C] r12/Create.gml, posizioni assolute (STUDIO.md sopra).
