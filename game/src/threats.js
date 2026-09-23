@@ -26,6 +26,8 @@
 // atmosphere.js/balloons.js: dati invece di una macchina a stati per
 // oggetto.
 
+import { spawnReachBonusY } from "./platform.js";
+
 const TICK = 1 / 60;
 const DIR = (30 * Math.PI) / 180;   // [C] la stessa diagonale di mongolfiere/nuvole/uccelli
 const COS30 = Math.cos(DIR), SIN30 = Math.sin(DIR);
@@ -54,10 +56,23 @@ function pickAirSpr() {
 const PIRO_AIR_SPRITE = { 0: "verde_pic", 1: "rosso_pic", 2: "giallo_pic", 3: "blu_pic" };
 
 // [I] Posizione di nascita: stesso adattamento gia' scelto per le
-// mongolfiere (STUDIO.md "le mongolfiere") — l'originale userebbe il range
-// piu' grande scritto per `match` (`action_if_number(162, 0, 0)` falso),
-// qui sempre il ramo "mappa facile" perche' e' l'unica room di questo
-// motore.
+// mongolfiere (STUDIO.md "le mongolfiere", game/src/balloons.js) —
+// l'originale userebbe il range piu' grande scritto per `match`
+// (`action_if_number(162, 0, 0)` falso), qui sempre il ramo "mappa facile".
+// [Bug corretto, segnalato dall'autore: "sarebbe una cattiveria uno spawn a
+// destra della piattaforma principale quando l'utente non ha possibilita'
+// di prendere quelle mongolfiere, in particolare per gli attacchi"] Questo
+// range fisso pero' e' anche quello usato su `match` (NON "l'unica room di
+// questo motore" come diceva questo commento prima — `match` ha davvero
+// bisogno di piu' margine una volta espansa la piattaforma): dato che ogni
+// minaccia vola alla stessa diagonale fissa di 30° (mai ricalcolata dopo la
+// nascita, `DIR` sopra), una nata gia' in cima a questo range non ha
+// abbastanza salita residua per restare in quota fino a raggiungere l'area
+// appena sbloccata — stesso identico problema, stessa soluzione di
+// balloons.js: `spawnReachBonusY()` (platform.js) alza il tetto di QUESTO
+// stesso range in base a quale piattaforma esiste gia' (stepThreatSpawner()
+// sotto), lasciando `spawnY` invariato per `match_easy`/`tutorial` e per
+// `match` senza ancora nessuna espansione.
 //
 // `life`/`piro` sono il pezzo aggiunto in un giro successivo (STUDIO.md
 // "lo stato piro"): **[C]** ogni tipo nasce con una vita vera (`life` in
@@ -239,13 +254,18 @@ function spawnAerSmoke(x, y, sourceDepth) {
  * (`blacker1/Create.gml`, tutorial.js) crea gli stessi tre tipi a
  * coordinate FISSE del decompilato invece che a dado/bordo schermo — meglio
  * un parametro qui che duplicare la forma dell'oggetto ritornato in un
- * secondo posto. */
-export function spawnThreat(type, hasPlatform, pos) {
+ * secondo posto.
+ * `reachBonusY` (default 0, vedi il commento su THREAT_TYPES/spawnY sopra e
+ * spawnReachBonusY() in platform.js): alza il tetto della fascia Y di
+ * nascita in base a quale piattaforma di `match` esiste gia' — SOLO
+ * stepThreatSpawner() sotto (il regista vero) lo passa; tutorial.js usa
+ * sempre `pos` o l'default (nessuna piattaforma li', nessun bisogno). */
+export function spawnThreat(type, hasPlatform, pos, reachBonusY = 0) {
   const def = THREAT_TYPES[type];
   const front = type !== "air" || !hasPlatform || dice(2);
   const air = type === "air" ? pickAirSpr() : null;
   return {
-    type, x: pos?.x ?? def.spawnX, y: pos?.y ?? rand(def.spawnY[0], def.spawnY[1]),
+    type, x: pos?.x ?? def.spawnX, y: pos?.y ?? rand(def.spawnY[0], def.spawnY[1] + reachBonusY),
     spd: type === "dirig" ? 2 : type === "bombar" ? (dice(2) ? 8 : 6) : (dice(2) ? 16 : 13),  // [C]
     depth: front ? -3990 : 2, scale: front ? 1 : 0.75, desto: front,
     spr: air ? air.spr : type === "bombar" ? "bomberspr" : "dirspr",
@@ -502,23 +522,32 @@ const AIR_PERIOD = 60 * TICK, AIR_DECAY = 0.5;         // [C] r12/Alarm_4.gml
 const BOMBAR_PERIOD = 200 * TICK, BOMBAR_DECAY = 0.5;   // [C] r12/Alarm_5.gml
 const DIRIG_PERIOD = 600 * TICK, DIRIG_DECAY = 1;        // [C] r12/Alarm_6.gml
 
-/** `hasPlatform`: passato a spawnThreat() sotto — solo `air` lo legge (il
- * dado "in prima fila"/"di sfondo", vedi il commento li'), bombar/dirig
- * sono sempre "in prima fila" a prescindere. */
-export function stepThreatSpawner(r12, threats, dt, hasPlatform) {
+/** `platformState`: `null`/`undefined` su `match_easy`/`tutorial` (nessuna
+ * piattaforma vera), l'oggetto vero di `match` altrimenti — STESSO
+ * parametro che main.js gia' teneva in `st.platformState` (prima ne
+ * passava solo `!!st.platformState`, perso il resto). `hasPlatform`
+ * (booleano, derivato qui) resta passato a spawnThreat() sotto — solo `air`
+ * lo legge (il dado "in prima fila"/"di sfondo", vedi il commento li'),
+ * bombar/dirig sono sempre "in prima fila" a prescindere. `reachBonusY`
+ * (spawnReachBonusY(), platform.js — vedi il commento su spawnY sopra):
+ * calcolato una volta sola per chiamata, passato a ogni spawnThreat() qui
+ * dentro. */
+export function stepThreatSpawner(r12, threats, dt, platformState) {
+  const hasPlatform = !!platformState;
+  const reachBonusY = spawnReachBonusY(platformState);
   r12.airSpawnT = (r12.airSpawnT ?? 0) + dt;
   while (r12.airSpawnT >= AIR_PERIOD) {
     r12.airSpawnT -= AIR_PERIOD;
-    if ((r12.ondan ?? 0) > 0) { r12.ondan -= AIR_DECAY; threats.push(spawnThreat("air", hasPlatform)); }
+    if ((r12.ondan ?? 0) > 0) { r12.ondan -= AIR_DECAY; threats.push(spawnThreat("air", hasPlatform, undefined, reachBonusY)); }
   }
   r12.bombarSpawnT = (r12.bombarSpawnT ?? 0) + dt;
   while (r12.bombarSpawnT >= BOMBAR_PERIOD) {
     r12.bombarSpawnT -= BOMBAR_PERIOD;
-    if ((r12.bombn ?? 0) > 0) { r12.bombn -= BOMBAR_DECAY; threats.push(spawnThreat("bombar", hasPlatform)); }
+    if ((r12.bombn ?? 0) > 0) { r12.bombn -= BOMBAR_DECAY; threats.push(spawnThreat("bombar", hasPlatform, undefined, reachBonusY)); }
   }
   r12.dirigSpawnT = (r12.dirigSpawnT ?? 0) + dt;
   while (r12.dirigSpawnT >= DIRIG_PERIOD) {
     r12.dirigSpawnT -= DIRIG_PERIOD;
-    if ((r12.diron ?? 0) > 0) { r12.diron -= DIRIG_DECAY; threats.push(spawnThreat("dirig", hasPlatform)); }
+    if ((r12.diron ?? 0) > 0) { r12.diron -= DIRIG_DECAY; threats.push(spawnThreat("dirig", hasPlatform, undefined, reachBonusY)); }
   }
 }

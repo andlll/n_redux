@@ -41,6 +41,8 @@
 // [C] = letto nel decompilato. [I] = semplificato deliberatamente (dettagliato
 // punto per punto sotto).
 
+import { spawnReachBonusY } from "./platform.js";
+
 const TICK = 1 / 60;
 const DIR = (30 * Math.PI) / 180;              // [C] action_set_motion(30, ...) per tutta la famiglia risorse/spia
 const COS30 = Math.cos(DIR), SIN30 = Math.sin(DIR);
@@ -55,6 +57,20 @@ function dice(n) { return Math.random() < 1 / n; }
 // monspi/recogn (action_if_number(162, 0, 0), 380..1620), esteso per analogia
 // anche alle risorse: match_easy e' alta 1086px, 380..1620 e' il range reale
 // piu' vicino a quella dimensione fra i due scritti a mano nel decompilato.
+// [Bug corretto, segnalato dall'autore: "sarebbe una cattiveria uno spawn a
+// destra della piattaforma principale quando l'utente non ha possibilita'
+// di prendere quelle mongolfiere"] Questo range fisso, pero', restava lo
+// STESSO anche su `match` con le piattaforme di espansione costruite — dato
+// che ogni mongolfiera vola sempre alla stessa diagonale fissa di 30° (mai
+// ricalcolata dopo la nascita, `DIR` sopra), una nata gia' in cima a questo
+// range non ha abbastanza margine di salita residuo per restare in quota
+// fino a raggiungere l'area appena sbloccata — usciva dal soffitto della
+// mappa ben prima, invisibile e irraggiungibile per qualunque difesa ci si
+// fosse costruita sopra. `spawnReachBonusY()` (platform.js — il dettaglio
+// della matematica sta li') alza il tetto di questo stesso range in base a
+// quale piattaforma esiste gia', SENZA toccare `SPAWN_Y` stesso (che resta
+// la fascia giusta quando nessuna espansione c'e' ancora, o su `match_easy`/
+// `tutorial`, dove `platformState` e' sempre `null`).
 const SPAWN_Y = [380, 1620];
 const SPAWN_X = -170;                          // [C] action_create_object(mon*, -170, ...)
 
@@ -144,7 +160,12 @@ function maxChiesLevel(buildings) {
   return lvl;
 }
 
-export function spawnBalloon(type) {
+// `reachBonusY` (default 0, vedi spawnReachBonusY() in platform.js e il
+// commento su SPAWN_Y sopra): alza il tetto della fascia di nascita SOLO
+// per questa chiamata, cosi' stepBalloonSpawner() sotto (l'unico vero
+// chiamante) puo' ricalcolarlo ad ogni giro in base a `platformState` senza
+// che nessun altro punto del motore debba saperne niente.
+export function spawnBalloon(type, reachBonusY = 0) {
   const def = BALLOON_TYPES[type];
   // `dir` (nessun tipo lo usa piu' — vedi il commento su `recogn` sopra):
   // rotta scelta a dado invece dei 30° fissi di tutta la famiglia
@@ -156,8 +177,9 @@ export function spawnBalloon(type) {
   // restano il fallback per ogni altro tipo (range continuo, irandom_range).
   const spd = typeof def.speed === "function" ? def.speed()
     : def.speed ?? (def.speedMin + Math.random() * (def.speedMax - def.speedMin));
+  const yMax = SPAWN_Y[1] + reachBonusY;
   return {
-    type, x: SPAWN_X, y: SPAWN_Y[0] + Math.random() * (SPAWN_Y[1] - SPAWN_Y[0]),
+    type, x: SPAWN_X, y: SPAWN_Y[0] + Math.random() * (yMax - SPAWN_Y[0]),
     spd,
     t: 0, stormT: 0, spr: def.spr, depth: -3990,   // [C] Create.gml: depth = -3990 (fisso, sempre davanti al mondo)
     cos: Math.cos(rad), sin: Math.sin(rad),
@@ -244,17 +266,21 @@ export function stepBalloonSpawner(r12, balloons, dt, buildings, platformState) 
   // in due punti diversi con effetti diversi avrebbe voluto dire duplicare
   // quella logica o disallinearla. Qui `ondan` viene solo LETTO, per
   // sospendere le nuove nascite di mongolfiere mentre un'ondata e' attiva.
+  // [Bug corretto, vedi il commento su SPAWN_Y sopra] Calcolato una volta
+  // sola per chiamata (dipende solo da `platformState`, mai dal singolo
+  // giro del while sotto) e passato a OGNI spawnBalloon() qui dentro.
+  const reachBonusY = spawnReachBonusY(platformState);
   r12.balloonSpawnT = (r12.balloonSpawnT ?? 0) + dt;
   while (r12.balloonSpawnT >= SPAWN_PERIOD) {
     r12.balloonSpawnT -= SPAWN_PERIOD;
     if ((r12.ondan ?? 0) > 0) continue;   // [C] if (!(ondan > 0)) — un'ondata attiva sospende tutte le nascite
 
-    balloons.push(spawnBalloon("monvo"));                          // [C] sempre
-    if (dice(10)) balloons.push(spawnBalloon("mongo"));            // [C]
-    if (dice(13)) balloons.push(spawnBalloon("monbo"));            // [C]
+    balloons.push(spawnBalloon("monvo", reachBonusY));                          // [C] sempre
+    if (dice(10)) balloons.push(spawnBalloon("mongo", reachBonusY));            // [C]
+    if (dice(13)) balloons.push(spawnBalloon("monbo", reachBonusY));            // [C]
 
     const chiesLevel = maxChiesLevel(buildings);
-    if (chiesLevel >= 3 && dice(2)) balloons.push(spawnBalloon("monvo"));   // [C]
+    if (chiesLevel >= 3 && dice(2)) balloons.push(spawnBalloon("monvo", reachBonusY));   // [C]
     if (chiesLevel >= 2) {
       // [Nuova funzionalita', richiesta dall'autore: "a ponti completati
       // niente piu' mongolfiere viola, altrimenti e' fuorviante"] `crys`
@@ -268,8 +294,8 @@ export function stepBalloonSpawner(r12, balloons, dt, buildings, platformState) 
       // premio senza scopo. Deviazione deliberata dal decompilato (che non
       // conosce lo stato dei ponti qui), non un `[C]`.
       const bridgesDone = platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded";
-      if (!bridgesDone && dice(18)) balloons.push(spawnBalloon("monviolo"));   // [C] (gate 160 semplificato, vedi sopra)
-      if (dice(15)) balloons.push(spawnBalloon("monvo_giga"));     // [C]
+      if (!bridgesDone && dice(18)) balloons.push(spawnBalloon("monviolo", reachBonusY));   // [C] (gate 160 semplificato, vedi sopra)
+      if (dice(15)) balloons.push(spawnBalloon("monvo_giga", reachBonusY));     // [C]
     }
     // `r12.spyCooldownT` (sopra): il dado della spia non gira nemmeno finche'
     // il cooldown non e' sceso a zero, qualunque sia l'esito che avrebbe
@@ -287,9 +313,9 @@ export function stepBalloonSpawner(r12, balloons, dt, buildings, platformState) 
       // una volta che lo e' — mai insieme, stesso dado in entrambi i rami.
       // Ogni spawn vero riarma `r12.spyCooldownT` a SPY_COOLDOWN (sopra).
       if (chiesLevel < 3) {
-        if (dice(spyDice)) { balloons.push(spawnBalloon("monspi")); r12.spyCooldownT = SPY_COOLDOWN; }
+        if (dice(spyDice)) { balloons.push(spawnBalloon("monspi", reachBonusY)); r12.spyCooldownT = SPY_COOLDOWN; }
       } else if (dice(spyDice)) {
-        balloons.push(spawnBalloon("recogn")); r12.spyCooldownT = SPY_COOLDOWN;
+        balloons.push(spawnBalloon("recogn", reachBonusY)); r12.spyCooldownT = SPY_COOLDOWN;
       }
     }
   }

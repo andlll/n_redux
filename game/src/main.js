@@ -7207,7 +7207,12 @@ export async function mountMatch(ctx, params = {}) {
       // minacce vere: quelle gia' in volo in quel momento restano fino a
       // che non se ne vanno da sole (`stepThreats()` sotto, invariato),
       // niente sparizione di scatto a meta' volo.
-      if (!st.victoryShown) stepThreatSpawner(st.r12, st.threats, dt, !!st.platformState);
+      // `st.platformState` intero, non piu' solo `!!st.platformState`:
+      // stepThreatSpawner() (threats.js) ora legge anche quale piattaforma
+      // e' gia' stata costruita, per allargare la fascia di nascita delle
+      // minacce vere verso destra proporzionalmente — vedi il commento li'
+      // e su spawnReachBonusY() in platform.js.
+      if (!st.victoryShown) stepThreatSpawner(st.r12, st.threats, dt, st.platformState);
       stepThreats(st.threats, st.bombs, st.explosions, dt, st.r12, st.aerSmoke, st.debris);
       stepAerSmoke(st.aerSmoke, dt);
       stepDebris(st.debris, st.explosions, dt);
