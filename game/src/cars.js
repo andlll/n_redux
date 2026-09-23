@@ -711,8 +711,35 @@ export const CAR_TYPES = {
   // raggiunto se il dado sceglie una foglia) — non le posizioni a cui il
   // genitore stesso si sposterebbe se sopravvivesse al dado.
 
+  // [Bug corretto, segnalato dall'autore: "sul ponte tra piattaforma
+  // principale ed espansione 1 passa una macchina verde, ma spesso finisce
+  // fuori dalla piattaforma e vola"] `bridge_des/Alarm_3|4.gml` crea
+  // DAVVERO honda_br1/11/12/13 a (135,1222) — quel punto e' fedele — ma
+  // **[C]** il loro stesso `Alarm_0.gml` (a 285 tick, appena prima della
+  // svolta) fa anche `action_create_object(honda_br1, 1085, 852)`: un
+  // SECONDO'esemplare che rinasce li' e riparte dalla stessa Create (`dir
+  // 210, spd 3` -> le stesse svolte di schedule sotto). L'istanza ORIGINALE
+  // (quella nata a 135,1222) intanto continua a vivere fino al kill di
+  // Alarm_11 (443 tick) — verificato disegnando il percorso vero sopra
+  // "baa31"/il ponte "bridr1mo" ritagliati dalla texture (assets/textures):
+  // da (135,1222) la direzione 210 punta subito FUORI dal bordo sinistro
+  // della piattaforma (x<-16), niente strada/piattaforma li' sotto per
+  // tutta la vita residua — l'origine del "vola fuori dalla piattaforma"
+  // segnalato. Il rilancio a (1085,852) invece cade esattamente sull'altro
+  // capo dell'impalcato del ponte (verificato con lo stesso ritaglio) e la
+  // STESSA sequenza di svolte lo riporta in ~7s a (656,1497), comodamente
+  // dentro `r32` — la traversata vera e visibile del ponte, mai raggiunta
+  // finora perche' questo motore non replica la catena di
+  // `action_create_object` a runtime (ogni auto si limita a rinascere dal
+  // proprio `spawn` a fine `life`, game/src/cars.js/stepCars()). Qui
+  // `spawn` diventa direttamente (1085,852) — l'unico dei due capi che
+  // porta davvero da un pezzo di piattaforma all'altro — cosi' il loop
+  // "vivi la vita, muori, rinasci da capo" di stepCars() ripete per sempre
+  // la traversata corretta invece del tratto fantasma fuori mappa. Stesso
+  // dado (br1 1/4, br11 1/2, br12 1/6, br13 1/12) e stessa schedule di
+  // sempre, solo il punto di partenza cambia.
   honda_br1: {
-    spawn: { x: 135, y: 1222 },
+    spawn: { x: 1085, y: 852 },
     life: 443,
     spr: "v_bs",
     initial: { dir: 210, spd: 3 },
@@ -725,7 +752,7 @@ export const CAR_TYPES = {
     ],
   },
   honda_br11: {
-    spawn: { x: 135, y: 1222 },
+    spawn: { x: 1085, y: 852 },
     life: 443,
     spr: "r_bs",
     initial: { dir: 210, spd: 3 },
@@ -738,7 +765,7 @@ export const CAR_TYPES = {
     ],
   },
   honda_br12: {
-    spawn: { x: 135, y: 1222 },
+    spawn: { x: 1085, y: 852 },
     life: 443,
     spr: "g_bs",
     initial: { dir: 210, spd: 3 },
@@ -751,7 +778,7 @@ export const CAR_TYPES = {
     ],
   },
   honda_br13: {
-    spawn: { x: 135, y: 1222 },
+    spawn: { x: 1085, y: 852 },
     life: 443,
     spr: "c_bs",
     initial: { dir: 210, spd: 3 },

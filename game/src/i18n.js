@@ -271,7 +271,11 @@ const STRINGS = {
   "building.casa.2": { en: "Apartment Building", it: "Palazzina", es: "Edificio de apartamentos", pt: "Edifício de Apartamentos", de: "Wohngebäude", fr: "Immeuble résidentiel" },
   "building.casa.3": { en: "Condominium", it: "Condominio", es: "Condominio", pt: "Condomínio", de: "Wohnanlage", fr: "Copropriété" },
   "building.missile": { en: "Missile Launcher", it: "Lanciamissili", es: "Lanzamisiles", pt: "Lançador de Mísseis", de: "Raketenwerfer", fr: "Lance-missiles" },
-  "building.solare": { en: "Solar Panels", it: "Pannelli solari", es: "Paneles solares", pt: "Painéis Solares", de: "Solarpanele", fr: "Panneaux solaires" },
+  // [Nuova funzionalita', richiesta dall'autore: "in italiano cambiamo
+  // 'pannelli solari' in 'impianto fotovoltaico'"] Solo l'italiano — le
+  // altre lingue non sono state toccate, nessuna richiesta equivalente per
+  // loro.
+  "building.solare": { en: "Solar Panels", it: "Impianto fotovoltaico", es: "Paneles solares", pt: "Painéis Solares", de: "Solarpanele", fr: "Panneaux solaires" },
   "building.parco": { en: "Park", it: "Parco", es: "Parque", pt: "Parque", de: "Park", fr: "Parc" },
   "building.club": { en: "Club", it: "Club", es: "Club", pt: "Clube", de: "Club", fr: "Club" },
   "building.villa": { en: "Villa", it: "Villa", es: "Villa", pt: "Villa", de: "Villa", fr: "Villa" },
@@ -400,6 +404,14 @@ const STRINGS = {
   "loading.default": { en: "loading", it: "caricamento", es: "cargando", pt: "carregando", de: "lädt", fr: "chargement" },
   "loading.interface": { en: "loading interface", it: "caricamento interfaccia", es: "cargando interfaz", pt: "carregando interface", de: "Oberfläche wird geladen", fr: "chargement de l'interface" },
   "loading.city": { en: "loading city", it: "caricamento città", es: "cargando ciudad", pt: "carregando cidade", de: "Stadt wird geladen", fr: "chargement de la ville" },
+  // [Nuova funzionalita', richiesta dall'autore: "quando carico una partita
+  // avanzata non vedo tutti gli edifici per il primo minuto — mettiamo una
+  // seconda barra 'caricamento texture avanzate'"] Etichetta della seconda
+  // barra di progresso (main.js, needsAdvancedTier()) mostrata SOLO quando
+  // un salvataggio gia' avanzato (o il tutorial precostruito) costringe ad
+  // aspettare lo scaglione "advanced" (assets.js) prima del primo frame —
+  // una partita nuova non la vede mai.
+  "loading.advancedTextures": { en: "loading advanced textures", it: "caricamento texture avanzate", es: "cargando texturas avanzadas", pt: "carregando texturas avançadas", de: "Erweiterte Texturen werden geladen", fr: "chargement des textures avancées" },
   "hwWarning.text": {
     en: "Hardware acceleration unavailable on this device/browser — performance may be very limited. Try updating your browser or switching to Chrome.",
     it: "Accelerazione hardware non disponibile su questo dispositivo/browser — le prestazioni potrebbero essere molto limitate. Prova ad aggiornare il browser o a passare a Chrome.",

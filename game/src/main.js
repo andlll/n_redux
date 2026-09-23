@@ -670,19 +670,42 @@ export async function mountMatch(ctx, params = {}) {
    * stesso pannello ad altri edifici senza dover toccare di nuovo il
    * picking. Stessa area di tocco allargata delle torrette
    * (`turretHitBox()`, sopra) per quelle tre, sagoma vera (`it._f`) per
-   * ogni altro edificio — stessa convenzione "ultimo disegnato vince" del
-   * secondo giro di picking di onTap (frameList e' gia' back-to-front,
-   * l'ultimo che combacia e' il piu' vicino alla telecamera). */
+   * ogni altro edificio.
+   * [Nuova funzionalita', richiesta dall'autore: "se ci sono sovrapposizioni
+   * prediligi l'apertura della finestra di un edificio con opzioni: edifici
+   * di difesa > centrali > altri edifici"] Non piu' semplicemente "ultimo
+   * disegnato vince" (il picking generico di onTap, che resta cosi' per
+   * tutto il resto): un tocco prolungato puo' cadere su un punto dove due
+   * sagome si sovrappongono (es. una torretta dietro una casa, o una
+   * centrale dietro un edificio comune) — qui si raccoglie il primo match
+   * di OGNI fascia (torrette, poi centrali — industria/solare/eolico,
+   * riconosciute da `def.production`/`solarProduction`/`windProduction`,
+   * gli unici tre "produttori" del motore, invece di elencare i tre tipi a
+   * mano — poi tutto il resto) e si preferisce sempre la fascia piu' in
+   * alto, perche' sono gli edifici il cui pannello ha davvero "opzioni" da
+   * regolare (autodifesa/torretta, resa/throttle) contro il pannello di
+   * sola lettura di un edificio comune. Dentro la STESSA fascia resta la
+   * vecchia convenzione "ultimo disegnato vince" (frameList e' gia'
+   * back-to-front: il primo match incontrato scorrendo all'indietro e' il
+   * piu' vicino alla telecamera) — cambia solo l'ordine FRA fasce diverse,
+   * non dentro la stessa.
+   */
   function buildingAt(sx, sy) {
     const w = cam.screenToWorld(sx, sy);
+    let turretMatch = null, plantMatch = null, otherMatch = null;
     for (let i = st.frameList.length - 1; i >= 0; i--) {
       const it = st.frameList[i];
       if (it.obj !== "building") continue;
-      const isTurret = !!BUILDING_TYPES[it.ref.type]?.turret;
+      const def = BUILDING_TYPES[it.ref.type];
+      const isTurret = !!def?.turret;
       const box = isTurret ? turretHitBox(it.ref.type) : it._f;
-      if (box && inFrameRect(w.x, w.y, it.x, it.y, box)) return it.ref;
+      if (!box || !inFrameRect(w.x, w.y, it.x, it.y, box)) continue;
+      if (isTurret) { turretMatch = it.ref; break; }   // fascia massima gia' trovata, nessun altro giro puo' batterla
+      const isPlant = !!(def?.production || def?.solarProduction || def?.windProduction);
+      if (isPlant) { if (!plantMatch) plantMatch = it.ref; }
+      else if (!otherMatch) otherMatch = it.ref;
     }
-    return null;
+    return turretMatch ?? plantMatch ?? otherMatch;
   }
   /** Frame corrente per uno sprite di CANTIERE con sottoimmagini vere
    * ("impvent1"/"impvent3" della pala eolica — `c.curSpd`, buildings.js/
@@ -1417,7 +1440,45 @@ export async function mountMatch(ctx, params = {}) {
   // `monReal` aggiornato insieme (state.js/clampR12, DEBUG_INFINITE_RESOURCES):
   // resta il valore genuino "usabile" anche se il debug/sandbox e' spento.
   if (roomName === "tutorial") { st.r12.mon += 10000; st.r12.monReal += 10000; }
-  st.selectedType = "casa";   // scelto dal selettore in basso a sinistra
+  // [Bug corretto, segnalato dall'autore: "a inizio/caricamento partita vedo
+  // sia la mano blu (strumento attivo) sia il bottone 'casa' evidenziato,
+  // contemporaneamente — ne deve essere attivo solo uno"] `st.r12.selec`
+  // (appena impostato a 0 da createR12(), sopra: la mano/nessun edificio
+  // armato) e `st.selectedType` sono un'unica coppia che il resto del
+  // motore muove sempre insieme — vedi input.onTap piu' sotto: il bottone
+  // "mano" (kind:"deselect") scrive `st.selectedType = null` E `r12.selec =
+  // 0` nello stesso punto, un bottone edificio scrive `st.selectedType =
+  // btn.type` E `r12.selec = SELEC_BY_TYPE[btn.type]` nello stesso punto —
+  // mai l'uno senza l'altro. `"casa"` qui li disallineava fin dal primissimo
+  // frame (autoload incluso): `r12.selec === 0` accendeva la tinta blu della
+  // mano (usingHandTint, piu' sotto) mentre `st.selectedType === "casa"`
+  // accendeva ANCHE la tinta del bottone "casa" (usingSelBuilding) — due
+  // strumenti "attivi" a schermo insieme, sebbene solo la mano fosse
+  // davvero armata (armPlacement()/placeAt() ignorano `selectedType` quando
+  // `r12.selec` non lo seleziona comunque, quindi non era un bug
+  // funzionale, solo visivo). `null` e' lo stesso stato che il bottone
+  // "mano" scrive lui stesso: nessun edificio armato finche' il giocatore
+  // non ne sceglie uno davvero.
+  st.selectedType = null;
+  // [Nuova funzionalita', richiesta dall'autore: "su mobile, il tasto gru
+  // seleziona uno strumento come gia' fa ora, ma poi mettiamolo subito a
+  // destra della gru cosi' si puo' richiamare in fretta — di default
+  // (inizio partita) impostiamolo sulla casa"] `st.lastBuildingType` e'
+  // deliberatamente SEPARATO da `st.selectedType` sopra: quello segue lo
+  // strumento davvero ARMATO in questo istante (null quando e' la mano,
+  // "ruspa" quando e' la ruspa — vedi il commento sopra) e deve restare
+  // null all'avvio per il fix appena spiegato; questo invece e' solo "quale
+  // edificio propone il bottone di richiamo rapido su mobile" (uiButtons,
+  // riga menoo 0 piu' sotto) — resta valorizzato ANCHE quando la mano/la
+  // ruspa sono attive, cosi' il bottone continua a mostrare l'ultima scelta
+  // pronta da riarmare con un tap, invece di sparire/svuotarsi ogni volta
+  // che si deseleziona. Aggiornato SOLO dalle due selezioni vere di un
+  // edificio (griglia mobile e riga desktop, input.onTap piu' sotto) — mai
+  // dalla ruspa, che ha gia' un proprio bottone fisso e non ha senso da
+  // "richiamare" li'. "casa" e' gia' l'unico tipo mai bloccato da
+  // buildingLocked() (nessun `chiesUnlock`), quindi e' sempre un default
+  // sicuro da mostrare/riarmare fin dal primissimo frame.
+  st.lastBuildingType = "casa";
 
   // La ruspa (`puruspa`, `selec===11`, STUDIO.md/OTHER_BUILDINGS sotto): tocco
   // su un edificio finito con la ruspa selezionata NON demolisce subito — apre
@@ -2671,6 +2732,17 @@ export async function mountMatch(ctx, params = {}) {
     if (!data) return false;
     return applyLoadedData(data);
   }
+  // [I] Condizione unica per lo scaglione "advanced" (assets.js/
+  // loadDeferredGroup()), condivisa fra il preload sincrono qui sotto
+  // (subito dopo applyLoadedData()/doLoad(), prima del primo frame) e il
+  // trigger a runtime piu' sotto (dentro `if (skyAlive)`, quando un
+  // edificio sblocca un potenziamento MENTRE si gioca) — stesso identico
+  // criterio in un solo posto, cosi' i due non possono disallinearsi
+  // silenziosamente col tempo. Vedi il commento sul trigger a runtime per
+  // il dettaglio di ogni condizione.
+  function needsAdvancedTier() {
+    return st.buildings.some((b) => b.level >= 2 || upgradeUnlocked(b, st.r12, st.buildings));
+  }
   // "Reset game" (menu di pausa, drawConfirmResetOverlay() piu' sotto):
   // ripristina il livello da zero come una partita mai iniziata — cancella
   // il quicksave localStorage di questa scena (altrimenti "Load game"/il
@@ -2777,6 +2849,44 @@ export async function mountMatch(ctx, params = {}) {
   // title.js non manda mai entrambi insieme (vedi navigate() li').
   if (params.loadedData) applyLoadedData(params.loadedData);
   else if (autoloadOnBoot) doLoad();
+  // [Nuova funzionalita', richiesta dall'autore: "quando carico una partita
+  // in fase avanzata non vedo tutti gli edifici per il primo minuto di
+  // gioco — mettiamo una seconda barra 'caricamento texture avanzate' cosi'
+  // quando finisce vedo gia' tutta la citta'"] Il trigger a runtime (sotto,
+  // dentro `if (skyAlive)`) avvia lo scaglione "advanced" in BACKGROUND, un
+  // frame dopo l'altro, MAI aspettato — perfetto per una partita che
+  // raggiunge quella soglia mentre gia' gira (nessuna barra avrebbe senso
+  // per un singolo edificio che matura mentre si gioca), ma sbagliato per
+  // un salvataggio che la supera GIA' al momento del caricamento: senza
+  // aspettarlo qui il primo frame disegnato mostrerebbe quegli edifici
+  // mancanti (frameFor() -> null, "niente da disegnare", piu' sotto)
+  // finche' lo scaglione non arriva da solo in sottofondo — esattamente il
+  // difetto segnalato. Copre OGNI ingresso che puo' portare gia' edifici
+  // avanzati: l'autoload dal bottone "Avvia Nimbus"/"Avvia Nimbus — Facile"
+  // del menu principale (`doLoad()` sopra), "Carica partita" da file
+  // (`params.loadedData`, sempre dal menu principale — title.js/
+  // loadFileBtn), E il tutorial (i suoi edifici precostruiti, seedTutorial
+  // Buildings() piu' sopra, possono gia' essere oltre il livello 1 senza
+  // nessun salvataggio di mezzo — stesso identico sintomo gia' corretto per
+  // `needsAdvancedTier()` a runtime, vedi il suo commento). Stessa idea gia'
+  // in uso qualche riga sopra per lo scaglione "combat" del solo tutorial
+  // (vedi il commento li'), qui generalizzata a QUALUNQUE room con lo
+  // stesso identico meccanismo: una seconda barra di progresso (stessa
+  // `reportProgress()` delle pagine core sopra, etichetta dedicata
+  // "loading.advancedTextures") resta a schermo finche' lo scaglione non e'
+  // arrivato per davvero. Una partita nuova (nessun salvataggio, tutti gli
+  // edifici a livello 1) non fa mai scattare `needsAdvancedTier()`: zero
+  // secondo giro di barra per chi non ne ha bisogno, comportamento
+  // identico a prima di questo fix.
+  if (needsAdvancedTier()) {
+    let advancedLoaded = 0;
+    const coreCount = atlas.corePages ?? atlas.pages.length;
+    const combatCount = atlas.combatPages ?? 0;
+    const advancedTotal = Math.max(0, atlas.pages.length - coreCount - combatCount);
+    await loadDeferredGroup(gl, atlasKeyFor(roomName), "advanced", {
+      onPage: () => { advancedLoaded++; reportProgress(roomName, advancedLoaded, advancedTotal, t("loading.advancedTextures")); },
+    });
+  }
 
   function onKeydown(e) {
     // Scorciatoia da tastiera per lo stesso bottone di pausa in basso a
@@ -5857,6 +5967,7 @@ export async function mountMatch(ctx, params = {}) {
       if (hit?.type) {
         st.selectedType = hit.type;
         st.r12.selec = SELEC_BY_TYPE[hit.type] ?? 0;
+        st.lastBuildingType = hit.type;   // ruspa esclusa da questa griglia a monte (OTHER_BUILDINGS.filter sopra) — sempre un edificio vero
         st.buildMenuOpen = false;
         return;
       }
@@ -5918,7 +6029,24 @@ export async function mountMatch(ctx, params = {}) {
           } else {
             st.selectedType = btn.type;
             st.r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
+            // La ruspa vive in questa stessa riga (kind:"building" anche lei,
+            // vedi il commento su OTHER_BUILDINGS piu' sotto) ma ha gia' un
+            // proprio bottone fisso — non e' "l'ultimo edificio scelto" da
+            // proporre nel richiamo rapido.
+            if (btn.type !== "ruspa") st.lastBuildingType = btn.type;
           }
+        }
+        else if (btn.kind === "quickBuild") {
+          // [Nuova funzionalita', richiesta dall'autore, vedi il commento su
+          // `st.lastBuildingType` sopra] Stesso identico effetto del ramo
+          // "building" sopra (riarma lo stesso strumento) — nessun controllo
+          // buildingLocked() qui: `lastBuildingType` puo' contenere SOLO un
+          // tipo gia' scelto una volta dai due rami sopra, entrambi dietro
+          // quello stesso gate, e uno sblocco (soglia di livello chiesa) non
+          // torna mai indietro — non puo' quindi essere ribloccato nel
+          // frattempo.
+          st.selectedType = btn.type;
+          st.r12.selec = SELEC_BY_TYPE[btn.type] ?? 0;
         }
         return;
       }
@@ -6735,7 +6863,7 @@ export async function mountMatch(ctx, params = {}) {
       // istante (precostruito o ricaricato, non solo "sta per crescere")
       // copre il gap, sia per il tutorial sia per un salvataggio che
       // riprende una partita avanzata.
-      if (st.buildings.some((b) => b.level >= 2 || upgradeUnlocked(b, st.r12, st.buildings))) {
+      if (needsAdvancedTier()) {
         loadDeferredGroup(gl, atlasKeyFor(roomName), "advanced");
       }
       // [Nuova funzionalita', gap chiuso: STUDIO.md, "nifast"] Nuvole veloci
@@ -7079,7 +7207,12 @@ export async function mountMatch(ctx, params = {}) {
       // minacce vere: quelle gia' in volo in quel momento restano fino a
       // che non se ne vanno da sole (`stepThreats()` sotto, invariato),
       // niente sparizione di scatto a meta' volo.
-      if (!st.victoryShown) stepThreatSpawner(st.r12, st.threats, dt, !!st.platformState);
+      // `st.platformState` intero, non piu' solo `!!st.platformState`:
+      // stepThreatSpawner() (threats.js) ora legge anche quale piattaforma
+      // e' gia' stata costruita, per allargare la fascia di nascita delle
+      // minacce vere verso destra proporzionalmente — vedi il commento li'
+      // e su spawnReachBonusY() in platform.js.
+      if (!st.victoryShown) stepThreatSpawner(st.r12, st.threats, dt, st.platformState);
       stepThreats(st.threats, st.bombs, st.explosions, dt, st.r12, st.aerSmoke, st.debris);
       stepAerSmoke(st.aerSmoke, dt);
       stepDebris(st.debris, st.explosions, dt);
@@ -8559,6 +8692,23 @@ export async function mountMatch(ctx, params = {}) {
       : [
           { kind: "deselect", spr: "handee", label: "Deselect" },
           { kind: "menu", menoo: 1, spr: "groo", label: "Buildings menu" },
+          // [Nuova funzionalita', richiesta dall'autore: "il tasto gru
+          // seleziona uno strumento come gia' fa, ma mettiamolo subito a
+          // destra della gru cosi' si puo' richiamare in fretta" — vedi il
+          // commento su `st.lastBuildingType` piu' sopra] Solo mobile: su
+          // desktop l'intera riga edifici (menoo 1) resta gia' a vista con
+          // la propria evidenziazione, un richiamo rapido separato
+          // sarebbe ridondante li'. Stesso `kind: "building"` mai usato
+          // qui apposta (un tap su QUESTO bottone non deve "consumare" la
+          // sua posizione nella riga costruzioni, ne' essere scambiato per
+          // il bottone vero nella griglia — gestito a parte in
+          // input.onTap, sotto).
+          ...(isMobile
+            ? (() => {
+                const icon = findBuildingIcon(st.lastBuildingType);
+                return icon ? [{ kind: "quickBuild", type: st.lastBuildingType, spr: icon.spr, tint: icon.tint }] : [];
+              })()
+            : []),
           ...OTHER_BUILDINGS.filter((b) => b.type === "ruspa").map((b) => ({ kind: "building", type: b.type, spr: b.spr, tint: b.tint })),
         ];
     // Prima passata, solo misure: serve la larghezza totale della riga PRIMA
@@ -8625,7 +8775,15 @@ export async function mountMatch(ctx, params = {}) {
         // coerente con `r12.selec === 0` = mano/deselezionato gia' usato
         // sopra per spegnere l'hover viola dei placeholder.
         const usingHandTint = b.kind === "deselect" && st.r12.selec === 0;
-        const usingSelBuilding = b.kind === "building" && st.selectedType === b.type;
+        // `kind === "quickBuild"` (il bottone di richiamo rapido mobile,
+        // st.lastBuildingType sopra): si accende con la stessa identica
+        // regola di un bottone edificio vero — armato quando lo strumento
+        // che rappresenta e' proprio quello attivo in questo istante, non
+        // sempre (a differenza della vecchia mini-icona sulla gru che
+        // rimpiazza, sempre visibile finche' un edificio restava scelto:
+        // qui invece torna neutro appena si passa a mano o ruspa, esattamente
+        // come farebbe lo stesso bottone dentro la griglia costruzioni).
+        const usingSelBuilding = (b.kind === "building" || b.kind === "quickBuild") && st.selectedType === b.type;
         const tint = usingSelBuilding ? b.tint : (usingHandTint ? 0x66aaff : 0xffffff);
         // [Bug corretto, segnalato dall'autore: "la mano non si colora
         // quando selezionata"] `handee` e' una sagoma nera pura come le
@@ -8656,45 +8814,15 @@ export async function mountMatch(ctx, params = {}) {
       rx += w + GAP;
     }
     r.setColorize(false);
-    // [Nuova funzionalita', richiesta dall'autore: "trovare il modo di
-    // mostrare l'edificio attualmente selezionato anche in piccolo fuori
-    // dalla finestra Buildings"] Su mobile `menoo` resta sempre a 0 (onTap
-    // sopra: toccare "groo" apre solo l'overlay a griglia, non passa mai a
-    // menoo=1) — la riga appena disegnata quindi non mostra MAI quale tipo
-    // e' selezionato in questo momento, a differenza di desktop (dove la
-    // riga edifici vera resta a vista con l'evidenziazione di
-    // `usingSelBuilding` sopra). Un piccolo badge sul bottone stesso
-    // "Buildings menu" colma il buco: una miniatura dell'edificio scelto,
-    // sempre visibile anche a finestra chiusa, stesso sprite/tint gia'
-    // usati dentro l'overlay (findBuildingIcon(), sopra) — non uno stato
-    // duplicato da tenere sincronizzato a parte.
-    // [Bug corretto, richiesto dall'autore: "quando la ruspa e' selezionata
-    // non mostrare il mini indicatore sopra il pulsante costruzioni"] La
-    // ruspa (`selectedType === "ruspa"`) e' uno STRUMENTO (demolizione/
-    // riparazione), non un edificio piazzabile come quelli della griglia
-    // "Buildings menu" che questo badge riassume — mostrarci sopra la sua
-    // icona (rossa, "ru") suggerirebbe che il prossimo tap costruisce una
-    // ruspa, non che sta per demolire/riparare qualcosa.
-    if (isMobile && st.selectedType && st.selectedType !== "ruspa") {
-      const menuBtn = st.uiButtons.find((btn) => btn.kind === "menu" && btn.menoo === 1);
-      const icon = menuBtn && findBuildingIcon(st.selectedType);
-      const iconFrame = icon && frameFor(icon.spr);
-      if (menuBtn && iconFrame) {
-        const badgeD = 26;
-        const bx = menuBtn.x + menuBtn.w - 4, by = menuBtn.y + 4;
-        // Anello chiaro sottile prima del disco scuro: alcuni tint edificio
-        // (`icon.tint`, es. il verde molto scuro di "casa") si confondono
-        // altrimenti con la sagoma nera piena dell'icona "groo" proprio
-        // sotto — un bordo chiaro separa sempre il badge dal suo sfondo,
-        // qualunque sia il colore dell'edificio selezionato in quel momento.
-        r.draw(solidFrame(bubbleTex, badgeD + 3, badgeD + 3), bx - (badgeD + 3) / 2, by - (badgeD + 3) / 2, 1, 0xe8eaf0, 0.9);
-        r.draw(solidFrame(bubbleTex, badgeD, badgeD), bx - badgeD / 2, by - badgeD / 2, 1, 0x14161c, 0.92);
-        const iconScale = Math.min((badgeD - 8) / iconFrame.w, (badgeD - 8) / iconFrame.h);
-        r.setColorize(true);
-        r.draw(iconFrame, bx - (iconFrame.w * iconScale) / 2, by + (iconFrame.h * iconScale) / 2, iconScale, icon.tint, 1);
-        r.setColorize(false);
-      }
-    }
+    // [Nuova funzionalita', richiesta dall'autore: "togliamo la mini icona
+    // sulla gru visto che ora esiste il bottone di richiamo rapido a destra
+    // della gru"] Il badge che viveva qui (una miniatura dell'edificio
+    // scelto disegnata sopra "groo") e' stato rimosso: il bottone
+    // `kind: "quickBuild"` appena aggiunto alla riga (st.lastBuildingType,
+    // sopra) mostra la stessa informazione in modo piu' diretto — un
+    // bottone vero e proprio, gia' toccabile per riarmare lo strumento,
+    // non solo un'icona di sola lettura — quindi il badge era diventato
+    // ridondante.
     // Banda di trascinamento per lo scroll: tutta la larghezza schermo, dal
     // bordo superiore della riga fino in fondo — non solo i pixel dei
     // bottoni, cosi' anche un dito che parte fra due bottoni o dopo l'ultimo

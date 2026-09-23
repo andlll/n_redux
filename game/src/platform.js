@@ -180,10 +180,28 @@ function blinkMotorVisible(t) {
 // della mappa da' un -y piu' negativo di questo). moto12/moto13 restano
 // invariati (depth:0, -y vero, gia' corretto).
 const MOTOR11_FIXED_DEPTH = -0.01;
+// [Bug corretto, segnalato dall'autore: "sulla piattaforma di espansione 1
+// (quella in basso) è sbagliata la depth della turbina sopra la
+// piattaforma, le macchine ci passano sopra"] moto2 e' fedele al
+// decompilato (depth fisso 3, mai riassegnato — vedi sopra), ma quel "3" e'
+// un numero minuscolo nella stessa scala di depth in cui questo motore
+// ordina le auto con `-y - N` (cars.js: N=2..16, quindi tipicamente
+// -1000..-3000 su questa mappa) — un fisso "3" perde SEMPRE il confronto
+// con QUALUNQUE auto (3 > -y-N per ogni y>0), la disegna sempre PRIMA
+// (main.js/effDepth: piu' alto = disegnato prima = piu' lontano dalla
+// camera), quindi la turbina resta sempre "sotto" a qualunque macchina le
+// passi vicino sullo schermo, indipendentemente da quale delle due sia
+// davvero piu' vicina alla camera in quel punto (a differenza di
+// motor12/motor13, gia' ordinati per -y vero: verificato ritagliando
+// "baa31"/il traffico "maghene" di r32 dalla texture vera, tools/, le due
+// istanze moto2 di R32_MOTORS sotto stanno proprio a bordo piattaforma,
+// sulla stessa corsia della carreggiata). Stesso trattamento di
+// motor12/motor13 (return 0, -y vero): la turbina torna a poter stare
+// DAVANTI a un'auto che le passa dietro (y minore) e dietro a una che le
+// passa davanti (y maggiore), come qualunque altro oggetto di mondo.
 function motorDepth(spr) {
   if (spr === "motor11") return MOTOR11_FIXED_DEPTH;
-  if (spr === "motor2") return 3;   // [C] moto2/_object.json: depth fisso 3, mai riassegnato in nessun evento
-  return 0;                          // motor12/motor13 (moto12/moto13): depth = -y vero, Create.gml
+  return 0;   // motor2/motor12/motor13: depth = -y vero
 }
 
 // [C] r12/Create.gml, posizioni assolute (STUDIO.md sopra).
@@ -686,4 +704,50 @@ export function faroDecor(state, t) {
     out.push({ obj: "decor", x: c.x, y: c.y, depth: -7000, spr: "nimbuscluster1", _tint: c.tint });
   }
   return out;
+}
+
+// [Nuova funzionalita', richiesta dall'autore: "aumentiamo il range di
+// spawn a seconda delle piattaforme costruite, sarebbe una cattiveria uno
+// spawn a destra della piattaforma principale quando l'utente non ha
+// possibilita' di prendere quelle mongolfiere, in particolare per gli
+// attacchi"] game/src/balloons.js (mongolfiere di risorse/spia) e
+// game/src/threats.js (le minacce vere: air/bombar/dirig) fanno nascere i
+// propri bersagli fuori mappa a sinistra con una Y a dado in una fascia
+// fissa, poi volano SEMPRE alla stessa diagonale di 30° (mai ricalcolata,
+// STUDIO.md gia' lo osservava per entrambi i moduli) — quindi salgono di
+// `dx * tan(30°)` per ogni `dx` percorso verso destra. La fascia Y di
+// nascita di entrambi i moduli era tarata sull'altezza di `match_easy`
+// (STUDIO.md), quindi troppo stretta per la piattaforma di `match` (molto
+// piu' larga, e ancora di piu' una volta espansa): un bersaglio nasceva
+// gia' troppo IN ALTO per avere abbastanza margine di salita residuo prima
+// di uscire dal soffitto della mappa (y<0) quando arrivava all'altezza
+// della piattaforma espansa — la piattaforma principale/`match_easy`
+// restavano coperte, ma nessun bersaglio sopravviveva abbastanza a lungo
+// da farsi vedere (ne' da colpire) vicino alle espansioni, per quanto un
+// giocatore ci costruisse sopra delle difese.
+//
+// Qui si restituisce quanto ALZARE il tetto della fascia Y di nascita di
+// ENTRAMBI i moduli (sommato al loro stesso massimo base, invariato) in
+// base a quale piattaforma esiste GIA' — cosi' i bersagli nati nella parte
+// piu' bassa della fascia allargata hanno abbastanza budget di salita per
+// restare in quota fino a raggiungere anche l'area appena sbloccata, senza
+// toccare la fascia "base" (gia' giusta per la sola piattaforma
+// principale/`match_easy`, invariata quando nessuna espansione esiste
+// ancora). Margine di conti, per `dx` fra lo spawn (`SPAWN_X = -170` in
+// balloons.js/threats.js/air|bombar, il piu' comune dei due) e il bordo
+// destro vero di ciascuna piattaforma (r32+r320 = R320_X+1600 = 3200,
+// r22+r220 = R220_X+1223 = 3833, entrambe sopra):
+//   tier1: dx = 3200-(-170) = 3370 -> salita = 3370*tan(30°) ≈ 1946px
+//          (contro l'attuale tetto di 1620 — mancano ~326px) -> +450 di
+//          margine e' comodamente sopra la soglia minima.
+//   tier2: dx = 3833-(-170) = 4003 -> salita ≈ 2311px -> +750 di margine.
+// Un bonus in PIXEL, non ricalcolato per ogni possibile spawnX diverso
+// (`dirig`, threats.js, nasce da x=-1000 non -170): un'approssimazione
+// dichiarata, non serve una precisione al pixel per un bilanciamento —
+// vedi il commento sui chiamanti in balloons.js/threats.js.
+export function spawnReachBonusY(platformState) {
+  if (!platformState) return 0;
+  if (platformState.tier2.stage === "expanded") return 750;
+  if (platformState.tier1.stage === "expanded") return 450;
+  return 0;
 }

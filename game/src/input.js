@@ -15,12 +15,19 @@ const TAP_MS = 350;
 // scattava mai per lo stesso gesto): ridotta prima a 350ms (uguale a
 // TAP_MS), poi — su ulteriore richiesta dell'autore, "il tocco prolungato
 // per aprire i sottomenu degli edifici deve scattare a 0.25s, anche sugli
-// edifici non difensivi" — a 250ms: non serve un margine fra le due soglie
+// edifici non difensivi" — a 250ms. Non serve un margine fra le due soglie
 // perche' a evitare il doppio evento e' gia' il flag esplicito
 // `longPressFired` controllato in _up() sotto (`!st.longPressFired`), non
 // l'ordine temporale: un long press che scatta PRIMA del rilascio marca il
 // gesto e basta, qualunque sia la relazione fra le due costanti.
-const LONG_PRESS_MS = 250;
+// [Nuova funzionalita', richiesta dall'autore: "aumentiamo ancora un po' il
+// tocco prolungato per aprire le proprieta' dell'edificio"] 250ms si e'
+// rivelato troppo facile da innescare per sbaglio (un tap normale un filo
+// lento, o l'inizio di un pan/drag sulla mappa, bastava a far scattare il
+// pannello invece del gesto voluto) — 300ms resta comunque ben sotto i
+// vecchi 350/550ms (il pannello continua ad aprirsi prima di quanto
+// facesse allora), solo un margine in piu' contro i falsi positivi.
+const LONG_PRESS_MS = 300;
 
 export class Input {
   constructor(el) {
