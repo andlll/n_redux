@@ -1417,7 +1417,26 @@ export async function mountMatch(ctx, params = {}) {
   // `monReal` aggiornato insieme (state.js/clampR12, DEBUG_INFINITE_RESOURCES):
   // resta il valore genuino "usabile" anche se il debug/sandbox e' spento.
   if (roomName === "tutorial") { st.r12.mon += 10000; st.r12.monReal += 10000; }
-  st.selectedType = "casa";   // scelto dal selettore in basso a sinistra
+  // [Bug corretto, segnalato dall'autore: "a inizio/caricamento partita vedo
+  // sia la mano blu (strumento attivo) sia il bottone 'casa' evidenziato,
+  // contemporaneamente — ne deve essere attivo solo uno"] `st.r12.selec`
+  // (appena impostato a 0 da createR12(), sopra: la mano/nessun edificio
+  // armato) e `st.selectedType` sono un'unica coppia che il resto del
+  // motore muove sempre insieme — vedi input.onTap piu' sotto: il bottone
+  // "mano" (kind:"deselect") scrive `st.selectedType = null` E `r12.selec =
+  // 0` nello stesso punto, un bottone edificio scrive `st.selectedType =
+  // btn.type` E `r12.selec = SELEC_BY_TYPE[btn.type]` nello stesso punto —
+  // mai l'uno senza l'altro. `"casa"` qui li disallineava fin dal primissimo
+  // frame (autoload incluso): `r12.selec === 0` accendeva la tinta blu della
+  // mano (usingHandTint, piu' sotto) mentre `st.selectedType === "casa"`
+  // accendeva ANCHE la tinta del bottone "casa" (usingSelBuilding) — due
+  // strumenti "attivi" a schermo insieme, sebbene solo la mano fosse
+  // davvero armata (armPlacement()/placeAt() ignorano `selectedType` quando
+  // `r12.selec` non lo seleziona comunque, quindi non era un bug
+  // funzionale, solo visivo). `null` e' lo stesso stato che il bottone
+  // "mano" scrive lui stesso: nessun edificio armato finche' il giocatore
+  // non ne sceglie uno davvero.
+  st.selectedType = null;
 
   // La ruspa (`puruspa`, `selec===11`, STUDIO.md/OTHER_BUILDINGS sotto): tocco
   // su un edificio finito con la ruspa selezionata NON demolisce subito — apre
