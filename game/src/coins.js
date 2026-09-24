@@ -67,17 +67,25 @@ function maxChiesLevel(buildings) {
  */
 export function stepCoinSpawner(buildings, coins, dt, r12, platformState) {
   const chiesLv3 = maxChiesLevel(buildings) >= 3;
-  // [Nuova funzionalita', richiesta dall'autore: "a grattacielo completato
-  // le ville non dovrebbero piu' produrre biotech, altrimenti e' fuorviante"]
-  // `biotech` e' un carburante a consumo singolo (letto una volta a >=100 e
-  // azzerato per sbloccare il grattacielo, main.js) — una volta che il
-  // grattacielo esiste per davvero (non solo in cantiere: STAR_BUILDINGS.
-  // grattacielo.unlocked() in main.js resta comunque falso per il resto
-  // della partita), continuare a far comparire "bioico" mostrerebbe un
-  // premio che non porta piu' a nulla. Deviazione deliberata dal
-  // decompilato (che non conosce affatto lo stato del grattacielo qui),
-  // non un `[C]`.
-  const grattacieloDone = buildings.some((bl) => bl.type === "grattacielo" && !bl.construction);
+  // [Bug corretto, segnalato dall'autore: "anche quando il giocatore arriva
+  // a 100 biotech e sblocca stella 3 le ville continuano a generare biotech
+  // che pero' non serve piu' a niente"] `biotech` e' un carburante a
+  // consumo singolo (main.js: appena raggiunge >=100 si azzera UNA TANTUM e
+  // arma `r12.grattacieloUnlocked`, un latch mai piu' ricontrollato —
+  // state.js) che sblocca solo il BOTTONE del grattacielo in
+  // STAR_BUILDINGS, non ne garantisce la costruzione immediata: restava una
+  // finestra reale (soldi/banca/piattaforme ancora da completare, o
+  // semplicemente il giocatore che non ha ancora toccato il bottone) in cui
+  // il gate precedente (`grattacieloDone`, "esiste gia' un grattacielo
+  // finito") era ancora falso e le ville continuavano tranquillamente a
+  // impilare altro biotech inutile. Il vero traguardo da guardare e' il
+  // latch stesso, non l'edificio: `grattacieloUnlocked` diventa vero
+  // esattamente al momento in cui biotech smette di servire a qualunque
+  // cosa (mai piu' riletto da nessun altro punto del motore), quindi e' li'
+  // che la produzione deve fermarsi — non un istante dopo. Deviazione
+  // deliberata dal decompilato (che non conosce affatto lo stato del
+  // grattacielo qui), non un `[C]`.
+  const biotechDone = r12.grattacieloUnlocked;
   for (const b of buildings) {
     const isPalazzo = b.type === "palazzo" || b.type === "palazzoRd";
     if (b.level < 1 || (b.type !== "casa" && b.type !== "villa" && !isPalazzo)) continue;
@@ -107,7 +115,7 @@ export function stepCoinSpawner(buildings, coins, dt, r12, platformState) {
       if (r12.hap < r12.pop + 100) continue;
       if (r12.ele <= 0) continue;
       const ava = b.ava ?? 0;
-      if (ava === 0 && !grattacieloDone) {
+      if (ava === 0 && !biotechDone) {
         // [C] villa1/Alarm_4.gml, ava==0: crea "soldbio" — stessa famiglia
         // "sold*" (depth/hitbox/raccolta) ma NON assegna mon: incrementa
         // r12.biotech. **[Risolto, STUDIO.md/main.js STAR_BUILDINGS.
@@ -153,8 +161,9 @@ export function stepCoinSpawner(buildings, coins, dt, r12, platformState) {
       // livello 3) le ville sembrano produrre solo "mon" e mai piu'
       // biotech, perche' a quel punto della partita `ava` e' quasi sempre
       // >0 e il ramo sopra da solo non basta piu' a farlo notare. Spenta di
-      // nuovo, come il ramo `ava==0` sopra, a grattacielo completato.
-      if (!grattacieloDone && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded") {
+      // nuovo, come il ramo `ava==0` sopra, non appena biotech smette di
+      // servire (`biotechDone`).
+      if (!biotechDone && platformState?.tier1.stage === "expanded" && platformState?.tier2.stage === "expanded") {
         coins.push({ buildingId: b.id, x: b.x, y: b.y, depth: COIN_DEPTH, amount: 1,
           kind: "biotech", t: 0, spr: "bioico", auto: false });
       }

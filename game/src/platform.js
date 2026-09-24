@@ -203,6 +203,31 @@ function motorDepth(spr) {
   if (spr === "motor11") return MOTOR11_FIXED_DEPTH;
   return 0;   // motor2/motor12/motor13: depth = -y vero
 }
+// [Bug corretto, segnalato dall'autore: "il reattore verticale su un palo
+// che nasce con la prima espansione (quella in basso) ha la depth
+// sbagliata, una villa gli finisce sopra"] **[C]** `dockersig1/Alarm_4.gml`
+// (il trigger che crea l'intera scenografia della prima espansione, sopra
+// nel commento su r32Decor()) NON crea `moto2` per le due "turbine" a
+// (-32,1997)/(1659,1996) come il commento sopra assumeva — crea `moto2a`,
+// un oggetto DIVERSO (stesso sprite "motor2", Step/Alarm_0/Alarm_1 quasi
+// identici — l'unica vera differenza e' che `moto2a/Step_0.gml` si
+// autodistrugge quando `r12.oil<=0`, mai riprodotto qui, un gap [I] minore)
+// il cui default in `_object.json` e' `depth: -1242`, non 3 — mai
+// riassegnato nemmeno li' (letto riga per riga, nessuna delle sue tre
+// azioni tocca `depth`). Il "return 0" sopra (dinamico, -y vero, lo stesso
+// dato erroneamente anche a queste due istanze) le faceva ordinare per la
+// LORO PROPRIA y (1996/1997, molto a valle sulla piattaforma) invece del
+// fisso vero — quasi identico al -1241 di "baa31"/"baa32" stessi (lo stesso
+// "strato" della piattaforma), NON il -1997/-1996 dinamico attribuito qui
+// finora: una villa piazzata fra circa y=1242 e y=1997 (una fetta ampia
+// dell'area costruibile di questa espansione, R32_RECT sopra) si ordinava
+// quindi nel modo sbagliato contro di lei. `MOTO2A_FIXED_DEPTH` sotto
+// riproduce il vero fisso; l'entry con `spr:"motor2"` (R32_MOTORS, sotto)
+// lo marca con `fixedDepth` invece di passare per `motorDepth()` — quella
+// funzione resta corretta per l'unico `moto2` vero (R22_MOTORS, sotto,
+// dockersig3/Alarm_4.gml crea li' proprio `moto2`, verificato: dinamico
+// -y vero, invariato).
+const MOTO2A_FIXED_DEPTH = -1242;
 
 // [C] r12/Create.gml, posizioni assolute (STUDIO.md sopra).
 const R120_MOTORS = [
@@ -430,6 +455,19 @@ export function stepFaroChain(state, r12, balloons, cars, smoke, dt, chiesLevel,
     if (state.tier2.dockerT >= TIER2_BUILD_SECONDS) {
       state.tier2.stage = "expanded";
       cars.push(spawnCar("honda31", night));   // [C] r22/Create.gml
+      // [Nuova funzionalita', richiesta dall'autore: "dopo aver costruito
+      // l'ultima espansione la risorsa gemma non serve piu': ... la risorsa
+      // gemma sparisce azzerandosi"] Stessa logica gia' applicata alle
+      // mongolfiere viola qui sotto (bridgesDone, stepBalloonSpawner() in
+      // balloons.js) — `crys` non serve a nient'altro nel motore (solo i due
+      // segnali d'onda della catena fari->ponti, gia' accesi da un pezzo a
+      // questo punto). Azzerata una tantum proprio qui, alla vera fine della
+      // catena (non prima: un giocatore che arriva con delle gemme in tasca
+      // non deve vederle sparire un istante prima del dovuto). L'icona
+      // stessa (drawUiRow()/mobileResKinds, main.js) e' gia' condizionata a
+      // `r12.crys > 0`: azzerarla la nasconde da sola, nessun'altra modifica
+      // serve li'.
+      r12.crys = 0;
     }
   }
   if (state.tier2.stage === "expanded") {
@@ -468,10 +506,23 @@ export function stepFaroChain(state, r12, balloons, cars, smoke, dt, chiesLevel,
   // fulmine e scadenza naturale (con lo stesso drop di 1..3 cristalli) sono
   // gia' tutti gestiti altrove (stepTurretAim/stepProjectiles/stepBalloons,
   // main.js): nessun ciclo di movimento/scadenza da tenere qui.
+  // [Bug corretto, segnalato dall'autore: "a piattaforma finale costruita
+  // le mongolfiere viola dovrebbero smettere di passare"] **[C]** `r12/
+  // Alarm_1.gml`, il ramo vero di monviolo: `action_if_number(160, 0, 0)`
+  // — 160 e' l'indice oggetto di `r220` (data/objects.json), operatore 0
+  // ("=="): `instance_count(r220) == 0`. Il dado 1/18 di monviolo (qui sotto
+  // come sopra) non gira affatto una volta che `r220` esiste, cioe' a
+  // tier2 espanso — esattamente lo stesso gate "bridgesDone" gia' applicato
+  // al secondo spawner di monviolo (balloons.js/stepBalloonSpawner(), la
+  // sessione precedente che aveva scoperto questo stesso oggetto una
+  // seconda volta, vedi il commento sopra SIGN_DEPTH): QUESTO spawner era
+  // rimasto scoperto, mongolfiere viola continuavano a nascere da qui anche
+  // a catena completa.
+  const bridgesDone = state.tier1.stage === "expanded" && state.tier2.stage === "expanded";
   state.barviolaT += dt;
   while (state.barviolaT >= BARVIOLA_PERIOD) {
     state.barviolaT -= BARVIOLA_PERIOD;
-    if (Math.random() < BARVIOLA_CHANCE) balloons.push(spawnMonviolo());
+    if (!bridgesDone && Math.random() < BARVIOLA_CHANCE) balloons.push(spawnMonviolo());
   }
 }
 
@@ -551,12 +602,13 @@ const R32_POLES = [
   [1616 + 1001, 556], [1616 + 1051, 528], [1616 + 1051, 583], [1616 + 1099, 556],
 ];
 
-// [C] dockersig1/Alarm_4.gml: `moto2` (x2) + `moto12` (x1) — stesso
-// oggetto lampeggiante di R120_MOTORS sopra (moto2 e' letteralmente moto11/
-// 12/13 con un nome diverso, stesso Step/Alarm_0/Alarm_1), non decoro fisso.
+// [C] dockersig1/Alarm_4.gml: `moto2a` (x2, NON `moto2` — vedi
+// MOTO2A_FIXED_DEPTH sopra) + `moto12` (x1) — stesso oggetto lampeggiante
+// di R120_MOTORS sopra (stesso sprite/Step/Alarm_0/Alarm_1 di moto11/12/13,
+// solo il nome/il depth di default cambiano), non decoro fisso.
 const R32_MOTORS = [
-  { x: -32, y: 1997, spr: "motor2" },
-  { x: 1659, y: 1996, spr: "motor2" },
+  { x: -32, y: 1997, spr: "motor2", fixedDepth: MOTO2A_FIXED_DEPTH },
+  { x: 1659, y: 1996, spr: "motor2", fixedDepth: MOTO2A_FIXED_DEPTH },
   { x: 607, y: 1839, spr: "motor12" },
 ];
 
@@ -586,7 +638,7 @@ function r32Decor(state, t) {
   if (bridgeOverVisible(state.bridgeSin)) out.push({ obj: "decor", x: 1375, y: 788, depth: -1240, spr: "bridl1over" });
   for (const [dx, dy] of R32_POLES) out.push({ obj: "decor", x: R32_X + dx, y: R32_Y + dy, depth: 0, spr: "se" });
   if (blinkMotorVisible(t)) {
-    for (const m of R32_MOTORS) out.push({ obj: "decor", x: m.x, y: m.y, depth: motorDepth(m.spr), spr: m.spr });
+    for (const m of R32_MOTORS) out.push({ obj: "decor", x: m.x, y: m.y, depth: m.fixedDepth ?? motorDepth(m.spr), spr: m.spr });
   }
   return out;
 }

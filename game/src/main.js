@@ -653,6 +653,29 @@ export async function mountMatch(ctx, params = {}) {
     left -= pad; top -= pad; right += pad; bottom += pad;
     return { ox: -left, oy: -top, w: right - left, h: bottom - top };
   }
+  // [Bug corretto, segnalato dall'autore: "il tasto del faro che costa 20 o
+  // 50 gemme e' difficilissimo da premere su mobile, il tocco spesso
+  // fallisce"] Stessa causa gia' risolta per le torrette sopra
+  // (TURRET_TAP_PAD): questi sei pulsanti (FARO_SIGN_OBJS, sotto — upfaro1/
+  // wavesig1/dockersig1/upfaro3/wavesig3/dockersig3) sono sprite di MONDO
+  // ("wavesin" 60x88, il piu' piccolo: data/sprites.json), non elementi UI a
+  // UI_SCALE fisso — il loro riquadro di tap (inFrameRect() sotto) resta
+  // finora esattamente il bbox trimmato dello sprite, in pixel di MONDO. Su
+  // mobile lo zoom di default e' un "cover" (resize() piu' sotto,
+  // `roomCoverZoom`) quasi sempre piu' stretto di 1 su una room larga come
+  // `match` (3900px) vista su uno schermo verticale — un telefono tipico
+  // arriva a inquadrare il mondo a ~2.5x, quindi "wavesin" (60px di mondo)
+  // diventa appena ~24 CSS px di schermo, ben sotto ai ~44px minimi
+  // comunemente raccomandati per un tocco, e la meta' piu' stretta del
+  // riquadro di tap di una torretta ANCHE PRIMA del margine fisso qui sotto.
+  // Stesso principio del margine di tap delle torrette: allarga solo il
+  // riquadro di TAP (mai il disegno, sempre e solo lo sprite vero) di
+  // TURRET_TAP_PAD px di MONDO per lato — un margine fisso, quindi tanto piu'
+  // generoso in pixel di schermo quanto piu' lo zoom rimpicciolisce il mondo.
+  function padFrame(f, pad = TURRET_TAP_PAD) {
+    if (!f) return null;
+    return { ox: f.ox + pad, oy: f.oy + pad, w: f.w + pad * 2, h: f.h + pad * 2 };
+  }
   /** Edificio finito sotto un punto schermo, o `null` — usata SOLO dal
    * tocco prolungato (input.onLongPress, sotto: apre il pannello stats/
    * eventuale autodifesa) invece del picking generico di onTap (troppo,
@@ -1776,7 +1799,7 @@ export async function mountMatch(ctx, params = {}) {
     // stesso si ordinava correttamente ma le sue luci no, comparendo davanti
     // o dietro nel punto sbagliato — l'esatto difetto segnalato. Stessa
     // baseline di effDepth() invece di ricalcolarla: `building.depth` quando
-    // e' un vero scostamento (2 lotti, o `parco`/fixedDepth), altrimenti
+    // e' un vero scostamento (2 lotti, o `parco`/depthBias), altrimenti
     // `-building.y` come prima.
     const baseDepth = building.depth === 0 ? -building.y : building.depth;
     for (const { spr, dx, dy, lit = true, fadeTicks, depthOffset = 0, life } of spawns) {
@@ -2043,13 +2066,14 @@ export async function mountMatch(ctx, params = {}) {
     // sempre incollato davanti a tutto il resto della mappa.
     // [Bug corretto, segnalato dall'autore: "il cantiere del parco finisce
     // ancora sotto gli altri edifici, deve avere la stessa depth degli altri
-    // cantieri"] `def.fixedDepth` (parco, buildings.js) NON va applicato qui:
-    // resta 0 (dinamico, -y come ogni altro cantiere in corso) finche' il
-    // cantiere e' in corso, cosi' il parco in costruzione si ordina per -y
-    // come qualunque altro — applyLevelFinish()/stepConstructions()
-    // (buildings.js) passa a `def.fixedDepth` solo alla vera fine del
-    // cantiere, quando il parco diventa davvero la scenografia piatta che
-    // deve restare sempre "in fondo".
+    // cantieri"] `def.depthBias` (parco, buildings.js — lo scostamento +100
+    // di `parco/Create.gml: depth = -y + 100`) NON va applicato qui: resta 0
+    // (dinamico, -y come ogni altro cantiere in corso) finche' il cantiere
+    // e' in corso, cosi' il parco in costruzione si ordina per -y come
+    // qualunque altro — applyLevelFinish()/stepConstructions() (buildings.js)
+    // passa a `-y + def.depthBias` solo alla vera fine del cantiere, quando
+    // il parco diventa davvero la scenografia piatta che quello scostamento
+    // deve tenere un filo dietro ai vicini alla stessa y.
     const b = placeBuilding(type, anchorX, anchorY, 0);
     // [Bug corretto] `b.tiles`: i lotti REALMENTE consumati da questo
     // edificio (l'intero `cluster` sopra, tocco incluso) salvati sull'
@@ -2078,6 +2102,26 @@ export async function mountMatch(ctx, params = {}) {
       || type === "club" || type === "villa" || type === "gatling" || type === "laser" || type === "eolico"
       || type === "monum" || type === "banca") {
       st.constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y, type === "laser" || type === "banca"));
+    }
+    // [Bug corretto, segnalato dall'autore: "il pulsante di un edificio
+    // stella non sparisce su mobile, permettendo di costruirne piu' di
+    // uno"] Gli edifici stella (STAR_BUILDINGS sopra: monum/banca/
+    // grattacielo) sono premi UNA TANTUM — `unlocked()` li toglie dalla
+    // griglia costruzioni una volta gia' presenti in `st.buildings`, ma
+    // `st.selectedType`/`st.lastBuildingType` restavano armati sul tipo
+    // appena piazzato: su mobile il bottone di richiamo rapido
+    // (`kind: "quickBuild"`, drawUiRow() sotto, popolato da
+    // `lastBuildingType`) non passa MAI dalla griglia (che applicherebbe di
+    // nuovo `unlocked()`), quindi restava visibile e tap-abile, riarmando
+    // lo stesso tipo stella e permettendo un secondo piazzamento. Tornare
+    // esplicitamente alla selezione di default ("casa", `SELEC_BY_TYPE`
+    // sopra) subito dopo il piazzamento toglie lo strumento dalle mani del
+    // giocatore insieme al bottone stesso, coerente con "premio gia'
+    // riscosso".
+    if (type === "monum" || type === "banca" || type === "grattacielo") {
+      st.selectedType = "casa";
+      st.r12.selec = SELEC_BY_TYPE.casa;
+      st.lastBuildingType = "casa";
     }
     return null;
   }
@@ -6109,9 +6153,13 @@ export async function mountMatch(ctx, params = {}) {
       // vedi il commento li' per il perche'.
       const turretBox = it.obj === "building" && BUILDING_TYPES[it.ref.type]?.turret
         ? turretHitBox(it.ref.type) : null;
+      // FARO_SIGN_OBJS (padFrame(), sopra): stessi 28px di margine fisso
+      // delle torrette, per lo stesso motivo — sprite piccoli in coordinate
+      // di MONDO, rimpiccioliti ulteriormente dallo zoom "cover" di mobile.
+      const signBox = FARO_SIGN_OBJS.has(it.obj) ? padFrame(it._f) : null;
       const hit = it.obj === "placeholder"
         ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
-        : inFrameRect(w.x, w.y, it.x, it.y, turretBox ?? it._f);
+        : inFrameRect(w.x, w.y, it.x, it.y, turretBox ?? signBox ?? it._f);
       // [Bug corretto, segnalato dall'autore: "l'area cliccabile delle
       // torrette e' troppo piccola, sembra solo quella vicina alla bocca di
       // fuoco"] La sagoma vera (`it._f`, sopra) e' gia' l'intero sprite
@@ -7350,9 +7398,9 @@ export async function mountMatch(ctx, params = {}) {
       // devono avere la sua depth, altrimenti se c'e' un edificio sopra
       // finiscono sotto"] `depth: -b.y` esplicito invece di `depth: b.depth`:
       // l'impalcatura e' un decoro di cantiere come quella di qualunque altro
-      // edificio, sempre -y diretto, mai il `fixedDepth` del tipo sotto di
+      // edificio, sempre -y diretto, mai il `depthBias` del tipo sotto di
       // lei — anche ora che `b.depth` stesso resta 0 durante il cantiere del
-      // parco (def.fixedDepth si applica solo alla vera fine, stepConstructions()
+      // parco (def.depthBias si applica solo alla vera fine, stepConstructions()
       // in buildings.js: vedi il commento li'), i due finiscono per
       // coincidere, ma solo perche' quel fix a monte lo garantisce, non per
       // costruzione di questa riga — resta esplicito apposta.
