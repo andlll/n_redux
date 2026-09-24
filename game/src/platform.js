@@ -455,6 +455,19 @@ export function stepFaroChain(state, r12, balloons, cars, smoke, dt, chiesLevel,
     if (state.tier2.dockerT >= TIER2_BUILD_SECONDS) {
       state.tier2.stage = "expanded";
       cars.push(spawnCar("honda31", night));   // [C] r22/Create.gml
+      // [Nuova funzionalita', richiesta dall'autore: "dopo aver costruito
+      // l'ultima espansione la risorsa gemma non serve piu': ... la risorsa
+      // gemma sparisce azzerandosi"] Stessa logica gia' applicata alle
+      // mongolfiere viola qui sotto (bridgesDone, stepBalloonSpawner() in
+      // balloons.js) — `crys` non serve a nient'altro nel motore (solo i due
+      // segnali d'onda della catena fari->ponti, gia' accesi da un pezzo a
+      // questo punto). Azzerata una tantum proprio qui, alla vera fine della
+      // catena (non prima: un giocatore che arriva con delle gemme in tasca
+      // non deve vederle sparire un istante prima del dovuto). L'icona
+      // stessa (drawUiRow()/mobileResKinds, main.js) e' gia' condizionata a
+      // `r12.crys > 0`: azzerarla la nasconde da sola, nessun'altra modifica
+      // serve li'.
+      r12.crys = 0;
     }
   }
   if (state.tier2.stage === "expanded") {
@@ -493,10 +506,23 @@ export function stepFaroChain(state, r12, balloons, cars, smoke, dt, chiesLevel,
   // fulmine e scadenza naturale (con lo stesso drop di 1..3 cristalli) sono
   // gia' tutti gestiti altrove (stepTurretAim/stepProjectiles/stepBalloons,
   // main.js): nessun ciclo di movimento/scadenza da tenere qui.
+  // [Bug corretto, segnalato dall'autore: "a piattaforma finale costruita
+  // le mongolfiere viola dovrebbero smettere di passare"] **[C]** `r12/
+  // Alarm_1.gml`, il ramo vero di monviolo: `action_if_number(160, 0, 0)`
+  // — 160 e' l'indice oggetto di `r220` (data/objects.json), operatore 0
+  // ("=="): `instance_count(r220) == 0`. Il dado 1/18 di monviolo (qui sotto
+  // come sopra) non gira affatto una volta che `r220` esiste, cioe' a
+  // tier2 espanso — esattamente lo stesso gate "bridgesDone" gia' applicato
+  // al secondo spawner di monviolo (balloons.js/stepBalloonSpawner(), la
+  // sessione precedente che aveva scoperto questo stesso oggetto una
+  // seconda volta, vedi il commento sopra SIGN_DEPTH): QUESTO spawner era
+  // rimasto scoperto, mongolfiere viola continuavano a nascere da qui anche
+  // a catena completa.
+  const bridgesDone = state.tier1.stage === "expanded" && state.tier2.stage === "expanded";
   state.barviolaT += dt;
   while (state.barviolaT >= BARVIOLA_PERIOD) {
     state.barviolaT -= BARVIOLA_PERIOD;
-    if (Math.random() < BARVIOLA_CHANCE) balloons.push(spawnMonviolo());
+    if (!bridgesDone && Math.random() < BARVIOLA_CHANCE) balloons.push(spawnMonviolo());
   }
 }
 
