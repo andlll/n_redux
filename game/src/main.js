@@ -2079,6 +2079,26 @@ export async function mountMatch(ctx, params = {}) {
       || type === "monum" || type === "banca") {
       st.constructionBalloons.push(spawnConstructionBalloon(placeholder.x, placeholder.y, type === "laser" || type === "banca"));
     }
+    // [Bug corretto, segnalato dall'autore: "il pulsante di un edificio
+    // stella non sparisce su mobile, permettendo di costruirne piu' di
+    // uno"] Gli edifici stella (STAR_BUILDINGS sopra: monum/banca/
+    // grattacielo) sono premi UNA TANTUM — `unlocked()` li toglie dalla
+    // griglia costruzioni una volta gia' presenti in `st.buildings`, ma
+    // `st.selectedType`/`st.lastBuildingType` restavano armati sul tipo
+    // appena piazzato: su mobile il bottone di richiamo rapido
+    // (`kind: "quickBuild"`, drawUiRow() sotto, popolato da
+    // `lastBuildingType`) non passa MAI dalla griglia (che applicherebbe di
+    // nuovo `unlocked()`), quindi restava visibile e tap-abile, riarmando
+    // lo stesso tipo stella e permettendo un secondo piazzamento. Tornare
+    // esplicitamente alla selezione di default ("casa", `SELEC_BY_TYPE`
+    // sopra) subito dopo il piazzamento toglie lo strumento dalle mani del
+    // giocatore insieme al bottone stesso, coerente con "premio gia'
+    // riscosso".
+    if (type === "monum" || type === "banca" || type === "grattacielo") {
+      st.selectedType = "casa";
+      st.r12.selec = SELEC_BY_TYPE.casa;
+      st.lastBuildingType = "casa";
+    }
     return null;
   }
 
