@@ -704,12 +704,17 @@ export const CAR_TYPES = {
   // brr12/brr2/brr21 (bridge_des2), honda_bl1 (bridge_sin): il traffico dei
   // tre ponti levatoi (game/src/bridges.js) — ucciso quando il ponte si
   // apre, fatto ripartire (con un tipo scelto a dado, vedi bridges.js)
-  // quando si richiude. Stesso schema honda3..9/21..34 sopra. Le posizioni
-  // "leaf" (br11/br12/br13/br21/br22/brr11/brr12/brr21) sono lette dal
-  // punto in cui il genitore le crea (`action_create_object(honda_br11, 0,
-  // 0)`, relativo) PRIMA di un eventuale `action_move_to` proprio (mai
-  // raggiunto se il dado sceglie una foglia) — non le posizioni a cui il
-  // genitore stesso si sposterebbe se sopravvivesse al dado.
+  // quando si richiude. Stesso schema honda3..9/21..34 sopra.
+  // [Bug corretto, vedi il commento su honda_br21/br22 sotto] Una nota
+  // precedente qui generalizzava "le posizioni 'leaf' sono lette dal punto
+  // in cui il genitore le crea, PRIMA di un eventuale move_to proprio" a
+  // TUTTE le foglie (br11/br12/br13/br21/br22/brr11/brr12/brr21) — vero per
+  // la famiglia br1/br11/12/13 e brr1/brr11/12 (il loro `action_move_to`
+  // proprio, in Create.gml, e' innestato dentro `action_if_number(736, 1,
+  // 0)` — "match_easy", **[C]** mai vero per oggetti che esistono solo su
+  // `match` — quindi non scatta mai davvero), ma **[Bug corretto]** FALSA
+  // per br21/br22: il loro `action_move_to` proprio non ha nessun gate 736,
+  // scatta SEMPRE appena l'istanza nasce (vedi il commento sotto).
 
   // [Bug corretto, segnalato dall'autore: "sul ponte tra piattaforma
   // principale ed espansione 1 passa una macchina verde, ma spesso finisce
@@ -805,8 +810,31 @@ export const CAR_TYPES = {
       { at: 329, dir: 30, spd: 3, spr: "p_ad" },
     ],
   },
+  // [Bug corretto, segnalato dall'autore: "sul ponte tra piattaforma
+  // principale ed espansione 1 passano una macchina verde e una rossa, ma
+  // spesso finiscono fuori dalla piattaforma e volano"] **[C]** A
+  // differenza della famiglia br1/br11/12/13 (il commento sopra
+  // honda_br1/11/12/13, sopra: `action_move_to` innestato dentro il gate
+  // 736 "match_easy", mai vero qui), `honda_br21/22/Create.gml` (letti
+  // singolarmente, non solo dedotti da `honda_br2/Create.gml`) hanno un
+  // `action_move_to(228, 1257)` proprio SENZA nessun gate — la stessissima
+  // destinazione a cui si sposta `honda_br2` (sopra) quando il dado NON
+  // sceglie una foglia. Scatta sempre, appena l'istanza nasce: sia quando
+  // br21/22 vengono creati a (135,1222) da `honda_br2/Create.gml` (dado,
+  // relativo 0,0, PRIMA che honda_br2 stesso chiami il proprio move_to —
+  // da cui la vecchia ipotesi "la foglia resta al punto del genitore",
+  // sbagliata solo per questa coppia), sia in ogni altro punto in cui
+  // potessero mai nascere: il loro STESSO Create.gml sovrascrive subito
+  // quella posizione. Tre colori (br2 "p_ad", br21 "v_ad" verde, br22
+  // "r_ad" rossa — i "verde"/"rossa" segnalati), STESSA destinazione vera:
+  // (135,1222), il punto in cui nascevano finora, e' il bordo esatto della
+  // piattaforma appena fuori dall'imbarco del ponte (verificato ritagliando
+  // "baa31"/"bridr1mo" dalla texture vera, stesso metodo di honda_br1
+  // sopra) — abbastanza vicino da restare quasi sempre a schermo, ma non
+  // l'imbarco vero: (228,1257), qualche decina di px piu' dentro, e' li'
+  // che il proprio Create.gml le sposta per davvero.
   honda_br21: {
-    spawn: { x: 135, y: 1222 },
+    spawn: { x: 228, y: 1257 },
     life: 399,
     spr: "v_ad",
     initial: { dir: 30, spd: 3 },
@@ -821,7 +849,7 @@ export const CAR_TYPES = {
     ],
   },
   honda_br22: {
-    spawn: { x: 135, y: 1222 },
+    spawn: { x: 228, y: 1257 },
     life: 399,
     spr: "r_ad",
     initial: { dir: 30, spd: 3 },
