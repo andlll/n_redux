@@ -918,8 +918,17 @@ export const CAR_TYPES = {
       { at: 269, dir: 30, spd: 3, spr: "p_ad" },
     ],
   },
+  // [Bug corretto, stessa causa di honda_br21/br22 sopra] **[C]**
+  // `honda_brr21/Create.gml` (letto singolarmente): `action_move_to(2368,
+  // 1257)` proprio, senza nessun gate — la stessa destinazione di
+  // `honda_brr2` (sopra) quando il dado non la trasforma in foglia. Nato
+  // relativo (0,0) dal genitore honda_brr2 a (135,1222) — **[C]**
+  // `bridge_des2/Alarm_3.gml: action_create_object(honda_brr2, 135,
+  // 1222)`, PRIMA che honda_brr2 stesso chiami il proprio move_to — ma il
+  // proprio Create.gml sovrascrive comunque quella posizione appena nasce,
+  // esattamente come per br21/br22.
   honda_brr21: {
-    spawn: { x: 135, y: 1222 },
+    spawn: { x: 2368, y: 1257 },
     life: 339,
     spr: "g_ad",
     initial: { dir: 30, spd: 3 },
