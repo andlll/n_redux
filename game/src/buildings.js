@@ -787,15 +787,30 @@ export const BUILDING_TYPES = {
   parco: {
     get label() { return buildingLabel("parco"); },
     placeCost: { mon: 500 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==7
-    // [I] Segnalato dall'autore: un parco e' scenografia bassa e piatta (lo
-    // scatter di alberi/lampioni di spawnParcoScatter(), non un edificio
-    // solido), ma con `depth` dinamico (`effDepth()`, main.js: `depth===0` ->
-    // `-y` come ogni altro edificio) finiva davanti a pali/auto/altri oggetti
-    // di mondo vicini che dovrebbero invece coprirlo. Un `fixedDepth` fuori
-    // dalla gamma tipica di `-y` (poche centinaia/migliaia negativi su
-    // questa mappa) lo tiene sempre "in fondo", dietro a tutto cio' che si
-    // muove sopra — placeAt() (main.js) lo legge invece del solito 0.
-    fixedDepth: -5,
+    // [Bug corretto, segnalato dall'autore: "i parchi non si vedono perche'
+    // sono piu' profondi della piattaforma"] Un parco e' scenografia bassa e
+    // piatta (lo scatter di alberi/lampioni di spawnParcoScatter(), non un
+    // edificio solido): con `depth` dinamico puro (`effDepth()`, main.js:
+    // `depth===0` -> `-y` come ogni altro edificio) finiva davanti a pali/
+    // auto/altri oggetti di mondo vicini che dovrebbero invece coprirlo — da
+    // cui un `fixedDepth: -5` scelto [I] (mai verificato contro il
+    // decompilato) per tenerlo sempre "in fondo". **[C]** `parco/Create.gml`:
+    // `depth = -y + 100`, letto solo ora — NON un fisso, uno scostamento di
+    // +100 dal solito `-y` dinamico. `-5` era quindi un numero ben peggiore
+    // del bug che doveva correggere: la piattaforma (game/src/platform.js,
+    // `staticWorld`/`R32_RECT` ecc.) usa depth fissi molto piu' negativi di
+    // -5 per i propri pezzi/decorazioni (`baa31`/`baa32` a -1241, le "moor"
+    // fra -1990 e -1009, i ponti a -990/-1010...) — un parco fermo a -5
+    // restava quindi SEMPRE dietro (mai disegnato sopra) qualunque pezzo di
+    // piattaforma o decoro d'espansione gli capitasse vicino, invisibile in
+    // pratica ovunque tranne che sulla base di partenza. `-y + 100`
+    // (`depthBias: 100` sotto, applicato come `-b.y + depthBias` allo stesso
+    // punto in cui `fixedDepth` scattava prima — stepConstructions() sotto)
+    // resta invece ancorato alla vera y del parco: un filo (100, la stessa
+    // scala di scostamento gia' vista per `impaind0to1f`/altri "-y-2/-y+1"
+    // di ogni altro cantiere) meno negativo di un edificio normale alla
+    // stessa y, mai staccato dalla piattaforma sotto di lui.
+    depthBias: 100,
     construct: {                 // livello 0 -> 1, imparcr (src/objects/imparcr)
       drain: { mon: 1, every: 20 },              // [C] imparcr/Alarm_10.gml
       life: 9999,                                 // [I] nessun danno da fulmine ne' vita nel decompilato
@@ -2905,20 +2920,22 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       // `deferDecor`, `onDecor` e' gia' scattato).
       // [Bug corretto, segnalato dall'autore: "il cantiere del parco finisce
       // sotto gli altri edifici, deve avere la stessa depth degli altri
-      // cantieri"] `def.fixedDepth` (oggi solo `parco`, BUILDING_TYPES sopra)
-      // ora si applica solo qui, alla vera fine del cantiere (placeAt(),
-      // main.js, piazza l'edificio a depth 0 come ogni altro): prima di
-      // adesso il parco si ordina per -y come qualunque cantiere in corso,
-      // passando dietro a tutto solo una volta diventato davvero la
-      // scenografia piatta che `fixedDepth` intende tenere in fondo. PRIMA
-      // di applicare `c.pendingDecor` (sotto): lo scatter di alberi/lampioni
+      // cantieri"] `def.depthBias` (oggi solo `parco`, BUILDING_TYPES sopra —
+      // **[C]** `parco/Create.gml: depth = -y + 100`, uno scostamento dal
+      // solito dinamico, non un fisso) ora si applica solo qui, alla vera
+      // fine del cantiere (placeAt(), main.js, piazza l'edificio a depth 0
+      // come ogni altro): prima di adesso il parco si ordina per -y come
+      // qualunque cantiere in corso, passando a `-y + depthBias` solo una
+      // volta diventato davvero la scenografia piatta che quello scostamento
+      // intende tenere un filo dietro ai vicini alla stessa y. PRIMA di
+      // applicare `c.pendingDecor` (sotto): lo scatter di alberi/lampioni
       // del parco (spawnParcoScatter(), main.js) chiama addDecor() che
       // legge `building.depth` per il proprio depth (`baseDepth`, il
       // commento su addDecor() in main.js) — se restasse 0 (dinamico) un
       // istante di piu' il decoro nascerebbe ancorato a `-y` mentre il
-      // parco sotto e' gia' `fixedDepth`, due depth diversi per lo stesso
-      // pezzo di scenografia.
-      if (def.fixedDepth != null) b.depth = def.fixedDepth;
+      // parco sotto e' gia' a `-y + depthBias`, due depth diversi per lo
+      // stesso pezzo di scenografia.
+      if (def.depthBias != null) b.depth = -b.y + def.depthBias;
       if (c.pendingDecor !== undefined) { onDecor?.(b, c.pendingDecor); c.pendingDecor = undefined; }
       b.construction = null;
       b.frontSpr = null;

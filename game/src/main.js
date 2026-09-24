@@ -1799,7 +1799,7 @@ export async function mountMatch(ctx, params = {}) {
     // stesso si ordinava correttamente ma le sue luci no, comparendo davanti
     // o dietro nel punto sbagliato — l'esatto difetto segnalato. Stessa
     // baseline di effDepth() invece di ricalcolarla: `building.depth` quando
-    // e' un vero scostamento (2 lotti, o `parco`/fixedDepth), altrimenti
+    // e' un vero scostamento (2 lotti, o `parco`/depthBias), altrimenti
     // `-building.y` come prima.
     const baseDepth = building.depth === 0 ? -building.y : building.depth;
     for (const { spr, dx, dy, lit = true, fadeTicks, depthOffset = 0, life } of spawns) {
@@ -2066,13 +2066,14 @@ export async function mountMatch(ctx, params = {}) {
     // sempre incollato davanti a tutto il resto della mappa.
     // [Bug corretto, segnalato dall'autore: "il cantiere del parco finisce
     // ancora sotto gli altri edifici, deve avere la stessa depth degli altri
-    // cantieri"] `def.fixedDepth` (parco, buildings.js) NON va applicato qui:
-    // resta 0 (dinamico, -y come ogni altro cantiere in corso) finche' il
-    // cantiere e' in corso, cosi' il parco in costruzione si ordina per -y
-    // come qualunque altro — applyLevelFinish()/stepConstructions()
-    // (buildings.js) passa a `def.fixedDepth` solo alla vera fine del
-    // cantiere, quando il parco diventa davvero la scenografia piatta che
-    // deve restare sempre "in fondo".
+    // cantieri"] `def.depthBias` (parco, buildings.js — lo scostamento +100
+    // di `parco/Create.gml: depth = -y + 100`) NON va applicato qui: resta 0
+    // (dinamico, -y come ogni altro cantiere in corso) finche' il cantiere
+    // e' in corso, cosi' il parco in costruzione si ordina per -y come
+    // qualunque altro — applyLevelFinish()/stepConstructions() (buildings.js)
+    // passa a `-y + def.depthBias` solo alla vera fine del cantiere, quando
+    // il parco diventa davvero la scenografia piatta che quello scostamento
+    // deve tenere un filo dietro ai vicini alla stessa y.
     const b = placeBuilding(type, anchorX, anchorY, 0);
     // [Bug corretto] `b.tiles`: i lotti REALMENTE consumati da questo
     // edificio (l'intero `cluster` sopra, tocco incluso) salvati sull'
@@ -7397,9 +7398,9 @@ export async function mountMatch(ctx, params = {}) {
       // devono avere la sua depth, altrimenti se c'e' un edificio sopra
       // finiscono sotto"] `depth: -b.y` esplicito invece di `depth: b.depth`:
       // l'impalcatura e' un decoro di cantiere come quella di qualunque altro
-      // edificio, sempre -y diretto, mai il `fixedDepth` del tipo sotto di
+      // edificio, sempre -y diretto, mai il `depthBias` del tipo sotto di
       // lei — anche ora che `b.depth` stesso resta 0 durante il cantiere del
-      // parco (def.fixedDepth si applica solo alla vera fine, stepConstructions()
+      // parco (def.depthBias si applica solo alla vera fine, stepConstructions()
       // in buildings.js: vedi il commento li'), i due finiscono per
       // coincidere, ma solo perche' quel fix a monte lo garantisce, non per
       // costruzione di questa riga — resta esplicito apposta.
