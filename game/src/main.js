@@ -653,6 +653,29 @@ export async function mountMatch(ctx, params = {}) {
     left -= pad; top -= pad; right += pad; bottom += pad;
     return { ox: -left, oy: -top, w: right - left, h: bottom - top };
   }
+  // [Bug corretto, segnalato dall'autore: "il tasto del faro che costa 20 o
+  // 50 gemme e' difficilissimo da premere su mobile, il tocco spesso
+  // fallisce"] Stessa causa gia' risolta per le torrette sopra
+  // (TURRET_TAP_PAD): questi sei pulsanti (FARO_SIGN_OBJS, sotto — upfaro1/
+  // wavesig1/dockersig1/upfaro3/wavesig3/dockersig3) sono sprite di MONDO
+  // ("wavesin" 60x88, il piu' piccolo: data/sprites.json), non elementi UI a
+  // UI_SCALE fisso — il loro riquadro di tap (inFrameRect() sotto) resta
+  // finora esattamente il bbox trimmato dello sprite, in pixel di MONDO. Su
+  // mobile lo zoom di default e' un "cover" (resize() piu' sotto,
+  // `roomCoverZoom`) quasi sempre piu' stretto di 1 su una room larga come
+  // `match` (3900px) vista su uno schermo verticale — un telefono tipico
+  // arriva a inquadrare il mondo a ~2.5x, quindi "wavesin" (60px di mondo)
+  // diventa appena ~24 CSS px di schermo, ben sotto ai ~44px minimi
+  // comunemente raccomandati per un tocco, e la meta' piu' stretta del
+  // riquadro di tap di una torretta ANCHE PRIMA del margine fisso qui sotto.
+  // Stesso principio del margine di tap delle torrette: allarga solo il
+  // riquadro di TAP (mai il disegno, sempre e solo lo sprite vero) di
+  // TURRET_TAP_PAD px di MONDO per lato — un margine fisso, quindi tanto piu'
+  // generoso in pixel di schermo quanto piu' lo zoom rimpicciolisce il mondo.
+  function padFrame(f, pad = TURRET_TAP_PAD) {
+    if (!f) return null;
+    return { ox: f.ox + pad, oy: f.oy + pad, w: f.w + pad * 2, h: f.h + pad * 2 };
+  }
   /** Edificio finito sotto un punto schermo, o `null` — usata SOLO dal
    * tocco prolungato (input.onLongPress, sotto: apre il pannello stats/
    * eventuale autodifesa) invece del picking generico di onTap (troppo,
@@ -6129,9 +6152,13 @@ export async function mountMatch(ctx, params = {}) {
       // vedi il commento li' per il perche'.
       const turretBox = it.obj === "building" && BUILDING_TYPES[it.ref.type]?.turret
         ? turretHitBox(it.ref.type) : null;
+      // FARO_SIGN_OBJS (padFrame(), sopra): stessi 28px di margine fisso
+      // delle torrette, per lo stesso motivo — sprite piccoli in coordinate
+      // di MONDO, rimpiccioliti ulteriormente dallo zoom "cover" di mobile.
+      const signBox = FARO_SIGN_OBJS.has(it.obj) ? padFrame(it._f) : null;
       const hit = it.obj === "placeholder"
         ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
-        : inFrameRect(w.x, w.y, it.x, it.y, turretBox ?? it._f);
+        : inFrameRect(w.x, w.y, it.x, it.y, turretBox ?? signBox ?? it._f);
       // [Bug corretto, segnalato dall'autore: "l'area cliccabile delle
       // torrette e' troppo piccola, sembra solo quella vicina alla bocca di
       // fuoco"] La sagoma vera (`it._f`, sopra) e' gia' l'intero sprite
