@@ -3146,6 +3146,59 @@ export function stepConsumption(buildings, dt, r12, isNight) {
   }
 }
 
+/**
+ * [Nuova funzionalita', richiesta dall'autore: "pannello statistiche —
+ * consumo/guadagno energetico al minuto, con la modalita' (centrali/eolico/
+ * fotovoltaico)"] Tasso ISTANTANEO in ele/min, ricalcolato ogni chiamata
+ * dalle stesse tabelle `consumption`/`production`/`solarProduction`/
+ * `windProduction` di stepConsumption()/stepProduction()/
+ * stepSolarProduction()/stepWindProduction() sopra — non una media
+ * campionata nel tempo (drift/rumore da un rate reale a intervalli
+ * discreti), lo stesso principio gia' scelto per il numero di produzione
+ * mostrato nel pannello di un singolo edificio (drawBuildingInfoPanel(),
+ * main.js: `rawProduction * THROTTLE_MULT`, non un contatore). Ogni
+ * `periodo * TICK` secondi diventa `/ periodo / TICK * 60` volte al minuto,
+ * moltiplicato per l'ammontare di quel ciclo.
+ */
+export function currentEnergyStats(buildings, isNight, isDawn) {
+  let consumptionPerMin = 0;
+  let centraliElePerMin = 0, centraliOilPerMin = 0;
+  let eolicoPerMin = 0;
+  let solarePerMin = 0;
+  for (const b of buildings) {
+    if (b.construction) continue;
+    const def = BUILDING_TYPES[b.type];
+    const cons = def.consumption?.[b.level - 1];
+    if (cons) {
+      const rate = cons[Math.min(b.ava ?? 0, cons.length - 1)];
+      const perMin = (isNight ? rate.night : rate.day) / (120 * TICK) * 60;
+      consumptionPerMin += perMin;
+    }
+    const prod = def.production?.[b.level - 1];
+    if (prod) {
+      const mult = THROTTLE_MULT[b.throttle ?? 2];
+      const cyclesPerMin = 60 / (prod.every * TICK);
+      centraliElePerMin += prod.ele * mult * cyclesPerMin;
+      centraliOilPerMin += prod.oil * mult * cyclesPerMin;
+    }
+    const solar = def.solarProduction;
+    if (solar) {
+      const eleRate = isNight ? solar.ele.night : isDawn ? solar.ele.dawn : solar.ele.day;
+      solarePerMin += eleRate / (solar.every * TICK) * 60;
+    }
+    const wind = def.windProduction;
+    if (wind) {
+      eolicoPerMin += wind.ele / (wind.every * TICK) * 60;
+    }
+  }
+  return {
+    consumptionPerMin,
+    productionPerMin: centraliElePerMin + eolicoPerMin + solarePerMin,
+    centraliElePerMin, centraliOilPerMin,
+    eolicoPerMin, solarePerMin,
+  };
+}
+
 const STORM_CHECK = 57 * TICK;   // [C] industria1|2/Alarm_5.gml, industria3/Alarm_6.gml, casa1|2/Alarm_5.gml: si riarmano tutti a 57 tick
 
 // [Bug corretto, segnalato dall'autore: "diminuiamo un po' i danni causati

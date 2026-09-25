@@ -15,7 +15,7 @@
 // in un modulo a parte (invece di restare inline in main.js) perche'
 // title.js (lo sfondo sfocato della title screen, STUDIO.md) ne ha bisogno
 // anch'esso, sulla stessa `match.scene.json`.
-import { canAfford } from "./buildings.js";
+import { canAfford, currentResidents } from "./buildings.js";
 import { spawnCar, R32_MAGHENE_SCHEDULE, R22_MAGHENE_SCHEDULE, NIGHT_TINT } from "./cars.js";
 import {
   createBridgeState, stepBridge, bridgeDeckFrame, bridgeOverVisible, bridgeGapOpen,
@@ -72,6 +72,37 @@ export function isPlaceholderActive(x, y, platformState) {
   if (platformState.tier1.stage === "expanded" && (inRect(x, y, R32_RECT) || inRect(x, y, R320_RECT))) return true;
   if (platformState.tier2.stage === "expanded" && (inRect(x, y, R22_RECT) || inRect(x, y, R220_RECT))) return true;
   return false;
+}
+
+/**
+ * [Nuova funzionalita', richiesta dall'autore: "pannello statistiche —
+ * abitanti per piattaforma"] Somma `currentResidents(b)` (buildings.js) per
+ * edificio, distribuita nei bucket di piattaforma via gli stessi rettangoli
+ * assoluti di isPlaceholderActive() appena sopra (R12_RECT/R120_RECT per la
+ * base, R32_RECT/R320_RECT per la prima espansione, R22_RECT/R220_RECT per
+ * la seconda) — un edificio finito/in crescita sta sempre per intero dentro
+ * UN solo bucket (i lotti non attraversano mai il confine fra due pezzi di
+ * piattaforma). `r32`/`r22` sono `null` (non 0) quando quel bucket non e'
+ * mai esistito (tier corrispondente non ancora espanso), cosi' il chiamante
+ * puo' distinguere "zero abitanti li'" da "quella piattaforma non c'e'".
+ */
+export function residentsByPlatform(buildings, platformState) {
+  const tier1Expanded = platformState?.tier1?.stage === "expanded";
+  const tier2Expanded = platformState?.tier2?.stage === "expanded";
+  const out = { main: 0, r32: tier1Expanded ? 0 : null, r22: tier2Expanded ? 0 : null };
+  for (const b of buildings) {
+    // currentResidents() (buildings.js) non guarda da sola `b.construction`
+    // — ogni altro chiamante nel motore lo fa a monte (drawBuildingInfoPanel,
+    // main.js: `!b.construction ? currentResidents(b) : null`), stessa
+    // guardia qui: un cantiere non ha ancora abitanti veri.
+    if (b.construction) continue;
+    const residents = currentResidents(b);
+    if (!residents) continue;
+    if (tier1Expanded && (inRect(b.x, b.y, R32_RECT) || inRect(b.x, b.y, R320_RECT))) out.r32 += residents;
+    else if (tier2Expanded && (inRect(b.x, b.y, R22_RECT) || inRect(b.x, b.y, R220_RECT))) out.r22 += residents;
+    else out.main += residents;
+  }
+  return out;
 }
 
 export function applyMatchPlatform(staticWorld, { interactive = false } = {}) {
