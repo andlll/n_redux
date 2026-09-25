@@ -654,6 +654,16 @@ function r32Decor(state, t) {
     // erroneamente davanti invece che dietro come nel gioco vero.
     { obj: "decor", x: 565, y: 1720, depth: -1720 - 320, spr: "robbobase" },
     { obj: "decor", x: -16, y: 1153, depth: -1009, spr: "moor31" },
+    // [Gap risolto] **[C]** `mudr31/Create.gml` (l'oggetto dietro lo sprite
+    // "moor31" appena sopra) crea anche, relativo a se stesso a (0,0) —
+    // quindi alla STESSA posizione assoluta — un secondo oggetto,
+    // `mudr31_basso` (sprite "moor31_basso", depth fisso -1990 da
+    // `_object.json`, mai riassegnato: stesso schema di colore
+    // giorno/notte di moor31, nessun'altra azione). Mai portato in questo
+    // motore: mancava del tutto, non solo la depth sbagliata. Nessun
+    // legame con la turbina/pilone sopra (sprite enorme, 1559x940: un
+    // pezzo di bordo/cornice della piattaforma, non il "robbobase").
+    { obj: "decor", x: -16, y: 1153, depth: -1990, spr: "moor31_basso" },
     { obj: "decor", x: 1302, y: 1150, depth: -1990, spr: "moor32" },
     { obj: "decor", x: 2513, y: 1268, depth: -1352, spr: "moor33" },
     { obj: "decor", x: 2027, y: 1105, depth: -1213, spr: "moor34" },

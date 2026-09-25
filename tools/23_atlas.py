@@ -707,10 +707,12 @@ GAMEPLAY_SPRITES = {
     # (barviola). "baa31"/"f3b" sono la base e il terzo faro (spento, mai
     # potenziato in questo giro) della piattaforma nuova, "bridr1"/"bridl1"/
     # "moor31..34"/"robbobase"/"motor2" la sua scenografia fissa (ponti,
-    # moli, il palo "robbobaseobj").
+    # moli, il palo "robbobaseobj"). "moor31_basso": lo sprite del secondo
+    # oggetto che "mudr31" crea su se stesso (mudr31_basso, STUDIO.md/
+    # platform.js) — mancava anche dalla lista sprite, non solo dal decoro.
     "platform2": [
         "f1", "f1lux", "nimbuscluster1", "monviola_bar", "monviola",
-        "baa31", "f3b", "f3", "bridr1", "bridl1", "moor31", "moor32", "moor33", "moor34",
+        "baa31", "f3b", "f3", "bridr1", "bridl1", "moor31", "moor31_basso", "moor32", "moor33", "moor34",
         "robbobase", "motor2", "baa21", "moor21",
         # "baa22"/"baa32": la SECONDA meta' di r32/r22 (r320/r220, creati
         # relativi dentro r32|r22/Create.gml) — un pezzo di sprite mancante
