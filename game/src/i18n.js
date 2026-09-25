@@ -284,11 +284,17 @@ const STRINGS = {
   // Plant"/"Centrale elettrica"/ecc, coerente con come il tutorial (gia'
   // corretto in inglese, tutorial.js) la descrive da sempre.
   "building.industria": { en: "Power Plant", it: "Centrale elettrica", es: "Central eléctrica", pt: "Usina Elétrica", de: "Kraftwerk", fr: "Centrale électrique" },
-  // Livello 3 (il piu' grande, production[2] in buildings.js) ricade sulla
-  // voce base sopra — "Centrale elettrica" e basta, nessun aggettivo,
-  // stesso principio di chies/palazzo.
   "building.industria.1": { en: "Small Power Plant", it: "Centrale elettrica piccola", es: "Central eléctrica pequeña", pt: "Usina Elétrica Pequena", de: "Kleines Kraftwerk", fr: "Petite centrale électrique" },
   "building.industria.2": { en: "Medium Power Plant", it: "Centrale elettrica media", es: "Central eléctrica mediana", pt: "Usina Elétrica Média", de: "Mittleres Kraftwerk", fr: "Centrale électrique moyenne" },
+  // [Bug corretto, segnalato dall'autore: "il livello 3 dovrebbe chiamarsi
+  // 'centrale elettrica grande', come gli altri due livelli"] Mancava una
+  // voce ".3" dedicata: buildingLabel() (sotto) ricadeva sulla base
+  // "building.industria" (nessun aggettivo) per l'UNICO livello che invece
+  // ne aveva bisogno, dato che 1/2 lo hanno gia' — un'incoerenza, non una
+  // scelta apposta (a differenza di chies/palazzo, che davvero restano
+  // sulla base al livello 1 per design). Stesso schema piccola/media/grande
+  // di ".1"/".2" sopra.
+  "building.industria.3": { en: "Large Power Plant", it: "Centrale elettrica grande", es: "Central eléctrica grande", pt: "Usina Elétrica Grande", de: "Großes Kraftwerk", fr: "Grande centrale électrique" },
   "building.casa": { en: "House", it: "Casa", es: "Casa", pt: "Casa", de: "Haus", fr: "Maison" },
   // Tutti e tre distinti dalla base ("Casa"): a differenza di chies/
   // industria/palazzo, nessun livello di casa condivide il nome col tipo
