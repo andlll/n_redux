@@ -5027,6 +5027,68 @@ export async function mountMatch(ctx, params = {}) {
     return wx >= x0 && wx <= x0 + f.w && wy >= y0 && wy <= y0 + f.h;
   }
 
+  // [Nuova funzionalita', richiesta dall'autore: "con lo strumento mano
+  // attivo (e solo in quel caso) attiviamo la collisione a maschera pixel
+  // sugli edifici per il detect di un hover/click, anche se pesa di piu',
+  // altrimenti non e' preciso come sistema"] inFrameRect() sopra e' solo il
+  // bounding box: per uno sprite con un margine trasparente ampio intorno
+  // alla sagoma vera (una torre stretta in un riquadro largo, ad esempio),
+  // l'hover/il tap blu della mano si accendevano anche su pixel vuoti
+  // dell'immagine — percepito come "poco preciso". `pixelHit()` sotto legge
+  // l'alpha vera del singolo pixel toccato — sempre DOPO inFrameRect() (che
+  // resta il filtro economico, scarta il grosso dei candidati prima che
+  // serva aprire un pixel), e mai per le torrette: il loro hitbox e' gia'
+  // l'unione di tutti i frame direzionali (turretHitBox() piu' sotto, un fix
+  // deliberato per un'area di tap piu' generosa) — una maschera sul solo
+  // frame corrente la restringerebbe di nuovo, la stessa regressione gia'
+  // corretta li'.
+  //
+  // Un atlas e' fatto di ~50 pagine da 2048x2048 (assets.js/tools/
+  // 23_atlas.py): leggere i pixel di una texture GPU richiede un framebuffer
+  // + gl.readPixels(), un giro costoso (~16 MB per pagina) — cachato per
+  // pagina la prima volta che serve davvero (un tipo di edificio mai
+  // inquadrato dalla mano in questa sessione non paga mai questo costo), mai
+  // ripetuto.
+  const pageAlphaCache = new Map();   // indice pagina atlas -> Uint8Array RGBA letta con readPixels
+
+  function pageAlphaData(pageIndex) {
+    if (pageAlphaCache.has(pageIndex)) return pageAlphaCache.get(pageIndex);
+    const page = pageTex[pageIndex];
+    if (!page) return null;   // pagina non ancora scaricata (assets.js) — MAI cachata come "vuota", ritentata al prossimo tocco
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, page.tex, 0);
+    const buf = new Uint8Array(page.width * page.height * 4);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
+      gl.readPixels(0, 0, page.width, page.height, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.deleteFramebuffer(fbo);
+    pageAlphaCache.set(pageIndex, buf);
+    return buf;
+  }
+
+  const PIXEL_MASK_ALPHA_THRESHOLD = 32;   // [I] un bordo quasi trasparente (sfumato in fase di export) non conta come "sagoma vera"
+
+  /** Come inFrameRect() sopra, ma sul pixel vero invece del bounding box —
+   * vedi il commento li' per quando/perche'. `sprName`/`frameIdx`: lo stesso
+   * sprite/sottoimmagine gia' scelti per il disegno di quel frame
+   * (frameFor() in cima al file), non ricalcolati qui. */
+  function pixelHit(wx, wy, x, y, sprName, frameIdx) {
+    const frames = atlas.sprites[sprName];
+    if (!frames || !frames.length) return false;
+    const fr = frames[Math.max(0, Math.min(frameIdx, frames.length - 1))];
+    const lx = Math.floor(wx - (x - fr.ox)), ly = Math.floor(wy - (y - fr.oy));
+    if (lx < 0 || ly < 0 || lx >= fr.w || ly >= fr.h) return false;
+    const page = pageTex[fr.p];
+    if (!page) return false;
+    const buf = pageAlphaData(fr.p);
+    if (!buf) return false;
+    const px = Math.round(fr.u0 * page.width) + lx, py = Math.round(fr.v0 * page.height) + ly;
+    if (px < 0 || py < 0 || px >= page.width || py >= page.height) return false;
+    return buf[(py * page.width + px) * 4 + 3] > PIXEL_MASK_ALPHA_THRESHOLD;
+  }
+
   /** Disegna `f` ruotato di `angleDeg` intorno al proprio ancoraggio (cx,cy) —
    * [C] freccia_tutorial/EndStep.gml: `image_angle` (STUDIO.md/tutorial.js),
    * l'unico sprite del motore che ruota per davvero (Renderer.draw() sotto
@@ -6399,9 +6461,15 @@ export async function mountMatch(ctx, params = {}) {
       // LOOT_TAP_PAD (sopra): stesso margine fisso per il tap esplicito
       // (touch, o click diretto su desktop) sulle casse di risorse.
       const lootBox = it.obj === "loot" ? padFrame(it._f, LOOT_TAP_PAD) : null;
+      // Maschera pixel (pixelHit(), vedi il commento su inFrameRect() piu'
+      // sopra): stessa richiesta di `handHovered` piu' sotto in questo file
+      // — solo con la mano attiva, solo edifici normali (mai torrette,
+      // `turretBox` sopra e' gia' un hitbox deliberatamente allargato).
+      const usePixelMask = it.obj === "building" && st.r12.selec === 0 && !turretBox;
       const hit = it.obj === "placeholder"
         ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
-        : inFrameRect(w.x, w.y, it.x, it.y, turretBox ?? signBox ?? lootBox ?? it._f);
+        : inFrameRect(w.x, w.y, it.x, it.y, turretBox ?? signBox ?? lootBox ?? it._f)
+          && (!usePixelMask || pixelHit(w.x, w.y, it.x, it.y, it._spr, it._frameIdx));
       // [Bug corretto, segnalato dall'autore: "l'area cliccabile delle
       // torrette e' troppo piccola, sembra solo quella vicina alla bocca di
       // fuoco"] La sagoma vera (`it._f`, sopra) e' gia' l'intero sprite
@@ -7637,7 +7705,12 @@ export async function mountMatch(ctx, params = {}) {
       // esclusivo con `selec===0`), quindi l'ordine qui sotto non decide
       // mai una precedenza vera.
       const handHovered = !isMobile && st.r12.selec === 0 && !!hoverWorld && !!bFrame
-        && inFrameRect(hoverWorld.x, hoverWorld.y, b.x, b.y, bFrame);
+        && inFrameRect(hoverWorld.x, hoverWorld.y, b.x, b.y, bFrame)
+        // Maschera pixel (pixelHit(), sopra): solo con la mano attiva
+        // (gia' garantito da `st.r12.selec === 0` qui sopra) e mai sulle
+        // torrette (hitbox deliberatamente allargata, vedi il commento su
+        // pixelHit()).
+        && (BUILDING_TYPES[b.type]?.turret || pixelHit(hoverWorld.x, hoverWorld.y, b.x, b.y, b.spr, buildingFrameIdx));
       // [Bug corretto, segnalato dall'autore: "l'impalcatura si smonta solo
       // davanti, non dietro, come se sparisse col topper"] `b.rearSpr`
       // (buildings.js, commento li' sopra sull'archeologia GML): la traccia
@@ -7651,6 +7724,11 @@ export async function mountMatch(ctx, params = {}) {
       if (b.rearSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.rearSpr) });
       dynamic.push({
         obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: bFrame,
+        // `_spr`/`_frameIdx`: lo sprite/sottoimmagine vera di QUESTO frame —
+        // serve al picking del tap piu' sotto per la maschera pixel
+        // (pixelHit(), vedi il commento li') senza doverli ricalcolare da
+        // capo (animazione eolico/industria3 inclusa, sopra).
+        _spr: b.spr, _frameIdx: buildingFrameIdx,
         ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true }
           : handHovered ? { _tint: HAND_HOVER_TINT, _selfLit: true } : {}),
       });
@@ -8565,7 +8643,16 @@ export async function mountMatch(ctx, params = {}) {
     // sotto al blur, coerente con la richiesta esplicita e con lo stesso
     // trattamento gia' dato al balloon/pollice del tutorial per questo
     // stesso pannello (vedi il commento li' sotto).
-    const hideResourceIcons = !!st.tutorialState?.cutscene || !!st.buildingInfoPanel;
+    // [Bug corretto, segnalato dall'autore: "quando la finestra di
+    // approfondimento delle risorse e' aperta nascondi il pannello risorse
+    // (sia il count che le icone) altrimenti si sovrappongono"]
+    // `statsPanelOpen` (drawStatsPanel() piu' sotto) e' lo stesso identico
+    // caso di `buildingInfoPanel` appena sopra: un pannello procedurale
+    // disegnato DOPO la barra, mai un blur che la catturi/nasconda da solo
+    // (drawStatsPanel() non chiama pauseBlur, vedi il commento li' sul
+    // perche') — mancava qui, la barra restava visibile e si sovrapponeva
+    // davvero al pannello appena aperto sopra di lei.
+    const hideResourceIcons = !!st.tutorialState?.cutscene || !!st.buildingInfoPanel || st.statsPanelOpen;
     // [Nuova disposizione, richiesta dall'autore: "le risorse in alto sono
     // caotiche su mobile, incolonniamole" — mockup concordato in chat]
     // `icone_oriz` (ramo desktop sotto) e' tarata per stare comoda su
@@ -8714,7 +8801,7 @@ export async function mountMatch(ctx, params = {}) {
     // numeri nudi restavano leggibili sopra a un fondale che dovrebbe
     // nasconderli. `hideResourceText` raccoglie tutti i casi in cui il resto
     // della barra risorse e' gia' coperto/oscurato da qualcos'altro.
-    const hideResourceText = st.paused || st.buildMenuOpen || !!st.tutorialState?.cutscene || !!st.buildingInfoPanel;
+    const hideResourceText = st.paused || st.buildMenuOpen || !!st.tutorialState?.cutscene || !!st.buildingInfoPanel || st.statsPanelOpen;
     if (isMobile) {
       if (!hideResourceText) for (const row of mobileResLayout) {
         drawHtmlText(row.text, MOBILE_RES_X + TAG_PAD / 2 + mobileIconColW + TAG_GAP, row.y + MOBILE_ROW_H / 2,
