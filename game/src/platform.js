@@ -748,6 +748,24 @@ const R22_MOTORS = [
  * battenti — a piattaforma aperta l'impalcato animato sparisce del tutto
  * e restano visibili solo le due meta' sollevate ("bridr1_sin"/
  * "bridr1_des", bridges.js/bridgeGapOpen()), non un semplice frame fermo. */
+// [Bug corretto, segnalato dall'autore: "siamo sicuri che la nave cargo
+// passi sotto il ponte fra espansione 1 ed espansione 2?"] La nave (bridges.js/
+// maybeSpawnShip(4500,2170), stessa rotta fissa per ogni nave: 150°/120px/s)
+// nasce esattamente quando il ponte finisce di aprirsi (onOpen() sotto), ed
+// e' la sua geometria a incrociare in x quella del ponte (2363,783) fra
+// ~14.7s e ~30.1s dalla propria nascita — la STESSA finestra in cui il ponte
+// resta aperto (~30s), non una coincidenza. In quella finestra pero' la `y`
+// della nave scende da ~1286 a ~361: le due meta' sollevate (sotto,
+// bridgeGapOpen()) avevano depth fissa -1100 — con `depth: -s.y` dinamico
+// della nave (main.js/effDepth: "piu' basso = disegnato dopo = piu' vicino
+// alla camera"), per i primi ~3s dell'incrocio (finche' `s.y` resta sopra
+// 1100, quindi la sua depth e' MENO negativa di -1100) la nave finiva
+// disegnata DAVANTI alle meta' sollevate invece che sotto — solo nel resto
+// della finestra (`s.y` sceso sotto 1100) passava correttamente dietro.
+// SHIP_BRIDGE_GAP_DEPTH, sotto al minimo (~-1286) con un margine, la tiene
+// sempre dietro per l'INTERA finestra di sovrapposizione, non solo la coda.
+const SHIP_BRIDGE_GAP_DEPTH = -1400;
+
 function r22Decor(state, t) {
   const bd2 = state.bridgeDes2;
   const out = [
@@ -756,8 +774,8 @@ function r22Decor(state, t) {
     { obj: "decor", x: 1853, y: 263, depth: 2, spr: "moor21" },      // mudr21 — [C] _object.json: depth fisso
   ];
   if (bridgeGapOpen(bd2)) {
-    out.push({ obj: "decor", x: 2363, y: 783, depth: -1100, spr: "bridr1_sin" });
-    out.push({ obj: "decor", x: 2363, y: 783, depth: -1100, spr: "bridr1_des" });
+    out.push({ obj: "decor", x: 2363, y: 783, depth: SHIP_BRIDGE_GAP_DEPTH, spr: "bridr1_sin" });
+    out.push({ obj: "decor", x: 2363, y: 783, depth: SHIP_BRIDGE_GAP_DEPTH, spr: "bridr1_des" });
   } else {
     out.push({ obj: "decor", x: 2363, y: 783, depth: -990, spr: "bridr1mo", frame: Math.round(bridgeDeckFrame(bd2)) });
   }
