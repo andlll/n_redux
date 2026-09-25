@@ -276,6 +276,20 @@ const MOTO2A_FIXED_DEPTH = -1242;
 // di R32_MOTORS sotto).
 const MOTO2_FIXED_DEPTH = 3;
 
+// [Bug corretto, segnalato dall'autore: "la turbina sopra 'robbobase' deve
+// avere una depth minore altrimenti sembra ferma"] Il `moto12` di R32_MOTORS
+// sotto (607,1839, gia' dinamico -y come da fix precedente) finiva comunque
+// DIETRO al pilone statico "robbobase" (r32Decor() sotto: depth fisso
+// -1720-320 = -2040): la sua -y vera (-1839) e' meno negativa, quindi
+// disegnata PRIMA — effDepth()/sortWorld in main.js, "piu' basso = disegnato
+// dopo = piu' vicino alla camera". Il lampeggio (blinkMotorVisible()) restava
+// percio' sempre coperto dal frame statico "fan+pilone+base" di robbobase,
+// mai visibile: la turbina sembrava ferma invece di lampeggiare. Un
+// `fixedDepth` un filo sotto quello di robbobase (stesso meccanismo gia' in
+// uso per moto2/moto2a sopra) la tiene sempre disegnata dopo di lui.
+const ROBBOBASE_DEPTH = -1720 - 320;         // stesso valore dell'entry "robbobase" in r32Decor() sotto
+const ROBBOBASE_MOTOR_DEPTH = ROBBOBASE_DEPTH - 1;
+
 // [C] r12/Create.gml, posizioni assolute (STUDIO.md sopra).
 const R120_MOTORS = [
   { x: 1951, y: 858, spr: "motor11" },
@@ -656,7 +670,7 @@ const R32_POLES = [
 const R32_MOTORS = [
   { x: -32, y: 1997, spr: "motor2", fixedDepth: MOTO2A_FIXED_DEPTH },
   { x: 1659, y: 1996, spr: "motor2", fixedDepth: MOTO2A_FIXED_DEPTH },
-  { x: 607, y: 1839, spr: "motor12" },
+  { x: 607, y: 1839, spr: "motor12", fixedDepth: ROBBOBASE_MOTOR_DEPTH },
 ];
 
 /** Tutte le entry di scenografia FISSA della seconda piattaforma — [C]
@@ -683,7 +697,7 @@ function r32Decor(state, t) {
     // veniva disegnato troppo presto/lontano — qualunque oggetto di mondo
     // nella fascia fra -1720 e -2040 (auto, villa, decoro) ci finiva
     // erroneamente davanti invece che dietro come nel gioco vero.
-    { obj: "decor", x: 565, y: 1720, depth: -1720 - 320, spr: "robbobase" },
+    { obj: "decor", x: 565, y: 1720, depth: ROBBOBASE_DEPTH, spr: "robbobase" },
     { obj: "decor", x: -16, y: 1153, depth: -1009, spr: "moor31" },
     // [Gap risolto] **[C]** `mudr31/Create.gml` (l'oggetto dietro lo sprite
     // "moor31" appena sopra) crea anche, relativo a se stesso a (0,0) —
