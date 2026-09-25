@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap, wewOilDrain, WEWE_OIL_DRAIN_PERIOD } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId, currentEnergyStats } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, INDUSTRIA3_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId, currentEnergyStats } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -7567,8 +7567,23 @@ export async function mountMatch(ctx, params = {}) {
       // alla vera fine del cantiere (`revealAtEnd`, BUILDING_TYPES.eolico),
       // quindi qui sono equivalenti — ma il pareggio con lo sprite mostrato
       // resta piu' diretto.
-      const windFrames = (b.type === "eolico" && b.spr === BUILDING_TYPES.eolico.construct.finalSprite) ? frameCountFor(b.spr) : 1;
-      const buildingFrameIdx = windFrames > 1 ? Math.floor((b.animT ?? 0) * WIND_ANIM_FPS) % windFrames : constructionFrameIdx(b);
+      // [Bug corretto, segnalato dall'autore: "la centrale di livello 3
+      // aveva un'animazione a due frame nel compilato?"] Si': **[C]** "i31"
+      // (lo sprite finito del livello 3 — solo lui, "i11"/"i21" dei livelli
+      // 1/2 restano un fotogramma fisso) ha lo stesso genere di sottoimmagini
+      // vere di "eol" (b.animT/INDUSTRIA3_ANIM_FPS, buildings.js/
+      // stepProduction — mai animato finora, sempre fermo al frame 0). Stesso
+      // principio del controllo sopra: `b.spr` invece di `!b.construction`,
+      // qui pero' anche invece di `b.type === "industria"` da solo — un
+      // industria di livello 1/2 (sprite "i11"/"i21", niente affatto animati)
+      // non deve richiamare `frameCountFor()` per niente ad ogni frame di
+      // ogni edificio in scena, lo sprite giusto da confrontare basta gia'
+      // a escluderli.
+      const eolicoAnimating = b.type === "eolico" && b.spr === BUILDING_TYPES.eolico.construct.finalSprite;
+      const industria3Animating = b.type === "industria" && b.spr === BUILDING_TYPES.industria.upgrades[1].finalSprite;
+      const animFrames = eolicoAnimating || industria3Animating ? frameCountFor(b.spr) : 1;
+      const animFps = eolicoAnimating ? WIND_ANIM_FPS : INDUSTRIA3_ANIM_FPS;
+      const buildingFrameIdx = animFrames > 1 ? Math.floor((b.animT ?? 0) * animFps) % animFrames : constructionFrameIdx(b);
       // [I] Segnalato dall'autore: l'edificio scelto per la demolizione/
       // riparazione con la ruspa deve avere tinta rossa per tutta la durata
       // del popup di conferma si'/no (ruspaPending sotto), non solo restare

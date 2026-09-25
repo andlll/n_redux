@@ -2976,6 +2976,23 @@ export function stepProduction(buildings, dt, r12) {
     const def = BUILDING_TYPES[b.type];
     const prod = def.production?.[b.level - 1];
     if (!prod) continue;
+    // [Bug corretto, segnalato dall'autore: "la centrale di livello 3 aveva
+    // un'animazione a due frame nel compilato?"] Si': **[C]** `i31`
+    // (data/sprites.json, lo sprite finito di industria3) ha 4 sottoimmagini
+    // (0=1, 2=3 identiche a coppie — due stati distinti alternati, non
+    // quattro), mentre `i11`/`i21` (livello 1/2) sono ferme a un solo frame
+    // — solo il livello massimo anima. Nessun `action_sprite_set` in
+    // `industria3/Create.gml` ne fissa `image_speed`: resta il default di
+    // GameMaker 1.x, `image_speed=1` (1 sottoimmagine per Step, mai
+    // sovrascritto), da cui INDUSTRIA3_ANIM_FPS = 60 sotto — stesso
+    // principio di `b.animT`/WIND_ANIM_FPS per "eol" (eolico, sopra), ma
+    // senza bisogno di un rallentamento esplicito come li' (`image_speed:
+    // 0.25` -> WIND_ANIM_FPS=15). Accumulato qui per ogni edificio con
+    // `production` (solo industria, a ogni livello: main.js/frameCountFor()
+    // fa gia' da no-op per i11/i21, un solo frame) invece che in un proprio
+    // stepper dedicato — stepProduction() gira gia' ogni frame su questi
+    // stessi edifici.
+    b.animT = (b.animT ?? 0) + dt;
     b.prodT = (b.prodT ?? 0) + dt;
     const period = prod.every * TICK;
     const mult = THROTTLE_MULT[b.throttle ?? 2];
@@ -3068,6 +3085,10 @@ export function stepWindProduction(buildings, dt, r12) {
 }
 // [C] eoli/Create.gml: 0.25 frame/step * 60 step/s.
 export const WIND_ANIM_FPS = 15;
+// [C] industria3/Create.gml non fissa mai `image_speed` (vedi il commento
+// su `b.animT` in stepProduction() sopra): resta il default GameMaker 1.x,
+// 1 frame/step * 60 step/s.
+export const INDUSTRIA3_ANIM_FPS = 60;
 
 /**
  * Avanza la crescita di popolazione degli edifici finiti che dichiarano
