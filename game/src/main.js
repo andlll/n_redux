@@ -628,6 +628,17 @@ export async function mountMatch(ctx, params = {}) {
   // margine fisso per lato, indipendente dallo sprite — lo stesso tipo di
   // "area di tocco piu' grande della grafica" comune su mobile.
   const TURRET_TAP_PAD = 28;
+  // [Nuova funzionalita', richiesta dall'autore: "aumenterei l'area di
+  // collisione delle risorse che cadono dalle mongolfiere in modo che siano
+  // piu' facili da prendere"] Stesso principio di TURRET_TAP_PAD sopra —
+  // allarga solo il riquadro di tap/hover di `loot` (le casse bar-us/-bluss/
+  // -gia/-viola/-us_giga lasciate cadere da monvo|monvo_giga|monbo|mongo|
+  // monviolo, balloons.js), mai lo sprite disegnato. Nessun equivalente nel
+  // decompilato (bar*/Mouse_MouseEnter.gml raccoglie sul bbox esatto), ma le
+  // casse cadono in mezzo alla scena affollata e scompaiono da sole dopo 700
+  // tick (LOOT_LIFE, balloons.js) — un margine generoso le rende piu' facili
+  // da centrare prima che spariscano.
+  const LOOT_TAP_PAD = 24;
   // `pad` di default a TURRET_TAP_PAD (il comportamento originale, per ogni
   // chiamante che non lo passa): [Bug corretto, segnalato dall'autore: "i
   // fumetti rossi del costo dell'autodifesa devono comparire piu' vicino
@@ -6385,9 +6396,12 @@ export async function mountMatch(ctx, params = {}) {
       // delle torrette, per lo stesso motivo — sprite piccoli in coordinate
       // di MONDO, rimpiccioliti ulteriormente dallo zoom "cover" di mobile.
       const signBox = FARO_SIGN_OBJS.has(it.obj) ? padFrame(it._f) : null;
+      // LOOT_TAP_PAD (sopra): stesso margine fisso per il tap esplicito
+      // (touch, o click diretto su desktop) sulle casse di risorse.
+      const lootBox = it.obj === "loot" ? padFrame(it._f, LOOT_TAP_PAD) : null;
       const hit = it.obj === "placeholder"
         ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
-        : inFrameRect(w.x, w.y, it.x, it.y, turretBox ?? signBox ?? it._f);
+        : inFrameRect(w.x, w.y, it.x, it.y, turretBox ?? signBox ?? lootBox ?? it._f);
       // [Bug corretto, segnalato dall'autore: "l'area cliccabile delle
       // torrette e' troppo piccola, sembra solo quella vicina alla bocca di
       // fuoco"] La sagoma vera (`it._f`, sopra) e' gia' l'intero sprite
@@ -7378,10 +7392,12 @@ export async function mountMatch(ctx, params = {}) {
         }
         // Casse di risorse (balloons.js): stessa raccolta al passaggio del
         // mouse delle monete sopra — segnalato dall'autore, prima si
-        // raccoglievano solo con un tap esplicito.
+        // raccoglievano solo con un tap esplicito. LOOT_TAP_PAD (sopra):
+        // stesso margine allargato del tap esplicito qui sotto, cosi'
+        // hover e tap restano coerenti sulla stessa cassa.
         for (let i = st.loot.length - 1; i >= 0; i--) {
           const l = st.loot[i];
-          const f = frameFor(l.spr);
+          const f = padFrame(frameFor(l.spr), LOOT_TAP_PAD);
           if (!f) continue;
           const x0 = l.x - f.ox, y0 = l.y - f.oy;
           if (hw.x >= x0 && hw.x <= x0 + f.w && hw.y >= y0 && hw.y <= y0 + f.h) collectLootAt(l);
