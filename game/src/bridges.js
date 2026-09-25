@@ -122,7 +122,15 @@ const SHIP_TYPES = [
   { type: "cargo4", kind: "oil", sprP: "cargo4p", sprV: "cargo4v" },
   { type: "cargo3", kind: null, sprP: "cargo3v", sprV: "cargo3v" },
 ];
-const SHIP_SPAWN_CHANCE = 1 / 10;      // [C] bridge_des2/Alarm_2.gml: action_if_dice(10)
+// [Bug segnalato dall'autore: "ore di gioco e non e' ancora passata una
+// nave", richiesto: "portiamo il dado a 1/5"] **[C]** il decompilato usa
+// davvero 1/10 (action_if_dice(10)) — ma a un ciclo del ponte ogni ~90s
+// (CLOSED_TICKS+OPEN_ANIM_TICKS+OPEN_HOLD_TICKS+CLOSE_ANIM_TICKS sopra) 1/10
+// significa un'attesa media di ~15 minuti prima della prima nave, facile da
+// leggere come "il sistema non funziona". [I] deviazione deliberata dal
+// decompilato, raddoppia la frequenza attesa (~7-8 minuti in media) restando
+// comunque un evento raro/da cogliere al volo, non garantito ad ogni ciclo.
+const SHIP_SPAWN_CHANCE = 1 / 5;
 const SHIP_LIFE_SECONDS = 3000 / 60;   // [C] cargoN/Create.gml: action_set_alarm(3000, 0)
 const SHIP_DIR_RAD = (150 * Math.PI) / 180;   // [C] action_set_motion(150, 2)
 const SHIP_PX_PER_SEC = 2 * 60;
@@ -134,8 +142,9 @@ const SHIP_VY = -Math.sin(SHIP_DIR_RAD) * SHIP_PX_PER_SEC;
 const SHIP_SMOKE_PERIOD = 40 / 60;     // [C] cargoN/Alarm_1.gml: action_set_alarm(40, 1)
 const SHIP_SMOKE_OFFSET = { x: 555, y: 238 };   // [C] action_create_object(smoke_ind, 555, 238), relativo
 
-/** [C] bridge_des2/Alarm_2.gml: 1/10 di probabilita' appena il ponte finisce
- * di aprirsi — `x`/`y` e' la posizione di `cargomaker` in quell'evento
+/** [C] bridge_des2/Alarm_2.gml: appena il ponte finisce di aprirsi, un dado
+ * (SHIP_SPAWN_CHANCE sopra — 1/5, non il vero 1/10 del decompilato, vedi il
+ * commento li') — `x`/`y` e' la posizione di `cargomaker` in quell'evento
  * (4500, 2170), sempre la stessa. Ritorna `null` se il dado non la fa nascere. */
 export function maybeSpawnShip(x, y) {
   if (Math.random() >= SHIP_SPAWN_CHANCE) return null;
