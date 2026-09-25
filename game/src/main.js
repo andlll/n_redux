@@ -2225,6 +2225,14 @@ export async function mountMatch(ctx, params = {}) {
   // bianco. Stesso schema di ricomposizione gia' usato in cars.js (NIGHT_TINT):
   // R=255&0xff, G=(255>>8)&0xff=0, B=(255>>16)&0xff=0 -> 0xff0000.
   const ARMED_TINT = 0xff0000;
+  // [Nuova funzionalita', richiesta dall'autore: "solo desktop — con la mano
+  // selezionata, l'hover del mouse sugli edifici li colora di azzurro finche'
+  // il cursore resta sopra"] Nessun equivalente nel decompilato (li' l'hover
+  // vero esiste solo per ruin1|2 sotto ruspa, sempre rosso puro 0xff0000 —
+  // vedi `hoverWorld` piu' sotto, stesso meccanismo): un azzurro chiaro
+  // invece del rosso "pericolo/demolizione" gia' in uso per la ruspa, cosi'
+  // i due indizi restano visivamente distinti.
+  const HAND_HOVER_TINT = 0x66ccff;
 
   /** I placeholder ancora liberi nei quattro vicini diagonali di `origin`, uno per direzione al massimo. */
   function findDiagonalTargets(origin) {
@@ -7557,6 +7565,12 @@ export async function mountMatch(ctx, params = {}) {
     // --- lista di disegno di questo frame: mondo statico (placeholder consumati
     // esclusi) + edifici (sprite ricalcolato: cambia durante il cantiere) + decoro
     const dynamic = [];
+    // [C]/[Nuova funzionalita', vedi i commenti su HAND_HOVER_TINT sopra e sui
+    // rideri piu' sotto] Spostato qui (prima viveva solo poco prima del giro
+    // sui ruderi, molto piu' sotto in questo stesso frame) cosi' il giro sugli
+    // edifici appena sotto puo' usarlo per l'hover azzurro della mano — resta
+    // lo stesso identico calcolo, solo mosso piu' in alto.
+    const hoverWorld = input.hover && input.hoverPointerType === "mouse" ? cam.screenToWorld(input.hover.x, input.hover.y) : null;
     for (const b of st.buildings) {
       // `eolico` (b.animT, buildings.js/stepWindProduction): "eol" ha 8
       // sottoimmagini vere (le pale che girano), animate in loop invece che
@@ -7592,6 +7606,22 @@ export async function mountMatch(ctx, params = {}) {
       // notte) gia' usato per l'hover sui lotti-rudere del tutorial — [C]
       // ruin1|2/Mouse_MouseEnter.gml, action_sprite_color(255,1).
       const ruspaTargeted = st.ruspaPending?.buildingId === b.id;
+      const bFrame = frameFor(b.spr, buildingFrameIdx);
+      // [Nuova funzionalita', richiesta dall'autore: "solo desktop — con la
+      // mano selezionata, l'hover del mouse sugli edifici li colora di
+      // azzurro finche' il cursore resta sopra"] Stesso schema di
+      // `ruspaTargeted` appena sopra (tinta piena + `_selfLit`, sotto) e
+      // dell'hover rosso dei ruderi (`hoverWorld`/`inFrameRect`, gia'
+      // calcolato piu' in alto in questo stesso giro) — qui pero' gated a
+      // `st.r12.selec === 0` (la mano, nessuno strumento armato) invece di
+      // 11 (ruspa), e SOLO desktop (`!isMobile`): il touch non ha un vero
+      // hover senza contatto, coerente con ogni altro hover-only di questo
+      // file (il cartellino prezzo della riga scorrevole, sopra). Mai
+      // insieme a `ruspaTargeted` (richiede `selec===11`, mutualmente
+      // esclusivo con `selec===0`), quindi l'ordine qui sotto non decide
+      // mai una precedenza vera.
+      const handHovered = !isMobile && st.r12.selec === 0 && !!hoverWorld && !!bFrame
+        && inFrameRect(hoverWorld.x, hoverWorld.y, b.x, b.y, bFrame);
       // [Bug corretto, segnalato dall'autore: "l'impalcatura si smonta solo
       // davanti, non dietro, come se sparisse col topper"] `b.rearSpr`
       // (buildings.js, commento li' sopra sull'archeologia GML): la traccia
@@ -7604,8 +7634,9 @@ export async function mountMatch(ctx, params = {}) {
       // dietro a tutto il resto, come l'originale.
       if (b.rearSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.rearSpr) });
       dynamic.push({
-        obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr, buildingFrameIdx),
-        ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true } : {}),
+        obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: bFrame,
+        ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true }
+          : handHovered ? { _tint: HAND_HOVER_TINT, _selfLit: true } : {}),
       });
       // [Bug corretto, segnalato dall'autore: "si vedeva anche nel gioco
       // originale, partiva subito dopo la parte frontale e si montavano
@@ -7732,7 +7763,8 @@ export async function mountMatch(ctx, params = {}) {
     // stepConstructions()): il tint rosso "tappabile" invece si spegne
     // (`!entry.clearing` sotto) proprio perche' un secondo tap durante il
     // ciclo di impalcature non fa piu' niente (guardia in input.onTap).
-    const hoverWorld = input.hover && input.hoverPointerType === "mouse" ? cam.screenToWorld(input.hover.x, input.hover.y) : null;
+    // `hoverWorld`: calcolato piu' in alto, prima del giro sugli edifici
+    // (serve gia' li' per l'hover azzurro della mano).
     for (const ru of st.ruins) {
       const hovered = !ru.clearing && st.r12.selec === 11 && ru._f
         && ((!!hoverWorld && inFrameRect(hoverWorld.x, hoverWorld.y, ru.x, ru.y, ru._f)) || st.ruinTapArmed === ru);
