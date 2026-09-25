@@ -3617,6 +3617,23 @@ export async function mountMatch(ctx, params = {}) {
       el.style.overflow = "visible";
       el.style.textOverflow = "clip";
       el.style.width = `${maxWidth}px`;
+      // [Bug corretto, segnalato dall'autore: "sulla schermata di
+      // congratulazioni su mobile il testo va a capo una parola per riga"]
+      // `textPool` (sopra) e' un pool RIUSATO fra un frame e l'altro: questo
+      // stesso elemento DOM puo' aver gia' servito, in un frame precedente,
+      // una chiamata non-wrap (i due rami sotto, entrambi impostano sempre
+      // `max-width` — a un valore vero o a "" per pulirlo) che ha lasciato
+      // un `max-width` piccolo (un cartellino di prezzo, un numero della
+      // barra risorse) scritto come stile INLINE, quindi ancora attivo. Il
+      // ramo wrap imposta `width` ma non toccava affatto `max-width`: CSS
+      // applica il piu' stretto fra i due, quindi il paragrafo si trovava
+      // stretto nel vecchio `max-width` invece che nel vero `width` appena
+      // impostato — su mobile la sequenza di disegno prima del pannello di
+      // vittoria (barra risorse impilata in pillole, STUDIO.md sopra)
+      // popola il pool con piu' `max-width` piccoli che su desktop, da qui
+      // il caso peggiore li'. Reset esplicito, stesso principio degli altri
+      // due rami.
+      el.style.maxWidth = "";
       el.style.transform = "none";
       el.style.lineHeight = "1.4";   // `.gameText`, invariato: leggibilita' su piu' righe vere
     } else if (align === "left") {
