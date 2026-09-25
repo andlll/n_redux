@@ -2284,23 +2284,46 @@ export function currentMaxLife(b) {
 }
 
 /**
- * Abitanti che l'edificio ha portato a `r12.pop` finora al suo livello
- * attuale — [Nuova funzionalita', stesso pannello informativo sopra] `null`
- * per i tipi che non dichiarano `grantPop` (solo casa/villa lo fanno,
+ * Abitanti che l'edificio ha portato a `r12.pop` finora — [Nuova
+ * funzionalita', stesso pannello informativo sopra] `null` per i tipi che
+ * non dichiarano `grantPop` (solo casa/villa/palazzo/palazzoRd lo fanno,
  * STUDIO.md §9): non e' un dato tracciato per-edificio da nessun'altra
  * parte del motore (`r12.pop` e' un totale globale, incrementato qui non
  * salvato sull'istanza) — ricostruito dagli stessi due ingredienti che lo
  * fanno crescere nel tempo: il dono fisso alla nascita del livello
  * (`grantPop`, applyLevelFinish()) piu' `popPerStage` per ogni stadio di
  * crescita gia' raggiunto (`b.ava`, stepGrowth() sotto).
+ *
+ * [Bug corretto, segnalato dall'autore: "il numero di abitanti e'
+ * completamente sbagliato sia per singola piattaforma sia come totale"]
+ * Leggeva SOLO il `grantPop`/growth del livello ATTUALE (`b.level`),
+ * scartando ogni contributo dei livelli precedenti — ma un potenziamento
+ * non sostituisce l'edificio, ci si SOMMA: `applyLevelFinish()` aggiunge
+ * `up.grantPop` a `r12.pop` ad OGNI salto di livello, mai un reset, e la
+ * crescita di un livello lasciato indietro (`b.ava` arrivato al proprio
+ * `maxAva` — condizione necessaria per sbloccare il salto, `atAva` sopra)
+ * resta comunque acquisita. Per un edificio ancora al livello 1 il
+ * risultato coincideva (un solo livello da sommare), motivo per cui il
+ * bug passava inosservato finche' non si potenziava qualcosa — a partire
+ * dal livello 2 il numero ricostruito era sempre PIU' BASSO del vero
+ * `r12.pop` (mancava l'intero contributo dei livelli precedenti), quindi
+ * sbagliato sia nella riga per-piattaforma (residentsByPlatform(),
+ * platform.js) sia nel confronto con la barra risorse in alto (che mostra
+ * `r12.pop` vero). Ora somma su OGNI livello 1..b.level: il `grantPop` di
+ * quel livello, piu' la crescita — piena (`g.maxAva`) per un livello gia'
+ * lasciato indietro, parziale (`b.ava`) solo per quello corrente.
  */
 export function currentResidents(b) {
   const def = BUILDING_TYPES[b.type];
-  if (b.level < 1) return null;
-  const cur = b.level === 1 ? def.construct : def.upgrades?.[b.level - 2];
-  if (cur?.grantPop == null) return null;
-  const g = def.growth?.[b.level - 1];
-  return cur.grantPop + (b.ava ?? 0) * (g?.popPerStage ?? 0);
+  if (b.level < 1 || def.construct?.grantPop == null) return null;
+  let total = 0;
+  for (let lvl = 1; lvl <= b.level; lvl++) {
+    const cur = lvl === 1 ? def.construct : def.upgrades?.[lvl - 2];
+    total += cur?.grantPop ?? 0;
+    const g = def.growth?.[lvl - 1];
+    if (g) total += (lvl === b.level ? (b.ava ?? 0) : g.maxAva) * (g.popPerStage ?? 0);
+  }
+  return total;
 }
 
 /**

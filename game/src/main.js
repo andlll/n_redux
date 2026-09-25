@@ -8643,7 +8643,16 @@ export async function mountMatch(ctx, params = {}) {
     // sotto al blur, coerente con la richiesta esplicita e con lo stesso
     // trattamento gia' dato al balloon/pollice del tutorial per questo
     // stesso pannello (vedi il commento li' sotto).
-    const hideResourceIcons = !!st.tutorialState?.cutscene || !!st.buildingInfoPanel;
+    // [Bug corretto, segnalato dall'autore: "quando la finestra di
+    // approfondimento delle risorse e' aperta nascondi il pannello risorse
+    // (sia il count che le icone) altrimenti si sovrappongono"]
+    // `statsPanelOpen` (drawStatsPanel() piu' sotto) e' lo stesso identico
+    // caso di `buildingInfoPanel` appena sopra: un pannello procedurale
+    // disegnato DOPO la barra, mai un blur che la catturi/nasconda da solo
+    // (drawStatsPanel() non chiama pauseBlur, vedi il commento li' sul
+    // perche') — mancava qui, la barra restava visibile e si sovrapponeva
+    // davvero al pannello appena aperto sopra di lei.
+    const hideResourceIcons = !!st.tutorialState?.cutscene || !!st.buildingInfoPanel || st.statsPanelOpen;
     // [Nuova disposizione, richiesta dall'autore: "le risorse in alto sono
     // caotiche su mobile, incolonniamole" — mockup concordato in chat]
     // `icone_oriz` (ramo desktop sotto) e' tarata per stare comoda su
@@ -8792,7 +8801,7 @@ export async function mountMatch(ctx, params = {}) {
     // numeri nudi restavano leggibili sopra a un fondale che dovrebbe
     // nasconderli. `hideResourceText` raccoglie tutti i casi in cui il resto
     // della barra risorse e' gia' coperto/oscurato da qualcos'altro.
-    const hideResourceText = st.paused || st.buildMenuOpen || !!st.tutorialState?.cutscene || !!st.buildingInfoPanel;
+    const hideResourceText = st.paused || st.buildMenuOpen || !!st.tutorialState?.cutscene || !!st.buildingInfoPanel || st.statsPanelOpen;
     if (isMobile) {
       if (!hideResourceText) for (const row of mobileResLayout) {
         drawHtmlText(row.text, MOBILE_RES_X + TAG_PAD / 2 + mobileIconColW + TAG_GAP, row.y + MOBILE_ROW_H / 2,
