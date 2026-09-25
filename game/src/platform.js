@@ -638,7 +638,21 @@ function r32Decor(state, t) {
   const out = [
     { obj: "decor", x: R32_X, y: R32_Y, depth: -1241, spr: "baa31" },     // [C] r32/_object.json
     { obj: "decor", x: R320_X, y: R320_Y, depth: -1241, spr: "baa32" },   // [C] r320/_object.json
-    { obj: "decor", x: 565, y: 1720, depth: 0, spr: "robbobase" },
+    // [Bug corretto, segnalato dall'autore con screenshot: non e' la
+    // turbina lampeggiante (moto12, gia' corretta sopra) il problema, e'
+    // il "palo"/pilone che la regge sotto — il grosso sprite statico
+    // "robbobase" (423x374, fan+pilone+base in un solo frame, la sagoma
+    // che si vede nello screenshot) su cui moto12 lampeggia sovrapposto.
+    // **[C]** `robbobaseobj/Create.gml` assegna `depth = -y - 320`, NON il
+    // default `depth: 0` di `_object.json` (mai usato: sempre riassegnato
+    // in Create) — un `depth: 0` qui viene pero' riletto da main.js/
+    // effDepth() come sentinella "-y vero" (STUDIO.md sopra), cioe' -1720
+    // invece del vero -2040: 320 troppo ALTO (main.js/effDepth: piu' alto
+    // = disegnato prima = piu' lontano dalla camera), quindi il pilone
+    // veniva disegnato troppo presto/lontano — qualunque oggetto di mondo
+    // nella fascia fra -1720 e -2040 (auto, villa, decoro) ci finiva
+    // erroneamente davanti invece che dietro come nel gioco vero.
+    { obj: "decor", x: 565, y: 1720, depth: -1720 - 320, spr: "robbobase" },
     { obj: "decor", x: -16, y: 1153, depth: -1009, spr: "moor31" },
     { obj: "decor", x: 1302, y: 1150, depth: -1990, spr: "moor32" },
     { obj: "decor", x: 2513, y: 1268, depth: -1352, spr: "moor33" },
