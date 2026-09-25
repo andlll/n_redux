@@ -280,7 +280,8 @@ export function stepCalendar(r12, dt) {
 // `match_easy` crea SOLO `rainlauncher`, mai `tincom`/`thunderclap`).
 // Entrambi durano 1800 o 2100 tick (meta' e meta', r12/Alarm_7.gml li
 // spegne — stessa tabella durate per i due, letta cosi' com'e').
-const STORM_CHECK = 1;                  // [C] 60 tick
+export const WEWE_OIL_DRAIN_PERIOD = 1;   // [C] 60 tick — stesso periodo di wewOilDrain(), sotto
+const STORM_CHECK = WEWE_OIL_DRAIN_PERIOD;
 const STORM_DICE = 800;                  // [C] match: r12/Alarm_2.gml, ramo 736==0
 const STORMEASY_DICE = 450;             // [C] match_easy: r12/Alarm_2.gml, ramo 736>0
 const STORM_DURATIONS = [30, 35];        // [C] 1800/2100 tick, dado 50/50
@@ -303,7 +304,7 @@ export const TINCOM_DURATION = 4;
  * porting: e' quello che il decompilato dice, verificato riga per riga con
  * gli operatori (3="<=", 2=">") gia' confermati altrove in questo progetto.
  */
-function wewOilDrain(wewe) {
+export function wewOilDrain(wewe) {
   let loss = 0;
   if (wewe <= 100) loss += 2;
   if (wewe <= 200) loss += 3;

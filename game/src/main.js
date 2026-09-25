@@ -1,8 +1,8 @@
 import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
-import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId } from "./buildings.js";
+import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap, wewOilDrain, WEWE_OIL_DRAIN_PERIOD } from "./state.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, INDUSTRIA3_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId, currentEnergyStats } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -23,7 +23,7 @@ import {
   applyMatchPlatform, createFaroState, stepFaroChain, faroDecor, r120MotorDecor,
   clickFaroButton, clickWaveSignal, clickDockerSignal,
   clickFaro3Button, clickWaveSignal3, clickDockerSignal3,
-  isPlaceholderActive, FARO1, FARO2, FARO3,
+  isPlaceholderActive, FARO1, FARO2, FARO3, residentsByPlatform,
 } from "./platform.js";
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
@@ -628,6 +628,17 @@ export async function mountMatch(ctx, params = {}) {
   // margine fisso per lato, indipendente dallo sprite — lo stesso tipo di
   // "area di tocco piu' grande della grafica" comune su mobile.
   const TURRET_TAP_PAD = 28;
+  // [Nuova funzionalita', richiesta dall'autore: "aumenterei l'area di
+  // collisione delle risorse che cadono dalle mongolfiere in modo che siano
+  // piu' facili da prendere"] Stesso principio di TURRET_TAP_PAD sopra —
+  // allarga solo il riquadro di tap/hover di `loot` (le casse bar-us/-bluss/
+  // -gia/-viola/-us_giga lasciate cadere da monvo|monvo_giga|monbo|mongo|
+  // monviolo, balloons.js), mai lo sprite disegnato. Nessun equivalente nel
+  // decompilato (bar*/Mouse_MouseEnter.gml raccoglie sul bbox esatto), ma le
+  // casse cadono in mezzo alla scena affollata e scompaiono da sole dopo 700
+  // tick (LOOT_LIFE, balloons.js) — un margine generoso le rende piu' facili
+  // da centrare prima che spariscano.
+  const LOOT_TAP_PAD = 24;
   // `pad` di default a TURRET_TAP_PAD (il comportamento originale, per ogni
   // chiamante che non lo passa): [Bug corretto, segnalato dall'autore: "i
   // fumetti rossi del costo dell'autodifesa devono comparire piu' vicino
@@ -1545,6 +1556,21 @@ export async function mountMatch(ctx, params = {}) {
   st.tradeCooldownT = 0;
   const TRADE_COOLDOWN = 400 * TICK;   // [C] tradebuttoner/Alarm_2.gml, armato da get1..4
 
+  // [Nuova funzionalita', richiesta dall'autore: "un roundrect bianco sotto
+  // le risorse quando ci passo sopra il mouse, che apra un pannello con le
+  // statistiche della piattaforma (abitanti, energia, felicita', olio)"]
+  // Nessun equivalente nel decompilato: tutto nostro, come bankPanelOpen/
+  // tradePanelOpen sopra — stesso genere di modale in spazio schermo, stesso
+  // "un tap qualunque lo chiude" di buildingInfoPanel (drawStatsPanel() piu'
+  // sotto). Niente blur (a differenza di banca/scambi/edificio): l'autore ha
+  // chiesto esplicitamente lo stesso trattamento "leggero" della schermata
+  // di congratulazioni (pausePanelFrame() disegnato diretto sul mondo vivo,
+  // showPanel piu' sotto) — un blur pieno schermo ricalcolato ad ogni
+  // frame in cui basta un hover del mouse (non un tap deliberato come gli
+  // altri pannelli) costerebbe extra proprio sui device deboli.
+  st.statsPanelOpen = false;
+  st.statsBarRect = null;   // { x, y, w, h } in spazio schermo, ricalcolato ogni frame dalla barra risorse
+
   // Pannello informativo di un edificio (drawBuildingInfoPanel() piu' sotto)
   // — [Nuova funzionalita', richiesta dall'autore: "quando la mano e'
   // selezionata e clicchi su un edificio (non difensivo), mostra un
@@ -2210,6 +2236,14 @@ export async function mountMatch(ctx, params = {}) {
   // bianco. Stesso schema di ricomposizione gia' usato in cars.js (NIGHT_TINT):
   // R=255&0xff, G=(255>>8)&0xff=0, B=(255>>16)&0xff=0 -> 0xff0000.
   const ARMED_TINT = 0xff0000;
+  // [Nuova funzionalita', richiesta dall'autore: "solo desktop — con la mano
+  // selezionata, l'hover del mouse sugli edifici li colora di azzurro finche'
+  // il cursore resta sopra"] Nessun equivalente nel decompilato (li' l'hover
+  // vero esiste solo per ruin1|2 sotto ruspa, sempre rosso puro 0xff0000 —
+  // vedi `hoverWorld` piu' sotto, stesso meccanismo): un azzurro chiaro
+  // invece del rosso "pericolo/demolizione" gia' in uso per la ruspa, cosi'
+  // i due indizi restano visivamente distinti.
+  const HAND_HOVER_TINT = 0x66ccff;
 
   /** I placeholder ancora liberi nei quattro vicini diagonali di `origin`, uno per direzione al massimo. */
   function findDiagonalTargets(origin) {
@@ -3467,8 +3501,24 @@ export async function mountMatch(ctx, params = {}) {
   // (sotto), e l'olio puo' esaurirsi anche nel tutorial (roomName ===
   // "tutorial", piu' sotto), quindi barra risorse (7) + balloon tutorial
   // (1) + i 2 banner a 2 righe (4) + il pannello di sconfitta (6) possono
-  // capitare tutti nello stesso frame = 18, +1 di margine.
-  const TEXT_POOL_SIZE = 19;
+  // capitare tutti nello stesso frame = 18.
+  // [Nuova funzionalita', richiesta dall'autore: "pannello statistiche
+  // hover/tap sotto la barra risorse"] drawStatsPanel() (sotto) e' nella
+  // stessa catena if/else-if di bankPanelOpen/buildingInfoPanel/outcome —
+  // mai disegnato insieme al pannello di sconfitta sopra — ma a differenza
+  // di bankPanelOpen/tradePanelOpen NON nasconde la barra risorse dietro di
+  // se' (nessun blur, l'autore lo vuole "leggero" come le congratulazioni),
+  // quindi il suo contenuto si SOMMA a barra risorse (7) + balloon tutorial
+  // (1) + i 2 banner (4) = 12, non li sostituisce. Contenuto (righe piu'
+  // lunghe/sezioni facoltative tutte mostrate): titolo (1) + intestazione
+  // abitanti (1) + fino a 3 righe abitanti (main/prima/seconda espansione)
+  // + intestazione energia (1) + consumo/produzione a icona (2+2, un
+  // elemento per prefisso e uno per il suffisso "/min" di ciascuna,
+  // drawIconLine() sopra) + le tre modalita' SENZA icona (pushText(), sopra
+  // — 1 ciascuna, non 2: non hanno bisogno della stessa enfasi) + felicita'
+  // (1) + intestazione olio (1) + le due righe legenda della barra olio (2)
+  // = 18. Nuovo worst case: 12 + 18 = 30, +1 di margine.
+  const TEXT_POOL_SIZE = 31;
   const textPool = Array.from({ length: TEXT_POOL_SIZE }, () => {
     const el = document.createElement("div");
     el.className = "gameText";
@@ -3586,6 +3636,23 @@ export async function mountMatch(ctx, params = {}) {
       el.style.overflow = "visible";
       el.style.textOverflow = "clip";
       el.style.width = `${maxWidth}px`;
+      // [Bug corretto, segnalato dall'autore: "sulla schermata di
+      // congratulazioni su mobile il testo va a capo una parola per riga"]
+      // `textPool` (sopra) e' un pool RIUSATO fra un frame e l'altro: questo
+      // stesso elemento DOM puo' aver gia' servito, in un frame precedente,
+      // una chiamata non-wrap (i due rami sotto, entrambi impostano sempre
+      // `max-width` — a un valore vero o a "" per pulirlo) che ha lasciato
+      // un `max-width` piccolo (un cartellino di prezzo, un numero della
+      // barra risorse) scritto come stile INLINE, quindi ancora attivo. Il
+      // ramo wrap imposta `width` ma non toccava affatto `max-width`: CSS
+      // applica il piu' stretto fra i due, quindi il paragrafo si trovava
+      // stretto nel vecchio `max-width` invece che nel vero `width` appena
+      // impostato — su mobile la sequenza di disegno prima del pannello di
+      // vittoria (barra risorse impilata in pillole, STUDIO.md sopra)
+      // popola il pool con piu' `max-width` piccoli che su desktop, da qui
+      // il caso peggiore li'. Reset esplicito, stesso principio degli altri
+      // due rami.
+      el.style.maxWidth = "";
       el.style.transform = "none";
       el.style.lineHeight = "1.4";   // `.gameText`, invariato: leggibilita' su piu' righe vere
     } else if (align === "left") {
@@ -4245,6 +4312,152 @@ export async function mountMatch(ctx, params = {}) {
   }
 
   /**
+   * [Nuova funzionalita', richiesta dall'autore: "un roundrect bianco sotto
+   * le risorse quando ci passo sopra il mouse (tap da mobile), che apra un
+   * pannello con abitanti per piattaforma, consumo/guadagno energetico con
+   * la modalita' (centrali/eolico/fotovoltaico), felicita' rispetto agli
+   * abitanti, consumo di olio diviso piattaforma/centrali"] Nessun
+   * equivalente nel decompilato — solo assemblaggio in un pannello di sola
+   * lettura di dati gia' tutti disponibili altrove nel motore:
+   * residentsByPlatform() (platform.js), currentEnergyStats() (buildings.js,
+   * le stesse tabelle di stepConsumption()/stepProduction()/
+   * stepSolarProduction()/stepWindProduction(), un tasso istantaneo non una
+   * media campionata), wewOilDrain() (state.js). Stesso trattamento
+   * "leggero" della schermata di congratulazioni (drawOutcomeOverlay()
+   * sopra, ramo vittoria: pausePanelFrame() disegnato diretto sul mondo
+   * vivo) invece del blur pieno schermo di banca/scambi/edificio — questo
+   * pannello si apre gia' dal solo hover del mouse (statsBarRect, sotto in
+   * questa stessa funzione tramite drawGui()), un blur ricatturato ogni
+   * frame in quel caso costerebbe extra proprio sui device deboli discussi
+   * con l'autore. Chiuso da un tap qualunque (input.onTap sopra), come
+   * buildingInfoPanel — nessun controllo interattivo qui dentro, e' di sola
+   * lettura, quindi ogni riga e' costruita come `{ h, draw(cy) }` invece del
+   * semplice array di stringhe/{parts} di drawBuildingInfoPanel() sopra: la
+   * barra dell'olio sotto ha bisogno di disegnare rettangoli colorati, non
+   * solo testo/icona.
+   */
+  function drawStatsPanel() {
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const night = isNight(st.phaseT), dawn = isDawn(st.phaseT);
+
+    const residents = residentsByPlatform(st.buildings, st.platformState);
+    const showResidents = residents.r32 != null || residents.r22 != null;
+    const energy = currentEnergyStats(st.buildings, night, dawn);
+    // wewOilDrain() (state.js) e' il tasso di UNA chiamata, ripetuta ogni
+    // WEWE_OIL_DRAIN_PERIOD secondi (state.js/stepWeather) — /periodo*60
+    // per lo stesso "al minuto" di currentEnergyStats() sopra.
+    const oilPlatformPerMin = wewOilDrain(st.r12.wewe ?? 0) / WEWE_OIL_DRAIN_PERIOD * 60;
+    const oilCentraliPerMin = energy.centraliOilPerMin;
+    const oilTotalPerMin = oilPlatformPerMin + oilCentraliPerMin;
+
+    const panelW = Math.min(360, cw - 40);
+    const px = (cw - panelW) / 2;
+    const padTop = 30, padBottom = 26, titleH = 30, sectionGap = 14, lineH = 24;
+
+    const rows = [];
+    const pushLine = (parts) => rows.push({ h: lineH, draw: (cy) => drawIconLine(parts, px + panelW / 2, cy, { size: 14 }) });
+    const pushGap = (h) => rows.push({ h, draw: () => {} });
+    const perMin = (n) => `${Math.round(n)} `;
+
+    if (showResidents) {
+      rows.push({ h: lineH, draw: (cy) => drawHtmlText(t("statsPanel.residentsTitle"), px + panelW / 2, cy, { size: 13, color: "#666666" }) });
+      rows.push({ h: lineH, draw: (cy) => drawHtmlText(t("statsPanel.residentsMain", { n: Math.round(residents.main) }), px + panelW / 2, cy, { size: 14, maxWidth: panelW - 60 }) });
+      if (residents.r32 != null) rows.push({ h: lineH, draw: (cy) => drawHtmlText(t("statsPanel.residentsR32", { n: Math.round(residents.r32) }), px + panelW / 2, cy, { size: 14, maxWidth: panelW - 60 }) });
+      if (residents.r22 != null) rows.push({ h: lineH, draw: (cy) => drawHtmlText(t("statsPanel.residentsR22", { n: Math.round(residents.r22) }), px + panelW / 2, cy, { size: 14, maxWidth: panelW - 60 }) });
+      pushGap(sectionGap);
+    }
+
+    // [Nuova funzionalita', vedi il commento su TEXT_POOL_SIZE sotto]
+    // `pushText` (a differenza di `pushLine` sopra) costa UN solo elemento
+    // del pool testo condiviso invece di due (icona+suffisso via
+    // drawIconLine()) — usata per le tre righe modalita' sotto, che non
+    // hanno bisogno della stessa enfasi delle due righe totali (consumo/
+    // produzione), quelle si tengono l'icona.
+    const pushText = (str, opts = {}) => rows.push({ h: lineH, draw: (cy) => drawHtmlText(str, px + panelW / 2, cy, { size: 14, maxWidth: panelW - 60, ...opts }) });
+    rows.push({ h: lineH, draw: (cy) => drawHtmlText(t("statsPanel.energyTitle"), px + panelW / 2, cy, { size: 13, color: "#666666" }) });
+    pushLine([{ text: t("statsPanel.consumptionPrefix") + perMin(energy.consumptionPerMin) }, { icon: "ele" }, { text: t("autoDefense.costPerMin") }]);
+    pushLine([{ text: t("statsPanel.productionPrefix") + perMin(energy.productionPerMin) }, { icon: "ele" }, { text: t("autoDefense.costPerMin") }]);
+    pushText(t("statsPanel.modeCentrali", { n: Math.round(energy.centraliElePerMin) }));
+    pushText(t("statsPanel.modeEolico", { n: Math.round(energy.eolicoPerMin) }));
+    pushText(t("statsPanel.modeSolare", { n: Math.round(energy.solarePerMin) }));
+    pushGap(sectionGap);
+
+    // Felicita' (r12.hap contro r12.pop, main.js/registerChiesTap() e i
+    // dintorni gia' usano lo stesso confronto per la sommossa): la stessa
+    // faccina binaria "hap3"/"hap1" gia' disegnata sotto la barra risorse
+    // (drawGui() sotto) — non attraverso drawIconLine()/resourceIconFrame()
+    // (RESOURCE_HAS_ICON, sopra: pensato per le risorse di un costo, non
+    // per uno sprite standalone a due stati) ma con un disegno diretto,
+    // stesso schema gia' in uso li'.
+    rows.push({
+      h: 34,
+      draw: (cy) => {
+        const hf = frameFor(st.r12.hap >= st.r12.pop ? "hap3" : "hap1");
+        const cx = px + panelW / 2;
+        const label = `${Math.round(st.r12.hap)} / ${Math.round(st.r12.pop)}`;
+        const textW = htmlTextWidth(label, 16);
+        const iconGap = 8;
+        const iconScale = 0.7;
+        const iconW = hf ? hf.w * iconScale : 0;
+        const totalW = iconW + (hf ? iconGap : 0) + textW;
+        let ix = cx - totalW / 2;
+        // [C] data/sprites.json: origin_x/y di "hap3"/"hap1" e' il centro
+        // vero del frame (25,25 su 50x50) — draw() (gl.js) posiziona quindi
+        // il CENTRO dell'icona su (x,y), non l'angolo: nessuno spostamento
+        // verticale da calcolare a parte, a differenza di uno sprite con
+        // origine in alto a sinistra.
+        if (hf) { r.draw(hf, ix + iconW / 2, cy, iconScale, 0xffffff, 1); ix += iconW + iconGap; }
+        drawHtmlText(label, ix + textW / 2, cy, { size: 16 });
+      },
+    });
+    pushGap(sectionGap);
+
+    // Barra olio: due segmenti proporzionati al peso di piattaforma/wewe
+    // (wewOilDrain(), state.js) contro il consumo delle centrali
+    // (currentEnergyStats().centraliOilPerMin sopra) — nessun widget "barra"
+    // preesistente nel motore da riusare (drawBuildingInfoPanel() sopra
+    // mostra vita/max solo come testo, mai una barra vera): due
+    // solidFrame(white, ...) tinti, stesso principio a quad pieno gia' usato
+    // ovunque in questo file (veli/flash/vignette, sopra).
+    rows.push({ h: lineH, draw: (cy) => drawHtmlText(t("statsPanel.oilTitle"), px + panelW / 2, cy, { size: 13, color: "#666666" }) });
+    const OIL_PLATFORM_COLOR = 0x2196f3, OIL_CENTRALI_COLOR = 0xff7043;
+    rows.push({
+      h: 18,
+      draw: (cy) => {
+        const barW = panelW - 60, barH = 14, bx = px + 30, by = cy - barH / 2;
+        r.draw(solidFrame(white, barW, barH), bx, by, 1, 0x000000, 0.12);
+        if (oilTotalPerMin > 0) {
+          const wPlatform = Math.round(barW * Math.min(1, oilPlatformPerMin / oilTotalPerMin));
+          if (wPlatform > 0) r.draw(solidFrame(white, wPlatform, barH), bx, by, 1, OIL_PLATFORM_COLOR, 1);
+          if (barW - wPlatform > 0) r.draw(solidFrame(white, barW - wPlatform, barH), bx + wPlatform, by, 1, OIL_CENTRALI_COLOR, 1);
+        }
+      },
+    });
+    rows.push({
+      h: lineH,
+      draw: (cy) => {
+        const barW = panelW - 60, bx = px + 30, sq = 10;
+        r.draw(solidFrame(white, sq, sq), bx, cy - sq / 2, 1, OIL_PLATFORM_COLOR, 1);
+        drawHtmlText(t("statsPanel.oilPlatform", { n: Math.round(oilPlatformPerMin) }), bx + sq + 6, cy, { size: 12, align: "left" });
+        const rightX = bx + barW / 2 + 6;
+        r.draw(solidFrame(white, sq, sq), rightX, cy - sq / 2, 1, OIL_CENTRALI_COLOR, 1);
+        drawHtmlText(t("statsPanel.oilPlants", { n: Math.round(oilCentraliPerMin) }), rightX + sq + 6, cy, { size: 12, align: "left" });
+      },
+    });
+
+    const rowsH = rows.reduce((sum, row) => sum + row.h, 0);
+    const panelH = padTop + titleH + rowsH + padBottom;
+    const py = (ch - panelH) / 2;
+    r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
+
+    drawHtmlText(t("statsPanel.title"), px + panelW / 2, py + padTop + titleH / 2, { size: 22 });
+    let cy = py + padTop + titleH;
+    for (const row of rows) { cy += row.h / 2; row.draw(cy); cy += row.h / 2; }
+
+    r.flush();
+  }
+
+  /**
    * Pannello prestiti (bankPanelOpen, state.js LOANS) — [Nuova
    * funzionalita', richiesta dall'autore: "menu 'non raster' per
    * risparmiare texture, come gli altri pannelli"] Non piu' i vecchi sprite
@@ -4889,6 +5102,12 @@ export async function mountMatch(ctx, params = {}) {
   }
   const pausePanelFrame = makeRoundRectCache(20);
   const pauseButtonFrame = makeRoundRectCache(14);
+  // [Nuova funzionalita', richiesta dall'autore: "un roundrect bianco sotto
+  // le risorse quando ci passo sopra il mouse"] Stessa cache di
+  // pausePanelFrame/pauseButtonFrame sopra, solo un raggio diverso — vive
+  // dietro la barra risorse (drawGui() piu' sotto) come indizio hover
+  // desktop, poi da' il via al pannello statistiche (drawStatsPanel()).
+  const statsHoverFrame = makeRoundRectCache(12);
 
   /**
    * [Nuova funzionalita', richiesta dall'autore: "altri sprite da
@@ -5976,6 +6195,14 @@ export async function mountMatch(ctx, params = {}) {
       st.buildingInfoPanel = null;
       return;
     }
+    // Pannello statistiche (statsPanelOpen, sopra) — stesso trattamento
+    // modale "un tocco qualunque lo chiude" di buildingInfoPanel appena
+    // sopra: nessun controllo interno da lasciar passare (di sola lettura,
+    // a differenza del segmento resa/autodifesa di buildingInfoPanel).
+    if (st.statsPanelOpen) {
+      st.statsPanelOpen = false;
+      return;
+    }
     // Overlay costruzioni mobile (buildMenuOpen, sopra) — stesso
     // trattamento modale di bankPanelOpen/buildingInfoPanel, ma un tocco su
     // un edificio SELEZIONA quel tipo (come il tap diretto sul bottone
@@ -6019,6 +6246,18 @@ export async function mountMatch(ctx, params = {}) {
       // bottone (`hit` `undefined`) chiudono l'overlay senza selezionare
       // nulla, come sempre.
       st.buildMenuOpen = false;
+      return;
+    }
+    // Bottone statistiche (statsBarRect, ricalcolato ogni frame dalla barra
+    // risorse — drawGui() piu' sotto): un tap/click qui apre statsPanelOpen
+    // invece di raggiungere il mondo sotto. Stessa priorita' di uiButtons
+    // sotto (entrambi vivono in spazio schermo sopra la mappa), ma testato
+    // a parte perche' la barra risorse non e' popolata in quell'array
+    // (st.uiButtons si azzera piu' avanti nello stesso giro di disegno,
+    // dopo che questo rettangolo e' gia' stato calcolato).
+    if (st.statsBarRect && sx >= st.statsBarRect.x && sx <= st.statsBarRect.x + st.statsBarRect.w
+      && sy >= st.statsBarRect.y && sy <= st.statsBarRect.y + st.statsBarRect.h) {
+      st.statsPanelOpen = true;
       return;
     }
     // Un gesto di piazzamento a trascinamento e' gia' stato armato da
@@ -6157,9 +6396,12 @@ export async function mountMatch(ctx, params = {}) {
       // delle torrette, per lo stesso motivo — sprite piccoli in coordinate
       // di MONDO, rimpiccioliti ulteriormente dallo zoom "cover" di mobile.
       const signBox = FARO_SIGN_OBJS.has(it.obj) ? padFrame(it._f) : null;
+      // LOOT_TAP_PAD (sopra): stesso margine fisso per il tap esplicito
+      // (touch, o click diretto su desktop) sulle casse di risorse.
+      const lootBox = it.obj === "loot" ? padFrame(it._f, LOOT_TAP_PAD) : null;
       const hit = it.obj === "placeholder"
         ? inFrameDiamond(w.x, w.y, it.x, it.y, it._f)
-        : inFrameRect(w.x, w.y, it.x, it.y, turretBox ?? signBox ?? it._f);
+        : inFrameRect(w.x, w.y, it.x, it.y, turretBox ?? signBox ?? lootBox ?? it._f);
       // [Bug corretto, segnalato dall'autore: "l'area cliccabile delle
       // torrette e' troppo piccola, sembra solo quella vicina alla bocca di
       // fuoco"] La sagoma vera (`it._f`, sopra) e' gia' l'intero sprite
@@ -7150,10 +7392,12 @@ export async function mountMatch(ctx, params = {}) {
         }
         // Casse di risorse (balloons.js): stessa raccolta al passaggio del
         // mouse delle monete sopra — segnalato dall'autore, prima si
-        // raccoglievano solo con un tap esplicito.
+        // raccoglievano solo con un tap esplicito. LOOT_TAP_PAD (sopra):
+        // stesso margine allargato del tap esplicito qui sotto, cosi'
+        // hover e tap restano coerenti sulla stessa cassa.
         for (let i = st.loot.length - 1; i >= 0; i--) {
           const l = st.loot[i];
-          const f = frameFor(l.spr);
+          const f = padFrame(frameFor(l.spr), LOOT_TAP_PAD);
           if (!f) continue;
           const x0 = l.x - f.ox, y0 = l.y - f.oy;
           if (hw.x >= x0 && hw.x <= x0 + f.w && hw.y >= y0 && hw.y <= y0 + f.h) collectLootAt(l);
@@ -7337,6 +7581,12 @@ export async function mountMatch(ctx, params = {}) {
     // --- lista di disegno di questo frame: mondo statico (placeholder consumati
     // esclusi) + edifici (sprite ricalcolato: cambia durante il cantiere) + decoro
     const dynamic = [];
+    // [C]/[Nuova funzionalita', vedi i commenti su HAND_HOVER_TINT sopra e sui
+    // rideri piu' sotto] Spostato qui (prima viveva solo poco prima del giro
+    // sui ruderi, molto piu' sotto in questo stesso frame) cosi' il giro sugli
+    // edifici appena sotto puo' usarlo per l'hover azzurro della mano — resta
+    // lo stesso identico calcolo, solo mosso piu' in alto.
+    const hoverWorld = input.hover && input.hoverPointerType === "mouse" ? cam.screenToWorld(input.hover.x, input.hover.y) : null;
     for (const b of st.buildings) {
       // `eolico` (b.animT, buildings.js/stepWindProduction): "eol" ha 8
       // sottoimmagini vere (le pale che girano), animate in loop invece che
@@ -7347,8 +7597,23 @@ export async function mountMatch(ctx, params = {}) {
       // alla vera fine del cantiere (`revealAtEnd`, BUILDING_TYPES.eolico),
       // quindi qui sono equivalenti — ma il pareggio con lo sprite mostrato
       // resta piu' diretto.
-      const windFrames = (b.type === "eolico" && b.spr === BUILDING_TYPES.eolico.construct.finalSprite) ? frameCountFor(b.spr) : 1;
-      const buildingFrameIdx = windFrames > 1 ? Math.floor((b.animT ?? 0) * WIND_ANIM_FPS) % windFrames : constructionFrameIdx(b);
+      // [Bug corretto, segnalato dall'autore: "la centrale di livello 3
+      // aveva un'animazione a due frame nel compilato?"] Si': **[C]** "i31"
+      // (lo sprite finito del livello 3 — solo lui, "i11"/"i21" dei livelli
+      // 1/2 restano un fotogramma fisso) ha lo stesso genere di sottoimmagini
+      // vere di "eol" (b.animT/INDUSTRIA3_ANIM_FPS, buildings.js/
+      // stepProduction — mai animato finora, sempre fermo al frame 0). Stesso
+      // principio del controllo sopra: `b.spr` invece di `!b.construction`,
+      // qui pero' anche invece di `b.type === "industria"` da solo — un
+      // industria di livello 1/2 (sprite "i11"/"i21", niente affatto animati)
+      // non deve richiamare `frameCountFor()` per niente ad ogni frame di
+      // ogni edificio in scena, lo sprite giusto da confrontare basta gia'
+      // a escluderli.
+      const eolicoAnimating = b.type === "eolico" && b.spr === BUILDING_TYPES.eolico.construct.finalSprite;
+      const industria3Animating = b.type === "industria" && b.spr === BUILDING_TYPES.industria.upgrades[1].finalSprite;
+      const animFrames = eolicoAnimating || industria3Animating ? frameCountFor(b.spr) : 1;
+      const animFps = eolicoAnimating ? WIND_ANIM_FPS : INDUSTRIA3_ANIM_FPS;
+      const buildingFrameIdx = animFrames > 1 ? Math.floor((b.animT ?? 0) * animFps) % animFrames : constructionFrameIdx(b);
       // [I] Segnalato dall'autore: l'edificio scelto per la demolizione/
       // riparazione con la ruspa deve avere tinta rossa per tutta la durata
       // del popup di conferma si'/no (ruspaPending sotto), non solo restare
@@ -7357,6 +7622,22 @@ export async function mountMatch(ctx, params = {}) {
       // notte) gia' usato per l'hover sui lotti-rudere del tutorial — [C]
       // ruin1|2/Mouse_MouseEnter.gml, action_sprite_color(255,1).
       const ruspaTargeted = st.ruspaPending?.buildingId === b.id;
+      const bFrame = frameFor(b.spr, buildingFrameIdx);
+      // [Nuova funzionalita', richiesta dall'autore: "solo desktop — con la
+      // mano selezionata, l'hover del mouse sugli edifici li colora di
+      // azzurro finche' il cursore resta sopra"] Stesso schema di
+      // `ruspaTargeted` appena sopra (tinta piena + `_selfLit`, sotto) e
+      // dell'hover rosso dei ruderi (`hoverWorld`/`inFrameRect`, gia'
+      // calcolato piu' in alto in questo stesso giro) — qui pero' gated a
+      // `st.r12.selec === 0` (la mano, nessuno strumento armato) invece di
+      // 11 (ruspa), e SOLO desktop (`!isMobile`): il touch non ha un vero
+      // hover senza contatto, coerente con ogni altro hover-only di questo
+      // file (il cartellino prezzo della riga scorrevole, sopra). Mai
+      // insieme a `ruspaTargeted` (richiede `selec===11`, mutualmente
+      // esclusivo con `selec===0`), quindi l'ordine qui sotto non decide
+      // mai una precedenza vera.
+      const handHovered = !isMobile && st.r12.selec === 0 && !!hoverWorld && !!bFrame
+        && inFrameRect(hoverWorld.x, hoverWorld.y, b.x, b.y, bFrame);
       // [Bug corretto, segnalato dall'autore: "l'impalcatura si smonta solo
       // davanti, non dietro, come se sparisse col topper"] `b.rearSpr`
       // (buildings.js, commento li' sopra sull'archeologia GML): la traccia
@@ -7369,8 +7650,9 @@ export async function mountMatch(ctx, params = {}) {
       // dietro a tutto il resto, come l'originale.
       if (b.rearSpr) dynamic.push({ obj: "scaffold", x: b.x, y: b.y, depth: -b.y, _f: frameFor(b.rearSpr) });
       dynamic.push({
-        obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: frameFor(b.spr, buildingFrameIdx),
-        ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true } : {}),
+        obj: "building", ref: b, x: b.x, y: b.y, depth: b.depth, _f: bFrame,
+        ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true }
+          : handHovered ? { _tint: HAND_HOVER_TINT, _selfLit: true } : {}),
       });
       // [Bug corretto, segnalato dall'autore: "si vedeva anche nel gioco
       // originale, partiva subito dopo la parte frontale e si montavano
@@ -7497,7 +7779,8 @@ export async function mountMatch(ctx, params = {}) {
     // stepConstructions()): il tint rosso "tappabile" invece si spegne
     // (`!entry.clearing` sotto) proprio perche' un secondo tap durante il
     // ciclo di impalcature non fa piu' niente (guardia in input.onTap).
-    const hoverWorld = input.hover && input.hoverPointerType === "mouse" ? cam.screenToWorld(input.hover.x, input.hover.y) : null;
+    // `hoverWorld`: calcolato piu' in alto, prima del giro sugli edifici
+    // (serve gia' li' per l'hover azzurro della mano).
     for (const ru of st.ruins) {
       const hovered = !ru.clearing && st.r12.selec === 11 && ru._f
         && ((!!hoverWorld && inFrameRect(hoverWorld.x, hoverWorld.y, ru.x, ru.y, ru._f)) || st.ruinTapArmed === ru);
@@ -8362,6 +8645,34 @@ export async function mountMatch(ctx, params = {}) {
       }
       return mobileResRows;
     })() : null;
+    // [Nuova funzionalita', richiesta dall'autore: "un roundrect bianco
+    // sotto le risorse quando ci passo sopra il mouse (tap da mobile), che
+    // apra il pannello statistiche"] `statsBarRect` (letto da input.onTap,
+    // sopra) copre l'intera area della barra: su desktop le quattro icone
+    // vere (stessa area di `barRowFrame`, sotto), su mobile la colonna
+    // impilata (`mobileResLayout` appena sopra) — `null` mentre la barra e'
+    // comunque nascosta/il pannello e' gia' aperto, cosi' lo stesso
+    // controllo copre sia "niente da disegnare" sia "niente da cliccare"
+    // senza doverlo ripetere altrove.
+    st.statsBarRect = (!hideResourceIcons && !st.statsPanelOpen)
+      ? (isMobile
+        ? { x: MOBILE_RES_X, y: barY, w: Math.max(...mobileResLayout.map((row) => row.w)), h: mobileResLayout.length * MOBILE_ROW_H + (mobileResLayout.length - 1) * MOBILE_RES_GAP }
+        : { x: barX, y: barY, w: CLOCK_CUT_X, h: barFrame ? barFrame.h : 55 })
+      : null;
+    // Indizio hover (solo mouse desktop — il touch non ha un vero hover
+    // senza contatto, stesso principio gia' scelto per il cartellino prezzo
+    // della riga scorrevole, sopra): un roundrect bianco semitrasparente
+    // dietro alla barra, stesso stile/cache di pausePanelFrame/
+    // pauseButtonFrame sopra ma un raggio piu' piccolo (statsHoverFrame) —
+    // disegnato PRIMA delle icone/numeri appena sotto, cosi' resta dietro
+    // a loro invece di coprirli.
+    if (!isMobile && st.statsBarRect && input.hover && input.hoverPointerType === "mouse"
+      && input.hover.x >= st.statsBarRect.x && input.hover.x <= st.statsBarRect.x + st.statsBarRect.w
+      && input.hover.y >= st.statsBarRect.y && input.hover.y <= st.statsBarRect.y + st.statsBarRect.h) {
+      const pad = 6;
+      r.draw(statsHoverFrame(st.statsBarRect.w + pad * 2, st.statsBarRect.h + pad * 2),
+        st.statsBarRect.x - pad, st.statsBarRect.y - pad, 1, 0xffffff, 0.7);
+    }
     if (isMobile) {
       if (!hideResourceIcons) {
         // [Bug corretto, segnalato dall'autore: "le risorse mobile devono
@@ -9348,6 +9659,7 @@ export async function mountMatch(ctx, params = {}) {
     else if (st.bankPanelOpen) drawBankPanel();
     else if (st.tradePanelOpen) drawTradePanel();
     else if (st.buildingInfoPanel) drawBuildingInfoPanel();
+    else if (st.statsPanelOpen) drawStatsPanel();
     else if (st.buildMenuOpen) drawBuildMenuOverlay(iconsDark);
 
     // Cutscene iniziale del tutorial (game/src/tutorial.js): disegnata per

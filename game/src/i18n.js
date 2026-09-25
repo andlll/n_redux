@@ -124,6 +124,34 @@ const STRINGS = {
   "buildingInfo.energySuffix": { en: ")", it: ")", es: ")", pt: ")", de: ")", fr: ")" },
   "buildingInfo.close": { en: "Close", it: "Chiudi", es: "Cerrar", pt: "Fechar", de: "Schließen", fr: "Fermer" },
 
+  // ---------------------------------------------------------- pannello statistiche
+  // [Nuova funzionalita', richiesta dall'autore: "un roundrect sotto le
+  // risorse che apra un pannello con abitanti per piattaforma, energia,
+  // felicita', olio"] Nessun equivalente nel decompilato — game/src/main.js
+  // drawStatsPanel().
+  "statsPanel.title": { en: "Platform stats", it: "Statistiche piattaforma", es: "Estadísticas de la plataforma", pt: "Estatísticas da plataforma", de: "Plattformstatistik", fr: "Statistiques de la plateforme" },
+  "statsPanel.residentsTitle": { en: "Residents", it: "Abitanti", es: "Habitantes", pt: "Moradores", de: "Bewohner", fr: "Habitants" },
+  "statsPanel.residentsMain": { en: "Main platform: {n}", it: "Piattaforma principale: {n}", es: "Plataforma principal: {n}", pt: "Plataforma principal: {n}", de: "Hauptplattform: {n}", fr: "Plateforme principale : {n}" },
+  "statsPanel.residentsR32": { en: "First expansion: {n}", it: "Prima espansione: {n}", es: "Primera expansión: {n}", pt: "Primeira expansão: {n}", de: "Erste Erweiterung: {n}", fr: "Première extension : {n}" },
+  "statsPanel.residentsR22": { en: "Second expansion: {n}", it: "Seconda espansione: {n}", es: "Segunda expansión: {n}", pt: "Segunda expansão: {n}", de: "Zweite Erweiterung: {n}", fr: "Deuxième extension : {n}" },
+  "statsPanel.energyTitle": { en: "Energy", it: "Energia", es: "Energía", pt: "Energia", de: "Energie", fr: "Énergie" },
+  "statsPanel.consumptionPrefix": { en: "Consumption: -", it: "Consumo: -", es: "Consumo: -", pt: "Consumo: -", de: "Verbrauch: -", fr: "Consommation : -" },
+  "statsPanel.productionPrefix": { en: "Production: +", it: "Produzione: +", es: "Producción: +", pt: "Produção: +", de: "Produktion: +", fr: "Production : +" },
+  // [Nuova funzionalita', vedi sopra] Stringa intera con {n} gia' dentro
+  // (non piu' un prefisso da affiancare a un'icona via drawIconLine(), come
+  // consumptionPrefix/productionPrefix sopra): drawStatsPanel() (main.js)
+  // tiene il pool di elementi HTML di testo condiviso (TEXT_POOL_SIZE, un
+  // budget calcolato a mano) — tre righe a icona in piu' qui costerebbero
+  // il doppio di testo (prefisso+suffisso) per ciascuna, le tre modalita'
+  // non hanno bisogno della stessa enfasi visiva delle due righe totali
+  // (consumo/produzione) sopra, che l'icona la tengono.
+  "statsPanel.modeCentrali": { en: "Power plants: +{n}/min", it: "Centrali: +{n}/min", es: "Centrales: +{n}/min", pt: "Usinas: +{n}/min", de: "Kraftwerke: +{n}/min", fr: "Centrales : +{n}/min" },
+  "statsPanel.modeEolico": { en: "Wind: +{n}/min", it: "Eolico: +{n}/min", es: "Eólica: +{n}/min", pt: "Eólica: +{n}/min", de: "Wind: +{n}/min", fr: "Éolien : +{n}/min" },
+  "statsPanel.modeSolare": { en: "Solar: +{n}/min", it: "Fotovoltaico: +{n}/min", es: "Solar: +{n}/min", pt: "Solar: +{n}/min", de: "Solar: +{n}/min", fr: "Solaire : +{n}/min" },
+  "statsPanel.oilTitle": { en: "Oil consumption", it: "Consumo di petrolio", es: "Consumo de petróleo", pt: "Consumo de petróleo", de: "Ölverbrauch", fr: "Consommation de pétrole" },
+  "statsPanel.oilPlatform": { en: "Platform: -{n}", it: "Piattaforma: -{n}", es: "Plataforma: -{n}", pt: "Plataforma: -{n}", de: "Plattform: -{n}", fr: "Plateforme : -{n}" },
+  "statsPanel.oilPlants": { en: "Power plants: -{n}", it: "Centrali: -{n}", es: "Centrales: -{n}", pt: "Usinas: -{n}", de: "Kraftwerke: -{n}", fr: "Centrales : -{n}" },
+
   "autoDefense.level1.name": { en: "Real threats only", it: "Solo minacce reali", es: "Solo amenazas reales", pt: "Apenas ameaças reais", de: "Nur echte Bedrohungen", fr: "Menaces réelles uniquement" },
   "autoDefense.level1.desc": {
     en: "Automatically engages planes and airships in range. Always on, no extra cost.",
@@ -256,11 +284,17 @@ const STRINGS = {
   // Plant"/"Centrale elettrica"/ecc, coerente con come il tutorial (gia'
   // corretto in inglese, tutorial.js) la descrive da sempre.
   "building.industria": { en: "Power Plant", it: "Centrale elettrica", es: "Central eléctrica", pt: "Usina Elétrica", de: "Kraftwerk", fr: "Centrale électrique" },
-  // Livello 3 (il piu' grande, production[2] in buildings.js) ricade sulla
-  // voce base sopra — "Centrale elettrica" e basta, nessun aggettivo,
-  // stesso principio di chies/palazzo.
   "building.industria.1": { en: "Small Power Plant", it: "Centrale elettrica piccola", es: "Central eléctrica pequeña", pt: "Usina Elétrica Pequena", de: "Kleines Kraftwerk", fr: "Petite centrale électrique" },
   "building.industria.2": { en: "Medium Power Plant", it: "Centrale elettrica media", es: "Central eléctrica mediana", pt: "Usina Elétrica Média", de: "Mittleres Kraftwerk", fr: "Centrale électrique moyenne" },
+  // [Bug corretto, segnalato dall'autore: "il livello 3 dovrebbe chiamarsi
+  // 'centrale elettrica grande', come gli altri due livelli"] Mancava una
+  // voce ".3" dedicata: buildingLabel() (sotto) ricadeva sulla base
+  // "building.industria" (nessun aggettivo) per l'UNICO livello che invece
+  // ne aveva bisogno, dato che 1/2 lo hanno gia' — un'incoerenza, non una
+  // scelta apposta (a differenza di chies/palazzo, che davvero restano
+  // sulla base al livello 1 per design). Stesso schema piccola/media/grande
+  // di ".1"/".2" sopra.
+  "building.industria.3": { en: "Large Power Plant", it: "Centrale elettrica grande", es: "Central eléctrica grande", pt: "Usina Elétrica Grande", de: "Großes Kraftwerk", fr: "Grande centrale électrique" },
   "building.casa": { en: "House", it: "Casa", es: "Casa", pt: "Casa", de: "Haus", fr: "Maison" },
   // Tutti e tre distinti dalla base ("Casa"): a differenza di chies/
   // industria/palazzo, nessun livello di casa condivide il nome col tipo

@@ -863,21 +863,35 @@ export const CAR_TYPES = {
       { at: 329, dir: 30, spd: 3, spr: "r_ad" },
     ],
   },
-  // [Bug corretto, segnalato dall'autore: "questa macchina vola di fianco
-  // al ponte invece di attraversarlo"] Lo spawn di tutta la famiglia
-  // (honda_brr1/11/12, stessa posizione per tutti e tre — sopra) cadeva
-  // ~40px PRIMA del vero impalcato del ponte, ancora dentro il ventaglio
-  // di cavi della torre vicina (verificato ritagliando "bridr1mo" frame
-  // chiuso, data/sprites.json, dalla texture vera): l'auto nasceva gia'
-  // sospesa a mezz'aria accanto al ponte, non sopra di lui, e ci restava
-  // per tutta la sua vita dato che questa famiglia non svolta mai (Alarm_2
-  // del decompilato non e' mai armato — [C] fedele, la retta e' quella
-  // giusta, solo il PUNTO di partenza era spostato). `y` spostato di +42
-  // per cadere sull'impalcato vero, alla stessa quota della corsia
-  // percorsa in senso opposto da honda_brr2/21 (parallela, non piu'
-  // incrociata).
+  // [Bug corretto, segnalato dall'autore: "la macchina fra espansione 1 ed
+  // espansione 2 vola invece di passare sul ponte"] Una sessione precedente
+  // aveva gia' "corretto" questo spawn UNA VOLTA (git blame, commit
+  // "Corregge lo spawn di honda_brr1/11/12"), spostandolo da (2916,1027) a
+  // (2916,1069): quel +42 era una REGRESSIONE, non un fix — basato solo su
+  // un ritaglio a vista dello sprite "bridr1mo" (frame chiuso) senza
+  // controllare il vero punto di creazione nel decompilato. **[C]**
+  // `bridge_des2/Alarm_3.gml`: `action_create_object(honda_brr1, 2916,
+  // 1027)` — 1027, non 1069 — confermato anche dal rilancio che questa
+  // stessa famiglia si fa da sola: `honda_brr1/Alarm_0.gml` (200 tick,
+  // condizionato solo a `r12.oil>0`) crea un secondo honda_brr1 a (2907,
+  // 1027), stessa quota. Questa famiglia non svolta mai per davvero (**[C]**
+  // `honda_brr1|11|12/Create.gml`: solo `alarm(200,0)`/`alarm(427,1)`
+  // armati, MAI un `alarm(2)` — a differenza di honda_br1 la cui Create.gml
+  // arma `alarm(285,0)`/`alarm(304,1)` con le svolte vere, STUDIO.md sopra
+  // — Alarm_2..6 di honda_brr1 esistono nell'object ma non vengono MAI
+  // armati da nessun evento: codice morto nell'originale stesso, stesso
+  // pattern gia' documentato altrove in questo file/STUDIO.md), quindi la
+  // retta e' fedele: il problema era SOLO il punto di partenza, ri-spostato
+  // di 40px dentro il ventaglio di cavi della torre vicina dal +42 sbagliato.
+  // Verificato dal vivo (Playwright, tier1+tier2 espansi, bridgeDes2.phase
+  // "closed"): con y=1069 l'auto lascia l'impalcato ed e' visibilmente
+  // sospesa sul vuoto di sfondo entro ~0.5s dalla nascita; con y=1027 resta
+  // sull'impalcato per la prima meta' del suo tragitto (la retta e'
+  // comunque piu' lunga della campata visibile del ponte — corretto anche
+  // questo, la macchina finisce sul terreno solido della piattaforma r32,
+  // mai sul vuoto).
   honda_brr1: {
-    spawn: { x: 2916, y: 1069 },
+    spawn: { x: 2916, y: 1027 },
     life: 427,
     spr: "g_bs",
     initial: { dir: 210, spd: 3 },
@@ -886,7 +900,7 @@ export const CAR_TYPES = {
     ],
   },
   honda_brr11: {
-    spawn: { x: 2916, y: 1069 },  // vedi il commento su honda_brr1 sopra
+    spawn: { x: 2916, y: 1027 },  // vedi il commento su honda_brr1 sopra
     life: 427,
     spr: "c_bs",
     initial: { dir: 210, spd: 3 },
@@ -895,7 +909,7 @@ export const CAR_TYPES = {
     ],
   },
   honda_brr12: {
-    spawn: { x: 2916, y: 1069 },  // vedi il commento su honda_brr1 sopra
+    spawn: { x: 2916, y: 1027 },  // vedi il commento su honda_brr1 sopra
     life: 427,
     spr: "v_bs",
     initial: { dir: 210, spd: 3 },

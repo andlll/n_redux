@@ -15,7 +15,7 @@
 // in un modulo a parte (invece di restare inline in main.js) perche'
 // title.js (lo sfondo sfocato della title screen, STUDIO.md) ne ha bisogno
 // anch'esso, sulla stessa `match.scene.json`.
-import { canAfford } from "./buildings.js";
+import { canAfford, currentResidents } from "./buildings.js";
 import { spawnCar, R32_MAGHENE_SCHEDULE, R22_MAGHENE_SCHEDULE, NIGHT_TINT } from "./cars.js";
 import {
   createBridgeState, stepBridge, bridgeDeckFrame, bridgeOverVisible, bridgeGapOpen,
@@ -72,6 +72,37 @@ export function isPlaceholderActive(x, y, platformState) {
   if (platformState.tier1.stage === "expanded" && (inRect(x, y, R32_RECT) || inRect(x, y, R320_RECT))) return true;
   if (platformState.tier2.stage === "expanded" && (inRect(x, y, R22_RECT) || inRect(x, y, R220_RECT))) return true;
   return false;
+}
+
+/**
+ * [Nuova funzionalita', richiesta dall'autore: "pannello statistiche —
+ * abitanti per piattaforma"] Somma `currentResidents(b)` (buildings.js) per
+ * edificio, distribuita nei bucket di piattaforma via gli stessi rettangoli
+ * assoluti di isPlaceholderActive() appena sopra (R12_RECT/R120_RECT per la
+ * base, R32_RECT/R320_RECT per la prima espansione, R22_RECT/R220_RECT per
+ * la seconda) — un edificio finito/in crescita sta sempre per intero dentro
+ * UN solo bucket (i lotti non attraversano mai il confine fra due pezzi di
+ * piattaforma). `r32`/`r22` sono `null` (non 0) quando quel bucket non e'
+ * mai esistito (tier corrispondente non ancora espanso), cosi' il chiamante
+ * puo' distinguere "zero abitanti li'" da "quella piattaforma non c'e'".
+ */
+export function residentsByPlatform(buildings, platformState) {
+  const tier1Expanded = platformState?.tier1?.stage === "expanded";
+  const tier2Expanded = platformState?.tier2?.stage === "expanded";
+  const out = { main: 0, r32: tier1Expanded ? 0 : null, r22: tier2Expanded ? 0 : null };
+  for (const b of buildings) {
+    // currentResidents() (buildings.js) non guarda da sola `b.construction`
+    // — ogni altro chiamante nel motore lo fa a monte (drawBuildingInfoPanel,
+    // main.js: `!b.construction ? currentResidents(b) : null`), stessa
+    // guardia qui: un cantiere non ha ancora abitanti veri.
+    if (b.construction) continue;
+    const residents = currentResidents(b);
+    if (!residents) continue;
+    if (tier1Expanded && (inRect(b.x, b.y, R32_RECT) || inRect(b.x, b.y, R320_RECT))) out.r32 += residents;
+    else if (tier2Expanded && (inRect(b.x, b.y, R22_RECT) || inRect(b.x, b.y, R220_RECT))) out.r22 += residents;
+    else out.main += residents;
+  }
+  return out;
 }
 
 export function applyMatchPlatform(staticWorld, { interactive = false } = {}) {
@@ -180,54 +211,70 @@ function blinkMotorVisible(t) {
 // della mappa da' un -y piu' negativo di questo). moto12/moto13 restano
 // invariati (depth:0, -y vero, gia' corretto).
 const MOTOR11_FIXED_DEPTH = -0.01;
-// [Bug corretto, segnalato dall'autore: "sulla piattaforma di espansione 1
-// (quella in basso) è sbagliata la depth della turbina sopra la
-// piattaforma, le macchine ci passano sopra"] moto2 e' fedele al
-// decompilato (depth fisso 3, mai riassegnato — vedi sopra), ma quel "3" e'
-// un numero minuscolo nella stessa scala di depth in cui questo motore
-// ordina le auto con `-y - N` (cars.js: N=2..16, quindi tipicamente
-// -1000..-3000 su questa mappa) — un fisso "3" perde SEMPRE il confronto
-// con QUALUNQUE auto (3 > -y-N per ogni y>0), la disegna sempre PRIMA
-// (main.js/effDepth: piu' alto = disegnato prima = piu' lontano dalla
-// camera), quindi la turbina resta sempre "sotto" a qualunque macchina le
-// passi vicino sullo schermo, indipendentemente da quale delle due sia
-// davvero piu' vicina alla camera in quel punto (a differenza di
-// motor12/motor13, gia' ordinati per -y vero: verificato ritagliando
-// "baa31"/il traffico "maghene" di r32 dalla texture vera, tools/, le due
-// istanze moto2 di R32_MOTORS sotto stanno proprio a bordo piattaforma,
-// sulla stessa corsia della carreggiata). Stesso trattamento di
-// motor12/motor13 (return 0, -y vero): la turbina torna a poter stare
-// DAVANTI a un'auto che le passa dietro (y minore) e dietro a una che le
-// passa davanti (y maggiore), come qualunque altro oggetto di mondo.
+// [Bug corretto in un primo momento, poi RIVISTO — vedi i due commenti
+// sotto (MOTO2A_FIXED_DEPTH/MOTO2_FIXED_DEPTH)] Un commit precedente
+// leggeva qui "moto2 fedele al decompilato, depth fisso 3, ma quel 3 perde
+// sempre il confronto con le auto (-y-N, tipicamente -1000..-3000) quindi
+// la turbina resta sempre sotto qualunque macchina" e ne concludeva che
+// andasse reso dinamico (`return 0`, -y vero) come motor12/motor13. Letto
+// pero' oggetto per oggetto (sotto), NESSUna delle due istanze reali di
+// sprite "motor2" nel gioco (`moto2a` su r32, `moto2` su r22) e' in realta'
+// lo stesso oggetto di moto12/moto13: entrambe restano fisse per davvero
+// nel decompilato, il "3"/"−1242" non era un bug ma lo strato fisso della
+// piattaforma (coerente con `baa21`/`baa22`/`moor21` accanto, tutti fissi).
+// Il vero caso dinamico e' SOLO `moto12` (sprite "motor12", R32_MOTORS
+// sotto) e `moto13` — motor11 resta invece fisso ma con la stessa
+// convenzione "0 = dinamico" di main.js, da cui MOTOR11_FIXED_DEPTH sopra.
 function motorDepth(spr) {
   if (spr === "motor11") return MOTOR11_FIXED_DEPTH;
-  return 0;   // motor2/motor12/motor13: depth = -y vero
+  return 0;   // motor12/motor13: depth = -y vero (l'unico caso dinamico vero)
 }
 // [Bug corretto, segnalato dall'autore: "il reattore verticale su un palo
 // che nasce con la prima espansione (quella in basso) ha la depth
 // sbagliata, una villa gli finisce sopra"] **[C]** `dockersig1/Alarm_4.gml`
 // (il trigger che crea l'intera scenografia della prima espansione, sopra
 // nel commento su r32Decor()) NON crea `moto2` per le due "turbine" a
-// (-32,1997)/(1659,1996) come il commento sopra assumeva — crea `moto2a`,
-// un oggetto DIVERSO (stesso sprite "motor2", Step/Alarm_0/Alarm_1 quasi
-// identici — l'unica vera differenza e' che `moto2a/Step_0.gml` si
+// (-32,1997)/(1659,1996) come un commento precedente assumeva — crea
+// `moto2a`, un oggetto DIVERSO (stesso sprite "motor2", Step/Alarm_0/Alarm_1
+// quasi identici — l'unica vera differenza e' che `moto2a/Step_0.gml` si
 // autodistrugge quando `r12.oil<=0`, mai riprodotto qui, un gap [I] minore)
 // il cui default in `_object.json` e' `depth: -1242`, non 3 — mai
 // riassegnato nemmeno li' (letto riga per riga, nessuna delle sue tre
-// azioni tocca `depth`). Il "return 0" sopra (dinamico, -y vero, lo stesso
-// dato erroneamente anche a queste due istanze) le faceva ordinare per la
-// LORO PROPRIA y (1996/1997, molto a valle sulla piattaforma) invece del
-// fisso vero — quasi identico al -1241 di "baa31"/"baa32" stessi (lo stesso
-// "strato" della piattaforma), NON il -1997/-1996 dinamico attribuito qui
-// finora: una villa piazzata fra circa y=1242 e y=1997 (una fetta ampia
-// dell'area costruibile di questa espansione, R32_RECT sopra) si ordinava
-// quindi nel modo sbagliato contro di lei. `MOTO2A_FIXED_DEPTH` sotto
-// riproduce il vero fisso; l'entry con `spr:"motor2"` (R32_MOTORS, sotto)
-// lo marca con `fixedDepth` invece di passare per `motorDepth()` — quella
-// funzione resta corretta per l'unico `moto2` vero (R22_MOTORS, sotto,
-// dockersig3/Alarm_4.gml crea li' proprio `moto2`, verificato: dinamico
-// -y vero, invariato).
+// azioni tocca `depth`). Un "return 0" dinamico (-y vero) le faceva ordinare
+// per la LORO PROPRIA y (1996/1997, molto a valle sulla piattaforma) invece
+// del fisso vero — quasi identico al -1241 di "baa31"/"baa32" stessi (lo
+// stesso "strato" della piattaforma), NON il -1997/-1996 dinamico
+// attribuito qui in precedenza: una villa piazzata fra circa y=1242 e
+// y=1997 (una fetta ampia dell'area costruibile di questa espansione,
+// R32_RECT sopra) si ordinava quindi nel modo sbagliato contro di lei.
+// `MOTO2A_FIXED_DEPTH` sotto riproduce il vero fisso; l'entry con
+// `spr:"motor2"` di R32_MOTORS (sotto) lo marca con `fixedDepth` invece di
+// passare per `motorDepth()`.
 const MOTO2A_FIXED_DEPTH = -1242;
+// [Bug corretto, segnalato dall'autore con screenshot: "la turbina da
+// mettere in dinamico -y e' quella di espansione 1 (moto12, sopra il
+// semaforo/incrocio a (607,1839): gia' corretta), non quella di
+// espansione 2 — quella deve restare sullo sfondo"] **[C]** il `moto2`
+// VERO (non `moto2a` sopra) e' quello che `dockersig3/Alarm_4.gml` crea
+// due volte per la seconda espansione, r22 — letto riga per riga (Create/
+// Alarm_0/Alarm_1/Step.gml, oggetto `moto2` in `src/objects/moto2/`):
+// NESSUno dei suoi eventi tocca mai `depth`, esattamente come `moto2a`,
+// resta fermo al fisso di `_object.json`, che per lui e' `3` (non -1242:
+// un oggetto diverso, un default diverso) — lo stesso "3" gia' scartato
+// come bug qui sotto in un commit precedente (si scambiava per un
+// difetto quello che nel gioco vero e' semplicemente lo strato fisso
+// della piattaforma: coerente con `baa21`/`baa22` stessi, appena sopra in
+// r22Decor(), depth FISSO 4, e `moor21`, depth FISSO 2 — lo stesso ordine
+// di grandezza di `3`, non la scala -y delle auto). Un "return 0" dinamico
+// (lo stesso errore gia' corretto sopra per `moto2a`) faceva ordinare le
+// due istanze di R22_MOTORS per la LORO PROPRIA y (908/1223) invece del
+// fisso vero — la stessa famiglia di bug, sull'altra piattaforma.
+// `MOTO2_FIXED_DEPTH` riproduce il vero fisso; le entry di R22_MOTORS
+// (sotto) lo marcano con `fixedDepth` invece di passare per
+// `motorDepth()` — quella funzione ora gestisce solo `motor11` (fisso) e
+// il vero dinamico `motor12`/`motor13` (R120_MOTORS sopra, il `moto12`
+// di R32_MOTORS sotto).
+const MOTO2_FIXED_DEPTH = 3;
 
 // [C] r12/Create.gml, posizioni assolute (STUDIO.md sopra).
 const R120_MOTORS = [
@@ -622,8 +669,32 @@ function r32Decor(state, t) {
   const out = [
     { obj: "decor", x: R32_X, y: R32_Y, depth: -1241, spr: "baa31" },     // [C] r32/_object.json
     { obj: "decor", x: R320_X, y: R320_Y, depth: -1241, spr: "baa32" },   // [C] r320/_object.json
-    { obj: "decor", x: 565, y: 1720, depth: 0, spr: "robbobase" },
+    // [Bug corretto, segnalato dall'autore con screenshot: non e' la
+    // turbina lampeggiante (moto12, gia' corretta sopra) il problema, e'
+    // il "palo"/pilone che la regge sotto — il grosso sprite statico
+    // "robbobase" (423x374, fan+pilone+base in un solo frame, la sagoma
+    // che si vede nello screenshot) su cui moto12 lampeggia sovrapposto.
+    // **[C]** `robbobaseobj/Create.gml` assegna `depth = -y - 320`, NON il
+    // default `depth: 0` di `_object.json` (mai usato: sempre riassegnato
+    // in Create) — un `depth: 0` qui viene pero' riletto da main.js/
+    // effDepth() come sentinella "-y vero" (STUDIO.md sopra), cioe' -1720
+    // invece del vero -2040: 320 troppo ALTO (main.js/effDepth: piu' alto
+    // = disegnato prima = piu' lontano dalla camera), quindi il pilone
+    // veniva disegnato troppo presto/lontano — qualunque oggetto di mondo
+    // nella fascia fra -1720 e -2040 (auto, villa, decoro) ci finiva
+    // erroneamente davanti invece che dietro come nel gioco vero.
+    { obj: "decor", x: 565, y: 1720, depth: -1720 - 320, spr: "robbobase" },
     { obj: "decor", x: -16, y: 1153, depth: -1009, spr: "moor31" },
+    // [Gap risolto] **[C]** `mudr31/Create.gml` (l'oggetto dietro lo sprite
+    // "moor31" appena sopra) crea anche, relativo a se stesso a (0,0) —
+    // quindi alla STESSA posizione assoluta — un secondo oggetto,
+    // `mudr31_basso` (sprite "moor31_basso", depth fisso -1990 da
+    // `_object.json`, mai riassegnato: stesso schema di colore
+    // giorno/notte di moor31, nessun'altra azione). Mai portato in questo
+    // motore: mancava del tutto, non solo la depth sbagliata. Nessun
+    // legame con la turbina/pilone sopra (sprite enorme, 1559x940: un
+    // pezzo di bordo/cornice della piattaforma, non il "robbobase").
+    { obj: "decor", x: -16, y: 1153, depth: -1990, spr: "moor31_basso" },
     { obj: "decor", x: 1302, y: 1150, depth: -1990, spr: "moor32" },
     { obj: "decor", x: 2513, y: 1268, depth: -1352, spr: "moor33" },
     { obj: "decor", x: 2027, y: 1105, depth: -1213, spr: "moor34" },
@@ -649,10 +720,12 @@ function r32Decor(state, t) {
 const R22_X = 1374, R22_Y = -64;
 const R220_X = R22_X + 1236, R220_Y = R22_Y + 225;
 const R220_POLES = [[40, 463], [140, 405], [130, 750], [192, 779]].map(([dx, dy]) => [1236 + dx, 225 + dy]);
-// [C] dockersig3/Alarm_4.gml: `moto2` x2, stesso oggetto lampeggiante.
+// [C] dockersig3/Alarm_4.gml: `moto2` x2, stesso oggetto lampeggiante —
+// vedi MOTO2_FIXED_DEPTH sopra: `moto2`, non `moto2a`, ma stesso principio
+// (depth fisso mai riassegnato, non -y).
 const R22_MOTORS = [
-  { x: 2183, y: 908, spr: "motor2" },
-  { x: 2729, y: 1223, spr: "motor2" },
+  { x: 2183, y: 908, spr: "motor2", fixedDepth: MOTO2_FIXED_DEPTH },
+  { x: 2729, y: 1223, spr: "motor2", fixedDepth: MOTO2_FIXED_DEPTH },
 ];
 
 /** Scenografia fissa della terza piattaforma — [C] dockersig3/Alarm_4.gml,
@@ -677,7 +750,7 @@ function r22Decor(state, t) {
   if (bridgeOverVisible(bd2)) out.push({ obj: "decor", x: 2363, y: 783, depth: -1240, spr: "bridr1over" });
   for (const [dx, dy] of R220_POLES) out.push({ obj: "decor", x: R22_X + dx, y: R22_Y + dy, depth: 0, spr: "se" });
   if (blinkMotorVisible(t)) {
-    for (const m of R22_MOTORS) out.push({ obj: "decor", x: m.x, y: m.y, depth: motorDepth(m.spr), spr: m.spr });
+    for (const m of R22_MOTORS) out.push({ obj: "decor", x: m.x, y: m.y, depth: m.fixedDepth ?? motorDepth(m.spr), spr: m.spr });
   }
   // La nave cargo (game/src/bridges.js) — cliccabile solo se non gia'
   // presa e non "cargo3" (mai raccoglibile, [C] preso=2 dalla nascita).
