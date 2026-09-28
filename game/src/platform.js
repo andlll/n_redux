@@ -56,6 +56,13 @@ const R320_RECT = { x: 1600, y: 1141, w: 1600, h: 952 };     // r320/baa32
 const R22_RECT = { x: 1374, y: -64, w: 1236, h: 1242 };      // r22/baa21
 const R220_RECT = { x: 2610, y: 161, w: 1223, h: 1333 };     // r220/baa22
 
+// [C] r32/_object.json + r320/_object.json: depth fisso del pavimento vero
+// della prima espansione (r32Decor() molto piu' sotto, dove viene usato per
+// disegnare "baa31"/"baa32") — nominato qui, non solo inline li', perche'
+// serve anche a placeholderDrawDepth() sotto per risolvere il bug di
+// visibilita' commentato li'.
+const R32_GROUND_DEPTH = -1241;
+
 function inRect(x, y, r) {
   return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 }
@@ -96,6 +103,60 @@ export function isPlaceholderActive(x, y, platformState) {
   return false;
 }
 
+// [Bug corretto, segnalato dall'autore: "i placeholder non si illuminano di
+// viola sulla prima espansione"] Non e' (solo) questione di quando il rombo
+// e' considerato "attivo" (isPlaceholderActive sopra) — anche quando lo e',
+// su r32/r320 finiva comunque INVISIBILE: verificato forzando lo stato in
+// browser (stesso placeholder, `_armed`/`_hovered` veri, confermato presente
+// in `frameList`) — sulla base e su r22/r220 il rombo si vede, su r32/r320
+// no, sepolto sotto. Causa: `PLACEHOLDER_DEPTH` (main.js, -2) e' tarato per
+// stare "sopra la strada (air2, -1), sotto edifici/alberi (depth dinamico
+// -y, mai piu' vicino a zero di circa -17 su match_easy — game/src/main.js,
+// commento su PLACEHOLDER_DEPTH)" — un calcolo che non considera affatto
+// R32_GROUND_DEPTH sopra (-1241, il pavimento VERO di r32/r320, fedele al
+// decompilato): -1241 e' molto piu' negativo di -2, quindi finisce disegnato
+// DOPO (sopra) il rombo. `baa21`/`baa22` (r22/r220, tier2) invece hanno
+// `depth: 4` (r22Decor() molto piu' sotto) — positivo, dietro al rombo come
+// la base: per questo li' il bug non c'e'.
+// Un `PLACEHOLDER_DEPTH` globale piu' negativo di -1241 romperebbe pero'
+// l'altro vincolo (stare sotto un edificio vicino che sconfina sul lotto,
+// game/src/main.js): sulla base gli edifici arrivano a depth dinamico
+// vicino a -17, quindi qualunque valore sotto -1241 ci passerebbe SEMPRE
+// davanti anche li'. La correzione va quindi fatta solo per i placeholder
+// che stanno per davvero su r32/r320 — gli unici per cui la depth del
+// pavimento (-1241) supera quella "sotto edifici" (-2). Un margine di 1,
+// stesso principio gia' usato per ROBBOBASE_MOTOR_DEPTH piu' sotto.
+const PLACEHOLDER_ON_R32_DEPTH = R32_GROUND_DEPTH - 1;
+
+/** Depth di DISEGNO di un placeholder (non di attivazione, isPlaceholderActive
+ * sopra e' un controllo separato) — `fallbackDepth` e' PLACEHOLDER_DEPTH di
+ * main.js per ogni lotto che non sta su r32/r320 (base, r22/r220, match_easy,
+ * tutorial: tutti gia' corretti cosi' com'era). */
+export function placeholderDrawDepth(x, y, fallbackDepth) {
+  return (inRect(x, y, R32_RECT) || inRect(x, y, R320_RECT)) ? PLACEHOLDER_ON_R32_DEPTH : fallbackDepth;
+}
+
+// [Bug corretto, segnalato dall'autore: "il pannello statistiche mostra cose
+// strane per gli abitanti per piattaforma"] Stessa famiglia di bug di
+// BASE_RECT_EXCEPTIONS sopra, ma al contrario: questi dieci lotti sono
+// geometricamente dentro l'AABB di R22 (quindi soddisfano
+// `inRect(b.x,b.y,R22_RECT)`) ma per davvero, pixel alla mano, stanno sulla
+// BASE (`baa12`, opaco li' — `baa21`, lo sprite vero di r22, e' trasparente).
+// Senza questa eccezione, una casa costruita su uno di questi dieci lotti
+// (attiva fin dall'inizio: sono fra i lotti "sempre disponibili" di
+// isPlaceholderActive() sopra, mai toccati da BASE_RECT_EXCEPTIONS) vede i
+// propri abitanti spostati nel bucket "r22" non appena la SECONDA espansione
+// viene completata, anche se l'edificio e' sempre stato sulla base — mai
+// spostato, mai ricostruito. Stesse identiche coordinate del gruppo
+// "confermato base" trovato verificando l'alpha channel per
+// BASE_RECT_EXCEPTIONS (il resto dei lotti in quella stessa zona di
+// sovrapposizione, quelli SUL SERIO su r22, restano invariati qui: il loro
+// `inRect` deve continuare a vincere).
+const TIER2_RECT_BASE_EXCEPTIONS = new Set([
+  "1375,566", "1375,451", "1475,509", "1424,709", "1524,652",
+  "1624,595", "1424,825", "1523,768", "1623,710", "1722,653",
+]);
+
 /**
  * [Nuova funzionalita', richiesta dall'autore: "pannello statistiche —
  * abitanti per piattaforma"] Somma `currentResidents(b)` (buildings.js) per
@@ -120,8 +181,10 @@ export function residentsByPlatform(buildings, platformState) {
     if (b.construction) continue;
     const residents = currentResidents(b);
     if (!residents) continue;
+    const key = `${b.x},${b.y}`;
     if (tier1Expanded && (inRect(b.x, b.y, R32_RECT) || inRect(b.x, b.y, R320_RECT))) out.r32 += residents;
-    else if (tier2Expanded && (inRect(b.x, b.y, R22_RECT) || inRect(b.x, b.y, R220_RECT))) out.r22 += residents;
+    else if (tier2Expanded && !TIER2_RECT_BASE_EXCEPTIONS.has(key)
+      && (inRect(b.x, b.y, R22_RECT) || inRect(b.x, b.y, R220_RECT))) out.r22 += residents;
     else out.main += residents;
   }
   return out;
@@ -703,8 +766,8 @@ const R32_MOTORS = [
  * (game/src/bridges.js) al posto degli sprite fissi "bridr1"/"bridl1". */
 function r32Decor(state, t) {
   const out = [
-    { obj: "decor", x: R32_X, y: R32_Y, depth: -1241, spr: "baa31" },     // [C] r32/_object.json
-    { obj: "decor", x: R320_X, y: R320_Y, depth: -1241, spr: "baa32" },   // [C] r320/_object.json
+    { obj: "decor", x: R32_X, y: R32_Y, depth: R32_GROUND_DEPTH, spr: "baa31" },     // [C] r32/_object.json
+    { obj: "decor", x: R320_X, y: R320_Y, depth: R32_GROUND_DEPTH, spr: "baa32" },   // [C] r320/_object.json
     // [Bug corretto, segnalato dall'autore con screenshot: non e' la
     // turbina lampeggiante (moto12, gia' corretta sopra) il problema, e'
     // il "palo"/pilone che la regge sotto — il grosso sprite statico

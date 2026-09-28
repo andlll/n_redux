@@ -23,7 +23,7 @@ import {
   applyMatchPlatform, createFaroState, stepFaroChain, faroDecor, r120MotorDecor,
   clickFaroButton, clickWaveSignal, clickDockerSignal,
   clickFaro3Button, clickWaveSignal3, clickDockerSignal3,
-  isPlaceholderActive, FARO1, FARO2, FARO3, residentsByPlatform,
+  isPlaceholderActive, placeholderDrawDepth, FARO1, FARO2, FARO3, residentsByPlatform,
 } from "./platform.js";
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
@@ -858,8 +858,21 @@ export async function mountMatch(ctx, params = {}) {
   // room, quindi ordinati per `-y` da effDepth() sopra, e la y minima in
   // `match_easy` e' 17 (effDepth -17): -2 sta sempre fra i due, mai sopra un
   // edificio o un albero, ma sempre sopra la strada sotto di lui.
+  // [Bug corretto, segnalato dall'autore: "i placeholder non si illuminano
+  // di viola sulla prima espansione"] Il ragionamento sopra non considerava
+  // R32/R320 (platform.js): il loro pavimento vero (`baa31`/`baa32`) ha
+  // depth -1241 (fedele al decompilato, r32/_object.json), molto piu'
+  // negativo di -2 — finiva quindi disegnato SOPRA il rombo, coprendolo del
+  // tutto (mai un problema di isPlaceholderActive: il rombo risultava gia'
+  // "attivo", semplicemente sepolto). placeholderDrawDepth() (platform.js)
+  // isola l'eccezione ai soli lotti davvero su r32/r320 — altrove (base,
+  // r22/r220, match_easy, tutorial) resta il -2 di sempre, verificato
+  // corretto anche li'.
   const PLACEHOLDER_DEPTH = -2;
-  for (const p of placeholders) { p.id = `ph_${p.x}_${p.y}`; p.consumed = false; p.depth = PLACEHOLDER_DEPTH; }
+  for (const p of placeholders) {
+    p.id = `ph_${p.x}_${p.y}`; p.consumed = false;
+    p.depth = placeholderDrawDepth(p.x, p.y, PLACEHOLDER_DEPTH);
+  }
   const placeholderById = new Map(placeholders.map((p) => [p.id, p]));
 
   // [Decisione dell'autore: "la rovina ruspata deve creare sempre un
@@ -878,7 +891,7 @@ export async function mountMatch(ctx, params = {}) {
     const id = `ph_${x}_${y}`;
     let ph = placeholderById.get(id);
     if (ph) { ph.consumed = false; return ph; }
-    ph = { obj: "placeholder", x, y, depth: PLACEHOLDER_DEPTH, spr: "phold", _f: frameFor("phold"), id, consumed: false };
+    ph = { obj: "placeholder", x, y, depth: placeholderDrawDepth(x, y, PLACEHOLDER_DEPTH), spr: "phold", _f: frameFor("phold"), id, consumed: false };
     placeholders.push(ph);
     placeholderById.set(id, ph);
     staticWorld.push(ph);
