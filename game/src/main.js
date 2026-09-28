@@ -3527,8 +3527,9 @@ export async function mountMatch(ctx, params = {}) {
   // abitanti (1) + fino a 3 righe abitanti (main/prima/seconda espansione)
   // + intestazione energia (1) + consumo/produzione a icona (2+2, un
   // elemento per prefisso e uno per il suffisso "/min" di ciascuna,
-  // drawIconLine() sopra) + le tre modalita' SENZA icona (pushText(), sopra
-  // — 1 ciascuna, non 2: non hanno bisogno della stessa enfasi) + felicita'
+  // drawIconLine() sopra) + le tre modalita' a icona edificio (drawStatsPanel(),
+  // sotto — l'icona e' un quad WebGL, non testo: resta 1 elemento pooled
+  // ciascuna per il numero, come prima con pushText()) + felicita'
   // (1) + intestazione olio (1) + le due righe legenda della barra olio (2)
   // = 18. Nuovo worst case: 12 + 18 = 30, +1 di margine.
   const TEXT_POOL_SIZE = 31;
@@ -4380,19 +4381,84 @@ export async function mountMatch(ctx, params = {}) {
       pushGap(sectionGap);
     }
 
-    // [Nuova funzionalita', vedi il commento su TEXT_POOL_SIZE sotto]
-    // `pushText` (a differenza di `pushLine` sopra) costa UN solo elemento
-    // del pool testo condiviso invece di due (icona+suffisso via
-    // drawIconLine()) — usata per le tre righe modalita' sotto, che non
-    // hanno bisogno della stessa enfasi delle due righe totali (consumo/
-    // produzione), quelle si tengono l'icona.
-    const pushText = (str, opts = {}) => rows.push({ h: lineH, draw: (cy) => drawHtmlText(str, px + panelW / 2, cy, { size: 14, maxWidth: panelW - 60, ...opts }) });
     rows.push({ h: lineH, draw: (cy) => drawHtmlText(t("statsPanel.energyTitle"), px + panelW / 2, cy, { size: 13, color: "#666666" }) });
     pushLine([{ text: t("statsPanel.consumptionPrefix") + perMin(energy.consumptionPerMin) }, { icon: "ele" }, { text: t("autoDefense.costPerMin") }]);
     pushLine([{ text: t("statsPanel.productionPrefix") + perMin(energy.productionPerMin) }, { icon: "ele" }, { text: t("autoDefense.costPerMin") }]);
-    pushText(t("statsPanel.modeCentrali", { n: Math.round(energy.centraliElePerMin) }));
-    pushText(t("statsPanel.modeEolico", { n: Math.round(energy.eolicoPerMin) }));
-    pushText(t("statsPanel.modeSolare", { n: Math.round(energy.solarePerMin) }));
+    // [Nuova funzionalita', richiesta dall'autore: "invece di testo usiamo le
+    // icone dei rispettivi edifici per centrali/eolico/fotovoltaico, magari
+    // con un piccolo grafico delle proporzioni"] Le tre righe di testo
+    // ("Centrali: +N/min", ...) diventano icona dell'edificio (stessi
+    // spr/tint gia' usati per il bottone nel menu costruzioni, OTHER_BUILDINGS
+    // piu' sotto — "p2" industria/"p4" eolico/"psolare" solare) + numero, piu'
+    // una barra proporzionale sopra (stesso identico widget a segmenti gia'
+    // in uso qualche riga piu' sotto per platform/centrali dell'olio — non
+    // una torta vera: questo motore disegna solo quad WebGL (gl.js,
+    // Renderer.draw()/solidFrame() — niente mesh a triangoli per settori
+    // d'angolo arbitrario), una barra a segmenti da' la stessa lettura "a
+    // colpo d'occhio delle proporzioni" senza dover aggiungere un nuovo
+    // primitivo di disegno al motore per un solo pannello.
+    const ENERGY_SOURCES = [
+      { key: "centraliElePerMin", spr: "p2", tint: 0x603415 },      // industria — stesso spr/tint di OTHER_BUILDINGS sotto
+      { key: "eolicoPerMin", spr: "p4", tint: 0x8b6c17 },           // eolico
+      { key: "solarePerMin", spr: "psolare", tint: 0xb57008 },      // solare
+    ];
+    // `solarePerMin` puo' essere negativo di notte (buildings.js,
+    // solarProduction.ele.night: -1): niente segmento a larghezza negativa
+    // nella barra, ma il numero accanto all'icona resta quello vero (stesso
+    // criterio gia' in uso per gli altri numeri di questo pannello — un
+    // tasso istantaneo, non una media, vedi il commento su
+    // currentEnergyStats() in buildings.js).
+    const energyBarTotal = ENERGY_SOURCES.reduce((sum, s) => sum + Math.max(0, energy[s.key]), 0);
+    rows.push({
+      h: 18,
+      draw: (cy) => {
+        const barW = panelW - 60, barH = 14, bx = px + 30, by = cy - barH / 2;
+        r.draw(solidFrame(white, barW, barH), bx, by, 1, 0x000000, 0.12);
+        let x = bx;
+        if (energyBarTotal > 0) {
+          for (const s of ENERGY_SOURCES) {
+            const w = Math.round(barW * Math.max(0, energy[s.key]) / energyBarTotal);
+            if (w > 0) { r.draw(solidFrame(white, w, barH), x, by, 1, s.tint, 1); x += w; }
+          }
+        }
+      },
+    });
+    // Icona (origine in basso a sinistra, stessa convenzione di p1/p2/...
+    // gia' letta per drawBuildMenuOverlay() sopra — l'ancora NON e' il centro
+    // dello sprite, va calcolata a mano) + numero, centrati come gruppo sulla
+    // riga — stesso principio della riga felicita' qualche riga piu' sotto,
+    // ma con l'origine diversa di queste icone.
+    // [Bug corretto durante il test in browser] Senza colorize questi sprite
+    // (p2/p4/psolare, sagome scure minimaliste nell'atlas — non le
+    // illustrazioni colorate che si vedono a schermo, quelle sono gli edifici
+    // VERI nel mondo) restano poco leggibili a icona cosi' piccola: stessa
+    // tinta piena gia' usata per il bottone SELEZIONATO nel menu costruzioni
+    // (drawBuildMenuOverlay() sopra, `r.setColorize(isSelected)` + `icon.tint`)
+    // — qui sempre, non solo da selezionati, e coerente con la barra
+    // proporzionale sopra (stesso `s.tint` per il segmento e per l'icona
+    // della stessa fonte). Spento di nuovo dopo le tre righe: resta acceso
+    // solo per la durata di queste chiamate, non "perde" nel resto del frame
+    // (setColorize() e' comunque riazzerato a inizio frame da beginFrame(),
+    // gl.js, ma qui sotto nello stesso frame disegna anche la riga felicita',
+    // che non lo tocca lei stessa e si aspetterebbe colori naturali).
+    const ENERGY_ICON_H = lineH - 6;
+    for (const s of ENERGY_SOURCES) {
+      rows.push({
+        h: lineH,
+        draw: (cy) => {
+          const f = frameFor(s.spr);
+          const label = `${Math.round(energy[s.key])} ${t("autoDefense.costPerMin")}`;
+          const textW = htmlTextWidth(label, 14);
+          const iconGap = 8;
+          const scale = f ? ENERGY_ICON_H / f.h : 0;
+          const iconW = f ? f.w * scale : 0;
+          const totalW = iconW + (f ? iconGap : 0) + textW;
+          const groupLeft = px + panelW / 2 - totalW / 2;
+          if (f) { r.setColorize(true); r.draw(f, groupLeft, cy + ENERGY_ICON_H / 2, scale, s.tint, 1); r.setColorize(false); }
+          drawHtmlText(label, groupLeft + iconW + iconGap, cy, { size: 14, align: "left" });
+        },
+      });
+    }
     pushGap(sectionGap);
 
     // Felicita' (r12.hap contro r12.pop, main.js/registerChiesTap() e i
