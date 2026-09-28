@@ -18,7 +18,7 @@ import { spawnLightning, stepLightning, boltSprite, glowAlpha, LIGHTNING_GLOW_LI
 import { createWeatherState, stepRain, rainDropAngle, RAIN_STREAK_LENGTH, RAIN_STREAK_WIDTH, RAIN_TINT, RAIN_ALPHA } from "./weather.js";
 import { createFireworksState, stepFireworks, FIREWORK_DEPTH, FIREWORK_SPARK_SIZE } from "./fireworks.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
-import { addCrane, stepCranes, craneParts } from "./cranes.js";
+import { addCrane, addCraneBig, stepCranes, craneParts } from "./cranes.js";
 import {
   applyMatchPlatform, createFaroState, stepFaroChain, faroDecor, r120MotorDecor,
   clickFaroButton, clickWaveSignal, clickDockerSignal,
@@ -1931,11 +1931,20 @@ export async function mountMatch(ctx, params = {}) {
    * comparire un braccio in cima da sola, con un timer TUTTO SUO
    * indipendente dal resto del cantiere (game/src/cranes.js) — instradati a
    * `addCrane()` invece che ad `addDecor()`, gli altri spawn (topper)
-   * restano invariati. */
+   * restano invariati.
+   *
+   * [Bug corretto, segnalato dall'autore: "secondo tipo di gru non usata" +
+   * "le impalcature degli edifici grandi non si smontano"] Stesso
+   * trattamento per "grubig"/"gr21" (la gru GRANDE, cranes.js — i due nomi
+   * sono lo stesso oggetto decompilato, buildings.js: chiesa 2->3,
+   * industria 2->3, torretta laser, villa livello 2) — prima finiva anche
+   * lei fra i `decorSpawns` sotto, un decoro fermo su un solo sprite per il
+   * resto del cantiere invece di montarsi/smontarsi da sola. */
   function addConstructionSpawn(building, spawns) {
     const decorSpawns = [];
     for (const s of spawns) {
       if (s.spr === "gru1") addCrane(building, s.dx, s.dy);
+      else if (s.spr === "grubig" || s.spr === "gr21") addCraneBig(building, s.dx, s.dy);
       else decorSpawns.push(s);
     }
     if (decorSpawns.length) addDecor(building, decorSpawns.map((s) => ({ ...s, lit: false })), { transient: true });

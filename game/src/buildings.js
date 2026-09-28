@@ -66,10 +66,9 @@ export const BUILDING_TYPES = {
         //
         // [Bug corretto, in piu'] `upcrc12/Alarm_0.gml`, tic0 (la stessa
         // transizione che mette "ce12"): crea anche due "gru" (oggetto,
-        // sprite reale "gru1" — STUDIO.md/addConstructionSpawn(), main.js)
-        // a offset relativo (54,106) e (178,38) — mai portate: chies era
-        // l'unico cantiere con gru nel decompilato ma senza nessuna gru
-        // visibile nel port.
+        // sprite reale "gru1" — addConstructionSpawn(), main.js, instrada
+        // a addCrane(), game/src/cranes.js) a offset relativo (54,106) e
+        // (178,38).
         revealAtEnd: true,
         steps: [                                    // [C] upcrc12/Mouse_LeftPressed.gml + Alarm_0.gml
           { spr: "ce11", dur: 60 },                  // sprite messo subito all'avvio del cantiere
@@ -95,16 +94,13 @@ export const BUILDING_TYPES = {
         //
         // [Bug corretto, in piu'] `upcrc23/Alarm_0.gml`, tic0 (la stessa
         // transizione che mette "ci22"): crea due "grubig" (sprite reale
-        // "grubig", la gru piu' grande gia' in uso per palazzo/palazzoRd
-        // livello 2 sopra) agli stessi offset (54,106)/(178,38) di upcrc12 —
-        // mai portate, stesso gap. [I] Come per palazzo/palazzoRd sopra,
-        // `addConstructionSpawn()` (main.js) instrada solo "gru1" alla gru
-        // ANIMATA vera (game/src/cranes.js) — "grubig" non ha ancora un
-        // equivalente (sprite/tempi propri, gr21..24 + "grutopbig", mai
-        // portati: STUDIO.md, gap dichiarato), quindi qui come li' resta un
-        // decoro FERMO sull'ultimo sprite (transient, rimosso alla vera fine
-        // del cantiere) invece di montarsi/smontarsi da sola — coerente con
-        // lo stesso limite gia' presente altrove, non una regressione.
+        // "grubig", la gru GRANDE — stessa famiglia di palazzo/palazzoRd
+        // livello 2 e industria 2->3/laser piu' sotto) agli stessi offset
+        // (54,106)/(178,38) di upcrc12. `addConstructionSpawn()` (main.js)
+        // instrada "grubig"/"gr21" a addCraneBig() (game/src/cranes.js, la
+        // gru grande vera — Create+Alarm_0..7 del decompilato, mai portata
+        // fino ad ora): si monta/smonta da sola con un timer proprio, non
+        // piu' un decoro fermo per il resto del cantiere.
         revealAtEnd: true,
         steps: [                                    // [C] upcrc23/Mouse_LeftPressed.gml + Alarm_0.gml
           { spr: "ci21", dur: 60 },                  // sprite messo subito all'avvio del cantiere
@@ -329,7 +325,14 @@ export const BUILDING_TYPES = {
           { spr: ["ir23", "ir24", "ir25", "ir26"], dur: 40 },
           { spr: "ir22", dur: 40 }, { spr: "ir21", dur: 40 },
           { spr: ["ir33", "ir34", "ir35", "ir36"], dur: 40 },
-          { spr: "ir32", dur: 40, spawn: [                 // tic==6: 4 macerie/rubble ai corners
+          // [Bug corretto] Una nota precedente qui leggeva questi quattro
+          // "gr21" come macerie/rubble decorative — **[C]** verificato su
+          // `impaind2to3r/Alarm_0.gml`, tic==6: sono 4 `action_create_object
+          // (grubig, ...)`, non decoro fisso — la gru GRANDE (game/src/
+          // cranes.js), creata qui con lo sprite di default "gr21" invece
+          // del nome "grubig" usato altrove (stesso oggetto, vedi
+          // addConstructionSpawn(), main.js).
+          { spr: "ir32", dur: 40, spawn: [                 // tic==6: 4 gru grandi ai corners
             { spr: "gr21", dx: 80, dy: 50 }, { spr: "gr21", dx: 80, dy: -50 },
             { spr: "gr21", dx: -80, dy: -50 }, { spr: "gr21", dx: -80, dy: 50 },
           ] },
@@ -1111,10 +1114,10 @@ export const BUILDING_TYPES = {
       // [C] impalaser_r|f/Create.gml + Alarm_0.gml: catena completa, tic
       // 0..22 — stessa identica forma di impaind2to3r|f (industria 2->3,
       // buildings.js sopra: tic per tic lo stesso codice, verificato anche
-      // qui), prima troncata a tic 0..10 come quella. tic6 pianta 4
-      // "grubig" (sprite "gr21", gia' in atlas per il decoro di fine
-      // cantiere altrove) ai quattro angoli — l'unico edificio con una gru
-      // per lato invece di una sola. `revealAtStep` (12, il secondo dei due
+      // qui), prima troncata a tic 0..10 come quella. tic6 pianta 4 gru
+      // grandi ("grubig", sprite "gr21" — game/src/cranes.js) ai quattro
+      // angoli — l'unico edificio con una gru per lato invece di una sola.
+      // `revealAtStep` (12, il secondo dei due
       // passi della pausa di tic==10): impalaser_f/Alarm_0, tic==10 arma la
       // creazione di `lasergun` a +1330 tic e il proseguimento della catena
       // a +1400 — split 1330+70 (stesso meccanismo di industria2->3,
