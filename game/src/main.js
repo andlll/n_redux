@@ -4413,12 +4413,13 @@ export async function mountMatch(ctx, params = {}) {
       h: 18,
       draw: (cy) => {
         const barW = panelW - 60, barH = 14, bx = px + 30, by = cy - barH / 2;
-        r.draw(solidFrame(white, barW, barH), bx, by, 1, 0x000000, 0.12);
-        let x = bx;
+        r.draw(barTrackFrame(barW, barH), bx, by, 1, 0x000000, 0.12);
+        const fillW = barW - BAR_FILL_INSET * 2, fillH = barH - BAR_FILL_INSET * 2;
+        let x = bx + BAR_FILL_INSET;
         if (energyBarTotal > 0) {
           for (const s of ENERGY_SOURCES) {
-            const w = Math.round(barW * Math.max(0, energy[s.key]) / energyBarTotal);
-            if (w > 0) { r.draw(solidFrame(white, w, barH), x, by, 1, s.tint, 1); x += w; }
+            const w = Math.round(fillW * Math.max(0, energy[s.key]) / energyBarTotal);
+            if (w > 0) { r.draw(solidFrame(white, w, fillH), x, by + BAR_FILL_INSET, 1, s.tint, 1); x += w; }
           }
         }
       },
@@ -4495,20 +4496,22 @@ export async function mountMatch(ctx, params = {}) {
     // (wewOilDrain(), state.js) contro il consumo delle centrali
     // (currentEnergyStats().centraliOilPerMin sopra) — nessun widget "barra"
     // preesistente nel motore da riusare (drawBuildingInfoPanel() sopra
-    // mostra vita/max solo come testo, mai una barra vera): due
-    // solidFrame(white, ...) tinti, stesso principio a quad pieno gia' usato
-    // ovunque in questo file (veli/flash/vignette, sopra).
+    // mostra vita/max solo come testo, mai una barra vera): sfondo a
+    // pillola (barTrackFrame, sopra insieme a pausePanelFrame) coi due
+    // segmenti colorati rientrati (BAR_FILL_INSET) dentro, stesso trattamento
+    // della barra energia poco sopra.
     rows.push({ h: lineH, draw: (cy) => drawHtmlText(t("statsPanel.oilTitle"), px + panelW / 2, cy, { size: 13, color: "#666666" }) });
     const OIL_PLATFORM_COLOR = 0x2196f3, OIL_CENTRALI_COLOR = 0xff7043;
     rows.push({
       h: 18,
       draw: (cy) => {
         const barW = panelW - 60, barH = 14, bx = px + 30, by = cy - barH / 2;
-        r.draw(solidFrame(white, barW, barH), bx, by, 1, 0x000000, 0.12);
+        r.draw(barTrackFrame(barW, barH), bx, by, 1, 0x000000, 0.12);
+        const fillW = barW - BAR_FILL_INSET * 2, fillH = barH - BAR_FILL_INSET * 2, fillY = by + BAR_FILL_INSET;
         if (oilTotalPerMin > 0) {
-          const wPlatform = Math.round(barW * Math.min(1, oilPlatformPerMin / oilTotalPerMin));
-          if (wPlatform > 0) r.draw(solidFrame(white, wPlatform, barH), bx, by, 1, OIL_PLATFORM_COLOR, 1);
-          if (barW - wPlatform > 0) r.draw(solidFrame(white, barW - wPlatform, barH), bx + wPlatform, by, 1, OIL_CENTRALI_COLOR, 1);
+          const wPlatform = Math.round(fillW * Math.min(1, oilPlatformPerMin / oilTotalPerMin));
+          if (wPlatform > 0) r.draw(solidFrame(white, wPlatform, fillH), bx + BAR_FILL_INSET, fillY, 1, OIL_PLATFORM_COLOR, 1);
+          if (fillW - wPlatform > 0) r.draw(solidFrame(white, fillW - wPlatform, fillH), bx + BAR_FILL_INSET + wPlatform, fillY, 1, OIL_CENTRALI_COLOR, 1);
         }
       },
     });
@@ -5249,6 +5252,24 @@ export async function mountMatch(ctx, params = {}) {
   // dietro la barra risorse (drawGui() piu' sotto) come indizio hover
   // desktop, poi da' il via al pannello statistiche (drawStatsPanel()).
   const statsHoverFrame = makeRoundRectCache(12);
+  // [Nuova funzionalita', richiesta dall'autore: "le due barre del pannello
+  // statistiche (energia/olio) le rendiamo roundrect?"] Stessa cache di
+  // pausePanelFrame/statsHoverFrame sopra — raggio meta' altezza (barH=14,
+  // drawStatsPanel() sotto), cioe' una pillola vera, non un quad dritto.
+  // Un solo slot condiviso: le due barre hanno entrambe (panelW-60)x14,
+  // quindi la stessa chiave — generata una volta sola per frame invece di
+  // due, senza bisogno di due cache separate. Il RIEMPIMENTO colorato
+  // (i segmenti proporzionali) resta un quad dritto ma rientrato di
+  // BAR_FILL_INSET su ogni lato (drawStatsPanel() sotto): arrotondare anche
+  // ogni singolo segmento (di larghezza diversa da frame a frame) creerebbe
+  // piccole fessure a forma di lente fra un colore e il successivo dove le
+  // due sagome a pillola si toccano solo di striscio (curve contro curve,
+  // non un bordo dritto) — un rientro invece resta sempre pulito qualunque
+  // sia la larghezza dei segmenti, e non serve rigenerare texture extra ad
+  // ogni frame in cui le proporzioni cambiano (energia/olio sono tassi
+  // istantanei, ricalcolati continuamente).
+  const barTrackFrame = makeRoundRectCache(7);
+  const BAR_FILL_INSET = 2;
 
   /**
    * [Nuova funzionalita', richiesta dall'autore: "altri sprite da
