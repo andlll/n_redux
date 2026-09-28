@@ -60,6 +60,28 @@ function inRect(x, y, r) {
   return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 }
 
+// [Bug corretto, segnalato dall'autore: "alcuni placeholder delle espansioni
+// si illuminano di viola anche se la piattaforma sotto non e' ancora stata
+// costruita"] Il commento originale su isPlaceholderActive() sotto ("i
+// placeholder sono piccoli rispetto a questi sprite, l'approssimazione non
+// cambia mai l'esito") e' FALSO per questi sei lotti — verificato
+// campionando l'alpha channel vero delle texture page (non solo i
+// rettangoli): R12/R120 (la base, sempre attiva) sono AABB di isole
+// irregolari, non rettangoli veri, e il loro bounding box si sovrappone al
+// bounding box di R32/R22 (le espansioni) molto oltre la sagoma reale dello
+// sprite. In questi sei punti esatti lo sprite di base (baa11/baa12) e'
+// TRASPARENTE — e' lo sprite dell'espansione (baa31/baa21) a essere opaco
+// li' — ma il controllo su R12/R120 sotto, senza condizioni, li dichiarava
+// comunque attivi prima ancora che la piattaforma vera esistesse. Coordinate
+// fisse (src/rooms/match.json non cambia a runtime), non un caso generico da
+// gestire con una maschera pixel-perfect a runtime — lo stesso principio
+// delle altre correzioni puntuali gia' in questo file (R120_TREES,
+// MOTO2A_FIXED_DEPTH, ...).
+const BASE_RECT_EXCEPTIONS = new Set([
+  "165,1325",                                    // in realta' su r32 (baa31), non su r12 (baa11)
+  "2152,394", "2253,452", "2053,453", "2154,509", "2253,568",   // in realta' su r22 (baa21), non su r120 (baa12)
+]);
+
 /** [C] placeholder/Create.gml + Collision_*.gml (commento sopra): vero se
  * questo lotto sta gia' su un pezzo di piattaforma esistente — sempre per
  * r12/r120 (la base di partenza), solo se tier1/tier2 sono gia' "expanded"
@@ -68,7 +90,7 @@ function inRect(x, y, r) {
  * l'originale su quella room. */
 export function isPlaceholderActive(x, y, platformState) {
   if (!platformState) return true;
-  if (inRect(x, y, R12_RECT) || inRect(x, y, R120_RECT)) return true;
+  if (!BASE_RECT_EXCEPTIONS.has(`${x},${y}`) && (inRect(x, y, R12_RECT) || inRect(x, y, R120_RECT))) return true;
   if (platformState.tier1.stage === "expanded" && (inRect(x, y, R32_RECT) || inRect(x, y, R320_RECT))) return true;
   if (platformState.tier2.stage === "expanded" && (inRect(x, y, R22_RECT) || inRect(x, y, R220_RECT))) return true;
   return false;
