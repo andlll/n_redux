@@ -137,17 +137,6 @@ const STRINGS = {
   "statsPanel.energyTitle": { en: "Energy", it: "Energia", es: "Energía", pt: "Energia", de: "Energie", fr: "Énergie" },
   "statsPanel.consumptionPrefix": { en: "Consumption: -", it: "Consumo: -", es: "Consumo: -", pt: "Consumo: -", de: "Verbrauch: -", fr: "Consommation : -" },
   "statsPanel.productionPrefix": { en: "Production: +", it: "Produzione: +", es: "Producción: +", pt: "Produção: +", de: "Produktion: +", fr: "Production : +" },
-  // [Nuova funzionalita', vedi sopra] Stringa intera con {n} gia' dentro
-  // (non piu' un prefisso da affiancare a un'icona via drawIconLine(), come
-  // consumptionPrefix/productionPrefix sopra): drawStatsPanel() (main.js)
-  // tiene il pool di elementi HTML di testo condiviso (TEXT_POOL_SIZE, un
-  // budget calcolato a mano) — tre righe a icona in piu' qui costerebbero
-  // il doppio di testo (prefisso+suffisso) per ciascuna, le tre modalita'
-  // non hanno bisogno della stessa enfasi visiva delle due righe totali
-  // (consumo/produzione) sopra, che l'icona la tengono.
-  "statsPanel.modeCentrali": { en: "Power plants: +{n}/min", it: "Centrali: +{n}/min", es: "Centrales: +{n}/min", pt: "Usinas: +{n}/min", de: "Kraftwerke: +{n}/min", fr: "Centrales : +{n}/min" },
-  "statsPanel.modeEolico": { en: "Wind: +{n}/min", it: "Eolico: +{n}/min", es: "Eólica: +{n}/min", pt: "Eólica: +{n}/min", de: "Wind: +{n}/min", fr: "Éolien : +{n}/min" },
-  "statsPanel.modeSolare": { en: "Solar: +{n}/min", it: "Fotovoltaico: +{n}/min", es: "Solar: +{n}/min", pt: "Solar: +{n}/min", de: "Solar: +{n}/min", fr: "Solaire : +{n}/min" },
   "statsPanel.oilTitle": { en: "Oil consumption", it: "Consumo di petrolio", es: "Consumo de petróleo", pt: "Consumo de petróleo", de: "Ölverbrauch", fr: "Consommation de pétrole" },
   "statsPanel.oilPlatform": { en: "Platform: -{n}", it: "Piattaforma: -{n}", es: "Plataforma: -{n}", pt: "Plataforma: -{n}", de: "Plattform: -{n}", fr: "Plateforme : -{n}" },
   "statsPanel.oilPlants": { en: "Power plants: -{n}", it: "Centrali: -{n}", es: "Centrales: -{n}", pt: "Usinas: -{n}", de: "Kraftwerke: -{n}", fr: "Centrales : -{n}" },

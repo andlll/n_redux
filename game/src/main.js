@@ -18,12 +18,12 @@ import { spawnLightning, stepLightning, boltSprite, glowAlpha, LIGHTNING_GLOW_LI
 import { createWeatherState, stepRain, rainDropAngle, RAIN_STREAK_LENGTH, RAIN_STREAK_WIDTH, RAIN_TINT, RAIN_ALPHA } from "./weather.js";
 import { createFireworksState, stepFireworks, FIREWORK_DEPTH, FIREWORK_SPARK_SIZE } from "./fireworks.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
-import { addCrane, stepCranes, craneParts } from "./cranes.js";
+import { addCrane, addCraneBig, stepCranes, craneParts } from "./cranes.js";
 import {
   applyMatchPlatform, createFaroState, stepFaroChain, faroDecor, r120MotorDecor,
   clickFaroButton, clickWaveSignal, clickDockerSignal,
   clickFaro3Button, clickWaveSignal3, clickDockerSignal3,
-  isPlaceholderActive, FARO1, FARO2, FARO3, residentsByPlatform,
+  isPlaceholderActive, placeholderDrawDepth, FARO1, FARO2, FARO3, residentsByPlatform,
 } from "./platform.js";
 import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
@@ -858,8 +858,21 @@ export async function mountMatch(ctx, params = {}) {
   // room, quindi ordinati per `-y` da effDepth() sopra, e la y minima in
   // `match_easy` e' 17 (effDepth -17): -2 sta sempre fra i due, mai sopra un
   // edificio o un albero, ma sempre sopra la strada sotto di lui.
+  // [Bug corretto, segnalato dall'autore: "i placeholder non si illuminano
+  // di viola sulla prima espansione"] Il ragionamento sopra non considerava
+  // R32/R320 (platform.js): il loro pavimento vero (`baa31`/`baa32`) ha
+  // depth -1241 (fedele al decompilato, r32/_object.json), molto piu'
+  // negativo di -2 — finiva quindi disegnato SOPRA il rombo, coprendolo del
+  // tutto (mai un problema di isPlaceholderActive: il rombo risultava gia'
+  // "attivo", semplicemente sepolto). placeholderDrawDepth() (platform.js)
+  // isola l'eccezione ai soli lotti davvero su r32/r320 — altrove (base,
+  // r22/r220, match_easy, tutorial) resta il -2 di sempre, verificato
+  // corretto anche li'.
   const PLACEHOLDER_DEPTH = -2;
-  for (const p of placeholders) { p.id = `ph_${p.x}_${p.y}`; p.consumed = false; p.depth = PLACEHOLDER_DEPTH; }
+  for (const p of placeholders) {
+    p.id = `ph_${p.x}_${p.y}`; p.consumed = false;
+    p.depth = placeholderDrawDepth(p.x, p.y, PLACEHOLDER_DEPTH);
+  }
   const placeholderById = new Map(placeholders.map((p) => [p.id, p]));
 
   // [Decisione dell'autore: "la rovina ruspata deve creare sempre un
@@ -878,7 +891,7 @@ export async function mountMatch(ctx, params = {}) {
     const id = `ph_${x}_${y}`;
     let ph = placeholderById.get(id);
     if (ph) { ph.consumed = false; return ph; }
-    ph = { obj: "placeholder", x, y, depth: PLACEHOLDER_DEPTH, spr: "phold", _f: frameFor("phold"), id, consumed: false };
+    ph = { obj: "placeholder", x, y, depth: placeholderDrawDepth(x, y, PLACEHOLDER_DEPTH), spr: "phold", _f: frameFor("phold"), id, consumed: false };
     placeholders.push(ph);
     placeholderById.set(id, ph);
     staticWorld.push(ph);
@@ -1918,11 +1931,20 @@ export async function mountMatch(ctx, params = {}) {
    * comparire un braccio in cima da sola, con un timer TUTTO SUO
    * indipendente dal resto del cantiere (game/src/cranes.js) — instradati a
    * `addCrane()` invece che ad `addDecor()`, gli altri spawn (topper)
-   * restano invariati. */
+   * restano invariati.
+   *
+   * [Bug corretto, segnalato dall'autore: "secondo tipo di gru non usata" +
+   * "le impalcature degli edifici grandi non si smontano"] Stesso
+   * trattamento per "grubig"/"gr21" (la gru GRANDE, cranes.js — i due nomi
+   * sono lo stesso oggetto decompilato, buildings.js: chiesa 2->3,
+   * industria 2->3, torretta laser, villa livello 2) — prima finiva anche
+   * lei fra i `decorSpawns` sotto, un decoro fermo su un solo sprite per il
+   * resto del cantiere invece di montarsi/smontarsi da sola. */
   function addConstructionSpawn(building, spawns) {
     const decorSpawns = [];
     for (const s of spawns) {
       if (s.spr === "gru1") addCrane(building, s.dx, s.dy);
+      else if (s.spr === "grubig" || s.spr === "gr21") addCraneBig(building, s.dx, s.dy);
       else decorSpawns.push(s);
     }
     if (decorSpawns.length) addDecor(building, decorSpawns.map((s) => ({ ...s, lit: false })), { transient: true });
@@ -3514,8 +3536,9 @@ export async function mountMatch(ctx, params = {}) {
   // abitanti (1) + fino a 3 righe abitanti (main/prima/seconda espansione)
   // + intestazione energia (1) + consumo/produzione a icona (2+2, un
   // elemento per prefisso e uno per il suffisso "/min" di ciascuna,
-  // drawIconLine() sopra) + le tre modalita' SENZA icona (pushText(), sopra
-  // — 1 ciascuna, non 2: non hanno bisogno della stessa enfasi) + felicita'
+  // drawIconLine() sopra) + le tre modalita' a icona edificio (drawStatsPanel(),
+  // sotto — l'icona e' un quad WebGL, non testo: resta 1 elemento pooled
+  // ciascuna per il numero, come prima con pushText()) + felicita'
   // (1) + intestazione olio (1) + le due righe legenda della barra olio (2)
   // = 18. Nuovo worst case: 12 + 18 = 30, +1 di margine.
   const TEXT_POOL_SIZE = 31;
@@ -4367,19 +4390,85 @@ export async function mountMatch(ctx, params = {}) {
       pushGap(sectionGap);
     }
 
-    // [Nuova funzionalita', vedi il commento su TEXT_POOL_SIZE sotto]
-    // `pushText` (a differenza di `pushLine` sopra) costa UN solo elemento
-    // del pool testo condiviso invece di due (icona+suffisso via
-    // drawIconLine()) — usata per le tre righe modalita' sotto, che non
-    // hanno bisogno della stessa enfasi delle due righe totali (consumo/
-    // produzione), quelle si tengono l'icona.
-    const pushText = (str, opts = {}) => rows.push({ h: lineH, draw: (cy) => drawHtmlText(str, px + panelW / 2, cy, { size: 14, maxWidth: panelW - 60, ...opts }) });
     rows.push({ h: lineH, draw: (cy) => drawHtmlText(t("statsPanel.energyTitle"), px + panelW / 2, cy, { size: 13, color: "#666666" }) });
     pushLine([{ text: t("statsPanel.consumptionPrefix") + perMin(energy.consumptionPerMin) }, { icon: "ele" }, { text: t("autoDefense.costPerMin") }]);
     pushLine([{ text: t("statsPanel.productionPrefix") + perMin(energy.productionPerMin) }, { icon: "ele" }, { text: t("autoDefense.costPerMin") }]);
-    pushText(t("statsPanel.modeCentrali", { n: Math.round(energy.centraliElePerMin) }));
-    pushText(t("statsPanel.modeEolico", { n: Math.round(energy.eolicoPerMin) }));
-    pushText(t("statsPanel.modeSolare", { n: Math.round(energy.solarePerMin) }));
+    // [Nuova funzionalita', richiesta dall'autore: "invece di testo usiamo le
+    // icone dei rispettivi edifici per centrali/eolico/fotovoltaico, magari
+    // con un piccolo grafico delle proporzioni"] Le tre righe di testo
+    // ("Centrali: +N/min", ...) diventano icona dell'edificio (stessi
+    // spr/tint gia' usati per il bottone nel menu costruzioni, OTHER_BUILDINGS
+    // piu' sotto — "p2" industria/"p4" eolico/"psolare" solare) + numero, piu'
+    // una barra proporzionale sopra (stesso identico widget a segmenti gia'
+    // in uso qualche riga piu' sotto per platform/centrali dell'olio — non
+    // una torta vera: questo motore disegna solo quad WebGL (gl.js,
+    // Renderer.draw()/solidFrame() — niente mesh a triangoli per settori
+    // d'angolo arbitrario), una barra a segmenti da' la stessa lettura "a
+    // colpo d'occhio delle proporzioni" senza dover aggiungere un nuovo
+    // primitivo di disegno al motore per un solo pannello.
+    const ENERGY_SOURCES = [
+      { key: "centraliElePerMin", spr: "p2", tint: 0x603415 },      // industria — stesso spr/tint di OTHER_BUILDINGS sotto
+      { key: "eolicoPerMin", spr: "p4", tint: 0x8b6c17 },           // eolico
+      { key: "solarePerMin", spr: "psolare", tint: 0xb57008 },      // solare
+    ];
+    // `solarePerMin` puo' essere negativo di notte (buildings.js,
+    // solarProduction.ele.night: -1): niente segmento a larghezza negativa
+    // nella barra, ma il numero accanto all'icona resta quello vero (stesso
+    // criterio gia' in uso per gli altri numeri di questo pannello — un
+    // tasso istantaneo, non una media, vedi il commento su
+    // currentEnergyStats() in buildings.js).
+    const energyBarTotal = ENERGY_SOURCES.reduce((sum, s) => sum + Math.max(0, energy[s.key]), 0);
+    rows.push({
+      h: 18,
+      draw: (cy) => {
+        const barW = panelW - 60, barH = 14, bx = px + 30, by = cy - barH / 2;
+        r.draw(barTrackFrame(barW, barH), bx, by, 1, 0x000000, 0.12);
+        const fillW = barW - BAR_FILL_INSET * 2, fillH = barH - BAR_FILL_INSET * 2;
+        let x = bx + BAR_FILL_INSET;
+        if (energyBarTotal > 0) {
+          for (const s of ENERGY_SOURCES) {
+            const w = Math.round(fillW * Math.max(0, energy[s.key]) / energyBarTotal);
+            if (w > 0) { r.draw(solidFrame(white, w, fillH), x, by + BAR_FILL_INSET, 1, s.tint, 1); x += w; }
+          }
+        }
+      },
+    });
+    // Icona (origine in basso a sinistra, stessa convenzione di p1/p2/...
+    // gia' letta per drawBuildMenuOverlay() sopra — l'ancora NON e' il centro
+    // dello sprite, va calcolata a mano) + numero, centrati come gruppo sulla
+    // riga — stesso principio della riga felicita' qualche riga piu' sotto,
+    // ma con l'origine diversa di queste icone.
+    // [Bug corretto durante il test in browser] Senza colorize questi sprite
+    // (p2/p4/psolare, sagome scure minimaliste nell'atlas — non le
+    // illustrazioni colorate che si vedono a schermo, quelle sono gli edifici
+    // VERI nel mondo) restano poco leggibili a icona cosi' piccola: stessa
+    // tinta piena gia' usata per il bottone SELEZIONATO nel menu costruzioni
+    // (drawBuildMenuOverlay() sopra, `r.setColorize(isSelected)` + `icon.tint`)
+    // — qui sempre, non solo da selezionati, e coerente con la barra
+    // proporzionale sopra (stesso `s.tint` per il segmento e per l'icona
+    // della stessa fonte). Spento di nuovo dopo le tre righe: resta acceso
+    // solo per la durata di queste chiamate, non "perde" nel resto del frame
+    // (setColorize() e' comunque riazzerato a inizio frame da beginFrame(),
+    // gl.js, ma qui sotto nello stesso frame disegna anche la riga felicita',
+    // che non lo tocca lei stessa e si aspetterebbe colori naturali).
+    const ENERGY_ICON_H = lineH - 6;
+    for (const s of ENERGY_SOURCES) {
+      rows.push({
+        h: lineH,
+        draw: (cy) => {
+          const f = frameFor(s.spr);
+          const label = `${Math.round(energy[s.key])} ${t("autoDefense.costPerMin")}`;
+          const textW = htmlTextWidth(label, 14);
+          const iconGap = 8;
+          const scale = f ? ENERGY_ICON_H / f.h : 0;
+          const iconW = f ? f.w * scale : 0;
+          const totalW = iconW + (f ? iconGap : 0) + textW;
+          const groupLeft = px + panelW / 2 - totalW / 2;
+          if (f) { r.setColorize(true); r.draw(f, groupLeft, cy + ENERGY_ICON_H / 2, scale, s.tint, 1); r.setColorize(false); }
+          drawHtmlText(label, groupLeft + iconW + iconGap, cy, { size: 14, align: "left" });
+        },
+      });
+    }
     pushGap(sectionGap);
 
     // Felicita' (r12.hap contro r12.pop, main.js/registerChiesTap() e i
@@ -4416,20 +4505,22 @@ export async function mountMatch(ctx, params = {}) {
     // (wewOilDrain(), state.js) contro il consumo delle centrali
     // (currentEnergyStats().centraliOilPerMin sopra) — nessun widget "barra"
     // preesistente nel motore da riusare (drawBuildingInfoPanel() sopra
-    // mostra vita/max solo come testo, mai una barra vera): due
-    // solidFrame(white, ...) tinti, stesso principio a quad pieno gia' usato
-    // ovunque in questo file (veli/flash/vignette, sopra).
+    // mostra vita/max solo come testo, mai una barra vera): sfondo a
+    // pillola (barTrackFrame, sopra insieme a pausePanelFrame) coi due
+    // segmenti colorati rientrati (BAR_FILL_INSET) dentro, stesso trattamento
+    // della barra energia poco sopra.
     rows.push({ h: lineH, draw: (cy) => drawHtmlText(t("statsPanel.oilTitle"), px + panelW / 2, cy, { size: 13, color: "#666666" }) });
     const OIL_PLATFORM_COLOR = 0x2196f3, OIL_CENTRALI_COLOR = 0xff7043;
     rows.push({
       h: 18,
       draw: (cy) => {
         const barW = panelW - 60, barH = 14, bx = px + 30, by = cy - barH / 2;
-        r.draw(solidFrame(white, barW, barH), bx, by, 1, 0x000000, 0.12);
+        r.draw(barTrackFrame(barW, barH), bx, by, 1, 0x000000, 0.12);
+        const fillW = barW - BAR_FILL_INSET * 2, fillH = barH - BAR_FILL_INSET * 2, fillY = by + BAR_FILL_INSET;
         if (oilTotalPerMin > 0) {
-          const wPlatform = Math.round(barW * Math.min(1, oilPlatformPerMin / oilTotalPerMin));
-          if (wPlatform > 0) r.draw(solidFrame(white, wPlatform, barH), bx, by, 1, OIL_PLATFORM_COLOR, 1);
-          if (barW - wPlatform > 0) r.draw(solidFrame(white, barW - wPlatform, barH), bx + wPlatform, by, 1, OIL_CENTRALI_COLOR, 1);
+          const wPlatform = Math.round(fillW * Math.min(1, oilPlatformPerMin / oilTotalPerMin));
+          if (wPlatform > 0) r.draw(solidFrame(white, wPlatform, fillH), bx + BAR_FILL_INSET, fillY, 1, OIL_PLATFORM_COLOR, 1);
+          if (fillW - wPlatform > 0) r.draw(solidFrame(white, fillW - wPlatform, fillH), bx + BAR_FILL_INSET + wPlatform, fillY, 1, OIL_CENTRALI_COLOR, 1);
         }
       },
     });
@@ -5170,6 +5261,24 @@ export async function mountMatch(ctx, params = {}) {
   // dietro la barra risorse (drawGui() piu' sotto) come indizio hover
   // desktop, poi da' il via al pannello statistiche (drawStatsPanel()).
   const statsHoverFrame = makeRoundRectCache(12);
+  // [Nuova funzionalita', richiesta dall'autore: "le due barre del pannello
+  // statistiche (energia/olio) le rendiamo roundrect?"] Stessa cache di
+  // pausePanelFrame/statsHoverFrame sopra — raggio meta' altezza (barH=14,
+  // drawStatsPanel() sotto), cioe' una pillola vera, non un quad dritto.
+  // Un solo slot condiviso: le due barre hanno entrambe (panelW-60)x14,
+  // quindi la stessa chiave — generata una volta sola per frame invece di
+  // due, senza bisogno di due cache separate. Il RIEMPIMENTO colorato
+  // (i segmenti proporzionali) resta un quad dritto ma rientrato di
+  // BAR_FILL_INSET su ogni lato (drawStatsPanel() sotto): arrotondare anche
+  // ogni singolo segmento (di larghezza diversa da frame a frame) creerebbe
+  // piccole fessure a forma di lente fra un colore e il successivo dove le
+  // due sagome a pillola si toccano solo di striscio (curve contro curve,
+  // non un bordo dritto) — un rientro invece resta sempre pulito qualunque
+  // sia la larghezza dei segmenti, e non serve rigenerare texture extra ad
+  // ogni frame in cui le proporzioni cambiano (energia/olio sono tassi
+  // istantanei, ricalcolati continuamente).
+  const barTrackFrame = makeRoundRectCache(7);
+  const BAR_FILL_INSET = 2;
 
   /**
    * [Nuova funzionalita', richiesta dall'autore: "altri sprite da
