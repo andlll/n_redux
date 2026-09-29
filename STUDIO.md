@@ -4548,6 +4548,24 @@ sprite non coinvolti e lo desincronizzerebbe dalle pagine webp). Missile
 irregolari, compatibili con ombra/rinculo nella fascia confrontata, non
 trattati come difetto.
 
+**Risolto: alone biancastro attorno alle pillole del menu principale**
+(segnalato dall'autore). **[C]** Era nei PNG, non nel codice: `menu_newga`,
+`menu_newgaeas`, `menu_tutoriae` (assets/textures/, `TITLE_BUTTON_OVERRIDES`)
+avevano fuori dal bordo della capsula ~9300 pixel bianchi (RGB 255) con alpha
+da ~19-60 a ridosso del bordo, in calo lento verso l'esterno (max 36 negli
+angoli), e l'anello di antialiasing schiarito verso il bianco. Il motore
+usa blend a alpha diretto + filtro LINEAR (gl.js): quel bianco sbavava e su
+sfondo scuro si vedeva come chiarore attorno alla pillola, con un bordo
+rettangolare netto dove finisce il quad. Misurato nello screenshot del
+titolo: luminosita' dell'anello 1-4px fuori dalla pillola +11.4 rispetto allo
+sfondo a 20-30px prima, +0.4 dopo. `tools/29_button_halo.py` (ripetibile,
+idempotente, `--check` per la sola misura) ricalcola l'alpha come copertura
+geometrica di una capsula (raggio adattato per file: ~106.7 newga, ~108.1 gli
+altri due) e riempie l'RGB dell'anello e dell'esterno col colore interno piu'
+vicino; il contenuto a piu' di 1.5px dal bordo e' intoccato. Effetto
+collaterale voluto: `newgaeas`/`tutoriae` avevano il bordo binario (a gradini,
+senza antialiasing), ora e' sfumato come `newga`.
+
 **Risolto, non piu' un gap**: le catene `impamediaR/RD`, `impamedia1R/RD_demo`
 (con le loro impalcature "f") e `impavent_d` sono codice morto — nessun `.gml`
 ne' nessuna istanza di stanza le crea, verificato. Il museo usa le catene vere
