@@ -1411,6 +1411,9 @@ paragrafo 8.
   +5 all'alba, +9 altrimenti (giorno/tramonto — il decompilato ha solo
   due flag booleani, `aura.night`/`aura.dawn`, non le quattro fasi di
   questo motore: "ne' notte ne' alba" copre sia giorno che tramonto).
+  **[Modificato dopo, deviazione voluta dall'autore]** di notte ora `ele` e'
+  0 (l'originale faceva -1: il pannello "consumava" energia), e con la
+  pioggia rende il 70% (-30%): vedi la voce "Solare" in fondo.
   Nuovo `stepSolarProduction()`/`isDawn()` (stesso confine netto di
   `isNight()`, nessuno smoothstep). Placement cost **[C]** 1000 mon,
   trovato nello stesso posto dei costi gia' letti per industria/casa/
@@ -4463,3 +4466,72 @@ paragrafo 8.
   riaccensione media e cooldown ripartono da zero (gradino 0, o il piu' basso
   su software rendering). Il canvas si ridimensiona da solo: resize() gira
   ad ogni frame.
+- **Solare ed eolico: deviazioni dall'originale, pannello produzione.**
+  (1) `solarProduction.ele.night`: 0 invece di -1 (`sooool/Alarm_4.gml` toglieva
+  1 di energia ogni 30 tick di notte) — deviazione voluta dell'autore; il -5 mon
+  resta. (2) Con la pioggia il solare rende il 70% (`RAIN_SOLAR_MULT`,
+  buildings.js; nessuna base nel decompilato): "piove" = `r12.storm ||
+  r12.stormeasy` (`isRaining()`), le due condizioni con pioggia visibile,
+  indipendente dal toggle "rain" delle opzioni (solo estetico). Vale sia per
+  `stepSolarProduction()` sia per `currentEnergyStats()` (pannello statistiche).
+  Il moltiplicatore agisce solo sull'energia, non sul costo. (3) Il pannello
+  dell'edificio (mano + tap) mostra ora la produzione anche di fotovoltaico
+  (`Energia: +X /ciclo (costa 5 mon)`, con la nota "Pioggia: -30%") ed eolico
+  (`+110 /ciclo`), come la centrale — prima solo industria (`def.production`).
+- **Desktop: tenere premuto con la mano apre l'edificio illuminato di blu.**
+  `buildingAt(sx, sy, litOnly)` (main.js): su desktop (`!isMobile`)
+  `input.onLongPress` usa lo stesso test dell'hover azzurro (`handHovered`:
+  rettangolo dello sprite + maschera pixel per i non-torretta) invece
+  dell'area di tap (che per le torrette e' allargata, `turretHitBox()`); con piu'
+  edifici accesi vale difesa > produttore di energia > altro (la precedenza di
+  sempre). Se nulla e' illuminato non si apre niente. Mobile e tap normale
+  invariati.
+- **Prestazioni (mobile e non).** (1) `textPool` (main.js): `el.style` di ogni
+  elemento e' un proxy che inoltra al DOM solo i valori cambiati (`cachedStyle`),
+  testo scritto solo se diverso; `elHeight()` sostituisce
+  `getBoundingClientRect()` (layout forzato) e rimisura solo se cambiano testo/
+  proprieta' di layout o arriva un font (`fontEpoch`). (2) Meno allocazioni nel
+  disegno: `putVert()` di modulo al posto di una closure per quad (gl.js),
+  `drawQuadXY()` (quad ruotato con 8 numeri), `drawRotated()` senza array/
+  oggetti, frame della pioggia/bolle/scintille riusati. (3) Tetto agli fps,
+  poi reso opzione (vedi "Limite di fps"). Non fatto: ordinamento della lista di
+  disegno (`filter -> concat -> sort` ogni frame) — rischio sull'ordine di depth,
+  da valutare dopo un profilo su telefono; blur dei pannelli ancora rifatto ad
+  ogni frame sotto info edificio/banca/scambi (il mondo continua a girare).
+
+## Stato e gap aperti a fine sessione
+
+**Verificato solo con simulazioni e analisi statica, MAI a schermo** (in questo
+ambiente mancano `game/assets/` e `assets/sprites/`, non c'e' modo di far
+partire il gioco): tutto cio' che e' stato aggiunto in questa sessione —
+consumo/pausa del grattacielo e bottone, diffusione degli alberi, popup ruspa
+alla stessa scala dello zoom, demolizione con la ruspa, tempi delle impalcature,
+menu delle opzioni grafiche (fps, risoluzione dinamica), tap lungo desktop. Le
+parti logiche hanno test a passo di tick contro il decompilato (simulatore
+`tools/gmsim.py`); il disegno no. Da provare in partita: bottone pausa del
+grattacielo (sprite), ruspa su ogni tipo (in particolare parco/solare/eolico e
+sotto il popup si'/no), zoom del popup, ruderi sotto ruspa (usano la catena di
+`casa`, ora con i tempi nuovi e la coda `tail`: nessun test nel motore).
+
+**Da fare in locale** — rigenerare gli atlas (README, "Far girare il gioco"):
+`pupause`/`puplay` (gruppo `gui`) e `im1f` (gruppo `buildings`) sono stati
+aggiunti a `tools/23_atlas.py`. Finche' non si rigenera: il bottone pausa del
+grattacielo e' disegnato proceduralmente, e la ruspa non mostra per 30 tick
+l'impalcatura anteriore (`im1f`) sulle catene di taglia 1.
+`tools/28_scaffold_timing.py` va rilanciato (scrive `game/src/scaffoldTiming.js`)
+se cambia una catena `impa*`.
+
+**Gap dichiarati** (nessuno nuovo e' stato lasciato in silenzio):
+- Grattacielo: i tempi di vita di `impa31f`/`impa3gru` e il fatto che
+  `impa31f/Destroy` uccida `playbuttoner` sono semplificati alla durata
+  dell'impalcatura (scaffold.js); `impa33f` che si smonta da solo a 2400 tick
+  resta trattato come rumore.
+- Ruspa: l'economia dell'edificio si ferma al tap (originale: fino a `deathT`,
+  al massimo 1145 tick); manca `ruindeath` (rimuove i ruderi vicini); i ruderi
+  vecchi/nuovi sotto ruspa restano la scelta dell'autore (impalcatura, rovina
+  via, lotto vuoto).
+- Alberi: la maschera vera di `baa11` non e' nota (si usa il rettangolo).
+- Museo: catene `impamediaR/RD`, `impamedia1R/RD_demo`, `impavent_d` non hanno
+  nessun creatore nel decompilato (codice morto), non portate.
+- Estetici gia' noti: `demobasia` non piu' un gap (e' la ruspa), `tutorial_text`
+  relitto, ordine di depth di "f" a +2.8 per palazzo/museo (irrilevante).
