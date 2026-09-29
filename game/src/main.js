@@ -724,7 +724,16 @@ export async function mountMatch(ctx, params = {}) {
    * piu' vicino alla telecamera) — cambia solo l'ordine FRA fasce diverse,
    * non dentro la stessa.
    */
-  function buildingAt(sx, sy) {
+  // [Nuova funzionalita', richiesta dall'autore: "solo desktop: tenendo
+  // premuto con la mano attiva si apre la finestra dell'edificio illuminato
+  // di blu, se sono due o piu' teniamo la precedenza difesa>produttore>altro"]
+  // `litOnly`: invece dell'area di tap (turretHitBox() allargata per le
+  // torrette, rettangolo del frame per gli altri) usa ESATTAMENTE lo stesso
+  // test dell'hover azzurro (`handHovered`, giro di disegno sugli edifici):
+  // rettangolo del frame + maschera pixel per i non-torretta — cosi' si apre
+  // sempre l'edificio che il giocatore vede acceso, mai uno diverso. La
+  // precedenza fra fasce e' la stessa di sempre (sotto).
+  function buildingAt(sx, sy, litOnly = false) {
     const w = cam.screenToWorld(sx, sy);
     let turretMatch = null, plantMatch = null, otherMatch = null;
     for (let i = st.frameList.length - 1; i >= 0; i--) {
@@ -732,8 +741,9 @@ export async function mountMatch(ctx, params = {}) {
       if (it.obj !== "building") continue;
       const def = BUILDING_TYPES[it.ref.type];
       const isTurret = !!def?.turret;
-      const box = isTurret ? turretHitBox(it.ref.type) : it._f;
+      const box = isTurret && !litOnly ? turretHitBox(it.ref.type) : it._f;
       if (!box || !inFrameRect(w.x, w.y, it.x, it.y, box)) continue;
+      if (litOnly && !isTurret && !pixelHit(w.x, w.y, it.x, it.y, it._spr, it._frameIdx)) continue;
       if (isTurret) { turretMatch = it.ref; break; }   // fascia massima gia' trovata, nessun altro giro puo' batterla
       const isPlant = !!(def?.production || def?.solarProduction || def?.windProduction);
       if (isPlant) { if (!plantMatch) plantMatch = it.ref; }
@@ -5629,10 +5639,13 @@ export async function mountMatch(ctx, params = {}) {
   // un modo equivalente e piu' rapido di arrivarci, coerente su tutti gli
   // edifici. Ignorato durante ogni altro modale/overlay gia' aperto —
   // stessi guard dell'apertura "normale" del pannello (onTap sotto).
+  // Su desktop (`!isMobile`, dove l'hover azzurro esiste) apre invece solo
+  // l'edificio illuminato di blu sotto il cursore (buildingAt(..., true)):
+  // se piu' edifici sono accesi vince difesa > produttore > altro.
   input.onLongPress = (sx, sy) => {
     if (st.paused || st.outcome || st.bankPanelOpen || st.tradePanelOpen || st.buildingInfoPanel
       || st.buildMenuOpen || st.tutorialState?.cutscene || st.r12.selec !== 0) return;
-    const b = buildingAt(sx, sy);
+    const b = buildingAt(sx, sy, !isMobile);
     if (!b || b.construction) return;
     st.buildingInfoPanel = b;
   };
