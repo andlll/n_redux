@@ -2789,7 +2789,16 @@ export async function mountMatch(ctx, params = {}) {
   // doLoad() (localStorage) e doLoadFromFile() sotto, cosi' i due percorsi
   // non possono disallinearsi silenziosamente col tempo.
   function applyLoadedData(data) {
-    st.r12 = data.r12;
+    // [Bug corretto, segnalato dall'autore: "ho un salvataggio in cui anche
+    // se raccolgo le gemme non si vedono nella barra in alto"] `data.r12`
+    // veniva usato cosi' com'e': un salvataggio scritto prima che un campo
+    // esistesse (qui `crys`) lo lascia `undefined`, e clampR12() (state.js)
+    // fa `Math.min(99, r12.crys)` ad ogni frame -> `NaN`. `NaN` non e'
+    // "nullish", quindi `collectLoot()` (`r12[key] ?? 0`) non lo recupera
+    // piu' (`NaN + n` = `NaN`) e il contatore, condizionato a `crys > 0`,
+    // non compare mai. I default di createR12() riempiono i campi mancanti;
+    // quelli presenti nel salvataggio vincono (stesso `isMatch` del mount).
+    st.r12 = { ...createR12(roomName === "match"), ...data.r12 };
     st.buildings = data.buildings;
     syncNextId(st.buildings);   // riallinea il contatore agli id del salvataggio, altrimenti placeBuilding() ne riusa uno
     // `?.tier1`: scarta anche un salvataggio con la forma vecchia (prima
