@@ -18,7 +18,7 @@
 // lotti, un evento ogni tanto), il guadagno di un proprio toggle sarebbe
 // trascurabile.
 const GRAPHICS_OPTIONS_KEY = "nimbus-graphics";
-const DEFAULT_GRAPHICS_OPTIONS = { rain: true, cars: true, pedestrians: true, minorEffects: true, fpsCap: 60 };
+const DEFAULT_GRAPHICS_OPTIONS = { rain: true, cars: true, pedestrians: true, minorEffects: true, fpsCap: 60, dynamicRes: true };
 
 // Limite di fotogrammi al secondo del ciclo di disegno (match e menu): 30, 60
 // oppure 0 = nessun limite (segue lo schermo: 90/120Hz su molti telefoni).
@@ -32,6 +32,12 @@ const DEFAULT_GRAPHICS_OPTIONS = { rain: true, cars: true, pedestrians: true, mi
 // due, a 30 uno su due su un 60Hz).
 export const FPS_CAPS = [30, 60, 0];
 let currentFpsCap = DEFAULT_GRAPHICS_OPTIONS.fpsCap;
+// Risoluzione dinamica (renderscale.js): se attiva il canvas scende di
+// risoluzione quando il framerate reale resta basso; se spenta resta sempre a
+// piena risoluzione (anche su software rendering, dove altrimenti parte gia'
+// al gradino piu' basso). Letta ogni frame da RenderScale.
+let currentDynamicRes = DEFAULT_GRAPHICS_OPTIONS.dynamicRes;
+export function dynamicResolutionEnabled() { return currentDynamicRes; }
 function validFpsCap(v) { return FPS_CAPS.includes(v) ? v : DEFAULT_GRAPHICS_OPTIONS.fpsCap; }
 /** Intervallo minimo fra due frame disegnati, in ms (0 = nessun limite). */
 export function frameMinMs() { return currentFpsCap ? 1000 / currentFpsCap - 2 : 0; }
@@ -39,6 +45,7 @@ export function frameMinMs() { return currentFpsCap ? 1000 / currentFpsCap - 2 :
 export function loadGraphicsOptions() {
   const out = readGraphicsOptions();
   currentFpsCap = out.fpsCap;
+  currentDynamicRes = out.dynamicRes;
   return out;
 }
 function readGraphicsOptions() {
@@ -48,6 +55,7 @@ function readGraphicsOptions() {
     const parsed = JSON.parse(raw);
     return {
       fpsCap: validFpsCap(parsed.fpsCap),
+      dynamicRes: typeof parsed.dynamicRes === "boolean" ? parsed.dynamicRes : DEFAULT_GRAPHICS_OPTIONS.dynamicRes,
       rain: typeof parsed.rain === "boolean" ? parsed.rain : DEFAULT_GRAPHICS_OPTIONS.rain,
       cars: typeof parsed.cars === "boolean" ? parsed.cars : DEFAULT_GRAPHICS_OPTIONS.cars,
       pedestrians: typeof parsed.pedestrians === "boolean" ? parsed.pedestrians : DEFAULT_GRAPHICS_OPTIONS.pedestrians,
@@ -60,10 +68,11 @@ function readGraphicsOptions() {
 
 export function saveGraphicsOptions(options) {
   currentFpsCap = validFpsCap(options.fpsCap);
+  currentDynamicRes = options.dynamicRes !== false;
   try {
     localStorage.setItem(GRAPHICS_OPTIONS_KEY, JSON.stringify({
       rain: options.rain, cars: options.cars, pedestrians: options.pedestrians, minorEffects: options.minorEffects,
-      fpsCap: currentFpsCap,
+      fpsCap: currentFpsCap, dynamicRes: currentDynamicRes,
     }));
   } catch { /* storage bloccato: il limite vale comunque per la sessione */ }
 }

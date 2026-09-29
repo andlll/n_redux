@@ -4455,3 +4455,11 @@ paragrafo 8.
   un frame piu' ravvicinato di `1000/fps - 2` ms si salta senza toccare `last`.
   Con 30 fps la scala di risoluzione adattiva non sale mai (soglia 50) ma non
   scende neanche (soglia 24).
+- **Risoluzione dinamica: interruttore nelle opzioni grafiche.** "Dynamic
+  resolution: ON/OFF", default ON, salvato in `nimbus-graphics` (`dynamicRes`).
+  `RenderScale` (renderscale.js) legge `dynamicResolutionEnabled()` ad ogni
+  frame: spenta, `scale` e' sempre 1 (anche su software rendering, che
+  altrimenti parte gia' al gradino piu' basso) e `sample()` non misura; alla
+  riaccensione media e cooldown ripartono da zero (gradino 0, o il piu' basso
+  su software rendering). Il canvas si ridimensiona da solo: resize() gira
+  ad ogni frame.

@@ -4096,6 +4096,7 @@ export async function mountMatch(ctx, params = {}) {
       { label: t("graphicsOptions.cars", { state: onOff(st.graphics.cars) }), action: "toggleCars" },
       { label: t("graphicsOptions.pedestrians", { state: onOff(st.graphics.pedestrians) }), action: "togglePedestrians" },
       { label: t("graphicsOptions.minorEffects", { state: onOff(st.graphics.minorEffects) }), action: "toggleMinorEffects" },
+      { label: t("graphicsOptions.dynamicRes", { state: onOff(st.graphics.dynamicRes) }), action: "toggleDynamicRes" },
     ];
     // [Nuova funzionalita', richiesta dall'autore: "uno slider con gli fps
     // (bloccato su 30, su 60, senza limite), default 60"] Tre valori discreti:
@@ -6405,6 +6406,9 @@ export async function mountMatch(ctx, params = {}) {
           saveGraphicsOptions(st.graphics);
         } else if (hit?.action === "toggleMinorEffects") {
           st.graphics.minorEffects = !st.graphics.minorEffects;
+          saveGraphicsOptions(st.graphics);
+        } else if (hit?.action === "toggleDynamicRes") {
+          st.graphics.dynamicRes = !st.graphics.dynamicRes;
           saveGraphicsOptions(st.graphics);
         } else if (hit?.action === "setFps") {
           st.graphics.fpsCap = hit.value;

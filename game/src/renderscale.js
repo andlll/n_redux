@@ -37,6 +37,8 @@
 // resta basso ABBASTANZA A LUNGO (mai per un singolo frame di stutter:
 // media lenta + cooldown fra un cambio e il successivo), e puo' risalire
 // se le condizioni migliorano (es. il device si raffredda).
+import { dynamicResolutionEnabled } from "./graphicsOptions.js";
+
 const STEPS = [1, 0.85, 0.7, 0.6, 0.5];
 const LOW_FPS = 24;      // media sostenuta sotto questa soglia: si scende di un gradino
 const HIGH_FPS = 50;     // media sostenuta sopra questa soglia: si puo' risalire di un gradino
@@ -64,13 +66,24 @@ export class RenderScale {
     this.cooldownT = COOLDOWN;
   }
 
-  get scale() { return STEPS[this.stepIdx]; }
+  // Opzione grafica "Dynamic resolution" (graphicsOptions.js, default si'):
+  // spenta = sempre piena risoluzione e nessuna misura.
+  get scale() { return dynamicResolutionEnabled() ? STEPS[this.stepIdx] : 1; }
 
   /** Va chiamato una volta per frame REALE (mai durante una pausa in
    * background — main.js/title.js gia' saltano quei frame del tutto, vedi
    * il controllo su `document.hidden`) con `rawDt`, il tempo di frame VERO
    * in secondi, non clampato. */
   sample(rawDt) {
+    if (!dynamicResolutionEnabled()) {
+      // Spenta: niente misura, e alla riaccensione si riparte pulito (media
+      // azzerata, periodo di riscaldamento, gradino 0 — su software rendering
+      // resta il piu' basso, come da constructor).
+      this.fpsEMA = null;
+      this.cooldownT = COOLDOWN;
+      if (!this.softwareRendering) this.stepIdx = 0;
+      return;
+    }
     if (this.cooldownT > 0) this.cooldownT -= rawDt;
     // Software rendering: gia' fissato al gradino piu' basso in constructor,
     // per tutta la sessione — nessuna misura da fare, vedi il commento in

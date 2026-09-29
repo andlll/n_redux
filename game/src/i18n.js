@@ -90,6 +90,7 @@ const STRINGS = {
 
   // ------------------------------------------------------ opzioni grafiche
   "graphicsOptions.title": { en: "GRAPHICS OPTIONS", it: "OPZIONI GRAFICHE", es: "OPCIONES GRÁFICAS", pt: "OPÇÕES GRÁFICAS", de: "GRAFIKOPTIONEN", fr: "OPTIONS GRAPHIQUES" },
+  "graphicsOptions.dynamicRes": { en: "Dynamic resolution: {state}", it: "Risoluzione dinamica: {state}", es: "Resolución dinámica: {state}", pt: "Resolução dinâmica: {state}", de: "Dynamische Auflösung: {state}", fr: "Résolution dynamique : {state}" },
   "graphicsOptions.fps": { en: "Frame rate limit", it: "Limite di fps", es: "Límite de fps", pt: "Limite de fps", de: "Bildratenlimit", fr: "Limite de fps" },
   "graphicsOptions.fpsUnlimited": { en: "Unlimited", it: "Nessuno", es: "Sin límite", pt: "Sem limite", de: "Unbegrenzt", fr: "Illimité" },
   "graphicsOptions.rain": { en: "Rain: {state}", it: "Pioggia: {state}", es: "Lluvia: {state}", pt: "Chuva: {state}", de: "Regen: {state}", fr: "Pluie : {state}" },
