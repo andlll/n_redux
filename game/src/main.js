@@ -1089,11 +1089,11 @@ export async function mountMatch(ctx, params = {}) {
       c.t += dt;
       const dur = (c.stepIndex === 0 && up.ruspaFirstStepDur != null) ? up.ruspaFirstStepDur : cur.dur;
       if (c.t < dur * TICK) continue;
-      c.t = 0;
+      c.t = Math.max(0, c.t - dur * TICK);   // resto al passo dopo, come stepConstructions() (buildings.js)
       c.stepIndex++;
       if (c.stepIndex < up.steps.length) {
         cur = up.steps[c.stepIndex];
-        c.curSpr = pickSpr(cur.spr);
+        if (!cur.keepSpr) c.curSpr = pickSpr(cur.spr);   // `keepSpr`: passo diviso, stesso sprite (applyScaffoldTiming(), buildings.js)
         if (cur.spawn) addConstructionSpawn(c.fb, syncTopperLife(cur.spawn, up, c.stepIndex, revealAtStep));
         entry.spr = c.curSpr;
         entry._f = frameFor(entry.spr);

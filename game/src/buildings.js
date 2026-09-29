@@ -1,5 +1,6 @@
 import { BALLOON_TYPES } from "./balloons.js";
 import { t, buildingLabel } from "./i18n.js";
+import { SCAFFOLD_TIMING } from "./scaffoldTiming.js";
 
 // Edifici come dati, non come codice (STUDIO.md §7.3): la catena di
 // cantiere di `chies` (upcrc12/upcrc23, decompilati da
@@ -820,7 +821,7 @@ export const BUILDING_TYPES = {
     construct: {                 // livello 0 -> 1, imparcr (src/objects/imparcr)
       drain: { mon: 1, every: 20 },              // [C] imparcr/Alarm_10.gml
       life: 9999,                                 // [I] nessun danno da fulmine ne' vita nel decompilato
-      ruspaCost: 500,                              // [C] parco/Mouse_LeftPressed.gml, ramo selec==11 — nessun ruspaFirstStepDur: imparcor_demo arma 30 tick, identico a imparcr
+      ruspaCost: 500,                              // [C] parco/Mouse_LeftPressed.gml, ramo selec==11 — la catena della ruspa (`imparcor_demo`, 430 tick) NON e' quella normale: `ruspaSteps` (applyScaffoldTiming())
       // [C] parco/Step.gml non legge mai `life`: nessun ramo `life<=0`,
       // quindi nessun `ruin*` — l'unico tipo senza (`ruinSpriteFor()` in
       // fondo al file torna null, destroyBuilding() in main.js lo lascia
@@ -1718,8 +1719,15 @@ export const BUILDING_TYPES = {
     get label() { return buildingLabel("museo"); },
     placeCost: { mon: 35000 },   // [C] placeholder/Mouse_LeftPressed.gml, ramo selec==70
     diagonalPlacement: true,
-    construct: {                 // media1s (asse "r", dir1/dir3) — [C] impamediaR/impamediaF: stessa sequenza sr*/sf* di palazzo, solo il drain cambia
-      drain: { mon: 5, every: 20 },                 // [C] impamediaR/Alarm_10.gml
+    // [Correzione dal decompilato] `placeholder/Collision_dir1|dir3.gml`, ramo
+    // selec==70, crea `IMPAMEDIA_R` (3170 tick, 8 piani, gru grande, `tops5s`,
+    // edificio a 2510), NON `impamediaR` (1810 tick, 4 piani): quest'ultima,
+    // `impamediaRD` e `impamedia1R/RD_demo` non le crea nessun oggetto. I
+    // `steps` qui sotto sono solo un punto di partenza — applyScaffoldTiming()
+    // li rifa sulla timeline di IMPAMEDIA_R (spawn presi dal secondo livello
+    // di palazzo: stessa impalcatura, stessa gru, stesso topper).
+    construct: {                 // media1s (asse "r", dir1/dir3) — [C] IMPAMEDIA_R/IMPAMEDIA_F (vedi sopra)
+      drain: { mon: 5, every: 20 },                 // [C] IMPAMEDIA_R/Alarm_10.gml (identico a impamediaR)
       life: 350,                                      // [C] media1s/Create.gml
       wewe: 150,                                       // [C] media1s/Create.gml: wewe += 150 — peso su `match`, state.js
       // [C] media1s/Mouse_LeftPressed.gml, ramo selec==11: 20000 mon.
@@ -2795,6 +2803,116 @@ function applyLevelFinish(b, def, up, c, r12, onDecor, deferDecor = false) {
 const TOPPER_SPRITES = new Set(["toppers", "topls", "topld"]);
 // Esportata: stepRuinClearing() (main.js) la riusa per la stessa impalcatura
 // "f" in sovraimpressione sui ruderi sotto ruspa — vedi il commento li'.
+// [Correzione dal decompilato, richiesta dall'autore: "e' piu' attendibile
+// l'originale in tutti i casi"] I `steps` scritti a mano seguono la sola
+// traccia "r" dell'impalcatura e attaccano topper/reveal al confine dei suoi
+// passi. Nell'originale li decide invece la traccia "f" (davanti), che parte
+// e prosegue con un ritardo proprio (15 tick, 30 per missile/gatling, fino a
+// 55 nelle ultime fasi), e per i palazzi/monumento/banca/museo continua fino
+// allo smontaggio completo. tools/28_scaffold_timing.py simula le catene
+// vere e scrive SCAFFOLD_TIMING (scaffoldTiming.js); qui lo si applica ai
+// `steps` gia' esistenti, tenendo i loro spawn (offset, sprite, depthOffset)
+// ma spostandoli agli istanti veri:
+//  - passi rifatti dalla timeline "r" vera (compresa la coda di smontaggio),
+//    con un confine in piu' dove nasce topper/gru o compare l'edificio (il
+//    passo diviso continua lo STESSO sprite: `keepSpr`);
+//  - `revealAtStep` all'istante vero (`revealAtEnd` non serve piu');
+//  - `frontTrack`: la timeline vera di "f", indipendente da "r" (varianti
+//    di sprite comprese, come nell'originale), e un passo `tail` se "f"
+//    vive piu' a lungo di "r";
+//  - consumo di denaro (`drain`, con il primo intervallo `first`);
+//  - `ruspaSteps`: catene della ruspa che NON sono la catena normale col
+//    primo passo accorciato (solo il parco).
+// Il museo (`IMPAMEDIA_R`, l'unica catena raggiungibile: `impamediaR` non e'
+// creata da nessuno) parte dai passi del secondo livello di palazzo
+// (`impa5r`: stessa impalcatura a 8 piani, stessa gru grande, stesso
+// `tops5s`) e li rifa sui tempi suoi.
+const TIMING_STEPS_FROM = { "museo.construct": "palazzo.upgrade0", "museoRd.construct": "palazzoRd.upgrade0" };
+const TIMING_RUSPA_SPEC_FROM = { "parco.construct": "casa.construct" };   // topper tops1
+function resolveUp(key) {
+  const [type, which] = key.split(".");
+  const def = BUILDING_TYPES[type];
+  return which === "construct" ? def?.construct : def?.upgrades?.[+which.slice(7)];
+}
+function retimeSteps(oldSteps, T) {
+  let topperSpec = null, craneSpr = null;
+  const others = [];
+  let tt = 0;
+  for (const st of oldSteps) {
+    for (const sp of st.spawn ?? []) {
+      if (TOPPER_SPRITES.has(sp.spr)) topperSpec ??= sp;
+      else if (/^gru|^gr2/.test(sp.spr)) craneSpr ??= sp.spr;
+      else others.push({ t: tt, sp });
+    }
+    tt += st.dur;
+  }
+  const end = T.end;
+  const bounds = new Set([0, end]);
+  const change = new Set();
+  for (const [t] of T.r) { bounds.add(t); change.add(t); }
+  if (T.topper && topperSpec) bounds.add(T.topper.t);
+  if (T.cranes) bounds.add(T.cranes.t);
+  if (T.revealT != null) bounds.add(T.revealT);
+  for (const o of others) bounds.add(o.t);
+  const B = [...bounds].filter((x) => x <= end).sort((a, b) => a - b);
+  const steps = [];
+  let revealIdx = null;
+  for (let i = 0; i < B.length - 1; i++) {
+    const start = B[i];
+    let alts = T.r[0][1];
+    for (const [t, a] of T.r) if (t <= start) alts = a;
+    const step = { spr: alts.length === 1 ? alts[0] : alts, dur: B[i + 1] - start };
+    if (!change.has(start)) step.keepSpr = true;
+    const spawn = [];
+    if (T.cranes && start === T.cranes.t) for (const [dx, dy] of T.cranes.at) spawn.push({ spr: craneSpr ?? "gru1", dx, dy });
+    if (T.topper && topperSpec && start === T.topper.t) spawn.push({ ...topperSpec, dx: T.topper.dx, dy: T.topper.dy });
+    for (const o of others) if (o.t === start) spawn.push(o.sp);
+    if (spawn.length) step.spawn = spawn;
+    if (T.revealT != null && start === T.revealT) revealIdx = i;
+    steps.push(step);
+  }
+  if (T.frontEnd != null && T.frontEnd > end) {
+    const last = steps[steps.length - 1];
+    steps.push({ spr: last.spr, dur: T.frontEnd - end, keepSpr: true, tail: true });
+  }
+  return { steps, revealIdx };
+}
+function applyScaffoldTiming() {
+  const snapshot = {};
+  for (const key of Object.keys(SCAFFOLD_TIMING)) {
+    const up = resolveUp(key);
+    if (up) snapshot[key] = JSON.parse(JSON.stringify(up.steps));
+  }
+  for (const [key, T] of Object.entries(SCAFFOLD_TIMING)) {
+    const up = resolveUp(key);
+    if (!up) continue;
+    const { steps, revealIdx } = retimeSteps(snapshot[TIMING_STEPS_FROM[key] ?? key], T);
+    up.steps = steps;
+    if (revealIdx != null) { up.revealAtStep = revealIdx; delete up.revealAtEnd; }
+    if (T.front) { up.frontTrack = T.front; up.frontEnd = T.frontEnd; }
+    if (T.drain) up.drain = { mon: T.drain.mon, every: T.drain.every, first: T.drain.first };
+    if (T.ruspa) {
+      const from = snapshot[TIMING_RUSPA_SPEC_FROM[key] ?? key] ?? snapshot[key];
+      const r = retimeSteps(from, T.ruspa);
+      up.ruspaSteps = r.steps;
+      up.ruspaRevealAtStep = r.revealIdx ?? undefined;
+    }
+  }
+}
+applyScaffoldTiming();
+
+/** Sprite della traccia "f" (anteriore) al tempo trascorso del cantiere: la
+ * timeline vera di `up.frontTrack` (scaffoldTiming.js), con la variante di
+ * sprite scelta a dado una volta per voce e poi mantenuta. */
+function frontFromTrack(c, up) {
+  const tk = (c.elapsedT ?? 0) / TICK;
+  const track = up.frontTrack;
+  let idx = 0;
+  while (idx + 1 < track.length && track[idx + 1][0] <= tk + 1e-6) idx++;
+  const picks = c.frontPicks ?? (c.frontPicks = {});
+  return picks[idx] ?? (picks[idx] = pickSpr(track[idx][1]));
+}
+
 export function syncTopperLife(spawnList, up, stepIndex, revealAtStep) {
   if (stepIndex >= revealAtStep) return spawnList;
   let ticksToReveal = 0;
@@ -2816,7 +2934,26 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     const c = b.construction;
     if (!c) continue;
     const def = BUILDING_TYPES[b.type];
-    const up = c.upgradeIndex === -1 ? def.construct : def.upgrades[c.upgradeIndex];
+    const upBase = c.upgradeIndex === -1 ? def.construct : def.upgrades[c.upgradeIndex];
+    // Catena della ruspa diversa da quella normale (solo il parco, vedi
+    // applyScaffoldTiming()): stessa forma, con i propri passi/reveal.
+    const up = (c.rebuilding && upBase.ruspaSteps)
+      ? (upBase._ruspaView ??= { ...upBase, steps: upBase.ruspaSteps, revealAtStep: upBase.ruspaRevealAtStep, revealAtEnd: false, ruspaFirstStepDur: null, frontTrack: null })
+      : upBase;
+    // Salvataggio di prima di applyScaffoldTiming() (`c.tv` assente e cantiere
+    // gia' avviato): `stepIndex` puntava ai vecchi `steps`, con meno passi.
+    // Lo si porta nei nuovi (mai oltre la fine) e si ricostruisce il tempo
+    // trascorso dalla somma dei passi gia' fatti, per la traccia "f".
+    if (c.tv === undefined) {
+      const fresh = c.stepIndex === 0 && c.curSpr === undefined;
+      c.tv = 2;
+      if (!fresh) {
+        c.stepIndex = Math.min(c.stepIndex, up.steps.length - 1);
+        let e = c.t;
+        for (let k = 0; k < c.stepIndex; k++) e += up.steps[k].dur * TICK;
+        c.elapsedT = e;
+      }
+    }
     let cur = up.steps[c.stepIndex];
     const revealAtStep = up.revealAtStep ?? up.steps.length - 1;
     if (c.curSpr === undefined) {
@@ -2844,12 +2981,19 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       r12.mon -= cost;
       r12.ele -= cost;
     }
-    if (up.drain) {
+    if (up.drain && !cur.tail) {   // il consumo e' di "r": si ferma quando "r" finisce, non con la coda di "f"
       c.drainT = (c.drainT ?? 0) + dt;
-      const period = up.drain.every * TICK;
-      while (c.drainT >= period) { c.drainT -= period; r12.mon -= up.drain.mon; }
+      // [C] Create.gml arma il primo `Alarm_10` a 20 tick, poi si riarma a
+      // `every` (10 per casa 1->2 e club): `up.drain.first`.
+      let period = (c.drainN ? up.drain.every : (up.drain.first ?? up.drain.every)) * TICK;
+      while (c.drainT >= period) {
+        c.drainT -= period; r12.mon -= up.drain.mon;
+        c.drainN = (c.drainN ?? 0) + 1;
+        period = up.drain.every * TICK;
+      }
     }
     c.t += dt;
+    if (!up.pausable) c.elapsedT = (c.elapsedT ?? 0) + dt;
     // [Bug corretto] Il PRIMO passo di un cantiere avviato dalla ruspa
     // (`c.rebuilding`, tryRuspaRebuild() sopra) e' il "sgombero" del lotto
     // gia' sviluppato — accorciato da `ruspaFirstStepDur` (a volte un solo
@@ -2896,7 +3040,11 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     // ricostruzione ruspa: caso diverso (demolizione, non upgrade), non
     // toccato da questa indagine.
     if (!c.finished && !clearingLot) b.spr = c.curSpr;
-    const curFrontSpr = clearingLot ? null : frontSprFor(c.curSpr);
+    let curFrontSpr = clearingLot ? null : frontSprFor(c.curSpr);
+    // Traccia "f" vera (scaffoldTiming.js): non segue "r" — vedi
+    // applyScaffoldTiming(). Non per la ruspa (catena "f" diversa, con sprite
+    // `im*f` non in atlas: resta quella derivata da "r").
+    if (curFrontSpr && up.frontTrack && !c.rebuilding) curFrontSpr = frontFromTrack(c, up);
     b.frontSpr = curFrontSpr;
     // [Bug corretto, segnalato dall'autore: "l'impalcatura si smonta solo
     // davanti, non dietro, come se sparisse col topper"] Verificato sui GML
@@ -2919,7 +3067,7 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     // `m3x*` non e' affatto uno sprite di impalcatura "r"/"f" — vedi
     // game/src/scaffold.js per la sua vera impalcatura). main.js la disegna
     // dietro all'edificio (stesso ordine -y+1 dell'originale).
-    b.rearSpr = (c.finished && !clearingLot && curFrontSpr) ? c.curSpr : null;
+    b.rearSpr = (c.finished && !clearingLot && curFrontSpr && !cur.tail) ? c.curSpr : null;
     // [C] `c.rebuilding` (tryRuspaRebuild() sopra): il primo passo di un
     // cantiere avviato dalla ruspa dura `ruspaFirstStepDur`, non `cur.dur`
     // — solo il primo, il resto della catena e' identico a un cantiere
@@ -2928,11 +3076,14 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     const dur = (c.stepIndex === 0 && c.rebuilding && up.ruspaFirstStepDur != null)
       ? up.ruspaFirstStepDur : cur.dur;
     if (c.t < dur * TICK) continue;
-    c.t = 0;
+    // Il resto oltre la durata si porta al passo dopo (non `c.t = 0`): senza,
+    // ogni passo perde in media mezzo frame e la catena, ora con molti piu'
+    // passi (applyScaffoldTiming()), deriverebbe di qualche tick dall'originale.
+    c.t = Math.max(0, c.t - dur * TICK);
     c.stepIndex++;
     if (c.stepIndex < up.steps.length) {
       cur = up.steps[c.stepIndex];
-      c.curSpr = pickSpr(cur.spr);
+      if (!cur.keepSpr) c.curSpr = pickSpr(cur.spr);   // `keepSpr`: passo diviso, stesso sprite
       // `c.curSpd` (frame/tic dello sprite di QUESTO passo, main.js lo legge
       // per animare "impvent1"/"impvent3" — commento su BUILDING_TYPES.eolico
       // sopra): 0 per ogni altro passo di ogni altro edificio (tutti a un

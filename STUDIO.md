@@ -4362,3 +4362,47 @@ paragrafo 8.
   percorsi sono relativi (`./`) perche' su GitHub Pages il sito vive sotto
   `/n_redux/`. Verificato in Chromium headless su un server statico locale:
   SW attivo con scope giusto, manifest e icone senza 404.
+- **Impalcature: verifica completa contro il decompilato e correzioni.** Un
+  simulatore a eventi del sottoinsieme di GML usato dalle catene `impa*`
+  (`tools/gmsim.py`: Create/Alarm_N, sprite, dadi come insieme di alternative,
+  creazioni, `with (r12)`) esegue ogni coppia `r`/`f` con i toppers e le gru
+  che crea, e `tools/28_scaffold_timing.py` scrive `game/src/scaffoldTiming.js`
+  (timeline vere di "r" e "f", nascita di topper/gru, comparsa dell'edificio,
+  consumo). `applyScaffoldTiming()` (buildings.js) le applica ai `steps` scritti
+  a mano tenendone gli spawn. Trovato e corretto:
+  1. **Museo**: `placeholder/Collision_dir1|dir3`, `selec==70`, crea
+     `IMPAMEDIA_R`/`IMPAMEDIA_RD` (3170 tick, 8 piani, `grubig`, `tops5s`,
+     edificio a 2510), non `impamediaR/RD`, che nessun oggetto crea (come
+     `impamedia1R/RD_demo` e `impavent_d`). Il museo compariva a 1490 (~17s
+     prima) e la ruspa durava 1130 invece di 2810. Ora parte dai passi di
+     `palazzo.upgrade0` (stessa impalcatura/gru/topper) sui tempi veri.
+  2. **"f" non e' "r" spostata**: parte 15 tick dopo (30 per missile/gatling,
+     fino a 55 nelle ultime fasi di solare/parco/casa 1/villa/industria 1) e
+     decide topper (15-70 tick dopo il confine di "r") e comparsa
+     dell'edificio (casa 1->2: 705 e non 650). Ora `up.frontTrack` (timeline
+     vera di "f", varianti di sprite indipendenti da "r") e `frontEnd`; un
+     passo `tail` mantiene la costruzione finche' "f" non finisce (l'"r" e' gia'
+     morto: niente `rearSpr`, niente consumo).
+  3. **Coda di smontaggio** di palazzo/monumento/banca/museo (e delle loro
+     ruspe): ora completa (fino a 1810 / 2810 / 3170), `revealAtEnd` non piu'
+     usato da queste catene.
+  4. **Gru dell'asse `rd`** (`palazzoRd`/`museoRd`, primo livello): gli offset
+     sono lo specchio di quelli di `palazzo`, non gli stessi.
+  5. **Ruspa sul parco**: `imparcor_demo` dura 430 tick (topper `tops1`, lotto
+     a 325), non i 150 di `imparcr`: `ruspaSteps`.
+  6. **Consumo**: `impa0to1r` (casa livello 1) consuma -1 mon ogni 20 tick
+     (39 in tutto), mancava; `first` (20 tick) prima del primo consumo, poi
+     `every` (10 per casa 1->2 e club).
+  Anche `c.t` porta il resto al passo successivo (prima `c.t = 0`): con i
+  molti passi in piu' la catena deriverebbe di qualche tick.
+  **Verificati senza differenze**: chiesa 2/3 (`upcrc12/23`), industria,
+  casa, missile, gatling, laser, solare, villa, club, eolico, grattacielo
+  (`m3cant`, pannelli e gru di scaffold.js), gru piccole/grandi e bracci,
+  posizione/durata dei toppers.
+  **Ancora diverso dall'originale, dichiarato**: nella ruspa su un edificio la
+  traccia "f" ha sprite `im*f` (`im1f`, `im3f`... non in atlas) e l'originale
+  finisce con `parcdeath`/`updeath*` + `placeholder` (demolisce) mentre il
+  porting ricostruisce lo stesso livello — scelta dell'autore, non toccata;
+  qui la traccia "f" della ruspa resta derivata da "r". I salvataggi di un
+  cantiere in corso fatto con i vecchi `steps` vengono portati sui nuovi
+  (`c.tv`).
