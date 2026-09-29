@@ -48,6 +48,15 @@ function compile(gl, type, src) {
 const FLOATS_PER_VERT = 8;             // x y u v r g b a
 const VERTS_PER_QUAD = 6;
 
+// [Ottimizzazione mobile] Scrive un vertice nel buffer del batch. Funzione
+// di modulo invece di una closure creata dentro draw()/drawQuad() ad ogni
+// chiamata: centinaia di quad per frame = centinaia di closure di meno per
+// il garbage collector.
+function putVert(d, o, px, py, pu, pv, r, g, b, a) {
+  d[o] = px; d[o + 1] = py; d[o + 2] = pu; d[o + 3] = pv;
+  d[o + 4] = r; d[o + 5] = g; d[o + 6] = b; d[o + 7] = a;
+}
+
 export class Renderer {
   constructor(canvas, maxQuads = 20000) {
     const gl = canvas.getContext("webgl2", {
@@ -191,14 +200,14 @@ export class Renderer {
     const b = (tint & 255) / 255;
     const { u0, v0, u1, v1 } = frame;
 
-    let o = this.count * VERTS_PER_QUAD * FLOATS_PER_VERT;
+    const o = this.count * VERTS_PER_QUAD * FLOATS_PER_VERT;
     const d = this.data;
-    const put = (px, py, pu, pv) => {
-      d[o++] = px; d[o++] = py; d[o++] = pu; d[o++] = pv;
-      d[o++] = r; d[o++] = g; d[o++] = b; d[o++] = alpha;
-    };
-    put(x0, y0, u0, v0); put(x1, y0, u1, v0); put(x1, y1, u1, v1);
-    put(x0, y0, u0, v0); put(x1, y1, u1, v1); put(x0, y1, u0, v1);
+    putVert(d, o, x0, y0, u0, v0, r, g, b, alpha);
+    putVert(d, o + 8, x1, y0, u1, v0, r, g, b, alpha);
+    putVert(d, o + 16, x1, y1, u1, v1, r, g, b, alpha);
+    putVert(d, o + 24, x0, y0, u0, v0, r, g, b, alpha);
+    putVert(d, o + 32, x1, y1, u1, v1, r, g, b, alpha);
+    putVert(d, o + 40, x0, y1, u0, v1, r, g, b, alpha);
     this.count++;
   }
 
@@ -221,14 +230,37 @@ export class Renderer {
     const b = (tint & 255) / 255;
     const { u0, v0, u1, v1 } = frame;
 
-    let o = this.count * VERTS_PER_QUAD * FLOATS_PER_VERT;
+    const o = this.count * VERTS_PER_QUAD * FLOATS_PER_VERT;
     const d = this.data;
-    const put = (px, py, pu, pv) => {
-      d[o++] = px; d[o++] = py; d[o++] = pu; d[o++] = pv;
-      d[o++] = r; d[o++] = g; d[o++] = b; d[o++] = alpha;
-    };
-    put(p0.x, p0.y, u0, v0); put(p1.x, p1.y, u1, v0); put(p2.x, p2.y, u1, v1);
-    put(p0.x, p0.y, u0, v0); put(p2.x, p2.y, u1, v1); put(p3.x, p3.y, u0, v1);
+    putVert(d, o, p0.x, p0.y, u0, v0, r, g, b, alpha);
+    putVert(d, o + 8, p1.x, p1.y, u1, v0, r, g, b, alpha);
+    putVert(d, o + 16, p2.x, p2.y, u1, v1, r, g, b, alpha);
+    putVert(d, o + 24, p0.x, p0.y, u0, v0, r, g, b, alpha);
+    putVert(d, o + 32, p2.x, p2.y, u1, v1, r, g, b, alpha);
+    putVert(d, o + 40, p3.x, p3.y, u0, v1, r, g, b, alpha);
+    this.count++;
+  }
+
+  /** Come drawQuad(), ma con gli angoli come 8 numeri invece di 4 oggetti
+   * `{x,y}` — per i chiamanti che disegnano centinaia di quad ruotati per
+   * frame (gocce di pioggia, traccianti) senza allocare nulla. */
+  drawQuadXY(frame, x0, y0, x1, y1, x2, y2, x3, y3, tint = 0xffffff, alpha = 1) {
+    if (frame.tex !== this.texture || this.count >= this.maxQuads) {
+      this.flush();
+      this.texture = frame.tex;
+    }
+    const r = ((tint >> 16) & 255) / 255;
+    const g = ((tint >> 8) & 255) / 255;
+    const b = (tint & 255) / 255;
+    const { u0, v0, u1, v1 } = frame;
+    const o = this.count * VERTS_PER_QUAD * FLOATS_PER_VERT;
+    const d = this.data;
+    putVert(d, o, x0, y0, u0, v0, r, g, b, alpha);
+    putVert(d, o + 8, x1, y1, u1, v0, r, g, b, alpha);
+    putVert(d, o + 16, x2, y2, u1, v1, r, g, b, alpha);
+    putVert(d, o + 24, x0, y0, u0, v0, r, g, b, alpha);
+    putVert(d, o + 32, x2, y2, u1, v1, r, g, b, alpha);
+    putVert(d, o + 40, x3, y3, u0, v1, r, g, b, alpha);
     this.count++;
   }
 

@@ -59,6 +59,7 @@ export async function mountMatch(ctx, params = {}) {
   // prevede (nessun sistema di particelle in questo motore, STUDIO.md), e'
   // puramente nostra.
   const bubbleTex = makeCircleTexture(gl, 64);
+  const bubbleUnitFrame = solidFrame(bubbleTex, 1, 1);   // riusato con `scale = diametro`, vedi coinPops/faroFlashes
   const cam = new Camera();
 
   // Zoom vero solo su mobile. Un puntatore "coarse" (dito, niente hover fine)
@@ -5275,14 +5276,15 @@ export async function mountMatch(ctx, params = {}) {
   function drawRotated(frame, cx, cy, angleDeg, scale, tint, alpha) {
     const rad = (-angleDeg * Math.PI) / 180;
     const cos = Math.cos(rad), sin = Math.sin(rad);
-    const corners = [
-      { x: -frame.ox, y: -frame.oy }, { x: frame.w - frame.ox, y: -frame.oy },
-      { x: frame.w - frame.ox, y: frame.h - frame.oy }, { x: -frame.ox, y: frame.h - frame.oy },
-    ].map((p) => ({
-      x: cx + (p.x * cos - p.y * sin) * scale,
-      y: cy + (p.x * sin + p.y * cos) * scale,
-    }));
-    r.drawQuad(frame, corners[0], corners[1], corners[2], corners[3], tint, alpha);
+    // Nessuna allocazione (era: 4 oggetti + array + map per chiamata, per
+    // ogni goccia di pioggia/tracciante): angoli calcolati come numeri.
+    const ax = -frame.ox, ay = -frame.oy, bx = frame.w - frame.ox, by = frame.h - frame.oy;
+    r.drawQuadXY(frame,
+      cx + (ax * cos - ay * sin) * scale, cy + (ax * sin + ay * cos) * scale,
+      cx + (bx * cos - ay * sin) * scale, cy + (bx * sin + ay * cos) * scale,
+      cx + (bx * cos - by * sin) * scale, cy + (bx * sin + by * cos) * scale,
+      cx + (ax * cos - by * sin) * scale, cy + (ax * sin + by * cos) * scale,
+      tint, alpha);
   }
 
   // Cache del rettangolo arrotondato del balloon (game/src/gl.js,
@@ -8258,7 +8260,7 @@ export async function mountMatch(ctx, params = {}) {
     if (fireworksState) for (const s of fireworksState.sparks.active) {
       dynamic.push({
         obj: "decor", x: s.x, y: s.y, depth: FIREWORK_DEPTH,
-        _f: { ...solidFrame(bubbleTex, FIREWORK_SPARK_SIZE, FIREWORK_SPARK_SIZE), ox: FIREWORK_SPARK_SIZE / 2, oy: FIREWORK_SPARK_SIZE / 2 },
+        _f: st.fwSparkFrame ?? (st.fwSparkFrame = { ...solidFrame(bubbleTex, FIREWORK_SPARK_SIZE, FIREWORK_SPARK_SIZE), ox: FIREWORK_SPARK_SIZE / 2, oy: FIREWORK_SPARK_SIZE / 2 }),
         _tint: s.tint, _alpha: Math.max(0, 1 - s.t / s.life),
       });
     }
@@ -8467,7 +8469,7 @@ export async function mountMatch(ctx, params = {}) {
     // su RAIN_DEPTH) ma sempre dentro la proiezione mondo di questo frame,
     // quindi seguono comunque la camera come ogni altro decoro.
     if (st.weatherState.drops.active.length) {
-      const rainFrame = { ...solidFrame(white, RAIN_STREAK_WIDTH, RAIN_STREAK_LENGTH), ox: RAIN_STREAK_WIDTH / 2, oy: RAIN_STREAK_LENGTH / 2 };
+      const rainFrame = st.rainFrame ?? (st.rainFrame = { ...solidFrame(white, RAIN_STREAK_WIDTH, RAIN_STREAK_LENGTH), ox: RAIN_STREAK_WIDTH / 2, oy: RAIN_STREAK_LENGTH / 2 });
       for (const d of st.weatherState.drops.active) drawRotated(rainFrame, d.x, d.y, rainDropAngle(d), 1, RAIN_TINT, RAIN_ALPHA);
     }
     // Le "bolle" di raccolta moneta/cassa (coinPops sopra): un cerchio che
@@ -8483,7 +8485,10 @@ export async function mountMatch(ctx, params = {}) {
     for (const p of st.coinPops) {
       const k = p.t / COIN_POP_LIFE;
       const size = 36 + k * 94;
-      r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, p.color ?? COIN_POP_COLOR, (1 - k) * 0.85);
+      // Frame unitario riusato + `scale = size` (draw() moltiplica w/h per
+      // scale): stesso quad di solidFrame(bubbleTex, size, size), senza un
+      // oggetto nuovo per bolla.
+      r.draw(bubbleUnitFrame, p.x - size / 2, p.y - size / 2, size, p.color ?? COIN_POP_COLOR, (1 - k) * 0.85);
     }
     // Lampo dei fari accesi (faroFlashes sopra, "se riesci integra un
     // sistema di particelle coerente col colore del flash..."): stessa
@@ -8497,7 +8502,7 @@ export async function mountMatch(ctx, params = {}) {
     for (const p of st.faroFlashes) {
       const k = p.t / FARO_FLASH_LIFE;
       const size = 40 + k * 260;
-      r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, FARO_FLASH_COLOR, (1 - k) * 0.6);
+      r.draw(bubbleUnitFrame, p.x - size / 2, p.y - size / 2, size, FARO_FLASH_COLOR, (1 - k) * 0.6);
     }
     // Segno d'impatto del fulmine (game/src/lightning.js) — [Nuova
     // implementazione, richiesta dall'autore: "fai in modo che copra
