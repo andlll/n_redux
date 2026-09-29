@@ -4534,6 +4534,53 @@ se cambia una catena `impa*`.
 - Estetici gia' noti: `demobasia` non piu' un gap (e' la ruspa), `tutorial_text`
   relitto, ordine di depth di "f" a +2.8 per palazzo/museo (irrilevante).
 
+**Risolto: la torretta laser "saltava" di 3px ruotando la mira** (segnalato
+dall'autore: "in alcune posizioni shifta verso l'alto di pochissimi pixel").
+**[C]** Difetto dei dati originali, non dell'estrazione: `lan1`..`lan16`
+condividono l'origine (239,454), ma la torre di `lan1`..`lan6` e' disegnata 3px
+piu' in basso che in `lan7`..`lan16` (registrazione al pixel della sola base,
+identica nei 16 frame: XOR = 0 dopo lo scarto, dx=0, dy=+3 / 0). Nel gioco
+originale il salto si vede uguale. Corretto alzando di 3px i primi sei frame
+(`ORIGIN_RAISE` in `tools/23_atlas.py`, `oy += 3` in `game/data/match.atlas.json`
+— toccato a mano perche' rigenerare l'atlas cambia il packing di centinaia di
+sprite non coinvolti e lo desincronizzerebbe dalle pagine webp). Missile
+(`lrn*`) e gatling (`nm*a/b`) misurati con lo stesso metodo: scarti di 1-3px
+irregolari, compatibili con ombra/rinculo nella fascia confrontata, non
+trattati come difetto.
+
+**Risolto: alone biancastro attorno alle pillole del menu principale**
+(segnalato dall'autore). **[C]** Era nei PNG, non nel codice: `menu_newga`,
+`menu_newgaeas`, `menu_tutoriae` (assets/textures/, `TITLE_BUTTON_OVERRIDES`)
+avevano fuori dal bordo della capsula ~9300 pixel bianchi (RGB 255) con alpha
+da ~19-60 a ridosso del bordo, in calo lento verso l'esterno (max 36 negli
+angoli), e l'anello di antialiasing schiarito verso il bianco. Il motore
+usa blend a alpha diretto + filtro LINEAR (gl.js): quel bianco sbavava e su
+sfondo scuro si vedeva come chiarore attorno alla pillola, con un bordo
+rettangolare netto dove finisce il quad. Misurato nello screenshot del
+titolo: luminosita' dell'anello 1-4px fuori dalla pillola +11.4 rispetto allo
+sfondo a 20-30px prima, +0.4 dopo. `tools/29_button_halo.py` (ripetibile,
+idempotente, `--check` per la sola misura) ricalcola l'alpha come copertura
+geometrica di una capsula (raggio adattato per file: ~106.7 newga, ~108.1 gli
+altri due) e riempie l'RGB dell'anello e dell'esterno col colore interno piu'
+vicino; il contenuto a piu' di 1.5px dal bordo e' intoccato. Effetto
+collaterale voluto: `newgaeas`/`tutoriae` avevano il bordo binario (a gradini,
+senza antialiasing), ora e' sfumato come `newga`.
+
+**Font dell'interfaccia: Montserrat -> Metropolis** (scelta dell'autore).
+`game/fonts/metropolis-700.woff2` e `-800.woff2` (i file OTF interi convertiti
+in woff2, senza subset: la licenza riserva il nome "Metropolis" alle versioni
+non modificate; testo in `game/fonts/OFL.txt`). Il peso 800 esisteva gia' nel
+CSS del logo e dei titoli del tutorial ma con Montserrat si vedeva 700, ora
+c'e' davvero. Metropolis e' ~4% piu' basso (x-height 517 contro 538) e ha
+metriche verticali diverse (ascent/descent 795/205 contro 968/251):
+compensato una volta sola in `@font-face` (index.html) con `size-adjust: 104%`
+e `ascent-override`/`descent-override` (93.1% / 24.1%, cioe' 968/251 divisi
+per 1.04) invece di ritoccare ogni font-size. Verificato in Chromium: il
+box di riga misurato su canvas e' identico a prima (97/25 su 100px) e le
+etichette del menu restano alla stessa y; larghezze -1/-3%. Copre tutte le
+accentate delle 6 lingue e `– — …`; manca `→` (una sola etichetta di fase in
+main.js), che ripiega sul font di sistema.
+
 **Risolto, non piu' un gap**: le catene `impamediaR/RD`, `impamedia1R/RD_demo`
 (con le loro impalcature "f") e `impavent_d` sono codice morto — nessun `.gml`
 ne' nessuna istanza di stanza le crea, verificato. Il museo usa le catene vere

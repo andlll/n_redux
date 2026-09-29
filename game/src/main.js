@@ -305,16 +305,11 @@ export async function mountMatch(ctx, params = {}) {
   // costFloaterFrame piu' sotto — pin e monete nella stessa immagine, colori
   // veri, niente piu' bisogno del colorize rosso usato finora su "soldico"
   // (l'icona blu della raccolta tasse, coins.js) come sostituto provvisorio.
-  // [NOTA] L'autore ha condiviso l'icona vera solo come immagine incollata in
-  // chat, non come file: questa sessione non ha modo di salvare a disco
-  // un'immagine incollata (nessuno strumento per farlo, a differenza di
-  // pause-button.png sopra — quello sì un file vero ricevuto e committato
-  // cosi' com'e', "senza nessuna modifica offline"). Il PNG qui e' quindi una
-  // RICOSTRUZIONE fatta a partire dalla descrizione/dallo screenshot (stesso
-  // stile: pin rosso, pila di monete bianca dentro, stessa sagoma/misura di
-  // "soldico" sotto) — da sostituire con l'immagine originale appena
-  // disponibile come file vero: stesso path/nome basta a farla entrare senza
-  // toccare altro codice. `ox`/`oy` = centro in basso (la punta del pin, come
+  // [Sostituita con l'originale] L'autore ha poi caricato in chat il file vero
+  // (60x88, stessa sagoma/misura di "soldico"): e' committato cosi' com'e',
+  // al posto della ricostruzione precedente. Resta un PNG a se' e non entra
+  // nell'atlas: si carica direttamente, senza toccare `match.atlas.json`.
+  // `ox`/`oy` = centro in basso (la punta del pin, come
   // l'origine 30,88 di "soldico" nel suo stesso atlas — STUDIO.md): e' il
   // punto che finisce sulle coordinate passate a r.draw(), cosi' il pin
   // "punta" verso l'ancora e si apre verso l'alto, esattamente come ogni
@@ -531,7 +526,7 @@ export async function mountMatch(ctx, params = {}) {
     const key = size + "|" + text;
     let w = textWidthCache.get(key);
     if (w === undefined) {
-      measureCtx.font = `700 ${size}px Montserrat, sans-serif`;
+      measureCtx.font = `700 ${size}px Metropolis, sans-serif`;
       w = measureCtx.measureText(text).width;
       textWidthCache.set(key, w);
     }
@@ -856,16 +851,16 @@ export async function mountMatch(ctx, params = {}) {
   for (const it of staticWorld) it._f = frameFor(it.spr);
 
   // [Bug corretto, richiesto dall'autore: "applichiamo lo stesso stile
-  // Montserrat bianco su nero dei titoli di apertura del tutorial alla
+  // Metropolis bianco su nero dei titoli di apertura del tutorial alla
   // schermata di sconfitta" — drawOutcomeOverlay() piu' sotto] Il font
   // bitmap "gotham_mini" (tools/25_font.py — [C] src/objects/repre/
   // DrawGUI.gml: action_font(gotham_mini, 0), un tempo la barra risorse,
-  // poi solo il pannello di sconfitta dopo la migrazione a Montserrat qui
+  // poi solo il pannello di sconfitta dopo la migrazione a Metropolis qui
   // sotto) non ha piu' nessun chiamante in questo file: rimosso insieme
   // all'import di `loadFont`/`drawText`/`measureText`/`fitTextScale`
   // (font.js) e a `wrapText()` (usata solo da lui), diventati morti con
   // lui. Il balloon di testo del tutorial e i tre pannelli (pausa/
-  // vittoria/sconfitta) usano tutti Montserrat vero (index.html/game/fonts/
+  // vittoria/sconfitta) usano tutti Metropolis vero (index.html/game/fonts/
   // — vedi drawHtmlText() sotto): nitido a QUALUNQUE dimensione, non un
   // compromesso fra atlas bitmap diversi.
   // [C] repre/DrawGUI.gml: dodici `action_draw_text` letterali, uno per ogni
@@ -3567,7 +3562,7 @@ export async function mountMatch(ctx, params = {}) {
 
   // Pool fisso di elementi HTML riusati dal menu di pausa/dal sotto-pannello
   // "saving options" (drawPauseOverlay()/drawSavingOptionsOverlay() sotto)
-  // — Montserrat vero (index.html/game/fonts/), non piu' un font bitmap:
+  // — Metropolis vero (index.html/game/fonts/), non piu' un font bitmap:
   // segnalato dall'autore, "gotham" (il fix precedente) restava comunque
   // un po' sgranato oltre scala 1, un limite intrinseco di QUALUNQUE atlas
   // bitmap — un font vettoriale vero non ce l'ha, a qualunque dimensione.
@@ -3588,12 +3583,12 @@ export async function mountMatch(ctx, params = {}) {
   // testo HTML non sfumato dal blur) e possono capitare TUTTI nello stesso
   // frame: 4 risorse + mese + anno + cristalli (7) + balloon tutorial (1) +
   // i 2 banner a 2 righe ciascuno (4) = 12. Il pannello di vittoria
-  // (drawOutcomeOverlay() sotto, ora anche lui Montserrat vero invece del
+  // (drawOutcomeOverlay() sotto, ora anche lui Metropolis vero invece del
   // font bitmap — vedi il commento li') non congela la partita ("la
   // vittoria non blocca niente"), quindi puo' capitare nello STESSO frame
   // della barra risorse: titolo + messaggio + un bottone ("Keep playing") = 3
   // in piu'. Il pannello di SCONFITTA (stesso file, ramo `defeat`: ora
-  // anche lui Montserrat vero, "testo nudo su nero" invece del pannello col
+  // anche lui Metropolis vero, "testo nudo su nero" invece del pannello col
   // font bitmap) e' il vero worst case: titolo + messaggio + le 4 righe del
   // menu di game over = 6 — `outcome` non e' incluso in `hideResourceText`
   // (sotto), e l'olio puo' esaurirsi anche nel tutorial (roomName ===
@@ -3664,7 +3659,7 @@ export async function mountMatch(ctx, params = {}) {
   function resetTextPool() { st.textPoolUsed = 0; }
   // [Nuova funzionalita', richiesta dall'autore: "sostituisci gli sprite
   // mfs1/mfs11/mfs2 delle due schermate nere della cutscene iniziale del
-  // tutorial con scritte Montserrat vere, stesso effetto grafico del menu
+  // tutorial con scritte Metropolis vere, stesso effetto grafico del menu
   // (title.js/glitchLine — sdoppiamento cromatico ciano/blu, mix-blend-mode:
   // screen) ma molto piu' intenso: qui restano a schermo solo 1.5s/3.3s
   // (CUTSCENE_BLACK1_DURATION/BLACK2_DURATION, tutorial.js), contro il
@@ -3702,7 +3697,7 @@ export async function mountMatch(ctx, params = {}) {
   const cutsceneTextWrap = document.createElement("div");
   cutsceneTextWrap.style.cssText = "position:fixed;left:0;right:0;top:50%;transform:translateY(-50%);" +
     "text-align:center;pointer-events:none;z-index:7;display:none;" +
-    "font-family:Montserrat,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;";
+    "font-family:Metropolis,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;";
   document.body.appendChild(cutsceneTextWrap);
   // `mode`: null (nascosta) | "mfs1" (prima schermata nera) | "mfs2"
   // (seconda) — nomi presi dagli sprite che sostituiscono, per coerenza col
@@ -3733,7 +3728,7 @@ export async function mountMatch(ctx, params = {}) {
    * conoscere le dimensioni VERE renderizzate (il balloon, per dimensionare
    * lo sfondo WebGL intorno al testo). */
   // `align`/`color` [Nuova funzionalita', richiesta dall'autore: "usa
-  // Montserrat anche per la barra risorse in alto, il font li' e' ancora
+  // Metropolis anche per la barra risorse in alto, il font li' e' ancora
   // sgranato"] — la barra risorse (main.js, poco sotto) disegna i suoi
   // valori con l'angolo SINISTRO ancorato a una x fissa sotto ogni icona
   // (stesso schema di drawText()/font.js, mai stato centrato), non con un
@@ -3965,7 +3960,7 @@ export async function mountMatch(ctx, params = {}) {
     // mondo sfocato invece di un bianco piatto.
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
-    // Montserrat vero (drawHtmlText(), sopra) invece del font bitmap
+    // Metropolis vero (drawHtmlText(), sopra) invece del font bitmap
     // "gotham" di prima — nitido a qualunque dimensione, niente piu'
     // scala intera/fitTextScale() da calcolare.
     const title = t("pause.title");
@@ -4033,7 +4028,7 @@ export async function mountMatch(ctx, params = {}) {
     // unico "cycleInterval" che ciclava i sei valori a ogni tocco.
     const INTERVAL_CAPTION_H = 22, INTERVAL_SEG_H = 40, INTERVAL_ROW_H = INTERVAL_CAPTION_H + INTERVAL_SEG_H;
     const btnH = 46, btnGap = 14;
-    // 360 fisso di nuovo (com'era prima del fix su "gotham"): Montserrat,
+    // 360 fisso di nuovo (com'era prima del fix su "gotham"): Metropolis,
     // proporzionale, ci sta comoda anche sulla riga piu' lunga ("Save
     // during attacks: OFF") senza bisogno di allargare il pannello — a
     // differenza del font bitmap monospazio-per-carattere di prima, un
@@ -5143,9 +5138,9 @@ export async function mountMatch(ctx, params = {}) {
     st.outcomeButtons = [];
     if (showPanel && defeat) {
       // [Bug corretto, richiesto dall'autore: "applichiamo lo stesso stile
-      // Montserrat bianco su nero dei titoli di apertura del tutorial
+      // Metropolis bianco su nero dei titoli di apertura del tutorial
       // (glitchCutsceneLine()/cutsceneTextWrap, sopra), niente piu' pannello
-      // scuro col vecchio font bitmap 'gotham'"] Testo Montserrat vero
+      // scuro col vecchio font bitmap 'gotham'"] Testo Metropolis vero
       // DIRETTAMENTE sul nero pieno — il fondo e' gia' nero qui (il
       // crossfade sopra e' finito, `showPanel` diventa vero solo a `k>=1`):
       // nessun pannello/box dietro, a differenza degli altri due stati
@@ -5194,7 +5189,7 @@ export async function mountMatch(ctx, params = {}) {
       // e' brutta, rifacciamola con lo stesso stile del menu di pausa (font,
       // roundrect bianco ecc), cambiamo anche il messaggio che e' molto
       // generico"] Vittoria: stesso "vetro smerigliato" (pausePanelFrame()/
-      // PANEL_TINT/PANEL_ALPHA) e Montserrat vero (drawHtmlText()) del menu
+      // PANEL_TINT/PANEL_ALPHA) e Metropolis vero (drawHtmlText()) del menu
       // di pausa/drawConfirmResetOverlay(), non piu' il pannello scuro col
       // font bitmap condiviso (fino a qui) con la sconfitta — la vittoria
       // non e' una fine, non deve sembrarne una. Messaggio riscritto: non
@@ -8630,8 +8625,7 @@ export async function mountMatch(ctx, params = {}) {
     // quando stepAutoDefenseUpkeep() segnala un prelievo — buildings.js —
     // sia da onTap/onPointerDown piu' sotto quando placeAt()/armPlacement()
     // rifiutano un piazzamento per fondi insufficienti): `costWarningIconFrame`
-    // (sopra — vedi li' la nota su "ricostruita, non il file originale") e'
-    // l'asset dedicato, pin rosso con la moneta gia' in bianco dentro la
+    // (sopra) e' l'asset dedicato, pin rosso con la moneta gia' in bianco dentro la
     // stessa immagine, niente piu' bisogno del colorize provvisorio che
     // sostituiva l'RGB di "soldico" (l'icona blu della raccolta tasse,
     // coins.js) con un tint rosso pieno. Sale e sfuma invece di crescere sul
@@ -8901,7 +8895,7 @@ export async function mountMatch(ctx, params = {}) {
     // notte/nella vignetta scura, non la barra risorse. `barTextColor`
     // stessa idea per i numeri: nero su sfondo chiaro come l'originale,
     // bianco quando l'icona diventa bianca — [Bug corretto, segnalato
-    // dall'autore: "usa Montserrat anche per la barra risorse in alto, il
+    // dall'autore: "usa Metropolis anche per la barra risorse in alto, il
     // font li' e' ancora sgranato"] non piu' drawText()/fontMini (l'atlas
     // bitmap "gotham_mini" — vedi il commento su di lui, sopra, per il
     // perche' era rimasto l'unico bitmap: l'autore ora lo vuole comunque
@@ -9185,7 +9179,7 @@ export async function mountMatch(ctx, params = {}) {
     // elemento e il successivo, solo il blocco intero piu' vicino al denaro
     // (`stats` sopra, l'ultimo finisce a barX+340). Anche col valore piu'
     // lungo plausibile (`r12.mon` — misurato: un numero a 9 cifre e' largo
-    // ~75px in Montserrat 15px grassetto, finisce quindi verso x=415)
+    // ~75px in Metropolis 15px grassetto, finisce quindi verso x=415)
     // l'orologio (ora a x+426) resta comunque staccato, ~11px di margine.
     const clockPos = isMobile ? { x: ROW2_X, y: (ROW2_Y + ROW2B_Y) / 2 - 9 } : { x: barX + 426, y: barY + 8 };
     // [Bug corretto, segnalato dall'autore: "le icone a destra sono
@@ -9803,7 +9797,7 @@ export async function mountMatch(ctx, params = {}) {
     // `draw_set_alpha(1)` + `draw_text_ext_colour(..., 0,0,0,0, 1)` (testo
     // NERO in piena opacita') — lo sfondo arrotondato resta WebGL
     // (tutorialBoxFrame()/makeRoundedRectTexture() sopra, gia' nitido:
-    // nessun font coinvolto), il testo e' Montserrat vero invece del font
+    // nessun font coinvolto), il testo e' Metropolis vero invece del font
     // bitmap "gotham_mobile" di prima (drawHtmlText(), sopra — segnalato
     // "sgranato" dall'autore come il menu di pausa). Il testo va disegnato
     // PRIMA di sapere `boxH` (l'HTML va a capo da solo, niente piu'
@@ -9940,7 +9934,7 @@ export async function mountMatch(ctx, params = {}) {
     // troncato. [Bug corretto, segnalato dall'autore insieme a quello
     // analogo di drawIconLine()/tagWidth()] La formula restava comunque una
     // stima a carattere fisso (`avail/(len*0.62)`, mai una misura reale del
-    // font Montserrat): ora usa htmlTextWidth() (sopra) — misura la parola
+    // font Metropolis): ora usa htmlTextWidth() (sopra) — misura la parola
     // piu' lunga a una taglia di riferimento e scala in proporzione, la
     // larghezza di un font scala linearmente con la sua taglia — cosi' il
     // banner riempie lo spazio disponibile con precisione invece di
@@ -10060,7 +10054,7 @@ export async function mountMatch(ctx, params = {}) {
     //    richiesta dall'autore] La scritta sopra non e' piu' lo sprite
     //    decompilato ("mfs1"/"mfs11" — Windows/Android, "Mount Fuji
     //    Software presents" — o "mfs2", "NIMBUS"): `setCutsceneText()`
-    //    (sopra) mostra testo HTML Montserrat vero, stesso sdoppiamento
+    //    (sopra) mostra testo HTML Metropolis vero, stesso sdoppiamento
     //    cromatico ciano/blu del titolo del menu ma molto piu' intenso
     //    (visibile per tutta la breve durata della fase, non un lampo raro
     //    — vedi il commento li'), "MOUNT FUJI SOFTWARE" (niente "presents")

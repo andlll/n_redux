@@ -142,7 +142,7 @@ export async function mountTitle(ctx) {
   const FIT_MARGIN = 0.95;
   const labelMeasureCtx = document.createElement("canvas").getContext("2d");
   function fitFontSize(text, baseSizePx, maxWidthPx) {
-    labelMeasureCtx.font = `700 ${baseSizePx}px Montserrat, sans-serif`;
+    labelMeasureCtx.font = `700 ${baseSizePx}px Metropolis, sans-serif`;
     const w = labelMeasureCtx.measureText(text).width;
     return w > maxWidthPx ? baseSizePx * (maxWidthPx / w) * FIT_MARGIN : baseSizePx;
   }
@@ -557,7 +557,7 @@ export async function mountTitle(ctx) {
 
   // [Nuova funzionalita', richiesta dall'autore: "aggiungi le scritte NIMBUS
   // (centrata in alto) e REDUX (piccola sotto)"] Testo HTML vero,
-  // Montserrat (self-hosted, index.html — stesso font gia' usato per menu
+  // Metropolis (self-hosted, index.html — stesso font gia' usato per menu
   // di pausa/tutorial/barra risorse in main.js), non uno sprite: nessun
   // equivalente nel decompilato (`title` non aveva un titolo testuale
   // separato dal banner, STUDIO.md — era tutto dentro `logigogi`, sopra),
@@ -593,7 +593,7 @@ export async function mountTitle(ctx) {
   // rapporto d'aspetto, non solo quella misurata a mano.
   const titleWrap = document.createElement("div");
   titleWrap.style.cssText = "position:fixed;left:0;right:0;top:max(16px,3.2vh);text-align:center;" +
-    "pointer-events:none;z-index:4;font-family:Montserrat,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;";
+    "pointer-events:none;z-index:4;font-family:Metropolis,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;";
   const NIMBUS_SIZE = "font-size:clamp(26px,5.2vh,56px);font-weight:800;letter-spacing:0.1em;";
   const REDUX_SIZE = "font-size:clamp(9px,1.15vh,14px);font-weight:700;letter-spacing:0.5em;margin-top:2px;";
   // Stessi colori/ritardo del secondo strato (`.ghost.blue`, index.html) —

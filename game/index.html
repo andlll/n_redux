@@ -89,26 +89,49 @@
      resta come fallback per un browser che non capisce ancora `100dvh`
      (ignora la dichiarazione che non riconosce, tiene quella prima). */
   #view { display: block; width: 100vw; height: 100vh; height: 100dvh; }
-  /* Montserrat (SIL Open Font License, game/fonts/OFL.txt) — sostituisce il
-     font bitmap "gotham" usato prima per il menu di pausa/il balloon del
-     tutorial (game/src/main.js): segnalato dall'autore, quel font ha un
-     atlas troppo piccolo per restare nitido oltre scala 1, quindi "sgranato"
-     comunque sugli elementi piu' grandi. Testo HTML vero (vettoriale, come
-     la scritta "loading" qui sotto) invece di un secondo atlas bitmap piu'
-     grande: nitido a QUALUNQUE dimensione, non solo un compromesso migliore.
-     Un solo peso (700, ~19KB, solo il sottoinsieme "latin" — l'interfaccia e'
-     tutta in inglese) scaricato una volta sola qui, non da Google Fonts a
-     runtime: lo stesso principio "il repo e' autosufficiente" di ogni altro
-     asset del motore (README, "non serve nessuna cartella locale... tutto
-     cio' che non e' versionato si rigenera da cio' che lo e'") — un sito
-     gia' pensato per girare offline da file statici non deve acquisire
-     proprio ora una dipendenza di rete a runtime da un dominio esterno. */
+  /* Metropolis (SIL Open Font License, game/fonts/OFL.txt) — al posto di
+     Metropolis, scelta dell'autore. Sostituisce il font bitmap "gotham"
+     usato prima per il menu di pausa/il balloon del tutorial
+     (game/src/main.js): quel font aveva un atlas troppo piccolo per restare
+     nitido oltre scala 1. Testo HTML vero (vettoriale, come la scritta
+     "loading" qui sotto): nitido a QUALUNQUE dimensione. Due pesi (700 e
+     800, ~16KB l'uno, i file interi convertiti in woff2 senza subset: la
+     licenza riserva il nome "Metropolis" alle versioni non modificate),
+     scaricati una volta sola qui, non da Google Fonts a runtime — il repo
+     e' autosufficiente, un sito pensato per girare offline da file statici
+     non deve avere una dipendenza di rete a runtime da un dominio esterno.
+
+     Metropolis e' un po' piu' compatto di Metropolis: minuscole ~4% piu'
+     basse (x-height 517 contro 538 su 1000) e metriche verticali molto
+     diverse (ascent/descent 795/205 contro 968/251). Invece di ritoccare
+     ogni font-size e ogni offset sparsi nel motore, si compensa qui una
+     volta sola con i descrittori di @font-face: `size-adjust` allinea
+     l'altezza ottica (538/517 = 104%), `ascent-override`/`descent-override`
+     riportano il box di riga dove stava con Metropolis (968 e 251 su 1000,
+     divisi per il 104% perche' i due valori sono scalati da size-adjust) —
+     cosi' etichette, pillole e HUD restano centrati come prima. Vale anche
+     per la misura su canvas (measureText usa lo stesso @font-face). */
   @font-face {
-    font-family: "Montserrat";
+    font-family: "Metropolis";
     font-style: normal;
     font-weight: 700;
     font-display: swap;
-    src: url("./fonts/montserrat-700.woff2") format("woff2");
+    src: url("./fonts/metropolis-700.woff2") format("woff2");
+    size-adjust: 104%;
+    ascent-override: 93.1%;
+    descent-override: 24.1%;
+    line-gap-override: 0%;
+  }
+  @font-face {
+    font-family: "Metropolis";
+    font-style: normal;
+    font-weight: 800;
+    font-display: swap;
+    src: url("./fonts/metropolis-800.woff2") format("woff2");
+    size-adjust: 104%;
+    ascent-override: 93.1%;
+    descent-override: 24.1%;
+    line-gap-override: 0%;
   }
   /* Elementi del pool di testo HTML riusato dal menu di pausa/dal balloon
      del tutorial (game/src/main.js, drawHtmlText()) — un solo posto per lo
@@ -122,7 +145,7 @@
   .gameText {
     position: fixed;
     display: none;
-    font-family: Montserrat, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: Metropolis, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     font-weight: 700;
     line-height: 1.4;
     pointer-events: none;

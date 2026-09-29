@@ -922,6 +922,19 @@ DEDUP_CONSECUTIVE_SPRITES = {
     "c551x", "c552x", "c553x", "c554x",
 }
 
+# [Bug segnalato dall'autore: "il laser in alcune posizioni shifta verso
+# l'alto di pochissimi pixel"] Difetto dei DATI ORIGINALI, non
+# dell'estrazione: le 16 direzioni della torretta laser (`lan1`..`lan16`)
+# condividono tutte l'origine (239,454), ma nei primi sei frame (lan1..lan6)
+# la torre e' disegnata 3px PIU' IN BASSO che nei restanti dieci — misurato
+# frame per frame con una registrazione al pixel della sola base, che e'
+# identica in tutti e 16 (XOR = 0 dopo lo scarto): dx=0, dy=+3 per lan1..6,
+# dy=0 per lan7..16. Ruotando la mira la torre "saltava" di 3px ogni volta
+# che si passava da un gruppo all'altro. Si allinea al gruppo di 10 (e' la
+# maggioranza) alzando i sei di 3px, cioe' spostando la loro origine.
+# Chiave = nome sprite, valore = px di cui ALZARE il disegno (oy += valore).
+ORIGIN_RAISE = {f"lan{i}": 3 for i in range(1, 7)}
+
 # ---------------------------------------------------------------- raccolta
 # Sprite piazzate DIRETTAMENTE nella room (scene["instances"]) sono sempre
 # "core": e' esattamente il decoro/gli edifici che il giocatore vede nel
@@ -971,7 +984,7 @@ for name in used:
             "src": fr["tex"], "sx": fr["x"], "sy": fr["y"],
             "w": fr["w"], "h": fr["h"],
             "ox": s["origin_x"] - fr["render_x"],
-            "oy": s["origin_y"] - fr["render_y"],
+            "oy": s["origin_y"] - fr["render_y"] + ORIGIN_RAISE.get(name, 0),
         })
 
 if not rects:
