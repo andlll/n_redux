@@ -15,7 +15,6 @@ import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js"
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { Pool } from "./pool.js";
 import { spawnLightning, stepLightning, boltSprite, glowAlpha, LIGHTNING_GLOW_LIFE } from "./lightning.js";
-import { MIN_FRAME_MS } from "./renderscale.js";
 import { createWeatherState, stepRain, rainDropAngle, RAIN_STREAK_LENGTH, RAIN_STREAK_WIDTH, RAIN_TINT, RAIN_ALPHA } from "./weather.js";
 import { createFireworksState, stepFireworks, FIREWORK_DEPTH, FIREWORK_SPARK_SIZE } from "./fireworks.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
@@ -30,7 +29,7 @@ import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings, fileSystemAccessSupported } from "./save.js";
-import { loadGraphicsOptions, saveGraphicsOptions } from "./graphicsOptions.js";
+import { loadGraphicsOptions, saveGraphicsOptions, frameMinMs, FPS_CAPS } from "./graphicsOptions.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   tutorialText, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN, seaScrollOffset,
@@ -4097,11 +4096,15 @@ export async function mountMatch(ctx, params = {}) {
       { label: t("graphicsOptions.cars", { state: onOff(st.graphics.cars) }), action: "toggleCars" },
       { label: t("graphicsOptions.pedestrians", { state: onOff(st.graphics.pedestrians) }), action: "togglePedestrians" },
       { label: t("graphicsOptions.minorEffects", { state: onOff(st.graphics.minorEffects) }), action: "toggleMinorEffects" },
-      { label: t("savingOptions.back"), action: "back" },
     ];
+    // [Nuova funzionalita', richiesta dall'autore: "uno slider con gli fps
+    // (bloccato su 30, su 60, senza limite), default 60"] Tre valori discreti:
+    // stesso controllo segmentato della lingua/dell'intervallo di autosave
+    // (drawSegmentedControl()), fra i toggle e "Back".
+    const FPS_CAPTION_H = 22, FPS_SEG_H = 40;
     const btnH = 46, btnGap = 14;
     const panelW = Math.min(360, cw - 40);
-    const panelH = 96 + rows.length * (btnH + btnGap) + 20;
+    const panelH = 96 + rows.length * (btnH + btnGap) + FPS_CAPTION_H + FPS_SEG_H + btnGap + (btnH + btnGap) + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
@@ -4118,6 +4121,15 @@ export async function mountMatch(ctx, params = {}) {
       st.pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
+    drawHtmlText(t("graphicsOptions.fps"), bx + btnW / 2, by + FPS_CAPTION_H / 2, { size: 14, maxWidth: btnW - 20 });
+    by += FPS_CAPTION_H;
+    st.pauseMenuButtons.push(...drawSegmentedControl(bx, by, btnW, FPS_SEG_H,
+      FPS_CAPS.map((v) => ({ value: v, selected: v === st.graphics.fpsCap })), "setFps",
+      (seg, sx, sy, sw, sh) => drawHtmlText(seg.value ? String(seg.value) : t("graphicsOptions.fpsUnlimited"), sx + sw / 2, sy + sh / 2, { size: 14, maxWidth: sw - 6 })));
+    by += FPS_SEG_H + btnGap;
+    r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
+    drawHtmlText(t("savingOptions.back"), bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
+    st.pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: "back" });
     r.flush();
   }
 
@@ -6394,6 +6406,9 @@ export async function mountMatch(ctx, params = {}) {
         } else if (hit?.action === "toggleMinorEffects") {
           st.graphics.minorEffects = !st.graphics.minorEffects;
           saveGraphicsOptions(st.graphics);
+        } else if (hit?.action === "setFps") {
+          st.graphics.fpsCap = hit.value;
+          saveGraphicsOptions(st.graphics);
         } else if (hit?.action === "back") {
           st.pauseSubmenu = null;
         }
@@ -7254,8 +7269,8 @@ export async function mountMatch(ctx, params = {}) {
     // riparte da solo, senza bisogno di un listener 'visibilitychange' a
     // parte.
     if (document.hidden) { st.last = now; requestAnimationFrame(frame); return; }
-    // Tetto a 60fps su schermi a 90/120Hz — vedi MIN_FRAME_MS (renderscale.js).
-    if (now - st.last < MIN_FRAME_MS) { requestAnimationFrame(frame); return; }
+    // Limite di fps scelto nelle opzioni grafiche (default 60) — vedi frameMinMs().
+    if (now - st.last < frameMinMs()) { requestAnimationFrame(frame); return; }
     // Un solo reset per frame, prima di ogni possibile drawHtmlText() (il
     // balloon del tutorial e il menu di pausa/"saving options", entrambi
     // piu' sotto) — hideUnusedText() (in fondo a questa stessa funzione)

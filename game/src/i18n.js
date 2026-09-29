@@ -90,6 +90,8 @@ const STRINGS = {
 
   // ------------------------------------------------------ opzioni grafiche
   "graphicsOptions.title": { en: "GRAPHICS OPTIONS", it: "OPZIONI GRAFICHE", es: "OPCIONES GRÁFICAS", pt: "OPÇÕES GRÁFICAS", de: "GRAFIKOPTIONEN", fr: "OPTIONS GRAPHIQUES" },
+  "graphicsOptions.fps": { en: "Frame rate limit", it: "Limite di fps", es: "Límite de fps", pt: "Limite de fps", de: "Bildratenlimit", fr: "Limite de fps" },
+  "graphicsOptions.fpsUnlimited": { en: "Unlimited", it: "Nessuno", es: "Sin límite", pt: "Sem limite", de: "Unbegrenzt", fr: "Illimité" },
   "graphicsOptions.rain": { en: "Rain: {state}", it: "Pioggia: {state}", es: "Lluvia: {state}", pt: "Chuva: {state}", de: "Regen: {state}", fr: "Pluie : {state}" },
   "graphicsOptions.cars": { en: "Vehicles: {state}", it: "Veicoli: {state}", es: "Vehículos: {state}", pt: "Veículos: {state}", de: "Fahrzeuge: {state}", fr: "Véhicules : {state}" },
   "graphicsOptions.pedestrians": { en: "Pedestrians: {state}", it: "Pedoni: {state}", es: "Peatones: {state}", pt: "Pedestres: {state}", de: "Fußgänger: {state}", fr: "Piétons : {state}" },

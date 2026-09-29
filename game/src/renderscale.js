@@ -48,17 +48,6 @@ const EMA_WEIGHT = 0.02;   // costante di tempo ~1.5s a 60fps: ignora un singolo
 const COOLDOWN = 3;        // secondi minimi fra due cambi di gradino consecutivi
 const MAX_SAMPLE_DT = 1;   // oltre un secondo e' uno stallo (alt-tab, GC enorme), non un dato utile
 
-// [Ottimizzazione mobile] Tetto a 60fps del ciclo di disegno: su schermi a
-// 90/120Hz (iPhone ProMotion, molti Android) requestAnimationFrame scatta a
-// 90-120 volte al secondo, e disegnare piu' di 60 volte non aggiunge nulla
-// a un gioco a passo fisso ~30/60Hz — solo GPU, calore e batteria. Un frame
-// piu' ravvicinato di questa soglia viene saltato (si ripianifica il rAF
-// senza toccare `last`, quindi il `dt` del frame successivo resta quello
-// vero). La soglia e' 2ms SOTTO i 16.67ms di uno schermo a 60Hz per non
-// scartare per errore frame validi con un po' di jitter; su 120Hz (8.33ms)
-// salta esattamente un frame su due.
-export const MIN_FRAME_MS = 1000 / 60 - 2;
-
 export class RenderScale {
   constructor(isSoftwareRendering) {
     this.softwareRendering = isSoftwareRendering;

@@ -4446,3 +4446,12 @@ paragrafo 8.
   testo e offset in pixel moltiplicati per `k`). A zoom 1 e' identico a prima.
   Gli altri cartellini (menu costruzioni, upgrade, ruderi del tutorial) restano
   a taglia costante, come deciso in precedenza.
+- **Limite di fps nelle opzioni grafiche.** Controllo segmentato a tre voci
+  (30 / 60 / Nessuno, default 60) fra i toggle e "Back" di "Graphics options",
+  stesso `drawSegmentedControl()` di lingua e intervallo di autosave; salvato
+  in `nimbus-graphics` (`fpsCap`: 30, 60 o 0 = nessun limite). `frameMinMs()`
+  (graphicsOptions.js, letto gia' al primo frame del menu) sostituisce la
+  costante `MIN_FRAME_MS` di renderscale.js nei due cicli (match e title):
+  un frame piu' ravvicinato di `1000/fps - 2` ms si salta senza toccare `last`.
+  Con 30 fps la scala di risoluzione adattiva non sale mai (soglia 50) ma non
+  scende neanche (soglia 24).

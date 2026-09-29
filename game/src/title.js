@@ -42,7 +42,7 @@
 // nodo DOM del messaggio), cosi' rientrare nel menu piu' volte nella stessa
 // sessione non accumula loop/listener fantasma.
 import { solidFrame } from "./gl.js";
-import { MIN_FRAME_MS } from "./renderscale.js";
+import { frameMinMs } from "./graphicsOptions.js";
 import { loadFromFile } from "./save.js";
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup } from "./assets.js";
@@ -388,8 +388,8 @@ export async function mountTitle(ctx) {
     // finche' non torna visibile. `last = now` evita un `dt` gigante al
     // ritorno; requestAnimationFrame() resta comunque ripianificato.
     if (document.hidden) { last = now; requestAnimationFrame(frame); return; }
-    // Tetto a 60fps su schermi a 90/120Hz — vedi MIN_FRAME_MS (renderscale.js).
-    if (now - last < MIN_FRAME_MS) { requestAnimationFrame(frame); return; }
+    // Limite di fps scelto nelle opzioni grafiche (default 60) — vedi frameMinMs().
+    if (now - last < frameMinMs()) { requestAnimationFrame(frame); return; }
     // Stesso principio applicato a game/src/main.js (segnalato dall'autore:
     // "su desktop non riesco ad avviare match, rimane fermo in caricamento
     // con schermo nero") — un errore qui dentro (requestAnimationFrame, mai
