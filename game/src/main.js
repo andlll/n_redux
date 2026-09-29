@@ -15,6 +15,7 @@ import { stepCoinSpawner, stepCoins, collectCoin, COIN_DEPTH } from "./coins.js"
 import { stepSmokeSpawner, stepSmoke, SMOKE_FRAME_COUNT, SMOKE_LIFE } from "./smoke.js";
 import { Pool } from "./pool.js";
 import { spawnLightning, stepLightning, boltSprite, glowAlpha, LIGHTNING_GLOW_LIFE } from "./lightning.js";
+import { MIN_FRAME_MS } from "./renderscale.js";
 import { createWeatherState, stepRain, rainDropAngle, RAIN_STREAK_LENGTH, RAIN_STREAK_WIDTH, RAIN_TINT, RAIN_ALPHA } from "./weather.js";
 import { createFireworksState, stepFireworks, FIREWORK_DEPTH, FIREWORK_SPARK_SIZE } from "./fireworks.js";
 import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
@@ -3552,12 +3553,48 @@ export async function mountMatch(ctx, params = {}) {
   // (1) + intestazione olio (1) + le due righe legenda della barra olio (2)
   // = 18. Nuovo worst case: 12 + 18 = 30, +1 di margine.
   const TEXT_POOL_SIZE = 31;
+  // [Ottimizzazione mobile] Ogni elemento del pool riscriveva 6-8 proprieta'
+  // di stile e il testo ad OGNI frame anche se identici, e il browser deve
+  // comunque invalidare lo stile. `el.style` e' sostituito da un proxy che
+  // ricorda l'ultimo valore scritto per proprieta' e inoltra al DOM solo i
+  // cambiamenti: cosi' OGNI scrittura (drawHtmlText, hideUnusedText, i
+  // `descEl.style.top`/`textEl.style.top` dei pannelli) passa dalla stessa
+  // cache senza dover toccare i chiamanti, e la cache non puo' disallinearsi
+  // dal DOM. Le proprieta' che cambiano il layout azzerano `_epoch`, la misura
+  // d'altezza in cache (elHeight() sotto).
+  const LAYOUT_PROPS = new Set(["fontSize", "width", "maxWidth", "lineHeight", "whiteSpace"]);
+  function cachedStyle(el) {
+    const real = el.style, last = {};
+    return new Proxy(real, {
+      set(t, k, v) {
+        if (last[k] === v) return true;
+        last[k] = v;
+        t[k] = v;
+        if (LAYOUT_PROPS.has(k)) el._epoch = -1;
+        return true;
+      },
+      get(t, k) { const v = t[k]; return typeof v === "function" ? v.bind(t) : v; },
+    });
+  }
   const textPool = Array.from({ length: TEXT_POOL_SIZE }, () => {
     const el = document.createElement("div");
     el.className = "gameText";
+    Object.defineProperty(el, "style", { value: cachedStyle(el) });
     document.body.appendChild(el);
     return el;
   });
+  // `getBoundingClientRect()` forza un layout sincrono: per il pannello info
+  // edificio e il balloon del tutorial si rifa' solo se testo/stile di layout
+  // sono cambiati o un font web e' arrivato nel frattempo (`fontEpoch`).
+  let fontEpoch = 0;
+  document.fonts?.addEventListener?.("loadingdone", () => { fontEpoch++; });
+  function elHeight(el) {
+    if (el._epoch !== fontEpoch || el._h == null) {
+      el._h = el.getBoundingClientRect().height;
+      el._epoch = fontEpoch;
+    }
+    return el._h;
+  }
   st.textPoolUsed = 0;
   function resetTextPool() { st.textPoolUsed = 0; }
   // [Nuova funzionalita', richiesta dall'autore: "sostituisci gli sprite
@@ -3657,7 +3694,7 @@ export async function mountMatch(ctx, params = {}) {
   // (i due messaggi di sconfitta sotto), il secondo resta identico a prima.
   function drawHtmlText(text, x, y, { size = 16, maxWidth, wrap = false, align, color } = {}) {
     const el = textPool[st.textPoolUsed++];
-    el.textContent = text;
+    if (el._txt !== text) { el._txt = text; el.textContent = text; el._epoch = -1; }
     el.style.display = "block";
     el.style.fontSize = `${size}px`;
     el.style.left = `${x}px`;
@@ -4225,11 +4262,11 @@ export async function mountMatch(ctx, params = {}) {
     if (showControl) {
       const info = AUTO_DEFENSE_LEVELS[autoDefLevel - 1];
       descEl = drawHtmlText(info.desc, barX, 0, { size: 12.5, maxWidth: barW, wrap: true, align: "center" });
-      descH = descEl.getBoundingClientRect().height;
+      descH = elHeight(descEl);
     } else if (showThrottle) {
       const info = THROTTLE_LEVELS[throttleLevel - 1];
       descEl = drawHtmlText(info.desc, barX, 0, { size: 12.5, maxWidth: barW, wrap: true, align: "center" });
-      descH = descEl.getBoundingClientRect().height;
+      descH = elHeight(descEl);
     }
     const DESC_GAP = 14;
     const autoDefBlockH = showControl ? (SEG_H + 12 + 20 + descH + DESC_GAP + 22) : 0;
@@ -7144,6 +7181,8 @@ export async function mountMatch(ctx, params = {}) {
     // riparte da solo, senza bisogno di un listener 'visibilitychange' a
     // parte.
     if (document.hidden) { st.last = now; requestAnimationFrame(frame); return; }
+    // Tetto a 60fps su schermi a 90/120Hz — vedi MIN_FRAME_MS (renderscale.js).
+    if (now - st.last < MIN_FRAME_MS) { requestAnimationFrame(frame); return; }
     // Un solo reset per frame, prima di ogni possibile drawHtmlText() (il
     // balloon del tutorial e il menu di pausa/"saving options", entrambi
     // piu' sotto) — hideUnusedText() (in fondo a questa stessa funzione)
@@ -9693,7 +9732,7 @@ export async function mountMatch(ctx, params = {}) {
       const textW = boxRight - boxLeft - pad * 2;
       const textEl = drawHtmlText(tutorialText(Math.floor(st.tutorialState.phase)), boxLeft + pad, 0,
         { size: 16, maxWidth: textW, wrap: true });
-      const boxH = textEl.getBoundingClientRect().height + pad * 2;
+      const boxH = elHeight(textEl) + pad * 2;
       const boxBottom = canvas.clientHeight - st.tutorialState.uiGap;
       const boxTop = boxBottom - boxH;
       textEl.style.top = `${boxTop + pad}px`;
