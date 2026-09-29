@@ -5519,21 +5519,29 @@ export async function mountMatch(ctx, params = {}) {
    * risorse di notte (`iconsDark` piu' sotto) — qui tinta con lo stesso
    * `textRgb` del testo, cosi' icona e numero restano dello stesso colore
    * qualunque esso sia.] */
-  function drawCostTagAt(tag, pillX, pillY, textX, textY, { tint = 0x000000, textRgb = [255, 255, 255], alpha = 1, zoom = 1 } = {}) {
+  function drawCostTagAt(tag, pillX, pillY, textX, textY, { tint = 0x000000, textRgb = [255, 255, 255], alpha = 1, zoom = 1, follow = false } = {}) {
     const { resolved, total } = layoutIconParts(normalizeTag(tag), TAG_TEXT_SIZE, TAG_GAP);
     const h = TAG_PILL_H;
     const w = Math.round(total + TAG_PAD);
-    r.draw(tagPillFrame(w, h), pillX - (w / 2) * zoom, pillY, zoom, tint, alpha);
+    // `follow` (popup ruspa): il cartellino si comporta come un oggetto di
+    // MONDO, scalato con la camera come i bottoni sì/no accanto a lui — a
+    // differenza degli altri cartellini (constanti a schermo, `zoom` sopra li
+    // compensa). Pillola e iconcine restano quad di mondo a scala 1 (finiscono
+    // a 1/zoom pixel schermo); testo e passi in pixel schermo si moltiplicano
+    // per lo stesso 1/zoom (`k`).
+    const k = follow ? 1 / zoom : 1;
+    const qz = follow ? 1 : zoom;
+    r.draw(tagPillFrame(w, h), pillX - (w / 2) * qz, pillY, qz, tint, alpha);
     const [tr, tg, tb] = textRgb;
     const iconTint = (tr << 16) | (tg << 8) | tb;
     const hasIcon = resolved.some((p) => p.frame);
     if (hasIcon) r.setColorize(true);
-    let px = pillX - (total / 2) * zoom, tx = textX - total / 2;
+    let px = pillX - (total / 2) * qz, tx = textX - (total / 2) * k;
     for (const p of resolved) {
-      if (p.frame) r.draw(p.frame, px, pillY + ((h - p.iconH) / 2) * zoom, p.scale * zoom, iconTint, alpha);
-      else drawHtmlText(p.text, tx, textY + h / 2, { size: TAG_TEXT_SIZE, align: "left", color: `rgba(${tr},${tg},${tb},${alpha})` });
-      px += (p.w + TAG_GAP) * zoom;
-      tx += p.w + TAG_GAP;
+      if (p.frame) r.draw(p.frame, px, pillY + ((h - p.iconH) / 2) * qz, p.scale * qz, iconTint, alpha);
+      else drawHtmlText(p.text, tx, textY + (h / 2) * k, { size: TAG_TEXT_SIZE * k, align: "left", color: `rgba(${tr},${tg},${tb},${alpha})` });
+      px += (p.w + TAG_GAP) * qz;
+      tx += (p.w + TAG_GAP) * k;
     }
     if (hasIcon) r.setColorize(false);
   }
@@ -8745,10 +8753,14 @@ export async function mountMatch(ctx, params = {}) {
         const noX = b.x + 16 * UI_SCALE, noY = b.y - 16 * UI_SCALE;
         const yesX = b.x + 177 * UI_SCALE, yesY = b.y - 16 * UI_SCALE;
         const s1 = cam.worldToScreen(noX + (RUSPA_BTN_W * UI_SCALE) / 2, noY + (RUSPA_BTN_H * UI_SCALE) / 2);
-        drawHtmlText("No", s1.x, s1.y, { size: 17, color: "#ffffff" });
+        // Il popup segue lo zoom del mondo come i suoi bottoni (quad di mondo:
+        // 1/zoom pixel schermo per unita'): il testo va scalato uguale, non
+        // tenuto a 17px fissi — `k` come in drawCostTagAt() (`follow`).
+        const kz = 1 / cam.zoom;
+        drawHtmlText("No", s1.x, s1.y, { size: 17 * kz, color: "#ffffff" });
         const s2 = cam.worldToScreen(yesX + (RUSPA_BTN_W * UI_SCALE) / 2, yesY + (RUSPA_BTN_H * UI_SCALE) / 2);
-        drawHtmlText("Yes!", s2.x, s2.y, { size: 17, color: "#ffffff" });
-        drawCostTagWorld(costParts({ mon: st.ruspaPending.cost }), b.x + 157 * UI_SCALE, b.y - 185 * UI_SCALE);
+        drawHtmlText("Yes!", s2.x, s2.y, { size: 17 * kz, color: "#ffffff" });
+        drawCostTagWorld(costParts({ mon: st.ruspaPending.cost }), b.x + 157 * UI_SCALE, b.y - 185 * UI_SCALE, { follow: true });
       }
     }
     drawBeams();

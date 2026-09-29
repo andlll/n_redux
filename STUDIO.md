@@ -4437,3 +4437,12 @@ paragrafo 8.
   (nell'originale continua fino a `deathT`, al massimo 1145 tick); `ruindeath`
   (rimuove ruderi vicini) non c'e'. `ruspaFirstStepDur` resta solo per lo
   sgombero dei ruderi (catena di `casa`).
+- **Popup sì/no della ruspa: tutto segue lo zoom del mondo.** I bottoni sono
+  quad di mondo (`1/zoom` pixel schermo per unita', `camera.worldToScreen()`),
+  ma "Yes!"/"No" erano testo DOM a 17px fissi e il cartellino del costo era
+  compensato per restare a taglia costante: zoomando le tre parti si
+  scollegavano. Ora testo e cartellino si scalano con lo stesso `k = 1/zoom`
+  (`drawCostTagAt(..., { follow: true })`: pillola/iconcine a scala 1 di mondo,
+  testo e offset in pixel moltiplicati per `k`). A zoom 1 e' identico a prima.
+  Gli altri cartellini (menu costruzioni, upgrade, ruderi del tutorial) restano
+  a taglia costante, come deciso in precedenza.
