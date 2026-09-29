@@ -130,6 +130,7 @@ GAMEPLAY_SPRITES = {
         "if31", "if32", "if33", "if34", "if35", "if36",
         "if41", "if42", "if43", "if44", "if45", "if46",
         "im2f", "im4f",   # coperchio a gru di fine cantiere (upgrades[i].cap)
+        "im1f",           # impalcatura anteriore della ruspa sulle catene di taglia 1 (impacasa1f/imparcof_demo...): buildings.js, `ruspaFrontTrack`
         # casa: terzo edificio, tre livelli (casa1/2/3), 20 varianti
         # sprite+decoro a dado per livello (src/objects/casa1|2|3/Create.gml,
         # STUDIO.md §9). Il cantiere riusa gli sprite ir1x/2x/3x/4x gia'
@@ -415,6 +416,9 @@ GAMEPLAY_SPRITES = {
     # sprite di questo gruppo senza perdere alcun dettaglio (non essendocene
     # da perdere in una sagoma piatta).
     "gui": [
+        # `playbuttoner` (pausa/riprendi del cantiere del grattacielo,
+        # 100x100, origine al centro): main.js, skyPauseButtonAt().
+        "pupause", "puplay",
         "icone_oriz",          # sfondo barra risorse (repre/DrawGUI.gml)
         "crys_ico",            # icona nera dei cristalli (main.js, riga GUI sotto la barra risorse)
         # [Nuova funzionalita', richiesta dall'autore: "il grattacielo si

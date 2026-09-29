@@ -125,6 +125,11 @@ for font in gotham_mini gotham_mid; do
 done
 ```
 
+Se cambia una catena di impalcatura (`impa*`), o per rifare i tempi di
+costruzione/demolizione dal decompilato, rilancia
+`python3 tools/28_scaffold_timing.py`: simula le catene (`tools/gmsim.py`) e
+riscrive `game/src/scaffoldTiming.js`.
+
 `24_blit.py` è la versione Python/Pillow — cross-platform — di
 `24_blit.ps1` (PowerShell + GDI+, Windows-only, tenuto per chi già lavora lì).
 Fanno lo stesso lavoro a partire dallo stesso `blitplan.json`; usa quello che

@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap, wewOilDrain, WEWE_OIL_DRAIN_PERIOD } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, INDUSTRIA3_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId, currentEnergyStats } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, isRaining, solarEleRate, WIND_ANIM_FPS, INDUSTRIA3_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaDemolish, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId, currentEnergyStats, constructionStalled } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -29,7 +29,7 @@ import { clickShip } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings, fileSystemAccessSupported } from "./save.js";
-import { loadGraphicsOptions, saveGraphicsOptions } from "./graphicsOptions.js";
+import { loadGraphicsOptions, saveGraphicsOptions, frameMinMs, FPS_CAPS } from "./graphicsOptions.js";
 import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   tutorialText, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN, seaScrollOffset,
@@ -58,6 +58,7 @@ export async function mountMatch(ctx, params = {}) {
   // prevede (nessun sistema di particelle in questo motore, STUDIO.md), e'
   // puramente nostra.
   const bubbleTex = makeCircleTexture(gl, 64);
+  const bubbleUnitFrame = solidFrame(bubbleTex, 1, 1);   // riusato con `scale = diametro`, vedi coinPops/faroFlashes
   const cam = new Camera();
 
   // Zoom vero solo su mobile. Un puntatore "coarse" (dito, niente hover fine)
@@ -724,7 +725,45 @@ export async function mountMatch(ctx, params = {}) {
    * piu' vicino alla telecamera) — cambia solo l'ordine FRA fasce diverse,
    * non dentro la stessa.
    */
-  function buildingAt(sx, sy) {
+  // [Nuova funzionalita', richiesta dall'autore: "solo desktop: tenendo
+  // premuto con la mano attiva si apre la finestra dell'edificio illuminato
+  // di blu, se sono due o piu' teniamo la precedenza difesa>produttore>altro"]
+  // `litOnly`: invece dell'area di tap (turretHitBox() allargata per le
+  // torrette, rettangolo del frame per gli altri) usa ESATTAMENTE lo stesso
+  // test dell'hover azzurro (`handHovered`, giro di disegno sugli edifici):
+  // rettangolo del frame + maschera pixel per i non-torretta — cosi' si apre
+  // sempre l'edificio che il giocatore vede acceso, mai uno diverso. La
+  // precedenza fra fasce e' la stessa di sempre (sotto).
+  // [Nuova funzionalita', richiesta dall'autore: portare `playbuttoner`]
+  // Pausa/riprendi del cantiere del grattacielo — vedi il commento su
+  // `construct.pausable` in buildings.js per cosa fa e cosa costa. [C]
+  // `m3cant/Create.gml`: `instance_create(x, y - 100, playbuttoner)`, sprite
+  // `pupause` (mentre corre) / `puplay` (in pausa), 100x100 con origine al
+  // centro, `image_alpha = 0.7`, depth -9000 (sempre in primo piano), niente
+  // tinta ambientale (non e' figlio di notte_target).
+  const SKY_BTN_SIZE = 100, SKY_BTN_DY = -100;
+  function skyPauseButtonAt(wx, wy) {
+    for (const b of st.buildings) {
+      if (b.type !== "grattacielo" || !b.construction) continue;
+      const x0 = b.x - SKY_BTN_SIZE / 2, y0 = b.y + SKY_BTN_DY - SKY_BTN_SIZE / 2;
+      if (wx >= x0 && wx <= x0 + SKY_BTN_SIZE && wy >= y0 && wy <= y0 + SKY_BTN_SIZE) return b;
+    }
+    return null;
+  }
+  /** Fallback procedurale finche' "pupause"/"puplay" non sono nell'atlas
+   * (tools/23_atlas.py, gruppo "gui": serve rigenerare gli atlas): disco scuro
+   * con le due barre della pausa o il triangolo del play. */
+  function drawSkyPauseFallback(b) {
+    const cx = b.x, cy = b.y + SKY_BTN_DY;
+    r.draw(bubbleUnitFrame, cx - SKY_BTN_SIZE / 2, cy - SKY_BTN_SIZE / 2, SKY_BTN_SIZE, 0x000000, 0.7);
+    if (b.paused) {
+      r.drawQuadXY(solidFrame(white, 1, 1), cx - 14, cy - 24, cx + 24, cy, cx - 14, cy + 24, cx - 14, cy + 24, 0xffffff, 0.9);
+    } else {
+      r.draw(solidFrame(white, 12, 44), cx - 18, cy - 22, 1, 0xffffff, 0.9);
+      r.draw(solidFrame(white, 12, 44), cx + 6, cy - 22, 1, 0xffffff, 0.9);
+    }
+  }
+  function buildingAt(sx, sy, litOnly = false) {
     const w = cam.screenToWorld(sx, sy);
     let turretMatch = null, plantMatch = null, otherMatch = null;
     for (let i = st.frameList.length - 1; i >= 0; i--) {
@@ -732,8 +771,9 @@ export async function mountMatch(ctx, params = {}) {
       if (it.obj !== "building") continue;
       const def = BUILDING_TYPES[it.ref.type];
       const isTurret = !!def?.turret;
-      const box = isTurret ? turretHitBox(it.ref.type) : it._f;
+      const box = isTurret && !litOnly ? turretHitBox(it.ref.type) : it._f;
       if (!box || !inFrameRect(w.x, w.y, it.x, it.y, box)) continue;
+      if (litOnly && !isTurret && !pixelHit(w.x, w.y, it.x, it.y, it._spr, it._frameIdx)) continue;
       if (isTurret) { turretMatch = it.ref; break; }   // fascia massima gia' trovata, nessun altro giro puo' batterla
       const isPlant = !!(def?.production || def?.solarProduction || def?.windProduction);
       if (isPlant) { if (!plantMatch) plantMatch = it.ref; }
@@ -755,7 +795,13 @@ export async function mountMatch(ctx, params = {}) {
     const c = b.construction;
     if (!c?.curSpd) return 0;
     const frames = frameCountFor(b.spr);
-    return frames > 1 ? Math.floor(c.t * 60 * c.curSpd) % frames : 0;
+    if (frames <= 1) return 0;
+    // `c.curStart`: fotogramma da cui parte il passo (`start`, buildings.js) e
+    // velocita' anche NEGATIVA — `impavent_dem` gioca `impvent3`/`impvent1` a
+    // ritroso (`action_sprite_set(impvent3, 21, -0.01)`), come GameMaker:
+    // indice reale, floor solo al disegno.
+    const raw = Math.floor((c.curStart ?? 0) + c.t * 60 * c.curSpd);
+    return c.curSpd < 0 ? Math.max(0, Math.min(frames - 1, raw)) : raw % frames;
   }
   // Alberi (STUDIO.md §5.3, src/objects/albe|albe2|albe3/Create.gml): a
   // Create l'originale sceglie a dado uno sprite finale diverso per istanza
@@ -776,9 +822,35 @@ export async function mountMatch(ctx, params = {}) {
     if (obj === "albe3") return dice(2) ? (dice(2) ? "a31" : "a32") : (dice(2) ? "a33" : "a34");
     return null;
   }
+  // [Nuova funzionalita', richiesta dall'autore: "porta la diffusione degli
+  // alberi"] [C] `albe/Collision_r12.gml`: `r12` ha sprite `baa11` (1170x1558,
+  // la meta' sinistra della mappa — vedi il commento sulla room piu' sotto),
+  // quindi al primo Step OGNI albero che ne tocca la maschera passa da li'
+  // una volta sola (`selva=1`): dado 1/3 -> `albe2`, altrimenti dado 1/4 ->
+  // `albe3` (~50% in totale, alberi piu' alti e fitti: 48x65 contro 53x50).
+  // Serve solo a variare l'aspetto (il collision check e' il modo in cui
+  // l'originale limita l'effetto agli alberi sopra `baa11`, non c'e' altra
+  // logica). Fatto una volta al caricamento della scena, come treeVariant()
+  // sopra. [I] la maschera vera di `baa11` non e' nota: si usa il suo
+  // rettangolo intero (bbox) contro quello dello sprite dell'albero.
+  const r12Inst = scene.instances.find((i) => i.obj === "r12");
+  const r12Rect = r12Inst && r12Inst.w
+    ? { x0: r12Inst.x - (r12Inst.ox ?? 0), y0: r12Inst.y - (r12Inst.oy ?? 0) }
+    : null;
+  if (r12Rect) { r12Rect.x1 = r12Rect.x0 + r12Inst.w; r12Rect.y1 = r12Rect.y0 + r12Inst.h; }
+  function touchesR12(it) {
+    const fr = atlas.sprites[it.spr]?.[0];
+    if (!r12Rect || !fr) return false;
+    const x0 = it.x - fr.ox, y0 = it.y - fr.oy;
+    return x0 < r12Rect.x1 && x0 + fr.w > r12Rect.x0 && y0 < r12Rect.y1 && y0 + fr.h > r12Rect.y0;
+  }
   for (const it of staticWorld) {
     const v = treeVariant(it.obj);
     if (v) it.spr = v;
+    if (it.obj === "albe" && touchesR12(it)) {
+      const dense = dice(3) ? "albe2" : dice(4) ? "albe3" : null;
+      if (dense) { it.obj = dense; it.spr = treeVariant(dense); }
+    }
   }
 
   for (const it of staticWorld) it._f = frameFor(it.spr);
@@ -902,7 +974,7 @@ export async function mountMatch(ctx, params = {}) {
   // rovine non sparivano di colpo"] `ruin1|2|3/Mouse_LeftPressed.gml` non
   // sgombera il rudere all'istante: paga E POI crea `impacasa1r`/`impacasa2r`/
   // `impacasa3r` (STUDIO.md sopra) — lo stesso oggetto, con la stessa identica
-  // catena `Alarm_0..N`, che `tryRuspaRebuild()` (buildings.js) gia' riusa per
+  // catena `Alarm_0..N`, che `tryRuspaDemolish()` (buildings.js) gia' riusa per
   // ruspare un edificio VIVO: quindi gli STESSI `BUILDING_TYPES.casa.construct/
   // upgrades[0]/upgrades[1].steps` gia' verificati per quel percorso (diff
   // riga per riga contro `impacasa{1,2,3}r/f`: stessi sprite `irNN`, stesse
@@ -920,7 +992,7 @@ export async function mountMatch(ctx, params = {}) {
   // vero cantiere/ruspata su un edificio vivo — `ruspaFirstStepDur` (solo
   // sulla taglia 1: le taglie 2/3 hanno gia' un primo passo da 30 tic anche
   // nel cantiere normale, nessun accorciamento da applicare) resta l'unica
-  // differenza dal percorso di `tryRuspaRebuild()`.
+  // differenza dal percorso di `tryRuspaDemolish()`.
   //
   // A differenza di un cantiere/upgrade vero pero' un rudere in demolizione
   // non deve MAI rivelare una casa finita a meta' sequenza — l'originale
@@ -1022,11 +1094,11 @@ export async function mountMatch(ctx, params = {}) {
       c.t += dt;
       const dur = (c.stepIndex === 0 && up.ruspaFirstStepDur != null) ? up.ruspaFirstStepDur : cur.dur;
       if (c.t < dur * TICK) continue;
-      c.t = 0;
+      c.t = Math.max(0, c.t - dur * TICK);   // resto al passo dopo, come stepConstructions() (buildings.js)
       c.stepIndex++;
       if (c.stepIndex < up.steps.length) {
         cur = up.steps[c.stepIndex];
-        c.curSpr = pickSpr(cur.spr);
+        if (!cur.keepSpr) c.curSpr = pickSpr(cur.spr);   // `keepSpr`: passo diviso, stesso sprite (applyScaffoldTiming(), buildings.js)
         if (cur.spawn) addConstructionSpawn(c.fb, syncTopperLife(cur.spawn, up, c.stepIndex, revealAtStep));
         entry.spr = c.curSpr;
         entry._f = frameFor(entry.spr);
@@ -1591,7 +1663,7 @@ export async function mountMatch(ctx, params = {}) {
   // l'istanza edificio stessa (non un id: input.onTap la legge gia' cosi'
   // per ogni altro popup ancorato a un edificio, es. `ruspaPending` sopra),
   // azzerato anche quando quell'edificio viene demolito/distrutto sotto
-  // panel aperto (destroyBuilding()/demolishMultiTile() sopra). Vero modale
+  // panel aperto (destroyBuilding()/demolishStep() sopra). Vero modale
   // in spazio schermo come `bankPanelOpen`: mentre e' aperto un tap va
   // SOLO al suo bottone di chiusura, mai al mondo sotto.
   st.buildingInfoPanel = null;   // istanza edificio, o null
@@ -2125,7 +2197,7 @@ export async function mountMatch(ctx, params = {}) {
     const b = placeBuilding(type, anchorX, anchorY, 0);
     // [Bug corretto] `b.tiles`: i lotti REALMENTE consumati da questo
     // edificio (l'intero `cluster` sopra, tocco incluso) salvati sull'
-    // istanza stessa — demolishMultiTile()/doLoad() sotto li usano per
+    // istanza stessa — demolishStep()/doLoad() sotto li usano per
     // liberare/ri-bloccare esattamente questi lotti, invece di ricalcolare
     // (e sbagliare) una nuova ricerca "cosa sta vicino a b.x,b.y": `b.x/b.y`
     // ora e' l'ancora visiva (sopra), un punto che quasi mai coincide con le
@@ -2455,7 +2527,7 @@ export async function mountMatch(ctx, params = {}) {
     // (ru.x, ru.y)`) liberava solo l'ANCORA VISIVA di `b.x/b.y` — per un
     // edificio multi-tile quella non e' nemmeno un placeholder vero
     // (`anchorOffset`, buildings.js, la sposta lontano dal lotto toccato:
-    // stesso motivo gia' corretto per `demolishMultiTile()`, il percorso
+    // stesso motivo gia' corretto per `demolishStep()`, il percorso
     // "ruspa diretta su un edificio vivo") — creava un placeholder fantasma
     // fuori griglia, mentre i 4 lotti VERI restavano bloccati per sempre in
     // `blockedSlots`. `undefined` per ogni rudere a un solo lotto, nessun
@@ -2555,57 +2627,61 @@ export async function mountMatch(ctx, params = {}) {
     return doClick();
   }
 
-  /** Stessa correzione di startUpgrade() sopra, per il cantiere riavviato
-   * dalla ruspa (tryRuspaRebuild() — un impalcatura torna comunque sopra
-   * all'edificio, con lo stesso decoro vecchio da spegnere subito). */
-  function ruspaRebuild(b) {
-    const err = tryRuspaRebuild(b, st.r12);
-    if (!err) st.decorEntities = st.decorEntities.filter((d) => d.buildingId !== b.id);
-    return err;
+  /** La ruspa su un edificio vivo (tryRuspaDemolish(), buildings.js): paga e
+   * avvia la catena di demolizione — l'edificio resta in `buildings` (con
+   * `b.construction.demolish`) finche' l'impalcatura non e' smontata; gli
+   * effetti veri arrivano da demolishStep() agli istanti dell'originale. Le
+   * luci (decoro) restano accese fino alla morte, come nell'originale. */
+  function ruspaDemolition(b) {
+    return tryRuspaDemolish(b, st.r12);
   }
 
-  /**
-   * Il caso a parte della ruspa su `eolico`/`grattacielo`
-   * (`def.construct.ruspaDemolish`, buildings.js): **[C]**
-   * `impavent_dem/Alarm_2.gml`, a differenza di OGNI altro "_demo", non
-   * ricostruisce l'edificio — crea 4 `placeholder` (agli stessi offset
-   * ±98/±58 di `impavent/Alarm_2.gml` per i suoi 4 lotti) e si autodistrugge:
-   * una pala eolica ruspata torna terreno libero, non una pala eolica nuova.
-   * Qui equivale a togliere l'edificio da `buildings` e liberare i 4 lotti
-   * che aveva consumato — **[Bug corretto, segnalato dall'autore: "il
-   * piazzamento di eolico/grattacielo... occupano spazi non destinati ad
-   * edifici"]** una versione precedente ricalcolava QUI da zero "quali lotti
-   * appartengono a questo edificio" cercando un placeholder alle stesse
-   * coordinate di `b.x/b.y` — coordinate che da quando `anchorOffset`
-   * (buildings.js) sposta l'ancora visiva lontano dal placeholder toccato
-   * (98-150px) non coincidono PIU' MAI con un placeholder vero: quel `find()`
-   * falliva sempre in silenzio (nessun errore, semplicemente `ph`
-   * `undefined`), quindi il lotto toccato non tornava mai libero dopo una
-   * demolizione — restava bloccato per sempre, un vicolo cieco invisibile.
-   * `b.tiles` (placeAt() in questo file: l'intero cluster di lotti REALMENTE
-   * consumati alla costruzione, tocco incluso) elimina la necessita' di
-   * ricalcolare/indovinare nulla: libera esattamente quei lotti, esattamente
-   * quelli bloccati. `?? [{x:b.x,y:b.y}]` resta per un salvataggio scritto
-   * prima di questo fix (nessun `tiles` salvato): degrada al comportamento
-   * precedente (probabilmente ancora sbagliato per quell'edificio specifico)
-   * invece di rompersi.
-   */
-  function demolishMultiTile(b) {
-    for (const t of b.tiles ?? [{ x: b.x, y: b.y }]) {
-      const ph = placeholders.find((p) => p.x === t.x && p.y === t.y);
-      if (ph) ph.consumed = false;
-      st.blockedSlots = st.blockedSlots.filter((s) => !(s.x === t.x && s.y === t.y));
-    }
-    st.decorEntities = st.decorEntities.filter((d) => d.buildingId !== b.id);
-    st.buildings = st.buildings.filter((x) => x !== b);
+  /** Il Destroy di un edificio vivo ucciso dalla ruspa (`updeath*`/`*death`,
+   * `demobasia/Collision_*` -> impa*r_demo): bilancio pop/hap del livello
+   * (`currentDeathPop`/`currentDeathHap`, gli stessi di destroyBuilding()), ma
+   * NESSUN rudere — al suo posto un `placeholder` (demolishStep(), "lot").
+   * Decoro finale e monete spariscono, quello transitorio (gru/topper) no:
+   * lo toglie onFinish a impalcatura smontata. */
+  function killBuildingNoRuin(b) {
+    st.r12.pop += currentDeathPop(b);
+    st.r12.hap += currentDeathHap(b);
+    st.decorEntities = st.decorEntities.filter((d) => d.buildingId !== b.id || d.transient);
+    st.coins = st.coins.filter((c) => c.buildingId !== b.id);
     if (st.picked?.obj === "building" && st.picked.ref === b) st.picked = null;
     if (st.buildingInfoPanel === b) st.buildingInfoPanel = null;
+  }
+
+  /** `onDemolish` di stepConstructions() (buildings.js), agli istanti veri
+   * della catena "_demo" dell'originale (scaffoldTiming.js `ruspa`):
+   *  - "death": l'edificio muore (Destroy: pop/hap; `b.level = 0` cosi' nessun
+   *    ciclo di gioco — monete, produzione — lo conta piu'; sopravvive solo
+   *    come impalcatura che si smonta);
+   *  - "lot": nasce il `placeholder` (i lotti tornano liberi). Per il solare
+   *    sopra un parco muore anche il parco (`parcdeath`, stessa catena);
+   *  - "end": l'impalcatura e' smontata, l'istanza esce da `buildings`.
+   * `eolico` (`ruspaDemolish`): muore subito e libera i 4 lotti alla fine. */
+  function demolishStep(b, phase) {
+    if (phase === "death") {
+      killBuildingNoRuin(b);
+      b.level = 0;
+    } else if (phase === "lot") {
+      freeRuinTiles(b);
+      if (b.overpark) {
+        const park = st.buildings.find((p) => p !== b && p.type === "parco" && p.oversolar && p.x === b.x && p.y === b.y);
+        if (park) {
+          killBuildingNoRuin(park);
+          st.buildings = st.buildings.filter((x) => x !== park);
+        }
+      }
+    } else if (phase === "end") {
+      st.buildings = st.buildings.filter((x) => x !== b);
+    }
   }
 
   // [Bug corretto, segnalato dall'autore: "verifica che demolire la rovina
   // della pala eolica liberi davvero i 4 lotti"] Chiamata da stepRuinClearing()
   // (piu' sotto) a sgombero completato, per `ruins`/`ruinLots` — stessa
-  // logica di demolishMultiTile() sopra (`tiles`, pulizia `blockedSlots`),
+  // logica di demolishStep() sopra (`tiles`, pulizia `blockedSlots`),
   // ma su un RUDERE gia' morto (mai in `buildings`) invece che su un
   // edificio vivo. `ru.tiles` (destroyBuilding()/doLoad() sopra): TUTTI i
   // lotti realmente consumati da vivo, non solo l'ancora visiva di `ru.x/
@@ -3542,12 +3618,48 @@ export async function mountMatch(ctx, params = {}) {
   // (1) + intestazione olio (1) + le due righe legenda della barra olio (2)
   // = 18. Nuovo worst case: 12 + 18 = 30, +1 di margine.
   const TEXT_POOL_SIZE = 31;
+  // [Ottimizzazione mobile] Ogni elemento del pool riscriveva 6-8 proprieta'
+  // di stile e il testo ad OGNI frame anche se identici, e il browser deve
+  // comunque invalidare lo stile. `el.style` e' sostituito da un proxy che
+  // ricorda l'ultimo valore scritto per proprieta' e inoltra al DOM solo i
+  // cambiamenti: cosi' OGNI scrittura (drawHtmlText, hideUnusedText, i
+  // `descEl.style.top`/`textEl.style.top` dei pannelli) passa dalla stessa
+  // cache senza dover toccare i chiamanti, e la cache non puo' disallinearsi
+  // dal DOM. Le proprieta' che cambiano il layout azzerano `_epoch`, la misura
+  // d'altezza in cache (elHeight() sotto).
+  const LAYOUT_PROPS = new Set(["fontSize", "width", "maxWidth", "lineHeight", "whiteSpace"]);
+  function cachedStyle(el) {
+    const real = el.style, last = {};
+    return new Proxy(real, {
+      set(t, k, v) {
+        if (last[k] === v) return true;
+        last[k] = v;
+        t[k] = v;
+        if (LAYOUT_PROPS.has(k)) el._epoch = -1;
+        return true;
+      },
+      get(t, k) { const v = t[k]; return typeof v === "function" ? v.bind(t) : v; },
+    });
+  }
   const textPool = Array.from({ length: TEXT_POOL_SIZE }, () => {
     const el = document.createElement("div");
     el.className = "gameText";
+    Object.defineProperty(el, "style", { value: cachedStyle(el) });
     document.body.appendChild(el);
     return el;
   });
+  // `getBoundingClientRect()` forza un layout sincrono: per il pannello info
+  // edificio e il balloon del tutorial si rifa' solo se testo/stile di layout
+  // sono cambiati o un font web e' arrivato nel frattempo (`fontEpoch`).
+  let fontEpoch = 0;
+  document.fonts?.addEventListener?.("loadingdone", () => { fontEpoch++; });
+  function elHeight(el) {
+    if (el._epoch !== fontEpoch || el._h == null) {
+      el._h = el.getBoundingClientRect().height;
+      el._epoch = fontEpoch;
+    }
+    return el._h;
+  }
   st.textPoolUsed = 0;
   function resetTextPool() { st.textPoolUsed = 0; }
   // [Nuova funzionalita', richiesta dall'autore: "sostituisci gli sprite
@@ -3647,7 +3759,7 @@ export async function mountMatch(ctx, params = {}) {
   // (i due messaggi di sconfitta sotto), il secondo resta identico a prima.
   function drawHtmlText(text, x, y, { size = 16, maxWidth, wrap = false, align, color } = {}) {
     const el = textPool[st.textPoolUsed++];
-    el.textContent = text;
+    if (el._txt !== text) { el._txt = text; el.textContent = text; el._epoch = -1; }
     el.style.display = "block";
     el.style.fontSize = `${size}px`;
     el.style.left = `${x}px`;
@@ -3984,11 +4096,16 @@ export async function mountMatch(ctx, params = {}) {
       { label: t("graphicsOptions.cars", { state: onOff(st.graphics.cars) }), action: "toggleCars" },
       { label: t("graphicsOptions.pedestrians", { state: onOff(st.graphics.pedestrians) }), action: "togglePedestrians" },
       { label: t("graphicsOptions.minorEffects", { state: onOff(st.graphics.minorEffects) }), action: "toggleMinorEffects" },
-      { label: t("savingOptions.back"), action: "back" },
+      { label: t("graphicsOptions.dynamicRes", { state: onOff(st.graphics.dynamicRes) }), action: "toggleDynamicRes" },
     ];
+    // [Nuova funzionalita', richiesta dall'autore: "uno slider con gli fps
+    // (bloccato su 30, su 60, senza limite), default 60"] Tre valori discreti:
+    // stesso controllo segmentato della lingua/dell'intervallo di autosave
+    // (drawSegmentedControl()), fra i toggle e "Back".
+    const FPS_CAPTION_H = 22, FPS_SEG_H = 40;
     const btnH = 46, btnGap = 14;
     const panelW = Math.min(360, cw - 40);
-    const panelH = 96 + rows.length * (btnH + btnGap) + 20;
+    const panelH = 96 + rows.length * (btnH + btnGap) + FPS_CAPTION_H + FPS_SEG_H + btnGap + (btnH + btnGap) + 20;
     const px = (cw - panelW) / 2, py = (ch - panelH) / 2;
     r.draw(pausePanelFrame(panelW, panelH), px, py, 1, PANEL_TINT, PANEL_ALPHA);
 
@@ -4005,6 +4122,15 @@ export async function mountMatch(ctx, params = {}) {
       st.pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: row.action });
       by += btnH + btnGap;
     }
+    drawHtmlText(t("graphicsOptions.fps"), bx + btnW / 2, by + FPS_CAPTION_H / 2, { size: 14, maxWidth: btnW - 20 });
+    by += FPS_CAPTION_H;
+    st.pauseMenuButtons.push(...drawSegmentedControl(bx, by, btnW, FPS_SEG_H,
+      FPS_CAPS.map((v) => ({ value: v, selected: v === st.graphics.fpsCap })), "setFps",
+      (seg, sx, sy, sw, sh) => drawHtmlText(seg.value ? String(seg.value) : t("graphicsOptions.fpsUnlimited"), sx + sw / 2, sy + sh / 2, { size: 14, maxWidth: sw - 6 })));
+    by += FPS_SEG_H + btnGap;
+    r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
+    drawHtmlText(t("savingOptions.back"), bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
+    st.pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: "back" });
     r.flush();
   }
 
@@ -4149,6 +4275,29 @@ export async function mountMatch(ctx, params = {}) {
     // non piu' solo stringhe gia' pronte da drawHtmlText() — il ciclo di
     // disegno piu' sotto distingue i due casi.
     const statLines = [];
+    // [Nuova funzionalita', richiesta dall'autore: "cliccando sul pannello
+    // fotovoltaico o la turbina eolica ti dice la produzione allo stesso
+    // modo della centrale"] Stesso formato della riga di industria sopra,
+    // ma per `solarProduction`/`windProduction` (ele per ciclo, costo in
+    // mon per il solare al posto dell'olio). Numeri VERI di adesso:
+    // fase del giorno e pioggia gia' applicate (solarEleRate()).
+    const solarDef = !b.construction ? def.solarProduction : null;
+    const windDef = !b.construction ? def.windProduction : null;
+    const raining = isRaining(st.r12);
+    if (solarDef) {
+      const ele = Math.round(solarEleRate(solarDef, isNight(st.phaseT), isDawn(st.phaseT), raining) * 10) / 10;
+      statLines.push({ parts: [
+        { text: `${t("buildingInfo.energyPrefix")}${ele} ` }, { icon: "ele" },
+        { text: t("buildingInfo.costMiddle") + `${solarDef.mon} ` }, { icon: "mon" },
+        { text: t("buildingInfo.energySuffix") },
+      ] });
+      if (raining) statLines.push(t("buildingInfo.solarRain"));
+    } else if (windDef) {
+      statLines.push({ parts: [
+        { text: `${t("buildingInfo.energyPrefix")}${windDef.ele} ` }, { icon: "ele" },
+        { text: t("buildingInfo.perCycle") },
+      ] });
+    }
     if (residents != null) statLines.push(t("buildingInfo.residents", { n: Math.round(residents) }));
     if (production) {
       statLines.push({ parts: [
@@ -4192,11 +4341,11 @@ export async function mountMatch(ctx, params = {}) {
     if (showControl) {
       const info = AUTO_DEFENSE_LEVELS[autoDefLevel - 1];
       descEl = drawHtmlText(info.desc, barX, 0, { size: 12.5, maxWidth: barW, wrap: true, align: "center" });
-      descH = descEl.getBoundingClientRect().height;
+      descH = elHeight(descEl);
     } else if (showThrottle) {
       const info = THROTTLE_LEVELS[throttleLevel - 1];
       descEl = drawHtmlText(info.desc, barX, 0, { size: 12.5, maxWidth: barW, wrap: true, align: "center" });
-      descH = descEl.getBoundingClientRect().height;
+      descH = elHeight(descEl);
     }
     const DESC_GAP = 14;
     const autoDefBlockH = showControl ? (SEG_H + 12 + 20 + descH + DESC_GAP + 22) : 0;
@@ -4365,7 +4514,7 @@ export async function mountMatch(ctx, params = {}) {
 
     const residents = residentsByPlatform(st.buildings, st.platformState);
     const showResidents = residents.r32 != null || residents.r22 != null;
-    const energy = currentEnergyStats(st.buildings, night, dawn);
+    const energy = currentEnergyStats(st.buildings, night, dawn, isRaining(st.r12));
     // wewOilDrain() (state.js) e' il tasso di UNA chiamata, ripetuta ogni
     // WEWE_OIL_DRAIN_PERIOD secondi (state.js/stepWeather) — /periodo*60
     // per lo stesso "al minuto" di currentEnergyStats() sopra.
@@ -4411,9 +4560,9 @@ export async function mountMatch(ctx, params = {}) {
       { key: "eolicoPerMin", spr: "p4", tint: 0x8b6c17 },           // eolico
       { key: "solarePerMin", spr: "psolare", tint: 0xb57008 },      // solare
     ];
-    // `solarePerMin` puo' essere negativo di notte (buildings.js,
-    // solarProduction.ele.night: -1): niente segmento a larghezza negativa
-    // nella barra, ma il numero accanto all'icona resta quello vero (stesso
+    // `solarePerMin` e' 0 di notte (buildings.js, solarProduction.ele.night:
+    // 0): il Math.max(0, ...) sotto resta per sicurezza contro tassi
+    // negativi; il numero accanto all'icona resta quello vero (stesso
     // criterio gia' in uso per gli altri numeri di questo pannello — un
     // tasso istantaneo, non una media, vedi il commento su
     // currentEnergyStats() in buildings.js).
@@ -5205,14 +5354,15 @@ export async function mountMatch(ctx, params = {}) {
   function drawRotated(frame, cx, cy, angleDeg, scale, tint, alpha) {
     const rad = (-angleDeg * Math.PI) / 180;
     const cos = Math.cos(rad), sin = Math.sin(rad);
-    const corners = [
-      { x: -frame.ox, y: -frame.oy }, { x: frame.w - frame.ox, y: -frame.oy },
-      { x: frame.w - frame.ox, y: frame.h - frame.oy }, { x: -frame.ox, y: frame.h - frame.oy },
-    ].map((p) => ({
-      x: cx + (p.x * cos - p.y * sin) * scale,
-      y: cy + (p.x * sin + p.y * cos) * scale,
-    }));
-    r.drawQuad(frame, corners[0], corners[1], corners[2], corners[3], tint, alpha);
+    // Nessuna allocazione (era: 4 oggetti + array + map per chiamata, per
+    // ogni goccia di pioggia/tracciante): angoli calcolati come numeri.
+    const ax = -frame.ox, ay = -frame.oy, bx = frame.w - frame.ox, by = frame.h - frame.oy;
+    r.drawQuadXY(frame,
+      cx + (ax * cos - ay * sin) * scale, cy + (ax * sin + ay * cos) * scale,
+      cx + (bx * cos - ay * sin) * scale, cy + (bx * sin + ay * cos) * scale,
+      cx + (bx * cos - by * sin) * scale, cy + (bx * sin + by * cos) * scale,
+      cx + (ax * cos - by * sin) * scale, cy + (ax * sin + by * cos) * scale,
+      tint, alpha);
   }
 
   // Cache del rettangolo arrotondato del balloon (game/src/gl.js,
@@ -5382,21 +5532,29 @@ export async function mountMatch(ctx, params = {}) {
    * risorse di notte (`iconsDark` piu' sotto) — qui tinta con lo stesso
    * `textRgb` del testo, cosi' icona e numero restano dello stesso colore
    * qualunque esso sia.] */
-  function drawCostTagAt(tag, pillX, pillY, textX, textY, { tint = 0x000000, textRgb = [255, 255, 255], alpha = 1, zoom = 1 } = {}) {
+  function drawCostTagAt(tag, pillX, pillY, textX, textY, { tint = 0x000000, textRgb = [255, 255, 255], alpha = 1, zoom = 1, follow = false } = {}) {
     const { resolved, total } = layoutIconParts(normalizeTag(tag), TAG_TEXT_SIZE, TAG_GAP);
     const h = TAG_PILL_H;
     const w = Math.round(total + TAG_PAD);
-    r.draw(tagPillFrame(w, h), pillX - (w / 2) * zoom, pillY, zoom, tint, alpha);
+    // `follow` (popup ruspa): il cartellino si comporta come un oggetto di
+    // MONDO, scalato con la camera come i bottoni sì/no accanto a lui — a
+    // differenza degli altri cartellini (constanti a schermo, `zoom` sopra li
+    // compensa). Pillola e iconcine restano quad di mondo a scala 1 (finiscono
+    // a 1/zoom pixel schermo); testo e passi in pixel schermo si moltiplicano
+    // per lo stesso 1/zoom (`k`).
+    const k = follow ? 1 / zoom : 1;
+    const qz = follow ? 1 : zoom;
+    r.draw(tagPillFrame(w, h), pillX - (w / 2) * qz, pillY, qz, tint, alpha);
     const [tr, tg, tb] = textRgb;
     const iconTint = (tr << 16) | (tg << 8) | tb;
     const hasIcon = resolved.some((p) => p.frame);
     if (hasIcon) r.setColorize(true);
-    let px = pillX - (total / 2) * zoom, tx = textX - total / 2;
+    let px = pillX - (total / 2) * qz, tx = textX - (total / 2) * k;
     for (const p of resolved) {
-      if (p.frame) r.draw(p.frame, px, pillY + ((h - p.iconH) / 2) * zoom, p.scale * zoom, iconTint, alpha);
-      else drawHtmlText(p.text, tx, textY + h / 2, { size: TAG_TEXT_SIZE, align: "left", color: `rgba(${tr},${tg},${tb},${alpha})` });
-      px += (p.w + TAG_GAP) * zoom;
-      tx += p.w + TAG_GAP;
+      if (p.frame) r.draw(p.frame, px, pillY + ((h - p.iconH) / 2) * qz, p.scale * qz, iconTint, alpha);
+      else drawHtmlText(p.text, tx, textY + (h / 2) * k, { size: TAG_TEXT_SIZE * k, align: "left", color: `rgba(${tr},${tg},${tb},${alpha})` });
+      px += (p.w + TAG_GAP) * qz;
+      tx += (p.w + TAG_GAP) * k;
     }
     if (hasIcon) r.setColorize(false);
   }
@@ -5606,10 +5764,13 @@ export async function mountMatch(ctx, params = {}) {
   // un modo equivalente e piu' rapido di arrivarci, coerente su tutti gli
   // edifici. Ignorato durante ogni altro modale/overlay gia' aperto —
   // stessi guard dell'apertura "normale" del pannello (onTap sotto).
+  // Su desktop (`!isMobile`, dove l'hover azzurro esiste) apre invece solo
+  // l'edificio illuminato di blu sotto il cursore (buildingAt(..., true)):
+  // se piu' edifici sono accesi vince difesa > produttore > altro.
   input.onLongPress = (sx, sy) => {
     if (st.paused || st.outcome || st.bankPanelOpen || st.tradePanelOpen || st.buildingInfoPanel
       || st.buildMenuOpen || st.tutorialState?.cutscene || st.r12.selec !== 0) return;
-    const b = buildingAt(sx, sy);
+    const b = buildingAt(sx, sy, !isMobile);
     if (!b || b.construction) return;
     st.buildingInfoPanel = b;
   };
@@ -6246,6 +6407,12 @@ export async function mountMatch(ctx, params = {}) {
         } else if (hit?.action === "toggleMinorEffects") {
           st.graphics.minorEffects = !st.graphics.minorEffects;
           saveGraphicsOptions(st.graphics);
+        } else if (hit?.action === "toggleDynamicRes") {
+          st.graphics.dynamicRes = !st.graphics.dynamicRes;
+          saveGraphicsOptions(st.graphics);
+        } else if (hit?.action === "setFps") {
+          st.graphics.fpsCap = hit.value;
+          saveGraphicsOptions(st.graphics);
         } else if (hit?.action === "back") {
           st.pauseSubmenu = null;
         }
@@ -6507,6 +6674,16 @@ export async function mountMatch(ctx, params = {}) {
     }
     const w = cam.screenToWorld(sx, sy);
     st.picked = null;
+    // Pausa/riprendi cantiere grattacielo (skyPauseButtonAt(), sopra): e' un
+    // bottone sempre in primo piano (depth -9000), quindi vince su tutto il
+    // resto sotto di lui.
+    const skyBtn = skyPauseButtonAt(w.x, w.y);
+    if (skyBtn) {
+      skyBtn.paused = !skyBtn.paused;
+      st.message = t(skyBtn.paused ? "msg.constructionPaused" : "msg.constructionResumed");
+      st.messageT = 3;
+      return;
+    }
     // frameList e' ricostruita ad ogni frame di disegno: e' la stessa lista,
     // gia' ordinata top-most-last, che serve per il picking. Due passate: la
     // prima considera solo cio' che e' davvero interattivo (placeholder,
@@ -6824,24 +7001,12 @@ export async function mountMatch(ctx, params = {}) {
       }
     } else if (st.picked.obj === "ruspaYes") {
       // [C] demoiessa/Mouse_LeftReleased.gml: `iessa=1`, letto dalla
-      // collisione di demobasia col vero edificio (qui, tryRuspaRebuild()/
-      // demolishMultiTile() in buildings.js/main.js) — la stessa conferma,
+      // collisione di demobasia col vero edificio (qui, tryRuspaDemolish()/
+      // demolishStep() in buildings.js/main.js) — la stessa conferma,
       // un solo tocco invece di un flag+collisione al frame dopo.
       const b = st.picked.ref;
-      const def = BUILDING_TYPES[b.type];
-      if (def?.construct?.ruspaDemolish) {
-        const cost = ruspaCostFor(b);
-        if (!canAfford(st.r12, { mon: cost })) {
-          st.message = t("msg.needMonHave", { cost, have: st.r12.mon.toFixed(0) });
-        } else {
-          st.r12.mon -= cost;
-          demolishMultiTile(b);
-          st.message = t("msg.demolishedLotsFree");
-        }
-      } else {
-        const err = ruspaRebuild(b);
-        st.message = err ?? t("msg.constructionStartedBulldozer");
-      }
+      const err = ruspaDemolition(b);
+      st.message = err ?? t("msg.demolitionStarted");
       st.ruspaPending = null;
       st.messageT = 3;
       st.picked = null;
@@ -7108,6 +7273,8 @@ export async function mountMatch(ctx, params = {}) {
     // riparte da solo, senza bisogno di un listener 'visibilitychange' a
     // parte.
     if (document.hidden) { st.last = now; requestAnimationFrame(frame); return; }
+    // Limite di fps scelto nelle opzioni grafiche (default 60) — vedi frameMinMs().
+    if (now - st.last < frameMinMs()) { requestAnimationFrame(frame); return; }
     // Un solo reset per frame, prima di ogni possibile drawHtmlText() (il
     // balloon del tutorial e il menu di pausa/"saving options", entrambi
     // piu' sotto) — hideUnusedText() (in fondo a questa stessa funzione)
@@ -7356,7 +7523,7 @@ export async function mountMatch(ctx, params = {}) {
       stepLoot(st.loot, dt);
     }
     if (!frozen) {
-      stepConstructions(st.buildings, dt, st.r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
+      stepConstructions(st.buildings, dt, st.r12, spawnDecor, addConstructionSpawn, removeTransientDecor, demolishStep);
       // Ciclo di impalcature dei ruderi sotto ruspa (stepRuinClearing()
       // sopra) — stesso principio di stepConstructions() appena sopra, un
       // timer a parte perche' un rudere in `ruins`/`ruinLots` non e' un
@@ -7378,7 +7545,7 @@ export async function mountMatch(ctx, params = {}) {
       // sotto-sistema di scenografia indipendente, non un `onSpawn`/`onFinish`
       // di stepConstructions() sopra — vedi il commento in scaffold.js per il
       // perche'.
-      stepGrattacieloScaffold(st.buildings, dt);
+      stepGrattacieloScaffold(st.buildings, dt, (b) => constructionStalled(b, st.r12));
       // Le gru di cantiere (game/src/cranes.js) — stesso principio dello
       // scaffolding del grattacielo sopra: un timer tutto loro, indipendente
       // dal resto del cantiere. `ruinClearingFakes`: le gru della taglia 3
@@ -7841,6 +8008,12 @@ export async function mountMatch(ctx, params = {}) {
         ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true }
           : handHovered ? { _tint: HAND_HOVER_TINT, _selfLit: true } : {}),
       });
+      // `playbuttoner` (skyPauseButtonAt(), sopra): sprite se l'atlas lo ha,
+      // altrimenti lo disegna drawSkyPauseFallback() dopo la lista.
+      if (b.type === "grattacielo" && b.construction) {
+        const pbF = frameFor(b.paused ? "puplay" : "pupause");
+        if (pbF) dynamic.push({ obj: "decor", x: b.x, y: b.y + SKY_BTN_DY, depth: -9000, _f: pbF, _selfLit: true, _alpha: 0.7 });
+      }
       // [Bug corretto, segnalato dall'autore: "si vedeva anche nel gioco
       // originale, partiva subito dopo la parte frontale e si montavano
       // quasi insieme"] L'edificio VECCHIO durante un upgrade con topper
@@ -8183,7 +8356,7 @@ export async function mountMatch(ctx, params = {}) {
     if (fireworksState) for (const s of fireworksState.sparks.active) {
       dynamic.push({
         obj: "decor", x: s.x, y: s.y, depth: FIREWORK_DEPTH,
-        _f: { ...solidFrame(bubbleTex, FIREWORK_SPARK_SIZE, FIREWORK_SPARK_SIZE), ox: FIREWORK_SPARK_SIZE / 2, oy: FIREWORK_SPARK_SIZE / 2 },
+        _f: st.fwSparkFrame ?? (st.fwSparkFrame = { ...solidFrame(bubbleTex, FIREWORK_SPARK_SIZE, FIREWORK_SPARK_SIZE), ox: FIREWORK_SPARK_SIZE / 2, oy: FIREWORK_SPARK_SIZE / 2 }),
         _tint: s.tint, _alpha: Math.max(0, 1 - s.t / s.life),
       });
     }
@@ -8381,6 +8554,9 @@ export async function mountMatch(ctx, params = {}) {
     // deve leggersi come UN'ANTEPRIMA, non come un pezzo di scena vera che si
     // scurisce di notte) — disegnato per ultimo, sopra a tutto il resto del
     // mondo cosi' non resta mai nascosto da un edificio vicino.
+    for (const b of st.buildings) {
+      if (b.type === "grattacielo" && b.construction && !frameFor(b.paused ? "puplay" : "pupause")) drawSkyPauseFallback(b);
+    }
     if (multiTilePreview) {
       r.draw(multiTilePreview.f, multiTilePreview.x, multiTilePreview.y, 1, 0xffffff, 0.5);
     }
@@ -8392,7 +8568,7 @@ export async function mountMatch(ctx, params = {}) {
     // su RAIN_DEPTH) ma sempre dentro la proiezione mondo di questo frame,
     // quindi seguono comunque la camera come ogni altro decoro.
     if (st.weatherState.drops.active.length) {
-      const rainFrame = { ...solidFrame(white, RAIN_STREAK_WIDTH, RAIN_STREAK_LENGTH), ox: RAIN_STREAK_WIDTH / 2, oy: RAIN_STREAK_LENGTH / 2 };
+      const rainFrame = st.rainFrame ?? (st.rainFrame = { ...solidFrame(white, RAIN_STREAK_WIDTH, RAIN_STREAK_LENGTH), ox: RAIN_STREAK_WIDTH / 2, oy: RAIN_STREAK_LENGTH / 2 });
       for (const d of st.weatherState.drops.active) drawRotated(rainFrame, d.x, d.y, rainDropAngle(d), 1, RAIN_TINT, RAIN_ALPHA);
     }
     // Le "bolle" di raccolta moneta/cassa (coinPops sopra): un cerchio che
@@ -8408,7 +8584,10 @@ export async function mountMatch(ctx, params = {}) {
     for (const p of st.coinPops) {
       const k = p.t / COIN_POP_LIFE;
       const size = 36 + k * 94;
-      r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, p.color ?? COIN_POP_COLOR, (1 - k) * 0.85);
+      // Frame unitario riusato + `scale = size` (draw() moltiplica w/h per
+      // scale): stesso quad di solidFrame(bubbleTex, size, size), senza un
+      // oggetto nuovo per bolla.
+      r.draw(bubbleUnitFrame, p.x - size / 2, p.y - size / 2, size, p.color ?? COIN_POP_COLOR, (1 - k) * 0.85);
     }
     // Lampo dei fari accesi (faroFlashes sopra, "se riesci integra un
     // sistema di particelle coerente col colore del flash..."): stessa
@@ -8422,7 +8601,7 @@ export async function mountMatch(ctx, params = {}) {
     for (const p of st.faroFlashes) {
       const k = p.t / FARO_FLASH_LIFE;
       const size = 40 + k * 260;
-      r.draw(solidFrame(bubbleTex, size, size), p.x - size / 2, p.y - size / 2, 1, FARO_FLASH_COLOR, (1 - k) * 0.6);
+      r.draw(bubbleUnitFrame, p.x - size / 2, p.y - size / 2, size, FARO_FLASH_COLOR, (1 - k) * 0.6);
     }
     // Segno d'impatto del fulmine (game/src/lightning.js) — [Nuova
     // implementazione, richiesta dall'autore: "fai in modo che copra
@@ -8593,10 +8772,14 @@ export async function mountMatch(ctx, params = {}) {
         const noX = b.x + 16 * UI_SCALE, noY = b.y - 16 * UI_SCALE;
         const yesX = b.x + 177 * UI_SCALE, yesY = b.y - 16 * UI_SCALE;
         const s1 = cam.worldToScreen(noX + (RUSPA_BTN_W * UI_SCALE) / 2, noY + (RUSPA_BTN_H * UI_SCALE) / 2);
-        drawHtmlText("No", s1.x, s1.y, { size: 17, color: "#ffffff" });
+        // Il popup segue lo zoom del mondo come i suoi bottoni (quad di mondo:
+        // 1/zoom pixel schermo per unita'): il testo va scalato uguale, non
+        // tenuto a 17px fissi — `k` come in drawCostTagAt() (`follow`).
+        const kz = 1 / cam.zoom;
+        drawHtmlText("No", s1.x, s1.y, { size: 17 * kz, color: "#ffffff" });
         const s2 = cam.worldToScreen(yesX + (RUSPA_BTN_W * UI_SCALE) / 2, yesY + (RUSPA_BTN_H * UI_SCALE) / 2);
-        drawHtmlText("Yes!", s2.x, s2.y, { size: 17, color: "#ffffff" });
-        drawCostTagWorld(costParts({ mon: st.ruspaPending.cost }), b.x + 157 * UI_SCALE, b.y - 185 * UI_SCALE);
+        drawHtmlText("Yes!", s2.x, s2.y, { size: 17 * kz, color: "#ffffff" });
+        drawCostTagWorld(costParts({ mon: st.ruspaPending.cost }), b.x + 157 * UI_SCALE, b.y - 185 * UI_SCALE, { follow: true });
       }
     }
     drawBeams();
@@ -9657,7 +9840,7 @@ export async function mountMatch(ctx, params = {}) {
       const textW = boxRight - boxLeft - pad * 2;
       const textEl = drawHtmlText(tutorialText(Math.floor(st.tutorialState.phase)), boxLeft + pad, 0,
         { size: 16, maxWidth: textW, wrap: true });
-      const boxH = textEl.getBoundingClientRect().height + pad * 2;
+      const boxH = elHeight(textEl) + pad * 2;
       const boxBottom = canvas.clientHeight - st.tutorialState.uiGap;
       const boxTop = boxBottom - boxH;
       textEl.style.top = `${boxTop + pad}px`;

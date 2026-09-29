@@ -195,6 +195,15 @@ primo giorno.
 
 ## 6. Cosa non so ancora
 
+> **[Aggiornamento]** Questa sezione e' la fotografia dell'inizio del lavoro:
+> quasi tutto e' stato chiarito dalle voci successive. Economia (costi,
+> produzione, consumi, `wewe`/`hap`/`biotech`, prestiti), tutorial
+> (`tutpar`/`tutind`/`tutrl`, cutscene) e `pepazzittecollider` (collisori dei
+> pedoni) sono ricostruiti — cerca il nome in questo file. Le condizioni di
+> vittoria/sconfitta non sono nel decompilato: le regole attuali
+> (`chies` distrutta, olio a zero su `match`/`tutorial`, vittoria) sono una
+> scelta dell'autore, vedi il commento su `drawOutcomeOverlay()` in main.js.
+
 - **[?]** Le regole vere dell'economia: come si guadagna, quanto costa, come
   cresce `pop`. Servirà leggere gli eventi degli edifici uno per uno.
 - **[?]** Le condizioni di vittoria e sconfitta, ammesso che esistano.
@@ -422,6 +431,14 @@ paragrafo 8.
   (non è demolizione: è un "rifai in loco" a pagamento che rilancia lo
   stesso `impa*r` del livello corrente con una skin decorativa diversa,
   **[C]** letto da `demobasia/Collision_industria*.gml`, cosmetico).
+  **[Superato]** Entrambi i punti sono chiusi. Il danno da fulmine è cablato
+  (`stepStormDamage()`, buildings.js/main.js, con `r12.storm` vero). E
+  `demobasia` **non era un "rifai in loco" cosmetico**: è il popup sì/no
+  dello strumento **ruspa** (`selec==11`) — lo crea il `Mouse_LeftPressed`
+  dell'edificio, `demoiessa` (sì, `iessa=1`) fa scattare la `Collision_*`
+  che scala il costo e rilancia `impa*r`, `demobachia` (no) lo chiude.
+  Oggi: `ruspaPending`/`ruspaCostFor()`/`tryRuspaDemolish()` (main.js,
+  buildings.js), con gli stessi costi.
 - **Terzo edificio giocabile: `casa`.** Diverso dai primi due su due assi:
   è il primo con un aspetto scelto a caso invece che fisso (**[C]**
   `casa1/Create.gml`: 5 livelli di `action_if_dice(2)` annidati, letti
@@ -471,6 +488,12 @@ paragrafo 8.
   essere quella vera, e `hap`/`wewe` oggi non sono nemmeno aggiornati da
   nessun edificio nella nuova versione — meglio lasciarla un gap
   dichiarato che indovinarla).
+  **[Superato]** Tutti e tre chiusi: fulmine cablato (vedi sopra); "rifai in
+  loco" = ruspa, già portata (vedi sopra); e la "sommossa" **non lo era**:
+  `action_if_variable(hap, pop, 4)` è `hap >= pop` (operatore 4 = ">=") e
+  `ele > 0` — una ricompensa (moneta blu `sold1..18`), portata in
+  `game/src/coins.js`, e `hap` è oggi scritto dagli edifici (vedi il commento
+  su `casa` in `buildings.js`).
   Sprite aggiunti a `GAMEPLAY_SPRITES` in `tools/23_atlas.py`: le 20
   varianti `c1xx`/`c1xxl` (poi anche `c2xx`/`c3xx`, vedi sotto); il
   cantiere riusa gli `ir1x` già presenti per industria (stesso schema di
@@ -572,8 +595,9 @@ paragrafo 8.
   barra (`pu3..puvillone`, `puruspa`/`pureset` — zoom, occhio, reset,
   *bulldozer*: `ruspa` è italiano per "ruspa/bulldozer", quasi certamente
   il vero strumento di demolizione, distinto sia da `demobasia` — il
-  "rifai in loco" — sia dal tool di potenziamento; non ancora letto); il
-  calendario cosmetico (`repre` disegna anche un mese Gen–Dic e un giorno,
+  "rifai in loco" — sia dal tool di potenziamento; non ancora letto
+  [**Superato**: letto e portato, e `demobasia` e' il suo popup sì/no, non un
+  "rifai in loco" separato]); il calendario cosmetico (`repre` disegna anche un mese Gen–Dic e un giorno,
   legato a un contatore locale confuso col nome della variabile denaro di
   `r12` — stesso nome, oggetti diversi).
   Sprite aggiunti a `GAMEPLAY_SPRITES` (categoria `gui`, nuova):
@@ -686,7 +710,7 @@ paragrafo 8.
   portati dopo, "I ruderi" molto più sotto: un edificio distrutto lascia ora
   un rudere permanente e il placeholder resta bloccato, esattamente come
   senza questo strumento nell'originale; resta soltanto la riparazione a
-  pagamento di `puruspa` stesso, MAI ricostruita); gli altri ~17 bottoni
+  pagamento di `puruspa` stesso, MAI ricostruita [superato: ruspa portata]); gli altri ~17 bottoni
   della barra (zoom, occhio,
   reset — non più `puruspa`, appena discusso); le altre ~85 famiglie
   `impa*` (armi, minacce, altri edifici) non ancora lette; da dove
@@ -796,6 +820,24 @@ paragrafo 8.
      trasformarsi in `albe2`/`albe3`): gli alberi non sono interattivi in
      questo motore, e nessuna istanza `albe2`/`albe3` esiste comunque nella
      room — sarebbe codice morto.
+     **[Correzione]** "Codice morto" era sbagliato: `r12` ha sprite `baa11`
+     (1170x1558, posizionato a (-19,-179) in `match`, (0,0) in `match_easy`,
+     (-17,-179) in `tutorial`), quindi al primo Step ogni albero che ne
+     tocca la maschera passa da `Collision_r12` UNA volta (`selva=1`): dado
+     1/3 -> `albe2`, altrimenti dado 1/4 -> `albe3` (~50% in totale). Le
+     istanze `albe2`/`albe3` non stanno nella room perche' nascono cosi',
+     a runtime. Stima per il bbox (la maschera vera puo' essere piu' stretta):
+     29 alberi su 56 in `match`, 92 su 131 in `match_easy`, 31 su 57 in
+     `tutorial`. **[Portato]** (main.js, subito dopo `treeVariant()`:
+     `touchesR12()`): una volta al caricamento della scena, ogni `albe` il
+     cui sprite tocca il rettangolo di `baa11` fa lo stesso dado (1/3
+     `albe2`, poi 1/4 `albe3`) e diventa quell'oggetto con la sua variante.
+     **Perche' un collision check**: nell'originale non c'e' altra logica
+     dietro — e' solo il modo di far scattare l'effetto una volta, al primo
+     Step, per gli alberi che stanno sopra lo sprite `baa11` (`selva` lo
+     impedisce di ripetersi). Il porting non ne ha bisogno come evento: basta
+     il test di sovrapposizione al caricamento. Approssimazione [I]: si usa il
+     rettangolo intero di `baa11`, non la sua maschera vera (non nota).
   2. **Auto decorative ferme**: `honda_facile_1`/`honda_facile_2`
      (STUDIO.md §5.3 "veicoli_target", le uniche due istanze vere in
      `match_easy.scene.json`) nell'originale guidano lungo un percorso
@@ -1017,7 +1059,8 @@ paragrafo 8.
      `industria` (`selec==2`), gli unici due tipi piazzabili dal giocatore
      che la creano — **[C]** `parco` (`selec==7`) non crea nessun pallone
      nel decompilato, `mon_bbil` serve solo a tipi non ancora ricostruiti
-     (banca, laser).
+     (banca, laser). [**Superato**: banca e laser sono edifici veri e usano
+     `mon_bbil`, vedi `spawnConstructionBalloon()` in balloons.js.]
   Il regista (`stepBalloonSpawner`, equivalente di `r12/Alarm_1.gml`, ogni
   300 tic/5s) riproduce le probabilita' reali: verde sempre, giallo 1/10,
   blu 1/13, viola e verde-gigante 1/15-1/18 solo se `chies.level>=2`, verde
@@ -1028,7 +1071,7 @@ paragrafo 8.
   (`r12.ondan`) sospende tutte le nuove nascite finche' non decade (-0.5/s):
   riprodotto senza la cerimonia di armamento originale (`r12.arma` che arma
   gli alarm 4/5/6 di `r12` al prossimo Step) perche' pilota anche
-  un'ondata di bombardieri non ancora ricostruita — qui decade
+  un'ondata di bombardieri (ora ricostruita, `threats.js`) — qui decade
   incondizionatamente appena `ondan>0`, stesso risultato pratico. **[I]** Il
   gate `action_if_number(160, 0, 0)` che nel decompilato precede
   `monviolo` (un flag globale non identificato) non e' riprodotto: dipende
@@ -1368,6 +1411,9 @@ paragrafo 8.
   +5 all'alba, +9 altrimenti (giorno/tramonto — il decompilato ha solo
   due flag booleani, `aura.night`/`aura.dawn`, non le quattro fasi di
   questo motore: "ne' notte ne' alba" copre sia giorno che tramonto).
+  **[Modificato dopo, deviazione voluta dall'autore]** di notte ora `ele` e'
+  0 (l'originale faceva -1: il pannello "consumava" energia), e con la
+  pioggia rende il 70% (-30%): vedi la voce "Solare" in fondo.
   Nuovo `stepSolarProduction()`/`isDawn()` (stesso confine netto di
   `isNight()`, nessuno smoothstep). Placement cost **[C]** 1000 mon,
   trovato nello stesso posto dei costi gia' letti per industria/casa/
@@ -1874,7 +1920,9 @@ paragrafo 8.
   strumento ruspa/bulldozer (`selec==11`, `puruspa`, la sola cosa che
   nell'originale rimuove un rudere per ricostruirci sopra pagando, ancora
   MAI ricostruita: resta un gap dichiarato) il posto resta bloccato per
-  sempre. `ruinSpriteFor()` (buildings.js, stesso schema per-livello di
+  sempre [**Superato**: la ruspa esiste — `selec==11`, `ruspaPending`,
+  `tryRuspaRebuild()`, `stepRuinClearing()` —, un rudere si sgombera e si
+  ricostruisce pagando]. `ruinSpriteFor()` (buildings.js, stesso schema per-livello di
   `currentDecor()`/`currentDeathPop()`: `construct`/`upgrades[level-2]`, con
   `baseRuin` come fallback di `chies`) decide lo sprite; `destroyBuilding()`
   (main.js) lo consulta PRIMA di toccare qualunque stato — se torna `null`
@@ -2450,7 +2498,9 @@ paragrafo 8.
   tick) la ruspa la accorcia a 30 tick (1 per missile/gatling, quasi
   istantaneo) — ricostruire su un lotto gia' sviluppato salta lo sgombero.
   I livelli 2/3 (gia' brevi di loro, 30 tick anche da nuovi) non cambiano.
-  Tradotto nel motore: `tryRuspaRebuild()` (buildings.js) rimanda
+  **[Superato dalla voce "La ruspa demolisce" in fondo: questa traduzione
+  "ricostruisce lo stesso livello" era una lettura sbagliata.]** Tradotto
+  allora nel motore: `tryRuspaRebuild()` (buildings.js) rimandava
   l'edificio ALLO STESSO livello in cantiere (`b.level -= 1` prima di
   riusare la stessa formula gia' scelta da `tryStartUpgrade()`,
   `upgradeIndex: b.level-1` — nessun codice duplicato, `up.steps` e' lo
@@ -2651,6 +2701,36 @@ paragrafo 8.
   suggerisca un acceleratore. Lasciato fuori deliberatamente: implementare
   un bottone che costa senza dare niente in cambio sarebbe una trappola
   per il giocatore, non una funzionalita' mancante.
+  **[Correzione — questa lettura era sbagliata]** `playbuttoner` e' un
+  bottone **pausa/riprendi del cantiere del grattacielo**, non un
+  acceleratore. Il drenaggio di -5 ele/-5 mon per tick NON e' un costo del
+  bottone: e' il costo BASE del cantiere e scatta con `play==1` (stato
+  iniziale, `Create.gml`), cioe' con il cantiere "in marcia"
+  (`m3cant/Step.gml` per `phase<14`, e lo stesso blocco sta in
+  `impa31f/Step.gml` e `impa3gru/Step.gml`, i pezzi di cantiere vivi
+  contemporaneamente). Un tap su `playbuttoner` (`Mouse_LeftPressed.gml`)
+  mette `play=0` (sprite `puplay`, 174) — `playbuttoner/Step.gml` allora
+  aggiunge +1 a `alarm[0]` di ogni pezzo del cantiere (`m3cant`, `impa31f/r`,
+  `impa32f/r`, `impa33f/r`, `impa3gru*`) ad ogni Step, cioe' li tiene
+  fermi — e con `play=0` il drenaggio smette. Lo stesso congelamento scatta
+  da solo se `r12.mon <= 0` (senza soldi il cantiere si ferma da solo), e
+  il bottone sparisce (`action_kill_object`) su `match` con `dara==0` e
+  olio a 0. **[Portato]**: `BUILDING_TYPES.grattacielo.construct.pausable`
+  (buildings.js), `constructionStalled()`, `stepConstructions()`; bottone
+  in main.js (`skyPauseButtonAt()`, sprite `pupause`/`puplay` — aggiunti a
+  `GAMEPLAY_SPRITES["gui"]` in `tools/23_atlas.py`: serve rigenerare gli
+  atlas; finche' mancano il bottone e' disegnato proceduralmente). Il
+  consumo e' la somma dei tre pezzi che nell'originale lo applicano nel
+  proprio Step: `m3cant` (`phase<14`), `impa31f` (l'impalcatura) e
+  `impa3gru` (la gru, da 648 tick) — 10 ele+mon per tick fino a 648 tick, 15
+  fino all'ultimo passo, 10 nell'ultimo: **~109000 mon e ~109000 ele in piu'
+  dei 200000 di piazzamento** (verificato con una simulazione a passo di
+  tick: 108990). L'ele si ferma a -100 (`r12/Step.gml`): black-out di citta'
+  per tutta la durata se non si mette in pausa. [I] Un cantiere fermo (pausa
+  o `mon<=0`) NON consuma: nel decompilato il consumo proseguirebbe anche a
+  cantiere fermo per mancanza di soldi, senza scopo. Il fatto che
+  `impa31f/Destroy` uccida `playbuttoner` e i tempi di vita degli altri
+  pezzi restano semplificati alla durata dell'impalcatura di scaffold.js.
   **Il pacco di cantiere grande per laser e banca**: **[C]** letto riga
   per riga `placeholder/Mouse_LeftReleased.gml` per la lista esatta di chi
   crea `mon_bil` (piccolo) contro `mon_bbil` (grande) — una nota
@@ -3117,7 +3197,9 @@ paragrafo 8.
   room(tutorial)` — un'intera modalita' a parte (room "tutorial", mai letta)
   fuori scopo per questo giro: il bottone resta al suo posto (il layout lo
   vuole) ma il tap si limita a un messaggio "non ancora implementato"
-  invece di rompere o fingere. **[I]** lo sfondo vero della room (background
+  invece di rompere o fingere.
+  [**Superato**: il tutorial e' portato per intero, vedi la voce "Tutorial
+  (room "tutorial"...)" piu' sotto.] **[I]** lo sfondo vero della room (background
   GameMaker, non uno sprite) non e' stato estratto — sostituito dal solo
   colore (`bgColor`, gia' nel JSON) per restare nello scopo di questo giro.
   Verificato con un test diretto (Playwright): il tap sul primo bottone
@@ -3388,7 +3470,18 @@ paragrafo 8.
   nessuna variante a dado) — non partecipano all'economia (nessuna
   crescita/consumo/fulmine): la narrazione del tutorial non li richiede
   mai per nome, solo i NUOVI edifici costruiti durante le 34 fasi contano
-  per l'avanzamento. Verificato con Playwright: cutscene visibile e
+  per l'avanzamento.
+  **[Superato, tranne `tutorial_text`]** `honda3` e' simulata (vedi la voce
+  "`honda3` nel tutorial restava ferma") e gli edifici pre-esistenti sono
+  edifici veri (`seedTutorialBuildings()`, main.js, con
+  `TUTORIAL_PREBUILT_TYPES`: producono, consumano, le torrette sparano).
+  **Decisione dell'autore**: `demobasia` (=ruspa), `honda3`, edifici
+  pre-esistenti del tutorial e `tutorial_text` sono codice morto o gia'
+  implementati in altro modo — nessun lavoro residuo.
+  `tutorial_text` e' un relitto: nessun oggetto lo crea (grep su tutti i
+  `.gml`), e il suo codice — `mon += 9000`, a `num==28` dopo 600 tick
+  `disba` e ritorno a `title` — non e' raggiungibile.
+  Verificato con Playwright: cutscene visibile e
   correttamente sostituita dall'HUD (fase 0) alla fine; bottone "avanti"
   avanza le fasi; fase 2 (gameplay-gated) nasconde bottone/testo e mostra
   la freccia sul bottone ruspa vero nel menu edifici; un lotto-rudere
@@ -3478,7 +3571,8 @@ paragrafo 8.
   scaricate/ricreate ad ogni visita della room invece che cacheate e
   riusate — "caricare gli asset in modo furbo durante le partite" e'
   tuttora da fare, questo passo ha sistemato solo la navigazione fra le
-  schermate.
+  schermate. [**Superato**: la cache texture per-room esiste, `game/src/
+  assets.js` — vedi la "Nota di manutenzione" piu' sotto.]
 
 - **Caricamento a due tempi: "core" prima, "deferred" in background.**
   Richiesto dall'autore ("riusciamo a ridurre i tempi di caricamento
@@ -3736,7 +3830,8 @@ paragrafo 8.
   qualunque). `nifast` resta un gap a parte: uno spawner periodico di
   nuvole veloci specifico di `match` (`r12/Alarm_0.gml`) non ancora
   collegato ad atmosphere.js, che oggi copre solo i punti di spawn di
-  `match_easy`.
+  `match_easy`. [**Superato**: `nifast` e' collegato, atmosphere.js, "gap
+  chiuso".]
 
 - **Atlas per room da PNG a WebP: dimezzato il peso di ogni
   caricamento.** Richiesto dall'autore ("ridurre i caricamenti e il
@@ -4272,3 +4367,175 @@ paragrafo 8.
   percorsi sono relativi (`./`) perche' su GitHub Pages il sito vive sotto
   `/n_redux/`. Verificato in Chromium headless su un server statico locale:
   SW attivo con scope giusto, manifest e icone senza 404.
+- **Impalcature: verifica completa contro il decompilato e correzioni.** Un
+  simulatore a eventi del sottoinsieme di GML usato dalle catene `impa*`
+  (`tools/gmsim.py`: Create/Alarm_N, sprite, dadi come insieme di alternative,
+  creazioni, `with (r12)`) esegue ogni coppia `r`/`f` con i toppers e le gru
+  che crea, e `tools/28_scaffold_timing.py` scrive `game/src/scaffoldTiming.js`
+  (timeline vere di "r" e "f", nascita di topper/gru, comparsa dell'edificio,
+  consumo). `applyScaffoldTiming()` (buildings.js) le applica ai `steps` scritti
+  a mano tenendone gli spawn. Trovato e corretto:
+  1. **Museo**: `placeholder/Collision_dir1|dir3`, `selec==70`, crea
+     `IMPAMEDIA_R`/`IMPAMEDIA_RD` (3170 tick, 8 piani, `grubig`, `tops5s`,
+     edificio a 2510), non `impamediaR/RD`, che nessun oggetto crea (come
+     `impamedia1R/RD_demo` e `impavent_d`). Il museo compariva a 1490 (~17s
+     prima) e la ruspa durava 1130 invece di 2810. Ora parte dai passi di
+     `palazzo.upgrade0` (stessa impalcatura/gru/topper) sui tempi veri.
+  2. **"f" non e' "r" spostata**: parte 15 tick dopo (30 per missile/gatling,
+     fino a 55 nelle ultime fasi di solare/parco/casa 1/villa/industria 1) e
+     decide topper (15-70 tick dopo il confine di "r") e comparsa
+     dell'edificio (casa 1->2: 705 e non 650). Ora `up.frontTrack` (timeline
+     vera di "f", varianti di sprite indipendenti da "r") e `frontEnd`; un
+     passo `tail` mantiene la costruzione finche' "f" non finisce (l'"r" e' gia'
+     morto: niente `rearSpr`, niente consumo).
+  3. **Coda di smontaggio** di palazzo/monumento/banca/museo (e delle loro
+     ruspe): ora completa (fino a 1810 / 2810 / 3170), `revealAtEnd` non piu'
+     usato da queste catene.
+  4. **Gru dell'asse `rd`** (`palazzoRd`/`museoRd`, primo livello): gli offset
+     sono lo specchio di quelli di `palazzo`, non gli stessi.
+  5. **Ruspa sul parco**: `imparcor_demo` dura 430 tick (topper `tops1`, lotto
+     a 325), non i 150 di `imparcr`: `ruspaSteps`.
+  6. **Consumo**: `impa0to1r` (casa livello 1) consuma -1 mon ogni 20 tick
+     (39 in tutto), mancava; `first` (20 tick) prima del primo consumo, poi
+     `every` (10 per casa 1->2 e club).
+  Anche `c.t` porta il resto al passo successivo (prima `c.t = 0`): con i
+  molti passi in piu' la catena deriverebbe di qualche tick.
+  **Verificati senza differenze**: chiesa 2/3 (`upcrc12/23`), industria,
+  casa, missile, gatling, laser, solare, villa, club, eolico, grattacielo
+  (`m3cant`, pannelli e gru di scaffold.js), gru piccole/grandi e bracci,
+  posizione/durata dei toppers.
+  **Ruspa**: in questa voce era rimasta "diversa dall'originale" — corretta
+  subito dopo, vedi la voce successiva. I salvataggi di un cantiere in corso
+  fatto con i vecchi `steps` vengono portati sui nuovi (`c.tv`).
+- **La ruspa demolisce (come l'originale).** Il "si'" del popup (`demoiessa`)
+  fa scattare la `Collision_*` di `demobasia` che crea la catena "_demo" del
+  tipo/livello (`impacasa1r`, `impaindu2r`, `impa4r_demo`, `IMPAMEDIA_R_DEMO`,
+  ...): stessa impalcatura di un cantiere (r dietro, edificio vecchio in mezzo,
+  f davanti, topper, gru) ma alla fine NON nasce un edificio. A un istante
+  (`deathT`) l'impalcatura anteriore crea `*death`/`updeath*` — Destroy
+  dell'edificio: pop/hap — e a un altro (`lotT`) un `placeholder`: il lotto e'
+  libero e ci si costruisce qualunque cosa. Istanti (tick): casa 1/2/3
+  325/705/1145; industria 1 105/365, industria 2 1145, industria 3 445/2045;
+  club 705, missile/gatling 691, villa/parco 325, laser 445/2045, solare
+  105/325, palazzo 1145 (2150 al secondo livello), museo 2150. Il consumo di
+  denaro e' quello della catena "_demo" (`ruspaDrain`: a volte diverso da quello
+  di costruzione, es. solare 4, casa 2->3 ... vedi scaffoldTiming.js). Il
+  porting prima "ricostruiva lo stesso livello" (`tryRuspaRebuild`): la catena
+  ha gli stessi sprite di quella di costruzione, e l'ho letta come identica
+  senza guardare cosa crea alla fine.
+  Il solare sopra un parco: `impasoldem1r` crea anche `parcdeath` — muore anche
+  il parco sotto. L'eolico (`impavent_dem`) muore subito (`with (other.id)
+  action_kill_object()`), poi 4100 tick di animazione a ritroso (`impvent3`
+  dal fotogramma 21 a -0.01/tick, `impvent2`, `impvent1` dal 14) e a 4100 i 4
+  `placeholder`; prima veniva demolito di colpo.
+  Nel motore: `tryRuspaDemolish()` (paga, `construction.demolish`),
+  `stepConstructions()` con la catena `ruspaSteps` e la traccia anteriore vera
+  (`ruspaFrontTrack`, con `im1f`: aggiunto a tools/23_atlas.py, serve
+  rigenerare gli atlas, prima ne manca il disegno di 30 tick) e `onDemolish`
+  ("death"/"lot"/"end", main.js demolishStep()); l'istanza resta in `buildings`
+  come "zombie" senza economia (`b.level = 0`) finche' l'impalcatura non si
+  smonta. Ruderi (`ruins`/`ruinLots`) invariati: restano la scelta dell'autore
+  (impalcatura, la rovina sparisce, lotto vuoto).
+  **Semplificazioni**: l'economia di un edificio in demolizione si ferma al tap
+  (nell'originale continua fino a `deathT`, al massimo 1145 tick); `ruindeath`
+  (rimuove ruderi vicini) non c'e'. `ruspaFirstStepDur` resta solo per lo
+  sgombero dei ruderi (catena di `casa`).
+- **Popup sì/no della ruspa: tutto segue lo zoom del mondo.** I bottoni sono
+  quad di mondo (`1/zoom` pixel schermo per unita', `camera.worldToScreen()`),
+  ma "Yes!"/"No" erano testo DOM a 17px fissi e il cartellino del costo era
+  compensato per restare a taglia costante: zoomando le tre parti si
+  scollegavano. Ora testo e cartellino si scalano con lo stesso `k = 1/zoom`
+  (`drawCostTagAt(..., { follow: true })`: pillola/iconcine a scala 1 di mondo,
+  testo e offset in pixel moltiplicati per `k`). A zoom 1 e' identico a prima.
+  Gli altri cartellini (menu costruzioni, upgrade, ruderi del tutorial) restano
+  a taglia costante, come deciso in precedenza.
+- **Limite di fps nelle opzioni grafiche.** Controllo segmentato a tre voci
+  (30 / 60 / Nessuno, default 60) fra i toggle e "Back" di "Graphics options",
+  stesso `drawSegmentedControl()` di lingua e intervallo di autosave; salvato
+  in `nimbus-graphics` (`fpsCap`: 30, 60 o 0 = nessun limite). `frameMinMs()`
+  (graphicsOptions.js, letto gia' al primo frame del menu) sostituisce la
+  costante `MIN_FRAME_MS` di renderscale.js nei due cicli (match e title):
+  un frame piu' ravvicinato di `1000/fps - 2` ms si salta senza toccare `last`.
+  Con 30 fps la scala di risoluzione adattiva non sale mai (soglia 50) ma non
+  scende neanche (soglia 24).
+- **Risoluzione dinamica: interruttore nelle opzioni grafiche.** "Dynamic
+  resolution: ON/OFF", default ON, salvato in `nimbus-graphics` (`dynamicRes`).
+  `RenderScale` (renderscale.js) legge `dynamicResolutionEnabled()` ad ogni
+  frame: spenta, `scale` e' sempre 1 (anche su software rendering, che
+  altrimenti parte gia' al gradino piu' basso) e `sample()` non misura; alla
+  riaccensione media e cooldown ripartono da zero (gradino 0, o il piu' basso
+  su software rendering). Il canvas si ridimensiona da solo: resize() gira
+  ad ogni frame.
+- **Solare ed eolico: deviazioni dall'originale, pannello produzione.**
+  (1) `solarProduction.ele.night`: 0 invece di -1 (`sooool/Alarm_4.gml` toglieva
+  1 di energia ogni 30 tick di notte) — deviazione voluta dell'autore; il -5 mon
+  resta. (2) Con la pioggia il solare rende il 70% (`RAIN_SOLAR_MULT`,
+  buildings.js; nessuna base nel decompilato): "piove" = `r12.storm ||
+  r12.stormeasy` (`isRaining()`), le due condizioni con pioggia visibile,
+  indipendente dal toggle "rain" delle opzioni (solo estetico). Vale sia per
+  `stepSolarProduction()` sia per `currentEnergyStats()` (pannello statistiche).
+  Il moltiplicatore agisce solo sull'energia, non sul costo. (3) Il pannello
+  dell'edificio (mano + tap) mostra ora la produzione anche di fotovoltaico
+  (`Energia: +X /ciclo (costa 5 mon)`, con la nota "Pioggia: -30%") ed eolico
+  (`+110 /ciclo`), come la centrale — prima solo industria (`def.production`).
+- **Desktop: tenere premuto con la mano apre l'edificio illuminato di blu.**
+  `buildingAt(sx, sy, litOnly)` (main.js): su desktop (`!isMobile`)
+  `input.onLongPress` usa lo stesso test dell'hover azzurro (`handHovered`:
+  rettangolo dello sprite + maschera pixel per i non-torretta) invece
+  dell'area di tap (che per le torrette e' allargata, `turretHitBox()`); con piu'
+  edifici accesi vale difesa > produttore di energia > altro (la precedenza di
+  sempre). Se nulla e' illuminato non si apre niente. Mobile e tap normale
+  invariati.
+- **Prestazioni (mobile e non).** (1) `textPool` (main.js): `el.style` di ogni
+  elemento e' un proxy che inoltra al DOM solo i valori cambiati (`cachedStyle`),
+  testo scritto solo se diverso; `elHeight()` sostituisce
+  `getBoundingClientRect()` (layout forzato) e rimisura solo se cambiano testo/
+  proprieta' di layout o arriva un font (`fontEpoch`). (2) Meno allocazioni nel
+  disegno: `putVert()` di modulo al posto di una closure per quad (gl.js),
+  `drawQuadXY()` (quad ruotato con 8 numeri), `drawRotated()` senza array/
+  oggetti, frame della pioggia/bolle/scintille riusati. (3) Tetto agli fps,
+  poi reso opzione (vedi "Limite di fps"). Non fatto: ordinamento della lista di
+  disegno (`filter -> concat -> sort` ogni frame) — rischio sull'ordine di depth,
+  da valutare dopo un profilo su telefono; blur dei pannelli ancora rifatto ad
+  ogni frame sotto info edificio/banca/scambi (il mondo continua a girare).
+
+## Stato e gap aperti a fine sessione
+
+**Verificato solo con simulazioni e analisi statica, MAI a schermo** (in questo
+ambiente mancano `game/assets/` e `assets/sprites/`, non c'e' modo di far
+partire il gioco): tutto cio' che e' stato aggiunto in questa sessione —
+consumo/pausa del grattacielo e bottone, diffusione degli alberi, popup ruspa
+alla stessa scala dello zoom, demolizione con la ruspa, tempi delle impalcature,
+menu delle opzioni grafiche (fps, risoluzione dinamica), tap lungo desktop. Le
+parti logiche hanno test a passo di tick contro il decompilato (simulatore
+`tools/gmsim.py`); il disegno no. Da provare in partita: bottone pausa del
+grattacielo (sprite), ruspa su ogni tipo (in particolare parco/solare/eolico e
+sotto il popup si'/no), zoom del popup, ruderi sotto ruspa (usano la catena di
+`casa`, ora con i tempi nuovi e la coda `tail`: nessun test nel motore).
+
+**Da fare in locale** — rigenerare gli atlas (README, "Far girare il gioco"):
+`pupause`/`puplay` (gruppo `gui`) e `im1f` (gruppo `buildings`) sono stati
+aggiunti a `tools/23_atlas.py`. Finche' non si rigenera: il bottone pausa del
+grattacielo e' disegnato proceduralmente, e la ruspa non mostra per 30 tick
+l'impalcatura anteriore (`im1f`) sulle catene di taglia 1.
+`tools/28_scaffold_timing.py` va rilanciato (scrive `game/src/scaffoldTiming.js`)
+se cambia una catena `impa*`.
+
+**Gap dichiarati** (nessuno nuovo e' stato lasciato in silenzio):
+- Grattacielo: i tempi di vita di `impa31f`/`impa3gru` e il fatto che
+  `impa31f/Destroy` uccida `playbuttoner` sono semplificati alla durata
+  dell'impalcatura (scaffold.js); `impa33f` che si smonta da solo a 2400 tick
+  resta trattato come rumore.
+- Ruspa: l'economia dell'edificio si ferma al tap (originale: fino a `deathT`,
+  al massimo 1145 tick); manca `ruindeath` (rimuove i ruderi vicini); i ruderi
+  vecchi/nuovi sotto ruspa restano la scelta dell'autore (impalcatura, rovina
+  via, lotto vuoto).
+- Alberi: la maschera vera di `baa11` non e' nota (si usa il rettangolo).
+- Estetici gia' noti: `demobasia` non piu' un gap (e' la ruspa), `tutorial_text`
+  relitto, ordine di depth di "f" a +2.8 per palazzo/museo (irrilevante).
+
+**Risolto, non piu' un gap**: le catene `impamediaR/RD`, `impamedia1R/RD_demo`
+(con le loro impalcature "f") e `impavent_d` sono codice morto — nessun `.gml`
+ne' nessuna istanza di stanza le crea, verificato. Il museo usa le catene vere
+`IMPAMEDIA_R/RD` e `IMPAMEDIA_R/RD_DEMO` (vedi la voce sulle impalcature); le
+altre sono resti di una versione precedente e non vanno portate.

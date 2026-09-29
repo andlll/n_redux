@@ -90,6 +90,9 @@ const STRINGS = {
 
   // ------------------------------------------------------ opzioni grafiche
   "graphicsOptions.title": { en: "GRAPHICS OPTIONS", it: "OPZIONI GRAFICHE", es: "OPCIONES GRÁFICAS", pt: "OPÇÕES GRÁFICAS", de: "GRAFIKOPTIONEN", fr: "OPTIONS GRAPHIQUES" },
+  "graphicsOptions.dynamicRes": { en: "Dynamic resolution: {state}", it: "Risoluzione dinamica: {state}", es: "Resolución dinámica: {state}", pt: "Resolução dinâmica: {state}", de: "Dynamische Auflösung: {state}", fr: "Résolution dynamique : {state}" },
+  "graphicsOptions.fps": { en: "Frame rate limit", it: "Limite di fps", es: "Límite de fps", pt: "Limite de fps", de: "Bildratenlimit", fr: "Limite de fps" },
+  "graphicsOptions.fpsUnlimited": { en: "Unlimited", it: "Nessuno", es: "Sin límite", pt: "Sem limite", de: "Unbegrenzt", fr: "Illimité" },
   "graphicsOptions.rain": { en: "Rain: {state}", it: "Pioggia: {state}", es: "Lluvia: {state}", pt: "Chuva: {state}", de: "Regen: {state}", fr: "Pluie : {state}" },
   "graphicsOptions.cars": { en: "Vehicles: {state}", it: "Veicoli: {state}", es: "Vehículos: {state}", pt: "Veículos: {state}", de: "Fahrzeuge: {state}", fr: "Véhicules : {state}" },
   "graphicsOptions.pedestrians": { en: "Pedestrians: {state}", it: "Pedoni: {state}", es: "Peatones: {state}", pt: "Pedestres: {state}", de: "Fußgänger: {state}", fr: "Piétons : {state}" },
@@ -121,6 +124,9 @@ const STRINGS = {
   // li'.
   "buildingInfo.energyPrefix": { en: "Energy: +", it: "Energia: +", es: "Energía: +", pt: "Energia: +", de: "Energie: +", fr: "Énergie : +" },
   "buildingInfo.energyMiddle": { en: "/cycle (uses ", it: "/ciclo (consuma ", es: "/ciclo (consume ", pt: "/ciclo (consome ", de: "/Zyklus (verbraucht ", fr: "/cycle (consomme " },
+  "buildingInfo.perCycle": { en: "/cycle", it: "/ciclo", es: "/ciclo", pt: "/ciclo", de: "/Zyklus", fr: "/cycle" },
+  "buildingInfo.costMiddle": { en: "/cycle (costs ", it: "/ciclo (costa ", es: "/ciclo (cuesta ", pt: "/ciclo (custa ", de: "/Zyklus (kostet ", fr: "/cycle (coûte " },
+  "buildingInfo.solarRain": { en: "Rain: -30% output", it: "Pioggia: -30% di resa", es: "Lluvia: -30% de producción", pt: "Chuva: -30% de produção", de: "Regen: -30 % Leistung", fr: "Pluie : -30 % de production" },
   "buildingInfo.energySuffix": { en: ")", it: ")", es: ")", pt: ")", de: ")", fr: ")" },
   "buildingInfo.close": { en: "Close", it: "Chiudi", es: "Cerrar", pt: "Fechar", de: "Schließen", fr: "Fermer" },
 
@@ -369,7 +375,10 @@ const STRINGS = {
   "msg.insufficientEnergy": { en: "insufficient energy", it: "energia insufficiente", es: "energía insuficiente", pt: "energia insuficiente", de: "nicht genug Energie", fr: "énergie insuffisante" },
   "msg.cannonReloading": { en: "cannon reloading", it: "cannone in ricarica", es: "cañón recargando", pt: "canhão recarregando", de: "Kanone lädt nach", fr: "canon en rechargement" },
   "msg.constructionStarted": { en: "construction started", it: "cantiere avviato", es: "obra iniciada", pt: "obra iniciada", de: "Bau begonnen", fr: "chantier commencé" },
+  "msg.demolitionStarted": { en: "demolition started (bulldozer)", it: "demolizione avviata (ruspa)", es: "demolición iniciada (buldócer)", pt: "demolição iniciada (buldôzer)", de: "Abriss begonnen (Planierraupe)", fr: "démolition commencée (bulldozer)" },
   "msg.constructionStartedBulldozer": { en: "construction started (bulldozer)", it: "cantiere avviato (ruspa)", es: "obra iniciada (buldócer)", pt: "obra iniciada (buldôzer)", de: "Bau begonnen (Planierraupe)", fr: "chantier commencé (bulldozer)" },
+  "msg.constructionPaused": { en: "construction paused (no cost while paused)", it: "cantiere in pausa (nessun costo finché è fermo)", es: "obra en pausa (sin coste mientras está parada)", pt: "obra em pausa (sem custo enquanto parada)", de: "Bau pausiert (keine Kosten solange pausiert)", fr: "chantier en pause (aucun coût tant qu'il est arrêté)" },
+  "msg.constructionResumed": { en: "construction resumed", it: "cantiere ripreso", es: "obra reanudada", pt: "obra retomada", de: "Bau fortgesetzt", fr: "chantier repris" },
   "msg.solarPlaced": { en: "solar panels placed on the park (-1000 mon)", it: "pannelli solari installati sul parco (-1000 mon)", es: "paneles solares instalados en el parque (-1000 mon)", pt: "painéis solares instalados no parque (-1000 mon)", de: "Solarpanele im Park installiert (-1000 mon)", fr: "panneaux solaires installés sur le parc (-1000 mon)" },
   "msg.alreadySolarOnPark": { en: "there's already a solar panel on this park", it: "c'è già un pannello solare su questo parco", es: "ya hay un panel solar en este parque", pt: "já há um painel solar neste parque", de: "in diesem Park gibt es bereits ein Solarpanel", fr: "il y a déjà un panneau solaire sur ce parc" },
   "msg.needFreeArea": {

@@ -163,12 +163,14 @@ function stepScaffold(s, dt) {
  * torna `null`, stesso momento in cui gru/topper transitori di ogni altro
  * edificio spariscono — STUDIO.md sopra spiega perche' non serve un
  * `onFinish` dedicato). */
-export function stepGrattacieloScaffold(buildings, dt) {
+export function stepGrattacieloScaffold(buildings, dt, isStalled) {
   for (const b of buildings) {
     if (b.type !== "grattacielo") continue;
     if (b.construction) {
       if (!b._scaffold) b._scaffold = makeScaffold();
-      stepScaffold(b._scaffold, dt);
+      // Cantiere in pausa (`playbuttoner`, buildings.js constructionStalled()):
+      // [C] il bottone ferma `alarm[0]` di TUTTI i pezzi, impalcatura e gru inclusi.
+      if (!isStalled?.(b)) stepScaffold(b._scaffold, dt);
     } else if (b._scaffold) {
       b._scaffold = null;
     }

@@ -1,5 +1,6 @@
 import { BALLOON_TYPES } from "./balloons.js";
 import { t, buildingLabel } from "./i18n.js";
+import { SCAFFOLD_TIMING } from "./scaffoldTiming.js";
 
 // Edifici come dati, non come codice (STUDIO.md §7.3): la catena di
 // cantiere di `chies` (upcrc12/upcrc23, decompilati da
@@ -444,7 +445,7 @@ export const BUILDING_TYPES = {
       life: 100,                  // [C] casa1/Create.gml
       wewe: 10,                   // [C] casa1/Create.gml: wewe += 10 — peso su `match`, state.js
       // [C] casa1/Mouse_LeftPressed.gml, ramo selec==11 (ruspa): 500 mon —
-      // vedi il commento su `tryRuspaRebuild()` in fondo al file per il
+      // vedi il commento su `tryRuspaDemolish()` in fondo al file per il
       // meccanismo completo. `ruspaFirstStepDur` sostituisce SOLO la durata
       // del primo passo di `steps` sotto: **[C]** `impacasa1r/Create.gml`
       // arma il primo alarm a 30 tick, non 390 come `impa0to1r` (il cantiere
@@ -725,9 +726,12 @@ export const BUILDING_TYPES = {
   solare: {
     get label() { return buildingLabel("solare"); },
     placeCost: { mon: 1000 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==61
-    // [C] sooool/Alarm_4.gml, ogni 30 tick: sempre -5 mon; ele -1 di notte,
-    // +5 all'alba, +9 altrimenti (giorno/tramonto) — vedi stepSolarProduction().
-    solarProduction: { every: 30, mon: 5, ele: { night: -1, dawn: 5, day: 9 } },
+    // [C] sooool/Alarm_4.gml, ogni 30 tick: sempre -5 mon; ele +5 all'alba,
+    // +9 altrimenti (giorno/tramonto) — vedi stepSolarProduction().
+    // [DEVIAZIONE dall'originale] di notte l'originale faceva ele -1 (il
+    // pannello "consumava" energia): qui e' 0, un pannello spento non
+    // spreca nulla. Il costo in mon (-5) resta invariato.
+    solarProduction: { every: 30, mon: 5, ele: { night: 0, dawn: 5, day: 9 } },
     storm: [{ dice: 200, loss: 50 }],   // [C] sooool/Alarm_5.gml
     // [C] sooool/Destroy.gml: hap +50 alla morte — nessun costo corrispondente
     // alla nascita (sooool/Create.gml non tocca hap): non simmetrico, letto
@@ -817,7 +821,7 @@ export const BUILDING_TYPES = {
     construct: {                 // livello 0 -> 1, imparcr (src/objects/imparcr)
       drain: { mon: 1, every: 20 },              // [C] imparcr/Alarm_10.gml
       life: 9999,                                 // [I] nessun danno da fulmine ne' vita nel decompilato
-      ruspaCost: 500,                              // [C] parco/Mouse_LeftPressed.gml, ramo selec==11 — nessun ruspaFirstStepDur: imparcor_demo arma 30 tick, identico a imparcr
+      ruspaCost: 500,                              // [C] parco/Mouse_LeftPressed.gml, ramo selec==11 — la catena della ruspa (`imparcor_demo`, 430 tick) NON e' quella normale: `ruspaSteps` (applyScaffoldTiming())
       // [C] parco/Step.gml non legge mai `life`: nessun ramo `life<=0`,
       // quindi nessun `ruin*` — l'unico tipo senza (`ruinSpriteFor()` in
       // fondo al file torna null, destroyBuilding() in main.js lo lascia
@@ -1248,13 +1252,24 @@ export const BUILDING_TYPES = {
       // rudere piu' costoso del motore, coerente con essere anche
       // l'edificio piu' costoso da piazzare. **[C] `impavent_dem`, letto
       // riga per riga (Create.gml + Alarm_0/1/2), e' DIVERSO da ogni altro
-      // "_demo": non ricostruisce `eoli`, crea 4 `placeholder` (agli offset
-      // ±98/±58, la stessa geometria di `impavent/Alarm_2.gml` per i suoi
-      // 4 lotti) e si autodistrugge — una pala eolica ruspata torna terreno
-      // libero, non una pala eolica nuova. `ruspaDemolish: true` marca
-      // questo (main.js, la gestisce a parte da `tryRuspaRebuild()`) invece
-      // di forzarla nella forma "stessa tipo/livello" di ogni altro edificio.
+      // "_demo" solo per un dettaglio: muore subito (nessun `*death` piu'
+      // tardi) e i 4 `placeholder` (agli offset ±98/±58, la geometria di
+      // `impavent/Alarm_2.gml`) nascono alla fine dell'animazione. Dal
+      // momento in cui TUTTE le ruspe demoliscono (tryRuspaDemolish()) e' lo
+      // stesso meccanismo degli altri tipi; `ruspaDemolish: true` dice solo
+      // che l'edificio non ha un "vecchio" da tenere in mezzo (`b.oldSpr`).
       ruspaCost: 200000, ruspaDemolish: true,
+      // [C] `impavent_dem/Create.gml` + Alarm_0/1/2 (tools/gmsim.py): muore
+      // subito (`demobasia/Collision_eoli`: `with (other.id) kill`), poi
+      // `impvent3` a ritroso dal fotogramma 21 (-0.01/tick: 21 fotogrammi in
+      // 2100 tick), `impvent2` 600 tick, `impvent1` a ritroso dal 14 per 1400,
+      // e a 4100 i 4 `placeholder`. Nessuna traccia "f".
+      ruspaRevealAtStep: 0,
+      ruspaSteps: [
+        { spr: "impvent3", dur: 2100, spd: -0.01, start: 21 },
+        { spr: "impvent2", dur: 600 },
+        { spr: "impvent1", dur: 1400, spd: -0.01, start: 14 },
+      ],
       ruin: ["rovent1", "rovent2"],   // [C] eoli/Step.gml: create_object(ruinventola) — dado a due vie, ruinventola/Create.gml
       decor: [],                                   // [C] eoli/Create.gml non crea nessun cddvd
       hap: { create: -20, destroy: 20 },   // [C] eoli/Create.gml + Destroy.gml — l'unico simmetrico fra tutti i tipi con `hap`
@@ -1715,8 +1730,15 @@ export const BUILDING_TYPES = {
     get label() { return buildingLabel("museo"); },
     placeCost: { mon: 35000 },   // [C] placeholder/Mouse_LeftPressed.gml, ramo selec==70
     diagonalPlacement: true,
-    construct: {                 // media1s (asse "r", dir1/dir3) — [C] impamediaR/impamediaF: stessa sequenza sr*/sf* di palazzo, solo il drain cambia
-      drain: { mon: 5, every: 20 },                 // [C] impamediaR/Alarm_10.gml
+    // [Correzione dal decompilato] `placeholder/Collision_dir1|dir3.gml`, ramo
+    // selec==70, crea `IMPAMEDIA_R` (3170 tick, 8 piani, gru grande, `tops5s`,
+    // edificio a 2510), NON `impamediaR` (1810 tick, 4 piani): quest'ultima,
+    // `impamediaRD` e `impamedia1R/RD_demo` non le crea nessun oggetto. I
+    // `steps` qui sotto sono solo un punto di partenza — applyScaffoldTiming()
+    // li rifa sulla timeline di IMPAMEDIA_R (spawn presi dal secondo livello
+    // di palazzo: stessa impalcatura, stessa gru, stesso topper).
+    construct: {                 // media1s (asse "r", dir1/dir3) — [C] IMPAMEDIA_R/IMPAMEDIA_F (vedi sopra)
+      drain: { mon: 5, every: 20 },                 // [C] IMPAMEDIA_R/Alarm_10.gml (identico a impamediaR)
       life: 350,                                      // [C] media1s/Create.gml
       wewe: 150,                                       // [C] media1s/Create.gml: wewe += 150 — peso su `match`, state.js
       // [C] media1s/Mouse_LeftPressed.gml, ramo selec==11: 20000 mon.
@@ -2057,6 +2079,24 @@ export const BUILDING_TYPES = {
     // serve piu' margine verticale per non coprire il proprio stesso lotto.
     multiTile: { count: 4, anchorOffset: { dx: 98, dy: 116 } },
     construct: {
+      // [C] `playbuttoner` (src/objects/playbuttoner, creato da m3cant/Create.gml
+      // a (x, y-100)): pausa/riprendi del cantiere. Con `play==1` (stato
+      // iniziale) OGNI pezzo vivo del cantiere consuma -5 ele e -5 mon PER TICK
+      // nel proprio Step: `m3cant/Step.gml` (solo `phase<14`, cioe' tutti i
+      // passi tranne l'ultimo), `impa31f/Step.gml` (la prima impalcatura) e
+      // `impa3gru/Step.gml` (la gru, spawnata da impa31f a phase 18 = 648
+      // tick). Un tap mette `play=0`: `playbuttoner/Step.gml` allora tiene
+      // fermo `alarm[0]` di ogni pezzo (+1 ad ogni Step) — cantiere congelato
+      // e nessun consumo. Lo stesso congelamento scatta da solo con
+      // `r12.mon <= 0`. [I] Nel decompilato il consumo continuerebbe anche a
+      // cantiere fermo per mancanza di soldi (e mon scenderebbe sotto zero
+      // all'infinito): qui un cantiere fermo NON consuma, in nessun caso —
+      // una trappola senza scopo. [I] la durata dei pezzi e' quella di
+      // scaffold.js (tutta la durata del cantiere), non le loro vere
+      // Alarm/Destroy (impa33f ne smonta uno a 2400 tick da solo, rumore).
+      // Totale: 10 ele+mon/tick fino a 648 tick, 15 fino all'ultimo passo, 10
+      // durante l'ultimo — circa 109000 mon e 109000 ele in piu' del prezzo.
+      pausable: { perPiece: 5, craneAfterTicks: 648 },
       finalSprite: "m3x14", life: 99999,   // [C] m3cant/Alarm_0.gml fase 13; [I] indistruttibile, vedi sopra
       decor: [
         { spr: "m3l1", fadeTicks: 50 }, { spr: "m3l2", fadeTicks: 100 },
@@ -2546,41 +2586,33 @@ export function ruspaCostFor(b) {
 /**
  * Tocco di conferma sulla ruspa (`r12.selec===11`, popup si'/no gia'
  * confermato dal giocatore — main.js gestisce l'armare/il conferma, vedi
- * `ruspaPending` li'): paga il costo e rimanda l'edificio in cantiere ALLO
- * STESSO livello. **[C]** `demobasia/Collision_*.gml` crea, per ogni
- * livello, un oggetto "_demo" dedicato (`impacasa2r`, `impaind3r`, ...) che
- * si e' rivelato — diff alla mano contro il cantiere/potenziamento normale
- * dello stesso livello — la stessa identica catena `Alarm_0` in poi, con
- * AL PIU' il primo passo accorciato (`ruspaFirstStepDur` per livello,
- * buildings.js sopra: ricostruire su un lotto gia' sviluppato salta la fase
- * di sgombero che un lotto vuoto richiede). Riusa percio' `up.steps` cosi'
- * com'e' invece di duplicarlo — `c.rebuilding` (letto da
- * stepConstructions() sotto) e' l'unica differenza dal percorso normale.
- * `eolico` non passa mai di qui (`def.construct.ruspaDemolish` sopra):
- * main.js lo intercetta prima e demolisce per davvero invece.
+ * `ruspaPending` li'): paga il costo e avvia la DEMOLIZIONE dell'edificio.
+ * **[C]** `demobasia/Collision_*.gml` crea, per ogni tipo/livello, la catena
+ * "_demo" dedicata (`impacasa2r`, `impaind3r`, `impa4r_demo`, ...): la stessa
+ * impalcatura di un cantiere — r dietro, edificio vecchio in mezzo, f davanti,
+ * topper e gru — ma alla fine NON crea un edificio nuovo: a un certo istante
+ * (`deathT`) l'impalcatura anteriore crea l'oggetto `*death`/`updeath*` che
+ * uccide l'edificio (con il suo Destroy: pop/hap) e a un altro (`lotT`, spesso
+ * lo stesso) un `placeholder` — il lotto torna libero e ci si puo' costruire
+ * qualunque cosa. [Correzione: fino ad ora il porting "ricostruiva" lo stesso
+ * livello — una lettura sbagliata, la catena e' identica solo per gli sprite.]
  *
- * [Bug corretto] `b.spr` NON viene piu' azzerato a "empty" (invisibile) qui:
- * a differenza di un cantiere su un lotto vuoto (tryStartUpgrade()/
- * placeBuilding() sopra, dove "empty" e' letteralmente cio' che c'e' — un
- * lotto libero), un lotto ruspato ha ancora l'edificio VECCHIO sopra finche'
- * la ruspa non lo sgombera per davvero. Segnalato dall'autore: sparire di
- * scatto a "empty" e poi al primo sprite del cantiere (una fondamenta/un
- * lotto spoglio, lo stesso di una costruzione ex novo) faceva sembrare
- * l'edificio gia' demolito ancora prima che il "sgombero" (il primo passo,
- * accorciato da `ruspaFirstStepDur` — a volte un solo tick) iniziasse
- * davvero. `b.spr` resta quindi quello vecchio (l'ultimo disegnato prima di
- * questa chiamata) finche' stepConstructions() sotto non decide lui stesso
- * di sostituirlo, SOLO quando il primo passo (il "sgombero") e' finito per
- * davvero — vedi il commento su `c.rebuilding` li'.
+ * Stesso schema del potenziamento (`b.oldSpr` = l'edificio vecchio, fra r e
+ * f): il tipo resta in `buildings` con `b.construction.demolish` fino alla
+ * fine della catena; stepConstructions() chiama `onDemolish(b, "death"|"lot"|
+ * "end")` agli istanti veri e main.js fa il resto. `eolico` (`ruspaDemolish`,
+ * `impavent_dem`) muore SUBITO (`with (other.id) action_kill_object()`) e
+ * libera i 4 lotti alla fine di 4100 tick di animazione a ritroso.
  */
-export function tryRuspaRebuild(b, r12) {
+export function tryRuspaDemolish(b, r12) {
   if (b.construction) return t("msg.constructionInProgress");
   const cost = ruspaCostFor(b);
   if (cost == null) return t("upgrade.notRebuildable");
   if (!canAfford(r12, { mon: cost })) return t("msg.needMonHave", { cost, have: r12.mon.toFixed(0) });
   r12.mon -= cost;
-  b.level -= 1;
-  b.construction = { upgradeIndex: b.level - 1, stepIndex: 0, t: 0, rebuilding: true };
+  const up = currentLevelDef(b);
+  b.construction = { upgradeIndex: b.level - 2, stepIndex: 0, t: 0, demolish: true, tv: 2 };
+  b.oldSpr = up?.ruspaDemolish ? null : b.spr;
   return null;
 }
 
@@ -2774,6 +2806,126 @@ function applyLevelFinish(b, def, up, c, r12, onDecor, deferDecor = false) {
 const TOPPER_SPRITES = new Set(["toppers", "topls", "topld"]);
 // Esportata: stepRuinClearing() (main.js) la riusa per la stessa impalcatura
 // "f" in sovraimpressione sui ruderi sotto ruspa — vedi il commento li'.
+// [Correzione dal decompilato, richiesta dall'autore: "e' piu' attendibile
+// l'originale in tutti i casi"] I `steps` scritti a mano seguono la sola
+// traccia "r" dell'impalcatura e attaccano topper/reveal al confine dei suoi
+// passi. Nell'originale li decide invece la traccia "f" (davanti), che parte
+// e prosegue con un ritardo proprio (15 tick, 30 per missile/gatling, fino a
+// 55 nelle ultime fasi), e per i palazzi/monumento/banca/museo continua fino
+// allo smontaggio completo. tools/28_scaffold_timing.py simula le catene
+// vere e scrive SCAFFOLD_TIMING (scaffoldTiming.js); qui lo si applica ai
+// `steps` gia' esistenti, tenendo i loro spawn (offset, sprite, depthOffset)
+// ma spostandoli agli istanti veri:
+//  - passi rifatti dalla timeline "r" vera (compresa la coda di smontaggio),
+//    con un confine in piu' dove nasce topper/gru o compare l'edificio (il
+//    passo diviso continua lo STESSO sprite: `keepSpr`);
+//  - `revealAtStep` all'istante vero (`revealAtEnd` non serve piu');
+//  - `frontTrack`: la timeline vera di "f", indipendente da "r" (varianti
+//    di sprite comprese, come nell'originale), e un passo `tail` se "f"
+//    vive piu' a lungo di "r";
+//  - consumo di denaro (`drain`, con il primo intervallo `first`);
+//  - `ruspaSteps`: catene della ruspa che NON sono la catena normale col
+//    primo passo accorciato (solo il parco).
+// Il museo (`IMPAMEDIA_R`, l'unica catena raggiungibile: `impamediaR` non e'
+// creata da nessuno) parte dai passi del secondo livello di palazzo
+// (`impa5r`: stessa impalcatura a 8 piani, stessa gru grande, stesso
+// `tops5s`) e li rifa sui tempi suoi.
+const TIMING_STEPS_FROM = { "museo.construct": "palazzo.upgrade0", "museoRd.construct": "palazzoRd.upgrade0" };
+const TIMING_RUSPA_SPEC_FROM = { "parco.construct": "casa.construct" };   // topper tops1
+function resolveUp(key) {
+  const [type, which] = key.split(".");
+  const def = BUILDING_TYPES[type];
+  return which === "construct" ? def?.construct : def?.upgrades?.[+which.slice(7)];
+}
+function retimeSteps(oldSteps, T) {
+  let topperSpec = null, craneSpr = null;
+  const others = [];
+  let tt = 0;
+  for (const st of oldSteps) {
+    for (const sp of st.spawn ?? []) {
+      if (TOPPER_SPRITES.has(sp.spr)) topperSpec ??= sp;
+      else if (/^gru|^gr2/.test(sp.spr)) craneSpr ??= sp.spr;
+      else others.push({ t: tt, sp });
+    }
+    tt += st.dur;
+  }
+  const end = T.end;
+  const bounds = new Set([0, end]);
+  const change = new Set();
+  for (const [t] of T.r) { bounds.add(t); change.add(t); }
+  if (T.topper && topperSpec) bounds.add(T.topper.t);
+  if (T.cranes) bounds.add(T.cranes.t);
+  if (T.revealT != null) bounds.add(T.revealT);
+  if (T.lotT != null) bounds.add(T.lotT);
+  for (const o of others) bounds.add(o.t);
+  const B = [...bounds].filter((x) => x <= end).sort((a, b) => a - b);
+  const steps = [];
+  let revealIdx = null, lotIdx = null;
+  for (let i = 0; i < B.length - 1; i++) {
+    const start = B[i];
+    let alts = T.r[0][1];
+    for (const [t, a] of T.r) if (t <= start) alts = a;
+    const step = { spr: alts.length === 1 ? alts[0] : alts, dur: B[i + 1] - start };
+    if (!change.has(start)) step.keepSpr = true;
+    const spawn = [];
+    if (T.cranes && start === T.cranes.t) for (const [dx, dy] of T.cranes.at) spawn.push({ spr: craneSpr ?? "gru1", dx, dy });
+    if (T.topper && topperSpec && start === T.topper.t) spawn.push({ ...topperSpec, dx: T.topper.dx, dy: T.topper.dy });
+    for (const o of others) if (o.t === start) spawn.push(o.sp);
+    if (spawn.length) step.spawn = spawn;
+    if (T.revealT != null && start === T.revealT) revealIdx = i;
+    if (T.lotT != null && start === T.lotT) lotIdx = i;
+    steps.push(step);
+  }
+  if (T.frontEnd != null && T.frontEnd > end) {
+    const last = steps[steps.length - 1];
+    steps.push({ spr: last.spr, dur: T.frontEnd - end, keepSpr: true, tail: true });
+  }
+  return { steps, revealIdx, lotIdx };
+}
+function applyScaffoldTiming() {
+  const snapshot = {};
+  for (const key of Object.keys(SCAFFOLD_TIMING)) {
+    const up = resolveUp(key);
+    if (up) snapshot[key] = JSON.parse(JSON.stringify(up.steps));
+  }
+  for (const [key, T] of Object.entries(SCAFFOLD_TIMING)) {
+    const up = resolveUp(key);
+    if (!up) continue;
+    const { steps, revealIdx } = retimeSteps(snapshot[TIMING_STEPS_FROM[key] ?? key], T);
+    up.steps = steps;
+    if (revealIdx != null) { up.revealAtStep = revealIdx; delete up.revealAtEnd; }
+    if (T.front) { up.frontTrack = T.front; up.frontEnd = T.frontEnd; }
+    if (T.drain) up.drain = { mon: T.drain.mon, every: T.drain.every, first: T.drain.first };
+    if (T.ruspa) {
+      // Catena della ruspa (`demobasia/Collision_*` -> impa*r_demo): DEMOLISCE.
+      // `ruspaRevealAtStep` = passo in cui l'edificio muore (`*death`/
+      // `updeath*`), `ruspaLotAtStep` = quello in cui nasce il `placeholder`
+      // (lotto libero) — spesso lo stesso, non sempre (industria 1: 105/365,
+      // solare 105/325, industria 3 e laser 445/2045).
+      const from = snapshot[TIMING_RUSPA_SPEC_FROM[key] ?? key] ?? snapshot[key];
+      const r = retimeSteps(from, T.ruspa);
+      up.ruspaSteps = r.steps;
+      up.ruspaRevealAtStep = r.revealIdx ?? 0;
+      up.ruspaLotAtStep = r.lotIdx ?? undefined;
+      up.ruspaFrontTrack = T.ruspa.front ?? undefined;   // sprite `im1f` inclusi (atlas: tools/23_atlas.py)
+      up.ruspaDrain = T.ruspa.drain ? { mon: T.ruspa.drain.mon, every: T.ruspa.drain.every, first: T.ruspa.drain.first } : undefined;
+    }
+  }
+}
+applyScaffoldTiming();
+
+/** Sprite della traccia "f" (anteriore) al tempo trascorso del cantiere: la
+ * timeline vera di `up.frontTrack` (scaffoldTiming.js), con la variante di
+ * sprite scelta a dado una volta per voce e poi mantenuta. */
+function frontFromTrack(c, up) {
+  const tk = (c.elapsedT ?? 0) / TICK;
+  const track = up.frontTrack;
+  let idx = 0;
+  while (idx + 1 < track.length && track[idx + 1][0] <= tk + 1e-6) idx++;
+  const picks = c.frontPicks ?? (c.frontPicks = {});
+  return picks[idx] ?? (picks[idx] = pickSpr(track[idx][1]));
+}
+
 export function syncTopperLife(spawnList, up, stepIndex, revealAtStep) {
   if (stepIndex >= revealAtStep) return spawnList;
   let ticksToReveal = 0;
@@ -2781,12 +2933,60 @@ export function syncTopperLife(spawnList, up, stepIndex, revealAtStep) {
   return spawnList.map((sp) => (TOPPER_SPRITES.has(sp.spr) ? { ...sp, life: ticksToReveal } : sp));
 }
 
-export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish) {
+/** Un cantiere `pausable` (grattacielo, `playbuttoner`) fermo: in pausa per
+ * scelta del giocatore (`b.paused`) o senza soldi (`r12.mon <= 0`) — vedi
+ * BUILDING_TYPES.grattacielo.construct.pausable. Fermo = nessun avanzamento,
+ * nessun consumo, impalcatura/gru congelate (main.js le ferma con questo). */
+export function constructionStalled(b, r12) {
+  return !!b.construction && !!BUILDING_TYPES[b.type]?.construct?.pausable
+    && (!!b.paused || r12.mon <= 0);
+}
+
+/** Eventi della ruspa (`c.demolish`) a soglia di passo: `death` (l'edificio
+ * muore — `*death`/`updeath*`, con il suo Destroy) a `revealAtStep`, `lot`
+ * (nasce il `placeholder`) a `lotAtStep`, o alla fine (`atEnd`) se non e'
+ * indicato. Ognuno una volta sola (`c.finished`/`c.lotDone` sopravvivono al
+ * salvataggio). `onDemolish` e' main.js (demolishStep()). */
+function demolishEvents(b, c, up, onDemolish, atEnd = false) {
+  if (!c.finished && (atEnd || c.stepIndex >= (up.revealAtStep ?? 0))) {
+    c.finished = true;
+    onDemolish?.(b, "death");
+  }
+  if (!c.lotDone && (atEnd || (up.lotAtStep != null && c.stepIndex >= up.lotAtStep))) {
+    c.lotDone = true;
+    onDemolish?.(b, "lot");
+  }
+}
+
+export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish, onDemolish) {
   for (const b of buildings) {
     const c = b.construction;
     if (!c) continue;
     const def = BUILDING_TYPES[b.type];
-    const up = c.upgradeIndex === -1 ? def.construct : def.upgrades[c.upgradeIndex];
+    const upBase = c.upgradeIndex === -1 ? def.construct : def.upgrades[c.upgradeIndex];
+    // Salvataggio con una ruspa "che ricostruisce" in corso (il porting di
+    // prima): ora la ruspa demolisce — si prosegue come `demolish` sullo
+    // stesso livello (`tryRuspaDemolish()` ne aveva tolto uno).
+    if (c.rebuilding) { c.rebuilding = false; c.demolish = true; b.level = c.upgradeIndex + 2; }
+    // Ruspa (`c.demolish`, tryRuspaDemolish()): la catena "_demo" del tipo/
+    // livello, non quella di costruzione (applyScaffoldTiming()).
+    const up = c.demolish
+      ? (upBase._demView ??= { ...upBase, steps: upBase.ruspaSteps, revealAtStep: upBase.ruspaRevealAtStep ?? 0, lotAtStep: upBase.ruspaLotAtStep, revealAtEnd: false, ruspaFirstStepDur: null, frontTrack: upBase.ruspaFrontTrack ?? null, drain: upBase.ruspaDrain ?? upBase.drain })
+      : upBase;
+    // Salvataggio di prima di applyScaffoldTiming() (`c.tv` assente e cantiere
+    // gia' avviato): `stepIndex` puntava ai vecchi `steps`, con meno passi.
+    // Lo si porta nei nuovi (mai oltre la fine) e si ricostruisce il tempo
+    // trascorso dalla somma dei passi gia' fatti, per la traccia "f".
+    if (c.tv === undefined) {
+      const fresh = c.stepIndex === 0 && c.curSpr === undefined;
+      c.tv = 2;
+      if (!fresh) {
+        c.stepIndex = Math.min(c.stepIndex, up.steps.length - 1);
+        let e = c.t;
+        for (let k = 0; k < c.stepIndex; k++) e += up.steps[k].dur * TICK;
+        c.elapsedT = e;
+      }
+    }
     let cur = up.steps[c.stepIndex];
     const revealAtStep = up.revealAtStep ?? up.steps.length - 1;
     if (c.curSpr === undefined) {
@@ -2796,47 +2996,39 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
       // sopra): 0 per ogni altro passo di ogni altro edificio (tutti a un
       // solo frame vero, l'animazione non farebbe differenza).
       c.curSpd = cur.spd ?? 0;
+      c.curStart = cur.start ?? 0;
       if (cur.spawn) {
         onSpawn?.(b, syncTopperLife(cur.spawn, up, c.stepIndex, revealAtStep));
       }
-      if (c.stepIndex === revealAtStep && !c.finished && !up.revealAtEnd) {
+      if (c.demolish) demolishEvents(b, c, up, onDemolish);
+      else if (c.stepIndex === revealAtStep && !c.finished && !up.revealAtEnd) {
         applyLevelFinish(b, def, up, c, r12, onDecor, true);
         c.finished = true;
       }
     }
-    if (up.drain) {
+    if (up.pausable) {
+      if (constructionStalled(b, r12)) continue;
+      c.elapsedT = (c.elapsedT ?? 0) + dt;
+      const pieces = 1                                                  // impa31f
+        + (c.stepIndex < up.steps.length - 1 ? 1 : 0)                    // m3cant, phase<14
+        + (c.elapsedT >= up.pausable.craneAfterTicks * TICK ? 1 : 0);    // impa3gru
+      const cost = pieces * up.pausable.perPiece * dt / TICK;
+      r12.mon -= cost;
+      r12.ele -= cost;
+    }
+    if (up.drain && !cur.tail) {   // il consumo e' di "r": si ferma quando "r" finisce, non con la coda di "f"
       c.drainT = (c.drainT ?? 0) + dt;
-      const period = up.drain.every * TICK;
-      while (c.drainT >= period) { c.drainT -= period; r12.mon -= up.drain.mon; }
+      // [C] Create.gml arma il primo `Alarm_10` a 20 tick, poi si riarma a
+      // `every` (10 per casa 1->2 e club): `up.drain.first`.
+      let period = (c.drainN ? up.drain.every : (up.drain.first ?? up.drain.every)) * TICK;
+      while (c.drainT >= period) {
+        c.drainT -= period; r12.mon -= up.drain.mon;
+        c.drainN = (c.drainN ?? 0) + 1;
+        period = up.drain.every * TICK;
+      }
     }
     c.t += dt;
-    // [Bug corretto] Il PRIMO passo di un cantiere avviato dalla ruspa
-    // (`c.rebuilding`, tryRuspaRebuild() sopra) e' il "sgombero" del lotto
-    // gia' sviluppato — accorciato da `ruspaFirstStepDur` (a volte un solo
-    // tick) proprio perche' non c'e' nessun vero sgombero da fare, a
-    // differenza di un lotto vuoto. Il suo sprite (`cur.spr`, lo stesso
-    // della fondamenta/lotto spoglio di un cantiere ex novo) non deve
-    // quindi comparire: finche' quel passo e' in corso `b.spr`/`b.frontSpr`
-    // restano quelli dell'edificio VECCHIO (tryRuspaRebuild() non li tocca
-    // piu' apposta) — l'edificio resta visibilmente in piedi finche' la
-    // ruspa non lo sgombera per davvero, invece di sparire di scatto in una
-    // fondamenta spoglia ancora prima che il cantiere sia davvero iniziato.
-    // `&& b.spr`: SOLO se c'e' davvero un edificio vecchio da preservare —
-    // un lotto-rudere marcava `rebuilding:true` allo STESSO modo ma partiva
-    // da `placeBuilding()`, che per un tipo con `construct` lascia `b.spr`
-    // a `null` (nessun edificio precedente, mai esistito): senza questo
-    // controllo in piu' quel `null` restava tale per l'intero primo passo
-    // invece del vero sprite di cantiere, ed il lotto spariva del tutto
-    // (nessun `_f`, scartato in silenzio dal ciclo di disegno) — segnalato
-    // dall'autore verificando che la demolizione di un rudere avviasse un
-    // cantiere vero e non un edificio gia' finito. Un rudere non avvia piu'
-    // nessun cantiere (main.js, clearedPlaceholder() — decisione
-    // dell'autore: "la rovina ruspata deve creare sempre un placeholder
-    // vuoto"), quindi oggi `c.rebuilding` nasce solo da tryRuspaRebuild()
-    // su un edificio gia' vivo (sempre con `b.spr` valorizzato) — il
-    // controllo resta comunque qui, difensivo, per lo stesso motivo di
-    // sempre.
-    const clearingLot = c.rebuilding && c.stepIndex === 0 && b.spr;
+    if (!up.pausable) c.elapsedT = (c.elapsedT ?? 0) + dt;
     // [Bug corretto, segnalato dall'autore: "si vedeva anche nel gioco
     // originale, partiva subito dopo la parte frontale e si montavano quasi
     // insieme"] Una versione precedente di questo fix teneva `b.spr`
@@ -2855,8 +3047,20 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     // affini). Resta invece `clearingLot` per il primo passo di un
     // ricostruzione ruspa: caso diverso (demolizione, non upgrade), non
     // toccato da questa indagine.
-    if (!c.finished && !clearingLot) b.spr = c.curSpr;
-    const curFrontSpr = clearingLot ? null : frontSprFor(c.curSpr);
+    // Ruspa (`c.demolish`): stesso schema a tre istanze (r dietro, l'edificio
+    // vecchio `b.oldSpr` in mezzo, f davanti); alla morte dell'edificio
+    // (`c.finished`) resta solo "r" fantasma (`rearSpr`, sotto) e "f". Senza
+    // traccia "f" (`eolico`, `impavent_dem`) lo sprite di cantiere e' tutto
+    // cio' che c'e': l'edificio e' gia' morto e questa e' la sua animazione.
+    const hasFront = !!frontSprFor(c.curSpr);
+    if (c.demolish) b.spr = (c.finished && hasFront) ? null : c.curSpr;
+    else if (!c.finished) b.spr = c.curSpr;
+    let curFrontSpr = frontSprFor(c.curSpr);
+    // Traccia "f" vera (scaffoldTiming.js): non segue "r" — vedi
+    // applyScaffoldTiming(), anche per la ruspa (`ruspaFrontTrack`: la sua
+    // "f" ha `im1f` nel primo tratto — finche' l'atlas non lo ha, per quei
+    // 30 tick l'impalcatura anteriore semplicemente non si disegna).
+    if (curFrontSpr && up.frontTrack) curFrontSpr = frontFromTrack(c, up);
     b.frontSpr = curFrontSpr;
     // [Bug corretto, segnalato dall'autore: "l'impalcatura si smonta solo
     // davanti, non dietro, come se sparisse col topper"] Verificato sui GML
@@ -2879,32 +3083,42 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
     // `m3x*` non e' affatto uno sprite di impalcatura "r"/"f" — vedi
     // game/src/scaffold.js per la sua vera impalcatura). main.js la disegna
     // dietro all'edificio (stesso ordine -y+1 dell'originale).
-    b.rearSpr = (c.finished && !clearingLot && curFrontSpr) ? c.curSpr : null;
-    // [C] `c.rebuilding` (tryRuspaRebuild() sopra): il primo passo di un
-    // cantiere avviato dalla ruspa dura `ruspaFirstStepDur`, non `cur.dur`
-    // — solo il primo, il resto della catena e' identico a un cantiere
-    // normale (verificato diff alla mano su piu' tipi, vedi i commenti su
-    // ogni `ruspaFirstStepDur` in BUILDING_TYPES).
-    const dur = (c.stepIndex === 0 && c.rebuilding && up.ruspaFirstStepDur != null)
-      ? up.ruspaFirstStepDur : cur.dur;
+    b.rearSpr = (c.finished && curFrontSpr && !cur.tail) ? c.curSpr : null;
+    const dur = cur.dur;
     if (c.t < dur * TICK) continue;
-    c.t = 0;
+    // Il resto oltre la durata si porta al passo dopo (non `c.t = 0`): senza,
+    // ogni passo perde in media mezzo frame e la catena, ora con molti piu'
+    // passi (applyScaffoldTiming()), deriverebbe di qualche tick dall'originale.
+    c.t = Math.max(0, c.t - dur * TICK);
     c.stepIndex++;
     if (c.stepIndex < up.steps.length) {
       cur = up.steps[c.stepIndex];
-      c.curSpr = pickSpr(cur.spr);
+      if (!cur.keepSpr) c.curSpr = pickSpr(cur.spr);   // `keepSpr`: passo diviso, stesso sprite
       // `c.curSpd` (frame/tic dello sprite di QUESTO passo, main.js lo legge
       // per animare "impvent1"/"impvent3" — commento su BUILDING_TYPES.eolico
       // sopra): 0 per ogni altro passo di ogni altro edificio (tutti a un
       // solo frame vero, l'animazione non farebbe differenza).
       c.curSpd = cur.spd ?? 0;
+      c.curStart = cur.start ?? 0;
       if (cur.spawn) {
         onSpawn?.(b, syncTopperLife(cur.spawn, up, c.stepIndex, revealAtStep));
       }
-      if (c.stepIndex === revealAtStep && !c.finished && !up.revealAtEnd) {
+      if (c.demolish) demolishEvents(b, c, up, onDemolish);
+      else if (c.stepIndex === revealAtStep && !c.finished && !up.revealAtEnd) {
         applyLevelFinish(b, def, up, c, r12, onDecor, true);
         c.finished = true;
       }
+    } else if (c.demolish) {
+      // Fine della catena della ruspa: `placeholder` se non e' gia' nato
+      // (eolico: proprio qui, 4100 tick dopo), impalcatura/gru via, e
+      // l'edificio "zombie" esce da `buildings` (main.js).
+      demolishEvents(b, c, up, onDemolish, true);
+      b.construction = null;
+      b.frontSpr = null;
+      b.rearSpr = null;
+      b.oldSpr = null;
+      onFinish?.(b);
+      onDemolish?.(b, "end");
     } else {
       // L'edificio (livello/sprite/vita/economia/contatori) e' gia' stato
       // finalizzato all'ingresso dell'ultimo passo, sopra — qui resta solo
@@ -3037,13 +3251,30 @@ export function stepProduction(buildings, dt, r12) {
  * Avanza `solare` (`sooool/Alarm_4.gml`, `def.solarProduction`): l'unico
  * edificio la cui produzione dipende dall'ORA DEL GIORNO invece che da un
  * consumo di materia prima (`oil` per industria). [C] ogni 30 tick: sempre
- * -5 mon; `ele` varia con la fase — -1 di notte, +5 all'alba, +9 altrimenti
+ * -5 mon; `ele` varia con la fase — 0 di notte (l'originale: -1, deviazione
+ * voluta), +5 all'alba, +9 altrimenti
  * (giorno/tramonto: il decompilato ha solo due flag booleani, `night` e
  * `dawn`, non le quattro fasi di questo motore — "ne' notte ne' alba" copre
  * entrambe). `isNight`/`isDawn` sono gli stessi booleani netti (nessuno
  * smoothstep) gia' usati da stepConsumption() per `casa`.
  */
+// [Nuova funzionalita', richiesta dall'autore: "quando piove il pannello
+// fotovoltaico produce un 30% in meno"] Nessun equivalente nel decompilato.
+// "Piove" = temporale vero (`r12.storm`, solo match) o cosmetico
+// (`r12.stormeasy`, match_easy): le due condizioni che fanno cadere la
+// pioggia visibile (stepRain(), main.js). Il moltiplicatore agisce solo
+// sull'energia, non sul costo in mon.
+export const RAIN_SOLAR_MULT = 0.7;
+export function isRaining(r12) { return !!(r12.storm || r12.stormeasy); }
+
+/** `ele` per ciclo di un `solarProduction` alla fase/meteo corrente. */
+export function solarEleRate(prod, isNight, isDawn, raining) {
+  const base = isNight ? prod.ele.night : isDawn ? prod.ele.dawn : prod.ele.day;
+  return raining ? base * RAIN_SOLAR_MULT : base;
+}
+
 export function stepSolarProduction(buildings, dt, r12, isNight, isDawn) {
+  const raining = isRaining(r12);
   for (const b of buildings) {
     if (b.construction) continue;
     const def = BUILDING_TYPES[b.type];
@@ -3054,7 +3285,7 @@ export function stepSolarProduction(buildings, dt, r12, isNight, isDawn) {
     while (b.solarT >= period) {
       b.solarT -= period;
       r12.mon -= prod.mon;
-      r12.ele += isNight ? prod.ele.night : isDawn ? prod.ele.dawn : prod.ele.day;
+      r12.ele += solarEleRate(prod, isNight, isDawn, raining);
     }
   }
 }
@@ -3207,7 +3438,7 @@ export function stepConsumption(buildings, dt, r12, isNight) {
  * `periodo * TICK` secondi diventa `/ periodo / TICK * 60` volte al minuto,
  * moltiplicato per l'ammontare di quel ciclo.
  */
-export function currentEnergyStats(buildings, isNight, isDawn) {
+export function currentEnergyStats(buildings, isNight, isDawn, raining = false) {
   let consumptionPerMin = 0;
   let centraliElePerMin = 0, centraliOilPerMin = 0;
   let eolicoPerMin = 0;
@@ -3230,7 +3461,7 @@ export function currentEnergyStats(buildings, isNight, isDawn) {
     }
     const solar = def.solarProduction;
     if (solar) {
-      const eleRate = isNight ? solar.ele.night : isDawn ? solar.ele.dawn : solar.ele.day;
+      const eleRate = solarEleRate(solar, isNight, isDawn, raining);
       solarePerMin += eleRate / (solar.every * TICK) * 60;
     }
     const wind = def.windProduction;
