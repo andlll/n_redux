@@ -29,8 +29,18 @@ KEYS = {
     "museo.construct": "IMPAMEDIA_R", "museoRd.construct": "IMPAMEDIA_RD",
     "monum.construct": "impaMONUr", "banca.construct": "impaBANKr",
 }
-# catene della ruspa che NON sono "la catena normale col primo passo accorciato"
-RUSPA_KEYS = {"parco.construct": "imparcor_demo"}
+# catena della ruspa (`demobasia/Collision_*` la crea al "si'"): NON ricostruisce,
+# demolisce — l'edificio muore (`*death`/`updeath*`) e nasce un `placeholder`.
+RUSPA_KEYS = {
+    "industria.construct": "impaindu1r", "industria.upgrade0": "impaindu2r", "industria.upgrade1": "impaind3r",
+    "casa.construct": "impacasa1r", "casa.upgrade0": "impacasa2r", "casa.upgrade1": "impacasa3r",
+    "missile.construct": "impamissilir", "solare.construct": "impasoldem1r", "parco.construct": "imparcor_demo",
+    "club.construct": "impaclubdemr", "villa.construct": "impavilla1r", "gatling.construct": "impademogatlingr",
+    "laser.construct": "impalasdem_r",
+    "palazzo.construct": "impa4r_demo", "palazzo.upgrade0": "impa5r_demo",
+    "palazzoRd.construct": "impa4rd_demo", "palazzoRd.upgrade0": "impa5rd_demo",
+    "museo.construct": "IMPAMEDIA_R_DEMO", "museoRd.construct": "IMPAMEDIA_RD_DEMO",
+}
 
 NOT_BUILDING = ("tops", "gru", "updeath", "ruin", "placeholder", "impa", "IMPA", "death", "mediadeath", "casa4death", "parcdeath")
 
@@ -52,8 +62,11 @@ def timing(obj, ruspa=False):
     spawns = [(i.obj, t, d) for i in sim.insts for (t, k, d) in i.log if k == "spawn"]
     top = next(((t, d) for (n, t, d) in spawns if d[0].startswith("tops")), None)
     cr = [(t, d) for (n, t, d) in spawns if d[0] in ("gru", "grubig")]
+    death = lot = None
     if ruspa:   # catena della ruspa: nessun edificio nuovo, "muore" quello vecchio e resta un lotto
-        rev = next((t for (n, t, d) in spawns if d[0].endswith("death") or d[0] == "placeholder"), None)
+        death = next((t for (n, t, d) in spawns if "death" in d[0] and d[0] != "ruindeath"), None)
+        lot = next((t for (n, t, d) in spawns if d[0] == "placeholder"), None)
+        rev = death
     else:
         rev = next((t for (n, t, d) in spawns if not d[0].startswith(NOT_BUILDING)), None)
     drains = [t for (t, k, d) in root.log if k == "r12" and d[0] == "mon"]
@@ -67,6 +80,7 @@ def timing(obj, ruspa=False):
         "topper": {"t": top[0], "dx": int(top[1][1]), "dy": int(top[1][2])} if top else None,
         "cranes": {"t": cr[0][0], "at": sorted([int(d[1]), int(d[2])] for (t, d) in cr)} if cr else None,
         "revealT": rev,
+        "lotT": lot,
         "drain": {"mon": -int(mon[0]), "first": drains[0], "every": drains[1] - drains[0]} if len(drains) > 1 else None,
     }
     return out

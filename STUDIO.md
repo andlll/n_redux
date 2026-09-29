@@ -437,7 +437,7 @@ paragrafo 8.
   dello strumento **ruspa** (`selec==11`) — lo crea il `Mouse_LeftPressed`
   dell'edificio, `demoiessa` (sì, `iessa=1`) fa scattare la `Collision_*`
   che scala il costo e rilancia `impa*r`, `demobachia` (no) lo chiude.
-  Oggi: `ruspaPending`/`ruspaCostFor()`/`tryRuspaRebuild()` (main.js,
+  Oggi: `ruspaPending`/`ruspaCostFor()`/`tryRuspaDemolish()` (main.js,
   buildings.js), con gli stessi costi.
 - **Terzo edificio giocabile: `casa`.** Diverso dai primi due su due assi:
   è il primo con un aspetto scelto a caso invece che fisso (**[C]**
@@ -2495,7 +2495,9 @@ paragrafo 8.
   tick) la ruspa la accorcia a 30 tick (1 per missile/gatling, quasi
   istantaneo) — ricostruire su un lotto gia' sviluppato salta lo sgombero.
   I livelli 2/3 (gia' brevi di loro, 30 tick anche da nuovi) non cambiano.
-  Tradotto nel motore: `tryRuspaRebuild()` (buildings.js) rimanda
+  **[Superato dalla voce "La ruspa demolisce" in fondo: questa traduzione
+  "ricostruisce lo stesso livello" era una lettura sbagliata.]** Tradotto
+  allora nel motore: `tryRuspaRebuild()` (buildings.js) rimandava
   l'edificio ALLO STESSO livello in cantiere (`b.level -= 1` prima di
   riusare la stessa formula gia' scelta da `tryStartUpgrade()`,
   `upgradeIndex: b.level-1` — nessun codice duplicato, `up.steps` e' lo
@@ -4399,10 +4401,39 @@ paragrafo 8.
   casa, missile, gatling, laser, solare, villa, club, eolico, grattacielo
   (`m3cant`, pannelli e gru di scaffold.js), gru piccole/grandi e bracci,
   posizione/durata dei toppers.
-  **Ancora diverso dall'originale, dichiarato**: nella ruspa su un edificio la
-  traccia "f" ha sprite `im*f` (`im1f`, `im3f`... non in atlas) e l'originale
-  finisce con `parcdeath`/`updeath*` + `placeholder` (demolisce) mentre il
-  porting ricostruisce lo stesso livello — scelta dell'autore, non toccata;
-  qui la traccia "f" della ruspa resta derivata da "r". I salvataggi di un
-  cantiere in corso fatto con i vecchi `steps` vengono portati sui nuovi
-  (`c.tv`).
+  **Ruspa**: in questa voce era rimasta "diversa dall'originale" — corretta
+  subito dopo, vedi la voce successiva. I salvataggi di un cantiere in corso
+  fatto con i vecchi `steps` vengono portati sui nuovi (`c.tv`).
+- **La ruspa demolisce (come l'originale).** Il "si'" del popup (`demoiessa`)
+  fa scattare la `Collision_*` di `demobasia` che crea la catena "_demo" del
+  tipo/livello (`impacasa1r`, `impaindu2r`, `impa4r_demo`, `IMPAMEDIA_R_DEMO`,
+  ...): stessa impalcatura di un cantiere (r dietro, edificio vecchio in mezzo,
+  f davanti, topper, gru) ma alla fine NON nasce un edificio. A un istante
+  (`deathT`) l'impalcatura anteriore crea `*death`/`updeath*` — Destroy
+  dell'edificio: pop/hap — e a un altro (`lotT`) un `placeholder`: il lotto e'
+  libero e ci si costruisce qualunque cosa. Istanti (tick): casa 1/2/3
+  325/705/1145; industria 1 105/365, industria 2 1145, industria 3 445/2045;
+  club 705, missile/gatling 691, villa/parco 325, laser 445/2045, solare
+  105/325, palazzo 1145 (2150 al secondo livello), museo 2150. Il consumo di
+  denaro e' quello della catena "_demo" (`ruspaDrain`: a volte diverso da quello
+  di costruzione, es. solare 4, casa 2->3 ... vedi scaffoldTiming.js). Il
+  porting prima "ricostruiva lo stesso livello" (`tryRuspaRebuild`): la catena
+  ha gli stessi sprite di quella di costruzione, e l'ho letta come identica
+  senza guardare cosa crea alla fine.
+  Il solare sopra un parco: `impasoldem1r` crea anche `parcdeath` — muore anche
+  il parco sotto. L'eolico (`impavent_dem`) muore subito (`with (other.id)
+  action_kill_object()`), poi 4100 tick di animazione a ritroso (`impvent3`
+  dal fotogramma 21 a -0.01/tick, `impvent2`, `impvent1` dal 14) e a 4100 i 4
+  `placeholder`; prima veniva demolito di colpo.
+  Nel motore: `tryRuspaDemolish()` (paga, `construction.demolish`),
+  `stepConstructions()` con la catena `ruspaSteps` e la traccia anteriore vera
+  (`ruspaFrontTrack`, con `im1f`: aggiunto a tools/23_atlas.py, serve
+  rigenerare gli atlas, prima ne manca il disegno di 30 tick) e `onDemolish`
+  ("death"/"lot"/"end", main.js demolishStep()); l'istanza resta in `buildings`
+  come "zombie" senza economia (`b.level = 0`) finche' l'impalcatura non si
+  smonta. Ruderi (`ruins`/`ruinLots`) invariati: restano la scelta dell'autore
+  (impalcatura, la rovina sparisce, lotto vuoto).
+  **Semplificazioni**: l'economia di un edificio in demolizione si ferma al tap
+  (nell'originale continua fino a `deathT`, al massimo 1145 tick); `ruindeath`
+  (rimuove ruderi vicini) non c'e'. `ruspaFirstStepDur` resta solo per lo
+  sgombero dei ruderi (catena di `casa`).

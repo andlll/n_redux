@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap, wewOilDrain, WEWE_OIL_DRAIN_PERIOD } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, isRaining, solarEleRate, WIND_ANIM_FPS, INDUSTRIA3_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId, currentEnergyStats, constructionStalled } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, isRaining, solarEleRate, WIND_ANIM_FPS, INDUSTRIA3_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaDemolish, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId, currentEnergyStats, constructionStalled } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -796,7 +796,13 @@ export async function mountMatch(ctx, params = {}) {
     const c = b.construction;
     if (!c?.curSpd) return 0;
     const frames = frameCountFor(b.spr);
-    return frames > 1 ? Math.floor(c.t * 60 * c.curSpd) % frames : 0;
+    if (frames <= 1) return 0;
+    // `c.curStart`: fotogramma da cui parte il passo (`start`, buildings.js) e
+    // velocita' anche NEGATIVA — `impavent_dem` gioca `impvent3`/`impvent1` a
+    // ritroso (`action_sprite_set(impvent3, 21, -0.01)`), come GameMaker:
+    // indice reale, floor solo al disegno.
+    const raw = Math.floor((c.curStart ?? 0) + c.t * 60 * c.curSpd);
+    return c.curSpd < 0 ? Math.max(0, Math.min(frames - 1, raw)) : raw % frames;
   }
   // Alberi (STUDIO.md §5.3, src/objects/albe|albe2|albe3/Create.gml): a
   // Create l'originale sceglie a dado uno sprite finale diverso per istanza
@@ -969,7 +975,7 @@ export async function mountMatch(ctx, params = {}) {
   // rovine non sparivano di colpo"] `ruin1|2|3/Mouse_LeftPressed.gml` non
   // sgombera il rudere all'istante: paga E POI crea `impacasa1r`/`impacasa2r`/
   // `impacasa3r` (STUDIO.md sopra) — lo stesso oggetto, con la stessa identica
-  // catena `Alarm_0..N`, che `tryRuspaRebuild()` (buildings.js) gia' riusa per
+  // catena `Alarm_0..N`, che `tryRuspaDemolish()` (buildings.js) gia' riusa per
   // ruspare un edificio VIVO: quindi gli STESSI `BUILDING_TYPES.casa.construct/
   // upgrades[0]/upgrades[1].steps` gia' verificati per quel percorso (diff
   // riga per riga contro `impacasa{1,2,3}r/f`: stessi sprite `irNN`, stesse
@@ -987,7 +993,7 @@ export async function mountMatch(ctx, params = {}) {
   // vero cantiere/ruspata su un edificio vivo — `ruspaFirstStepDur` (solo
   // sulla taglia 1: le taglie 2/3 hanno gia' un primo passo da 30 tic anche
   // nel cantiere normale, nessun accorciamento da applicare) resta l'unica
-  // differenza dal percorso di `tryRuspaRebuild()`.
+  // differenza dal percorso di `tryRuspaDemolish()`.
   //
   // A differenza di un cantiere/upgrade vero pero' un rudere in demolizione
   // non deve MAI rivelare una casa finita a meta' sequenza — l'originale
@@ -1658,7 +1664,7 @@ export async function mountMatch(ctx, params = {}) {
   // l'istanza edificio stessa (non un id: input.onTap la legge gia' cosi'
   // per ogni altro popup ancorato a un edificio, es. `ruspaPending` sopra),
   // azzerato anche quando quell'edificio viene demolito/distrutto sotto
-  // panel aperto (destroyBuilding()/demolishMultiTile() sopra). Vero modale
+  // panel aperto (destroyBuilding()/demolishStep() sopra). Vero modale
   // in spazio schermo come `bankPanelOpen`: mentre e' aperto un tap va
   // SOLO al suo bottone di chiusura, mai al mondo sotto.
   st.buildingInfoPanel = null;   // istanza edificio, o null
@@ -2192,7 +2198,7 @@ export async function mountMatch(ctx, params = {}) {
     const b = placeBuilding(type, anchorX, anchorY, 0);
     // [Bug corretto] `b.tiles`: i lotti REALMENTE consumati da questo
     // edificio (l'intero `cluster` sopra, tocco incluso) salvati sull'
-    // istanza stessa — demolishMultiTile()/doLoad() sotto li usano per
+    // istanza stessa — demolishStep()/doLoad() sotto li usano per
     // liberare/ri-bloccare esattamente questi lotti, invece di ricalcolare
     // (e sbagliare) una nuova ricerca "cosa sta vicino a b.x,b.y": `b.x/b.y`
     // ora e' l'ancora visiva (sopra), un punto che quasi mai coincide con le
@@ -2522,7 +2528,7 @@ export async function mountMatch(ctx, params = {}) {
     // (ru.x, ru.y)`) liberava solo l'ANCORA VISIVA di `b.x/b.y` — per un
     // edificio multi-tile quella non e' nemmeno un placeholder vero
     // (`anchorOffset`, buildings.js, la sposta lontano dal lotto toccato:
-    // stesso motivo gia' corretto per `demolishMultiTile()`, il percorso
+    // stesso motivo gia' corretto per `demolishStep()`, il percorso
     // "ruspa diretta su un edificio vivo") — creava un placeholder fantasma
     // fuori griglia, mentre i 4 lotti VERI restavano bloccati per sempre in
     // `blockedSlots`. `undefined` per ogni rudere a un solo lotto, nessun
@@ -2622,57 +2628,61 @@ export async function mountMatch(ctx, params = {}) {
     return doClick();
   }
 
-  /** Stessa correzione di startUpgrade() sopra, per il cantiere riavviato
-   * dalla ruspa (tryRuspaRebuild() — un impalcatura torna comunque sopra
-   * all'edificio, con lo stesso decoro vecchio da spegnere subito). */
-  function ruspaRebuild(b) {
-    const err = tryRuspaRebuild(b, st.r12);
-    if (!err) st.decorEntities = st.decorEntities.filter((d) => d.buildingId !== b.id);
-    return err;
+  /** La ruspa su un edificio vivo (tryRuspaDemolish(), buildings.js): paga e
+   * avvia la catena di demolizione — l'edificio resta in `buildings` (con
+   * `b.construction.demolish`) finche' l'impalcatura non e' smontata; gli
+   * effetti veri arrivano da demolishStep() agli istanti dell'originale. Le
+   * luci (decoro) restano accese fino alla morte, come nell'originale. */
+  function ruspaDemolition(b) {
+    return tryRuspaDemolish(b, st.r12);
   }
 
-  /**
-   * Il caso a parte della ruspa su `eolico`/`grattacielo`
-   * (`def.construct.ruspaDemolish`, buildings.js): **[C]**
-   * `impavent_dem/Alarm_2.gml`, a differenza di OGNI altro "_demo", non
-   * ricostruisce l'edificio — crea 4 `placeholder` (agli stessi offset
-   * ±98/±58 di `impavent/Alarm_2.gml` per i suoi 4 lotti) e si autodistrugge:
-   * una pala eolica ruspata torna terreno libero, non una pala eolica nuova.
-   * Qui equivale a togliere l'edificio da `buildings` e liberare i 4 lotti
-   * che aveva consumato — **[Bug corretto, segnalato dall'autore: "il
-   * piazzamento di eolico/grattacielo... occupano spazi non destinati ad
-   * edifici"]** una versione precedente ricalcolava QUI da zero "quali lotti
-   * appartengono a questo edificio" cercando un placeholder alle stesse
-   * coordinate di `b.x/b.y` — coordinate che da quando `anchorOffset`
-   * (buildings.js) sposta l'ancora visiva lontano dal placeholder toccato
-   * (98-150px) non coincidono PIU' MAI con un placeholder vero: quel `find()`
-   * falliva sempre in silenzio (nessun errore, semplicemente `ph`
-   * `undefined`), quindi il lotto toccato non tornava mai libero dopo una
-   * demolizione — restava bloccato per sempre, un vicolo cieco invisibile.
-   * `b.tiles` (placeAt() in questo file: l'intero cluster di lotti REALMENTE
-   * consumati alla costruzione, tocco incluso) elimina la necessita' di
-   * ricalcolare/indovinare nulla: libera esattamente quei lotti, esattamente
-   * quelli bloccati. `?? [{x:b.x,y:b.y}]` resta per un salvataggio scritto
-   * prima di questo fix (nessun `tiles` salvato): degrada al comportamento
-   * precedente (probabilmente ancora sbagliato per quell'edificio specifico)
-   * invece di rompersi.
-   */
-  function demolishMultiTile(b) {
-    for (const t of b.tiles ?? [{ x: b.x, y: b.y }]) {
-      const ph = placeholders.find((p) => p.x === t.x && p.y === t.y);
-      if (ph) ph.consumed = false;
-      st.blockedSlots = st.blockedSlots.filter((s) => !(s.x === t.x && s.y === t.y));
-    }
-    st.decorEntities = st.decorEntities.filter((d) => d.buildingId !== b.id);
-    st.buildings = st.buildings.filter((x) => x !== b);
+  /** Il Destroy di un edificio vivo ucciso dalla ruspa (`updeath*`/`*death`,
+   * `demobasia/Collision_*` -> impa*r_demo): bilancio pop/hap del livello
+   * (`currentDeathPop`/`currentDeathHap`, gli stessi di destroyBuilding()), ma
+   * NESSUN rudere — al suo posto un `placeholder` (demolishStep(), "lot").
+   * Decoro finale e monete spariscono, quello transitorio (gru/topper) no:
+   * lo toglie onFinish a impalcatura smontata. */
+  function killBuildingNoRuin(b) {
+    st.r12.pop += currentDeathPop(b);
+    st.r12.hap += currentDeathHap(b);
+    st.decorEntities = st.decorEntities.filter((d) => d.buildingId !== b.id || d.transient);
+    st.coins = st.coins.filter((c) => c.buildingId !== b.id);
     if (st.picked?.obj === "building" && st.picked.ref === b) st.picked = null;
     if (st.buildingInfoPanel === b) st.buildingInfoPanel = null;
+  }
+
+  /** `onDemolish` di stepConstructions() (buildings.js), agli istanti veri
+   * della catena "_demo" dell'originale (scaffoldTiming.js `ruspa`):
+   *  - "death": l'edificio muore (Destroy: pop/hap; `b.level = 0` cosi' nessun
+   *    ciclo di gioco — monete, produzione — lo conta piu'; sopravvive solo
+   *    come impalcatura che si smonta);
+   *  - "lot": nasce il `placeholder` (i lotti tornano liberi). Per il solare
+   *    sopra un parco muore anche il parco (`parcdeath`, stessa catena);
+   *  - "end": l'impalcatura e' smontata, l'istanza esce da `buildings`.
+   * `eolico` (`ruspaDemolish`): muore subito e libera i 4 lotti alla fine. */
+  function demolishStep(b, phase) {
+    if (phase === "death") {
+      killBuildingNoRuin(b);
+      b.level = 0;
+    } else if (phase === "lot") {
+      freeRuinTiles(b);
+      if (b.overpark) {
+        const park = st.buildings.find((p) => p !== b && p.type === "parco" && p.oversolar && p.x === b.x && p.y === b.y);
+        if (park) {
+          killBuildingNoRuin(park);
+          st.buildings = st.buildings.filter((x) => x !== park);
+        }
+      }
+    } else if (phase === "end") {
+      st.buildings = st.buildings.filter((x) => x !== b);
+    }
   }
 
   // [Bug corretto, segnalato dall'autore: "verifica che demolire la rovina
   // della pala eolica liberi davvero i 4 lotti"] Chiamata da stepRuinClearing()
   // (piu' sotto) a sgombero completato, per `ruins`/`ruinLots` — stessa
-  // logica di demolishMultiTile() sopra (`tiles`, pulizia `blockedSlots`),
+  // logica di demolishStep() sopra (`tiles`, pulizia `blockedSlots`),
   // ma su un RUDERE gia' morto (mai in `buildings`) invece che su un
   // edificio vivo. `ru.tiles` (destroyBuilding()/doLoad() sopra): TUTTI i
   // lotti realmente consumati da vivo, non solo l'ancora visiva di `ru.x/
@@ -6964,24 +6974,12 @@ export async function mountMatch(ctx, params = {}) {
       }
     } else if (st.picked.obj === "ruspaYes") {
       // [C] demoiessa/Mouse_LeftReleased.gml: `iessa=1`, letto dalla
-      // collisione di demobasia col vero edificio (qui, tryRuspaRebuild()/
-      // demolishMultiTile() in buildings.js/main.js) — la stessa conferma,
+      // collisione di demobasia col vero edificio (qui, tryRuspaDemolish()/
+      // demolishStep() in buildings.js/main.js) — la stessa conferma,
       // un solo tocco invece di un flag+collisione al frame dopo.
       const b = st.picked.ref;
-      const def = BUILDING_TYPES[b.type];
-      if (def?.construct?.ruspaDemolish) {
-        const cost = ruspaCostFor(b);
-        if (!canAfford(st.r12, { mon: cost })) {
-          st.message = t("msg.needMonHave", { cost, have: st.r12.mon.toFixed(0) });
-        } else {
-          st.r12.mon -= cost;
-          demolishMultiTile(b);
-          st.message = t("msg.demolishedLotsFree");
-        }
-      } else {
-        const err = ruspaRebuild(b);
-        st.message = err ?? t("msg.constructionStartedBulldozer");
-      }
+      const err = ruspaDemolition(b);
+      st.message = err ?? t("msg.demolitionStarted");
       st.ruspaPending = null;
       st.messageT = 3;
       st.picked = null;
@@ -7498,7 +7496,7 @@ export async function mountMatch(ctx, params = {}) {
       stepLoot(st.loot, dt);
     }
     if (!frozen) {
-      stepConstructions(st.buildings, dt, st.r12, spawnDecor, addConstructionSpawn, removeTransientDecor);
+      stepConstructions(st.buildings, dt, st.r12, spawnDecor, addConstructionSpawn, removeTransientDecor, demolishStep);
       // Ciclo di impalcature dei ruderi sotto ruspa (stepRuinClearing()
       // sopra) — stesso principio di stepConstructions() appena sopra, un
       // timer a parte perche' un rudere in `ruins`/`ruinLots` non e' un
