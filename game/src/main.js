@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap, wewOilDrain, WEWE_OIL_DRAIN_PERIOD } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, WIND_ANIM_FPS, INDUSTRIA3_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId, currentEnergyStats } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, isRaining, solarEleRate, WIND_ANIM_FPS, INDUSTRIA3_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId, currentEnergyStats } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -4149,6 +4149,29 @@ export async function mountMatch(ctx, params = {}) {
     // non piu' solo stringhe gia' pronte da drawHtmlText() — il ciclo di
     // disegno piu' sotto distingue i due casi.
     const statLines = [];
+    // [Nuova funzionalita', richiesta dall'autore: "cliccando sul pannello
+    // fotovoltaico o la turbina eolica ti dice la produzione allo stesso
+    // modo della centrale"] Stesso formato della riga di industria sopra,
+    // ma per `solarProduction`/`windProduction` (ele per ciclo, costo in
+    // mon per il solare al posto dell'olio). Numeri VERI di adesso:
+    // fase del giorno e pioggia gia' applicate (solarEleRate()).
+    const solarDef = !b.construction ? def.solarProduction : null;
+    const windDef = !b.construction ? def.windProduction : null;
+    const raining = isRaining(st.r12);
+    if (solarDef) {
+      const ele = Math.round(solarEleRate(solarDef, isNight(st.phaseT), isDawn(st.phaseT), raining) * 10) / 10;
+      statLines.push({ parts: [
+        { text: `${t("buildingInfo.energyPrefix")}${ele} ` }, { icon: "ele" },
+        { text: t("buildingInfo.costMiddle") + `${solarDef.mon} ` }, { icon: "mon" },
+        { text: t("buildingInfo.energySuffix") },
+      ] });
+      if (raining) statLines.push(t("buildingInfo.solarRain"));
+    } else if (windDef) {
+      statLines.push({ parts: [
+        { text: `${t("buildingInfo.energyPrefix")}${windDef.ele} ` }, { icon: "ele" },
+        { text: t("buildingInfo.perCycle") },
+      ] });
+    }
     if (residents != null) statLines.push(t("buildingInfo.residents", { n: Math.round(residents) }));
     if (production) {
       statLines.push({ parts: [
@@ -4365,7 +4388,7 @@ export async function mountMatch(ctx, params = {}) {
 
     const residents = residentsByPlatform(st.buildings, st.platformState);
     const showResidents = residents.r32 != null || residents.r22 != null;
-    const energy = currentEnergyStats(st.buildings, night, dawn);
+    const energy = currentEnergyStats(st.buildings, night, dawn, isRaining(st.r12));
     // wewOilDrain() (state.js) e' il tasso di UNA chiamata, ripetuta ogni
     // WEWE_OIL_DRAIN_PERIOD secondi (state.js/stepWeather) — /periodo*60
     // per lo stesso "al minuto" di currentEnergyStats() sopra.

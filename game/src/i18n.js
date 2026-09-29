@@ -121,6 +121,9 @@ const STRINGS = {
   // li'.
   "buildingInfo.energyPrefix": { en: "Energy: +", it: "Energia: +", es: "Energía: +", pt: "Energia: +", de: "Energie: +", fr: "Énergie : +" },
   "buildingInfo.energyMiddle": { en: "/cycle (uses ", it: "/ciclo (consuma ", es: "/ciclo (consume ", pt: "/ciclo (consome ", de: "/Zyklus (verbraucht ", fr: "/cycle (consomme " },
+  "buildingInfo.perCycle": { en: "/cycle", it: "/ciclo", es: "/ciclo", pt: "/ciclo", de: "/Zyklus", fr: "/cycle" },
+  "buildingInfo.costMiddle": { en: "/cycle (costs ", it: "/ciclo (costa ", es: "/ciclo (cuesta ", pt: "/ciclo (custa ", de: "/Zyklus (kostet ", fr: "/cycle (coûte " },
+  "buildingInfo.solarRain": { en: "Rain: -30% output", it: "Pioggia: -30% di resa", es: "Lluvia: -30% de producción", pt: "Chuva: -30% de produção", de: "Regen: -30 % Leistung", fr: "Pluie : -30 % de production" },
   "buildingInfo.energySuffix": { en: ")", it: ")", es: ")", pt: ")", de: ")", fr: ")" },
   "buildingInfo.close": { en: "Close", it: "Chiudi", es: "Cerrar", pt: "Fechar", de: "Schließen", fr: "Fermer" },
 

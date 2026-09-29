@@ -3047,7 +3047,23 @@ export function stepProduction(buildings, dt, r12) {
  * entrambe). `isNight`/`isDawn` sono gli stessi booleani netti (nessuno
  * smoothstep) gia' usati da stepConsumption() per `casa`.
  */
+// [Nuova funzionalita', richiesta dall'autore: "quando piove il pannello
+// fotovoltaico produce un 30% in meno"] Nessun equivalente nel decompilato.
+// "Piove" = temporale vero (`r12.storm`, solo match) o cosmetico
+// (`r12.stormeasy`, match_easy): le due condizioni che fanno cadere la
+// pioggia visibile (stepRain(), main.js). Il moltiplicatore agisce solo
+// sull'energia, non sul costo in mon.
+export const RAIN_SOLAR_MULT = 0.7;
+export function isRaining(r12) { return !!(r12.storm || r12.stormeasy); }
+
+/** `ele` per ciclo di un `solarProduction` alla fase/meteo corrente. */
+export function solarEleRate(prod, isNight, isDawn, raining) {
+  const base = isNight ? prod.ele.night : isDawn ? prod.ele.dawn : prod.ele.day;
+  return raining ? base * RAIN_SOLAR_MULT : base;
+}
+
 export function stepSolarProduction(buildings, dt, r12, isNight, isDawn) {
+  const raining = isRaining(r12);
   for (const b of buildings) {
     if (b.construction) continue;
     const def = BUILDING_TYPES[b.type];
@@ -3058,7 +3074,7 @@ export function stepSolarProduction(buildings, dt, r12, isNight, isDawn) {
     while (b.solarT >= period) {
       b.solarT -= period;
       r12.mon -= prod.mon;
-      r12.ele += isNight ? prod.ele.night : isDawn ? prod.ele.dawn : prod.ele.day;
+      r12.ele += solarEleRate(prod, isNight, isDawn, raining);
     }
   }
 }
@@ -3211,7 +3227,7 @@ export function stepConsumption(buildings, dt, r12, isNight) {
  * `periodo * TICK` secondi diventa `/ periodo / TICK * 60` volte al minuto,
  * moltiplicato per l'ammontare di quel ciclo.
  */
-export function currentEnergyStats(buildings, isNight, isDawn) {
+export function currentEnergyStats(buildings, isNight, isDawn, raining = false) {
   let consumptionPerMin = 0;
   let centraliElePerMin = 0, centraliOilPerMin = 0;
   let eolicoPerMin = 0;
@@ -3234,7 +3250,7 @@ export function currentEnergyStats(buildings, isNight, isDawn) {
     }
     const solar = def.solarProduction;
     if (solar) {
-      const eleRate = isNight ? solar.ele.night : isDawn ? solar.ele.dawn : solar.ele.day;
+      const eleRate = solarEleRate(solar, isNight, isDawn, raining);
       solarePerMin += eleRate / (solar.every * TICK) * 60;
     }
     const wind = def.windProduction;
