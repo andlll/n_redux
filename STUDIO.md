@@ -4566,6 +4566,21 @@ vicino; il contenuto a piu' di 1.5px dal bordo e' intoccato. Effetto
 collaterale voluto: `newgaeas`/`tutoriae` avevano il bordo binario (a gradini,
 senza antialiasing), ora e' sfumato come `newga`.
 
+**Font dell'interfaccia: Montserrat -> Metropolis** (scelta dell'autore).
+`game/fonts/metropolis-700.woff2` e `-800.woff2` (i file OTF interi convertiti
+in woff2, senza subset: la licenza riserva il nome "Metropolis" alle versioni
+non modificate; testo in `game/fonts/OFL.txt`). Il peso 800 esisteva gia' nel
+CSS del logo e dei titoli del tutorial ma con Montserrat si vedeva 700, ora
+c'e' davvero. Metropolis e' ~4% piu' basso (x-height 517 contro 538) e ha
+metriche verticali diverse (ascent/descent 795/205 contro 968/251):
+compensato una volta sola in `@font-face` (index.html) con `size-adjust: 104%`
+e `ascent-override`/`descent-override` (93.1% / 24.1%, cioe' 968/251 divisi
+per 1.04) invece di ritoccare ogni font-size. Verificato in Chromium: il
+box di riga misurato su canvas e' identico a prima (97/25 su 100px) e le
+etichette del menu restano alla stessa y; larghezze -1/-3%. Copre tutte le
+accentate delle 6 lingue e `– — …`; manca `→` (una sola etichetta di fase in
+main.js), che ripiega sul font di sistema.
+
 **Risolto, non piu' un gap**: le catene `impamediaR/RD`, `impamedia1R/RD_demo`
 (con le loro impalcature "f") e `impavent_d` sono codice morto — nessun `.gml`
 ne' nessuna istanza di stanza le crea, verificato. Il museo usa le catene vere
