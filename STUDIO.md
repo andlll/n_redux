@@ -4531,7 +4531,11 @@ se cambia una catena `impa*`.
   vecchi/nuovi sotto ruspa restano la scelta dell'autore (impalcatura, rovina
   via, lotto vuoto).
 - Alberi: la maschera vera di `baa11` non e' nota (si usa il rettangolo).
-- Museo: catene `impamediaR/RD`, `impamedia1R/RD_demo`, `impavent_d` non hanno
-  nessun creatore nel decompilato (codice morto), non portate.
 - Estetici gia' noti: `demobasia` non piu' un gap (e' la ruspa), `tutorial_text`
   relitto, ordine di depth di "f" a +2.8 per palazzo/museo (irrilevante).
+
+**Risolto, non piu' un gap**: le catene `impamediaR/RD`, `impamedia1R/RD_demo`
+(con le loro impalcature "f") e `impavent_d` sono codice morto — nessun `.gml`
+ne' nessuna istanza di stanza le crea, verificato. Il museo usa le catene vere
+`IMPAMEDIA_R/RD` e `IMPAMEDIA_R/RD_DEMO` (vedi la voce sulle impalcature); le
+altre sono resti di una versione precedente e non vanno portate.
