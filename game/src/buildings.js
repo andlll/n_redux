@@ -2060,6 +2060,24 @@ export const BUILDING_TYPES = {
     // serve piu' margine verticale per non coprire il proprio stesso lotto.
     multiTile: { count: 4, anchorOffset: { dx: 98, dy: 116 } },
     construct: {
+      // [C] `playbuttoner` (src/objects/playbuttoner, creato da m3cant/Create.gml
+      // a (x, y-100)): pausa/riprendi del cantiere. Con `play==1` (stato
+      // iniziale) OGNI pezzo vivo del cantiere consuma -5 ele e -5 mon PER TICK
+      // nel proprio Step: `m3cant/Step.gml` (solo `phase<14`, cioe' tutti i
+      // passi tranne l'ultimo), `impa31f/Step.gml` (la prima impalcatura) e
+      // `impa3gru/Step.gml` (la gru, spawnata da impa31f a phase 18 = 648
+      // tick). Un tap mette `play=0`: `playbuttoner/Step.gml` allora tiene
+      // fermo `alarm[0]` di ogni pezzo (+1 ad ogni Step) — cantiere congelato
+      // e nessun consumo. Lo stesso congelamento scatta da solo con
+      // `r12.mon <= 0`. [I] Nel decompilato il consumo continuerebbe anche a
+      // cantiere fermo per mancanza di soldi (e mon scenderebbe sotto zero
+      // all'infinito): qui un cantiere fermo NON consuma, in nessun caso —
+      // una trappola senza scopo. [I] la durata dei pezzi e' quella di
+      // scaffold.js (tutta la durata del cantiere), non le loro vere
+      // Alarm/Destroy (impa33f ne smonta uno a 2400 tick da solo, rumore).
+      // Totale: 10 ele+mon/tick fino a 648 tick, 15 fino all'ultimo passo, 10
+      // durante l'ultimo — circa 109000 mon e 109000 ele in piu' del prezzo.
+      pausable: { perPiece: 5, craneAfterTicks: 648 },
       finalSprite: "m3x14", life: 99999,   // [C] m3cant/Alarm_0.gml fase 13; [I] indistruttibile, vedi sopra
       decor: [
         { spr: "m3l1", fadeTicks: 50 }, { spr: "m3l2", fadeTicks: 100 },
@@ -2784,6 +2802,15 @@ export function syncTopperLife(spawnList, up, stepIndex, revealAtStep) {
   return spawnList.map((sp) => (TOPPER_SPRITES.has(sp.spr) ? { ...sp, life: ticksToReveal } : sp));
 }
 
+/** Un cantiere `pausable` (grattacielo, `playbuttoner`) fermo: in pausa per
+ * scelta del giocatore (`b.paused`) o senza soldi (`r12.mon <= 0`) — vedi
+ * BUILDING_TYPES.grattacielo.construct.pausable. Fermo = nessun avanzamento,
+ * nessun consumo, impalcatura/gru congelate (main.js le ferma con questo). */
+export function constructionStalled(b, r12) {
+  return !!b.construction && !!BUILDING_TYPES[b.type]?.construct?.pausable
+    && (!!b.paused || r12.mon <= 0);
+}
+
 export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish) {
   for (const b of buildings) {
     const c = b.construction;
@@ -2806,6 +2833,16 @@ export function stepConstructions(buildings, dt, r12, onDecor, onSpawn, onFinish
         applyLevelFinish(b, def, up, c, r12, onDecor, true);
         c.finished = true;
       }
+    }
+    if (up.pausable) {
+      if (constructionStalled(b, r12)) continue;
+      c.elapsedT = (c.elapsedT ?? 0) + dt;
+      const pieces = 1                                                  // impa31f
+        + (c.stepIndex < up.steps.length - 1 ? 1 : 0)                    // m3cant, phase<14
+        + (c.elapsedT >= up.pausable.craneAfterTicks * TICK ? 1 : 0);    // impa3gru
+      const cost = pieces * up.pausable.perPiece * dt / TICK;
+      r12.mon -= cost;
+      r12.ele -= cost;
     }
     if (up.drain) {
       c.drainT = (c.drainT ?? 0) + dt;

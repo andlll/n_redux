@@ -415,6 +415,9 @@ GAMEPLAY_SPRITES = {
     # sprite di questo gruppo senza perdere alcun dettaglio (non essendocene
     # da perdere in una sagoma piatta).
     "gui": [
+        # `playbuttoner` (pausa/riprendi del cantiere del grattacielo,
+        # 100x100, origine al centro): main.js, skyPauseButtonAt().
+        "pupause", "puplay",
         "icone_oriz",          # sfondo barra risorse (repre/DrawGUI.gml)
         "crys_ico",            # icona nera dei cristalli (main.js, riga GUI sotto la barra risorse)
         # [Nuova funzionalita', richiesta dall'autore: "il grattacielo si

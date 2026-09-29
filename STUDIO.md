@@ -828,9 +828,16 @@ paragrafo 8.
      istanze `albe2`/`albe3` non stanno nella room perche' nascono cosi',
      a runtime. Stima per il bbox (la maschera vera puo' essere piu' stretta):
      29 alberi su 56 in `match`, 92 su 131 in `match_easy`, 31 su 57 in
-     `tutorial`. **Ancora non portato**, solo estetico: gli alberi sono
-     mediamente piu' bassi/radi dell'originale (`a2x`/`a3x` sono 48x65 contro
-     53x50 di `a1..a5`).
+     `tutorial`. **[Portato]** (main.js, subito dopo `treeVariant()`:
+     `touchesR12()`): una volta al caricamento della scena, ogni `albe` il
+     cui sprite tocca il rettangolo di `baa11` fa lo stesso dado (1/3
+     `albe2`, poi 1/4 `albe3`) e diventa quell'oggetto con la sua variante.
+     **Perche' un collision check**: nell'originale non c'e' altra logica
+     dietro — e' solo il modo di far scattare l'effetto una volta, al primo
+     Step, per gli alberi che stanno sopra lo sprite `baa11` (`selva` lo
+     impedisce di ripetersi). Il porting non ne ha bisogno come evento: basta
+     il test di sovrapposizione al caricamento. Approssimazione [I]: si usa il
+     rettangolo intero di `baa11`, non la sua maschera vera (non nota).
   2. **Auto decorative ferme**: `honda_facile_1`/`honda_facile_2`
      (STUDIO.md §5.3 "veicoli_target", le uniche due istanze vere in
      `match_easy.scene.json`) nell'originale guidano lungo un percorso
@@ -2703,11 +2710,22 @@ paragrafo 8.
   fermi — e con `play=0` il drenaggio smette. Lo stesso congelamento scatta
   da solo se `r12.mon <= 0` (senza soldi il cantiere si ferma da solo), e
   il bottone sparisce (`action_kill_object`) su `match` con `dara==0` e
-  olio a 0. Il porting NON ha ne' il drenaggio ne' il bottone: il
-  grattacielo costa solo i 200000 di piazzamento. Ordine di grandezza
-  dell'originale: 7320 tick di `phase<14` x -5 = **~36600 mon e ~36600 ele**
-  in piu' (l'ele si ferma a -100, `r12/Step.gml`: black-out di citta' per
-  tutta la durata se non si mette in pausa).
+  olio a 0. **[Portato]**: `BUILDING_TYPES.grattacielo.construct.pausable`
+  (buildings.js), `constructionStalled()`, `stepConstructions()`; bottone
+  in main.js (`skyPauseButtonAt()`, sprite `pupause`/`puplay` — aggiunti a
+  `GAMEPLAY_SPRITES["gui"]` in `tools/23_atlas.py`: serve rigenerare gli
+  atlas; finche' mancano il bottone e' disegnato proceduralmente). Il
+  consumo e' la somma dei tre pezzi che nell'originale lo applicano nel
+  proprio Step: `m3cant` (`phase<14`), `impa31f` (l'impalcatura) e
+  `impa3gru` (la gru, da 648 tick) — 10 ele+mon per tick fino a 648 tick, 15
+  fino all'ultimo passo, 10 nell'ultimo: **~109000 mon e ~109000 ele in piu'
+  dei 200000 di piazzamento** (verificato con una simulazione a passo di
+  tick: 108990). L'ele si ferma a -100 (`r12/Step.gml`): black-out di citta'
+  per tutta la durata se non si mette in pausa. [I] Un cantiere fermo (pausa
+  o `mon<=0`) NON consuma: nel decompilato il consumo proseguirebbe anche a
+  cantiere fermo per mancanza di soldi, senza scopo. Il fatto che
+  `impa31f/Destroy` uccida `playbuttoner` e i tempi di vita degli altri
+  pezzi restano semplificati alla durata dell'impalcatura di scaffold.js.
   **Il pacco di cantiere grande per laser e banca**: **[C]** letto riga
   per riga `placeholder/Mouse_LeftReleased.gml` per la lista esatta di chi
   crea `mon_bil` (piccolo) contro `mon_bbil` (grande) — una nota
@@ -3452,6 +3470,9 @@ paragrafo 8.
   "`honda3` nel tutorial restava ferma") e gli edifici pre-esistenti sono
   edifici veri (`seedTutorialBuildings()`, main.js, con
   `TUTORIAL_PREBUILT_TYPES`: producono, consumano, le torrette sparano).
+  **Decisione dell'autore**: `demobasia` (=ruspa), `honda3`, edifici
+  pre-esistenti del tutorial e `tutorial_text` sono codice morto o gia'
+  implementati in altro modo — nessun lavoro residuo.
   `tutorial_text` e' un relitto: nessun oggetto lo crea (grep su tutti i
   `.gml`), e il suo codice — `mon += 9000`, a `num==28` dopo 600 tick
   `disba` e ritorno a `title` — non e' raggiungibile.

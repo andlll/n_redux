@@ -140,7 +140,7 @@ export function serializeSave(sceneName, r12, buildings, ruins, blockedSlots, pl
       ava: b.ava, growthT: b.growthT, growthNext: b.growthNext, consT: b.consT,
       coinT: b.coinT, coinNext: b.coinNext, solarT: b.solarT, windT: b.windT,
       overpark: b.overpark, oversolar: b.oversolar, tiles: b.tiles,
-      autoDefenseLevel: b.autoDefenseLevel,
+      autoDefenseLevel: b.autoDefenseLevel, paused: b.paused,
     })),
     // `tiles` [Bug corretto, segnalato dall'autore: "verifica che demolire
     // la rovina della pala eolica liberi davvero i 4 lotti"]: stessa

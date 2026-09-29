@@ -2,7 +2,7 @@ import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture
 import { Camera, screenProjection } from "./camera.js";
 import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap, wewOilDrain, WEWE_OIL_DRAIN_PERIOD } from "./state.js";
-import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, isRaining, solarEleRate, WIND_ANIM_FPS, INDUSTRIA3_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId, currentEnergyStats } from "./buildings.js";
+import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, isRaining, solarEleRate, WIND_ANIM_FPS, INDUSTRIA3_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaRebuild, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId, currentEnergyStats, constructionStalled } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
 import { createSemaphore, stepSemaphores } from "./semaphores.js";
 import { createAtmosphere, stepAtmosphere } from "./atmosphere.js";
@@ -735,6 +735,35 @@ export async function mountMatch(ctx, params = {}) {
   // rettangolo del frame + maschera pixel per i non-torretta — cosi' si apre
   // sempre l'edificio che il giocatore vede acceso, mai uno diverso. La
   // precedenza fra fasce e' la stessa di sempre (sotto).
+  // [Nuova funzionalita', richiesta dall'autore: portare `playbuttoner`]
+  // Pausa/riprendi del cantiere del grattacielo — vedi il commento su
+  // `construct.pausable` in buildings.js per cosa fa e cosa costa. [C]
+  // `m3cant/Create.gml`: `instance_create(x, y - 100, playbuttoner)`, sprite
+  // `pupause` (mentre corre) / `puplay` (in pausa), 100x100 con origine al
+  // centro, `image_alpha = 0.7`, depth -9000 (sempre in primo piano), niente
+  // tinta ambientale (non e' figlio di notte_target).
+  const SKY_BTN_SIZE = 100, SKY_BTN_DY = -100;
+  function skyPauseButtonAt(wx, wy) {
+    for (const b of st.buildings) {
+      if (b.type !== "grattacielo" || !b.construction) continue;
+      const x0 = b.x - SKY_BTN_SIZE / 2, y0 = b.y + SKY_BTN_DY - SKY_BTN_SIZE / 2;
+      if (wx >= x0 && wx <= x0 + SKY_BTN_SIZE && wy >= y0 && wy <= y0 + SKY_BTN_SIZE) return b;
+    }
+    return null;
+  }
+  /** Fallback procedurale finche' "pupause"/"puplay" non sono nell'atlas
+   * (tools/23_atlas.py, gruppo "gui": serve rigenerare gli atlas): disco scuro
+   * con le due barre della pausa o il triangolo del play. */
+  function drawSkyPauseFallback(b) {
+    const cx = b.x, cy = b.y + SKY_BTN_DY;
+    r.draw(bubbleUnitFrame, cx - SKY_BTN_SIZE / 2, cy - SKY_BTN_SIZE / 2, SKY_BTN_SIZE, 0x000000, 0.7);
+    if (b.paused) {
+      r.drawQuadXY(solidFrame(white, 1, 1), cx - 14, cy - 24, cx + 24, cy, cx - 14, cy + 24, cx - 14, cy + 24, 0xffffff, 0.9);
+    } else {
+      r.draw(solidFrame(white, 12, 44), cx - 18, cy - 22, 1, 0xffffff, 0.9);
+      r.draw(solidFrame(white, 12, 44), cx + 6, cy - 22, 1, 0xffffff, 0.9);
+    }
+  }
   function buildingAt(sx, sy, litOnly = false) {
     const w = cam.screenToWorld(sx, sy);
     let turretMatch = null, plantMatch = null, otherMatch = null;
@@ -788,9 +817,35 @@ export async function mountMatch(ctx, params = {}) {
     if (obj === "albe3") return dice(2) ? (dice(2) ? "a31" : "a32") : (dice(2) ? "a33" : "a34");
     return null;
   }
+  // [Nuova funzionalita', richiesta dall'autore: "porta la diffusione degli
+  // alberi"] [C] `albe/Collision_r12.gml`: `r12` ha sprite `baa11` (1170x1558,
+  // la meta' sinistra della mappa — vedi il commento sulla room piu' sotto),
+  // quindi al primo Step OGNI albero che ne tocca la maschera passa da li'
+  // una volta sola (`selva=1`): dado 1/3 -> `albe2`, altrimenti dado 1/4 ->
+  // `albe3` (~50% in totale, alberi piu' alti e fitti: 48x65 contro 53x50).
+  // Serve solo a variare l'aspetto (il collision check e' il modo in cui
+  // l'originale limita l'effetto agli alberi sopra `baa11`, non c'e' altra
+  // logica). Fatto una volta al caricamento della scena, come treeVariant()
+  // sopra. [I] la maschera vera di `baa11` non e' nota: si usa il suo
+  // rettangolo intero (bbox) contro quello dello sprite dell'albero.
+  const r12Inst = scene.instances.find((i) => i.obj === "r12");
+  const r12Rect = r12Inst && r12Inst.w
+    ? { x0: r12Inst.x - (r12Inst.ox ?? 0), y0: r12Inst.y - (r12Inst.oy ?? 0) }
+    : null;
+  if (r12Rect) { r12Rect.x1 = r12Rect.x0 + r12Inst.w; r12Rect.y1 = r12Rect.y0 + r12Inst.h; }
+  function touchesR12(it) {
+    const fr = atlas.sprites[it.spr]?.[0];
+    if (!r12Rect || !fr) return false;
+    const x0 = it.x - fr.ox, y0 = it.y - fr.oy;
+    return x0 < r12Rect.x1 && x0 + fr.w > r12Rect.x0 && y0 < r12Rect.y1 && y0 + fr.h > r12Rect.y0;
+  }
   for (const it of staticWorld) {
     const v = treeVariant(it.obj);
     if (v) it.spr = v;
+    if (it.obj === "albe" && touchesR12(it)) {
+      const dense = dice(3) ? "albe2" : dice(4) ? "albe3" : null;
+      if (dense) { it.obj = dense; it.spr = treeVariant(dense); }
+    }
   }
 
   for (const it of staticWorld) it._f = frameFor(it.spr);
@@ -6582,6 +6637,16 @@ export async function mountMatch(ctx, params = {}) {
     }
     const w = cam.screenToWorld(sx, sy);
     st.picked = null;
+    // Pausa/riprendi cantiere grattacielo (skyPauseButtonAt(), sopra): e' un
+    // bottone sempre in primo piano (depth -9000), quindi vince su tutto il
+    // resto sotto di lui.
+    const skyBtn = skyPauseButtonAt(w.x, w.y);
+    if (skyBtn) {
+      skyBtn.paused = !skyBtn.paused;
+      st.message = t(skyBtn.paused ? "msg.constructionPaused" : "msg.constructionResumed");
+      st.messageT = 3;
+      return;
+    }
     // frameList e' ricostruita ad ogni frame di disegno: e' la stessa lista,
     // gia' ordinata top-most-last, che serve per il picking. Due passate: la
     // prima considera solo cio' che e' davvero interattivo (placeholder,
@@ -7455,7 +7520,7 @@ export async function mountMatch(ctx, params = {}) {
       // sotto-sistema di scenografia indipendente, non un `onSpawn`/`onFinish`
       // di stepConstructions() sopra — vedi il commento in scaffold.js per il
       // perche'.
-      stepGrattacieloScaffold(st.buildings, dt);
+      stepGrattacieloScaffold(st.buildings, dt, (b) => constructionStalled(b, st.r12));
       // Le gru di cantiere (game/src/cranes.js) — stesso principio dello
       // scaffolding del grattacielo sopra: un timer tutto loro, indipendente
       // dal resto del cantiere. `ruinClearingFakes`: le gru della taglia 3
@@ -7918,6 +7983,12 @@ export async function mountMatch(ctx, params = {}) {
         ...(ruspaTargeted ? { _tint: 0xff0000, _selfLit: true }
           : handHovered ? { _tint: HAND_HOVER_TINT, _selfLit: true } : {}),
       });
+      // `playbuttoner` (skyPauseButtonAt(), sopra): sprite se l'atlas lo ha,
+      // altrimenti lo disegna drawSkyPauseFallback() dopo la lista.
+      if (b.type === "grattacielo" && b.construction) {
+        const pbF = frameFor(b.paused ? "puplay" : "pupause");
+        if (pbF) dynamic.push({ obj: "decor", x: b.x, y: b.y + SKY_BTN_DY, depth: -9000, _f: pbF, _selfLit: true, _alpha: 0.7 });
+      }
       // [Bug corretto, segnalato dall'autore: "si vedeva anche nel gioco
       // originale, partiva subito dopo la parte frontale e si montavano
       // quasi insieme"] L'edificio VECCHIO durante un upgrade con topper
@@ -8458,6 +8529,9 @@ export async function mountMatch(ctx, params = {}) {
     // deve leggersi come UN'ANTEPRIMA, non come un pezzo di scena vera che si
     // scurisce di notte) — disegnato per ultimo, sopra a tutto il resto del
     // mondo cosi' non resta mai nascosto da un edificio vicino.
+    for (const b of st.buildings) {
+      if (b.type === "grattacielo" && b.construction && !frameFor(b.paused ? "puplay" : "pupause")) drawSkyPauseFallback(b);
+    }
     if (multiTilePreview) {
       r.draw(multiTilePreview.f, multiTilePreview.x, multiTilePreview.y, 1, 0xffffff, 0.5);
     }
