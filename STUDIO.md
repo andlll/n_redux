@@ -4534,6 +4534,20 @@ se cambia una catena `impa*`.
 - Estetici gia' noti: `demobasia` non piu' un gap (e' la ruspa), `tutorial_text`
   relitto, ordine di depth di "f" a +2.8 per palazzo/museo (irrilevante).
 
+**Risolto: la torretta laser "saltava" di 3px ruotando la mira** (segnalato
+dall'autore: "in alcune posizioni shifta verso l'alto di pochissimi pixel").
+**[C]** Difetto dei dati originali, non dell'estrazione: `lan1`..`lan16`
+condividono l'origine (239,454), ma la torre di `lan1`..`lan6` e' disegnata 3px
+piu' in basso che in `lan7`..`lan16` (registrazione al pixel della sola base,
+identica nei 16 frame: XOR = 0 dopo lo scarto, dx=0, dy=+3 / 0). Nel gioco
+originale il salto si vede uguale. Corretto alzando di 3px i primi sei frame
+(`ORIGIN_RAISE` in `tools/23_atlas.py`, `oy += 3` in `game/data/match.atlas.json`
+— toccato a mano perche' rigenerare l'atlas cambia il packing di centinaia di
+sprite non coinvolti e lo desincronizzerebbe dalle pagine webp). Missile
+(`lrn*`) e gatling (`nm*a/b`) misurati con lo stesso metodo: scarti di 1-3px
+irregolari, compatibili con ombra/rinculo nella fascia confrontata, non
+trattati come difetto.
+
 **Risolto, non piu' un gap**: le catene `impamediaR/RD`, `impamedia1R/RD_demo`
 (con le loro impalcature "f") e `impavent_d` sono codice morto — nessun `.gml`
 ne' nessuna istanza di stanza le crea, verificato. Il museo usa le catene vere
