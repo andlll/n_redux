@@ -305,16 +305,11 @@ export async function mountMatch(ctx, params = {}) {
   // costFloaterFrame piu' sotto — pin e monete nella stessa immagine, colori
   // veri, niente piu' bisogno del colorize rosso usato finora su "soldico"
   // (l'icona blu della raccolta tasse, coins.js) come sostituto provvisorio.
-  // [NOTA] L'autore ha condiviso l'icona vera solo come immagine incollata in
-  // chat, non come file: questa sessione non ha modo di salvare a disco
-  // un'immagine incollata (nessuno strumento per farlo, a differenza di
-  // pause-button.png sopra — quello sì un file vero ricevuto e committato
-  // cosi' com'e', "senza nessuna modifica offline"). Il PNG qui e' quindi una
-  // RICOSTRUZIONE fatta a partire dalla descrizione/dallo screenshot (stesso
-  // stile: pin rosso, pila di monete bianca dentro, stessa sagoma/misura di
-  // "soldico" sotto) — da sostituire con l'immagine originale appena
-  // disponibile come file vero: stesso path/nome basta a farla entrare senza
-  // toccare altro codice. `ox`/`oy` = centro in basso (la punta del pin, come
+  // [Sostituita con l'originale] L'autore ha poi caricato in chat il file vero
+  // (60x88, stessa sagoma/misura di "soldico"): e' committato cosi' com'e',
+  // al posto della ricostruzione precedente. Resta un PNG a se' e non entra
+  // nell'atlas: si carica direttamente, senza toccare `match.atlas.json`.
+  // `ox`/`oy` = centro in basso (la punta del pin, come
   // l'origine 30,88 di "soldico" nel suo stesso atlas — STUDIO.md): e' il
   // punto che finisce sulle coordinate passate a r.draw(), cosi' il pin
   // "punta" verso l'ancora e si apre verso l'alto, esattamente come ogni
@@ -8630,8 +8625,7 @@ export async function mountMatch(ctx, params = {}) {
     // quando stepAutoDefenseUpkeep() segnala un prelievo — buildings.js —
     // sia da onTap/onPointerDown piu' sotto quando placeAt()/armPlacement()
     // rifiutano un piazzamento per fondi insufficienti): `costWarningIconFrame`
-    // (sopra — vedi li' la nota su "ricostruita, non il file originale") e'
-    // l'asset dedicato, pin rosso con la moneta gia' in bianco dentro la
+    // (sopra) e' l'asset dedicato, pin rosso con la moneta gia' in bianco dentro la
     // stessa immagine, niente piu' bisogno del colorize provvisorio che
     // sostituiva l'RGB di "soldico" (l'icona blu della raccolta tasse,
     // coins.js) con un tint rosso pieno. Sale e sfuma invece di crescere sul
