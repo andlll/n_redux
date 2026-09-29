@@ -4411,9 +4411,9 @@ export async function mountMatch(ctx, params = {}) {
       { key: "eolicoPerMin", spr: "p4", tint: 0x8b6c17 },           // eolico
       { key: "solarePerMin", spr: "psolare", tint: 0xb57008 },      // solare
     ];
-    // `solarePerMin` puo' essere negativo di notte (buildings.js,
-    // solarProduction.ele.night: -1): niente segmento a larghezza negativa
-    // nella barra, ma il numero accanto all'icona resta quello vero (stesso
+    // `solarePerMin` e' 0 di notte (buildings.js, solarProduction.ele.night:
+    // 0): il Math.max(0, ...) sotto resta per sicurezza contro tassi
+    // negativi; il numero accanto all'icona resta quello vero (stesso
     // criterio gia' in uso per gli altri numeri di questo pannello — un
     // tasso istantaneo, non una media, vedi il commento su
     // currentEnergyStats() in buildings.js).

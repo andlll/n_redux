@@ -725,9 +725,12 @@ export const BUILDING_TYPES = {
   solare: {
     get label() { return buildingLabel("solare"); },
     placeCost: { mon: 1000 },   // [C] placeholder/Mouse_LeftReleased.gml, selec==61
-    // [C] sooool/Alarm_4.gml, ogni 30 tick: sempre -5 mon; ele -1 di notte,
-    // +5 all'alba, +9 altrimenti (giorno/tramonto) — vedi stepSolarProduction().
-    solarProduction: { every: 30, mon: 5, ele: { night: -1, dawn: 5, day: 9 } },
+    // [C] sooool/Alarm_4.gml, ogni 30 tick: sempre -5 mon; ele +5 all'alba,
+    // +9 altrimenti (giorno/tramonto) — vedi stepSolarProduction().
+    // [DEVIAZIONE dall'originale] di notte l'originale faceva ele -1 (il
+    // pannello "consumava" energia): qui e' 0, un pannello spento non
+    // spreca nulla. Il costo in mon (-5) resta invariato.
+    solarProduction: { every: 30, mon: 5, ele: { night: 0, dawn: 5, day: 9 } },
     storm: [{ dice: 200, loss: 50 }],   // [C] sooool/Alarm_5.gml
     // [C] sooool/Destroy.gml: hap +50 alla morte — nessun costo corrispondente
     // alla nascita (sooool/Create.gml non tocca hap): non simmetrico, letto
@@ -3037,7 +3040,8 @@ export function stepProduction(buildings, dt, r12) {
  * Avanza `solare` (`sooool/Alarm_4.gml`, `def.solarProduction`): l'unico
  * edificio la cui produzione dipende dall'ORA DEL GIORNO invece che da un
  * consumo di materia prima (`oil` per industria). [C] ogni 30 tick: sempre
- * -5 mon; `ele` varia con la fase — -1 di notte, +5 all'alba, +9 altrimenti
+ * -5 mon; `ele` varia con la fase — 0 di notte (l'originale: -1, deviazione
+ * voluta), +5 all'alba, +9 altrimenti
  * (giorno/tramonto: il decompilato ha solo due flag booleani, `night` e
  * `dawn`, non le quattro fasi di questo motore — "ne' notte ne' alba" copre
  * entrambe). `isNight`/`isDawn` sono gli stessi booleani netti (nessuno
