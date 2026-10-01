@@ -34,7 +34,7 @@ import {
   createTutorialState, extractRuinLots, stepTutorialAuto, stepCutscene,
   tutorialText, HIDE_ADVANCE_BUTTON, LAST_PHASE, CUTSCENE_CLIMB_TAN, seaScrollOffset,
 } from "./tutorial.js";
-import { t, setLang, getLang, LANGUAGES, buildingLabel, resourceName } from "./i18n.js";
+import { t, setLang, getLang, LANGUAGES, buildingLabel } from "./i18n.js";
 
 // Schermata montata da game/src/app.js (SPA, un solo index.html/link):
 // export mountMatch(ctx, params) invece di uno script a livello di modulo —
@@ -5638,7 +5638,7 @@ export async function mountMatch(ctx, params = {}) {
     if (!cost) return null;
     const entries = Object.entries(cost);
     if (!entries.length) return t("msg.itsFree");
-    return entries.map(([k, v]) => `${v}` + (k === "mon" ? "" : ` ${resourceName(k)}`)).join(", ");
+    return entries.map(([k, v]) => `${v}` + (k === "mon" ? "" : ` ${k}`)).join(", ");
   }
 
   /**
@@ -6497,7 +6497,7 @@ export async function mountMatch(ctx, params = {}) {
         const trade = TRADES[hit.index];
         if (canTrade(st.r12, hit.index)) {
           applyTrade(st.r12, hit.index);
-          st.message = t("msg.traded", { giveAmount: trade.giveAmount, give: resourceName(trade.give), takeAmount: trade.takeAmount, take: resourceName(trade.take) });
+          st.message = t("msg.traded", { giveAmount: trade.giveAmount, give: trade.give, takeAmount: trade.takeAmount, take: trade.take });
           // [C] get1..4/Mouse_LeftPressed.gml: armano tradebuttoner/Alarm_2.gml
           // (400 tick) solo su uno scambio RIUSCITO — il bottone del mondo
           // resta comunque nascosto finche' il pannello e' aperto (vedi il
@@ -6505,7 +6505,7 @@ export async function mountMatch(ctx, params = {}) {
           // si chiude.
           st.tradeCooldownT = TRADE_COOLDOWN;
         } else {
-          st.message = t("msg.needResourceHave", { amount: trade.giveAmount, resource: resourceName(trade.give), have: (st.r12[trade.give] ?? 0).toFixed(0) });
+          st.message = t("msg.needResourceHave", { amount: trade.giveAmount, resource: trade.give, have: (st.r12[trade.give] ?? 0).toFixed(0) });
         }
         st.messageT = 3;
       } else {
@@ -7021,13 +7021,13 @@ export async function mountMatch(ctx, params = {}) {
     } else if (st.picked.obj === "loot") {
       const item = st.picked.ref;
       collectLootAt(item);
-      st.message = `+${item.amount} ${resourceName(item.key)}`;
+      st.message = `+${item.amount} ${item.key}`;
       st.messageT = 3;
       st.picked = null;   // raccolta, non c'e' piu' niente da tenere selezionato
     } else if (st.picked.obj === "coin") {
       const item = st.picked.ref;
       collectCoinAt(item);
-      st.message = `+${item.amount} ${resourceName(item.kind ?? "mon")}`;
+      st.message = `+${item.amount} ${item.kind ?? "mon"}`;
       st.messageT = 3;
       st.picked = null;
     } else if (st.picked.obj === "upsign") {

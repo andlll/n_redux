@@ -412,14 +412,6 @@ const STRINGS = {
   "msg.gameLoaded": { en: "Game loaded", it: "Partita caricata", es: "Partida cargada", pt: "Partida carregada", de: "Spiel geladen", fr: "Partie chargée" },
   "msg.noSaveFound": { en: "No save found", it: "Nessun salvataggio trovato", es: "No se encontró ninguna partida guardada", pt: "Nenhum salvamento encontrado", de: "Kein Spielstand gefunden", fr: "Aucune sauvegarde trouvée" },
 
-  // Nome leggibile delle risorse nei messaggi (scambi, raccolta, costi mancanti):
-  // prima comparivano le chiavi interne grezze ("ele", "crys"). "mon" resta
-  // "mon" ovunque: e' il nome della valuta del gioco, lo stesso delle icone.
-  "res.mon": { en: "mon", it: "mon", es: "mon", pt: "mon", de: "mon", fr: "mon" },
-  "res.oil": { en: "oil", it: "petrolio", es: "petróleo", pt: "petróleo", de: "Öl", fr: "pétrole" },
-  "res.ele": { en: "energy", it: "energia", es: "energía", pt: "energia", de: "Energie", fr: "énergie" },
-  "res.crys": { en: "gems", it: "gemme", es: "gemas", pt: "gemas", de: "Edelsteine", fr: "gemmes" },
-
   // ---------------------------------------------------------------- upgrade
   "upgrade.maxLevel": { en: "Max level", it: "Livello massimo", es: "Nivel máximo", pt: "Nível máximo", de: "Höchststufe", fr: "Niveau maximum" },
   "upgrade.needProductionCycles": {
@@ -508,13 +500,6 @@ export function t(key, vars) {
   let str = entry ? (entry[lang] ?? entry[FALLBACK] ?? key) : key;
   if (vars) for (const k in vars) str = str.split(`{${k}}`).join(String(vars[k]));
   return str;
-}
-
-// Nome di una risorsa dalla sua chiave interna ("oil", "ele", "crys", "mon"):
-// ricade sulla chiave stessa per quelle senza voce `res.<chiave>`.
-export function resourceName(key) {
-  const k = `res.${key}`;
-  return STRINGS[k] ? t(k) : key;
 }
 
 // Etichetta di un edificio dal suo `type` interno (le stesse chiavi di
