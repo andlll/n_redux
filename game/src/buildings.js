@@ -1,5 +1,5 @@
 import { BALLOON_TYPES } from "./balloons.js";
-import { t, buildingLabel } from "./i18n.js";
+import { t, buildingLabel, resourceName } from "./i18n.js";
 import { SCAFFOLD_TIMING } from "./scaffoldTiming.js";
 
 // Edifici come dati, non come codice (STUDIO.md §7.3): la catena di
@@ -2518,7 +2518,7 @@ export function tryStartUpgrade(b, r12, buildings) {
     }
   }
   if (!canAfford(r12, up.cost)) {
-    const need = Object.entries(up.cost).map(([k, v]) => `${v} ${k}`).join(", ");
+    const need = Object.entries(up.cost).map(([k, v]) => `${v} ${resourceName(k)}`).join(", ");
     return t("upgrade.needResources", { list: need });
   }
   pay(r12, up.cost);
