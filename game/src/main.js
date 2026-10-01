@@ -4029,7 +4029,7 @@ export async function mountMatch(ctx, params = {}) {
     const rowsAfter = [
       { label: t("savingOptions.duringAttacks", { state: onOff(st.autosave.duringAttacks) }), action: "toggleAttacks" },
       { label: t("savingOptions.duringLowOil", { state: onOff(st.autosave.duringLowOil) }), action: "toggleLowOil" },
-      { label: t("savingOptions.back"), action: "back" },
+      { label: t("common.back"), action: "back" },
     ];
     // Stessa didascalia + drawSegmentedControl() (sopra, vicino a
     // drawPauseOverlay()) gia' usata per la lingua li': un segmento per
@@ -4133,7 +4133,7 @@ export async function mountMatch(ctx, params = {}) {
       (seg, sx, sy, sw, sh) => drawHtmlText(seg.value ? String(seg.value) : t("graphicsOptions.fpsUnlimited"), sx + sw / 2, sy + sh / 2, { size: 14, maxWidth: sw - 6 })));
     by += FPS_SEG_H + btnGap;
     r.draw(pauseButtonFrame(btnW, btnH), bx, by, 1, BUTTON_TINT, BUTTON_ALPHA);
-    drawHtmlText(t("savingOptions.back"), bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
+    drawHtmlText(t("common.back"), bx + btnW / 2, by + btnH / 2, { size: 15, maxWidth: btnW - 20 });
     st.pauseMenuButtons.push({ x: bx, y: by, w: btnW, h: btnH, action: "back" });
     r.flush();
   }
@@ -5040,7 +5040,7 @@ export async function mountMatch(ctx, params = {}) {
     }
     const backBtn = st.buildMenuButtons[st.buildMenuButtons.length - 1];
     r.draw(pauseButtonFrame(backBtn.w, backBtn.h), backBtn.x, backBtn.y, 1, BUTTON_TINT, BUTTON_ALPHA);
-    drawHtmlText("Back", backBtn.x + backBtn.w / 2, backBtn.y + backBtn.h / 2, { size: 17, maxWidth: backBtn.w - 20 });
+    drawHtmlText(t("common.back"), backBtn.x + backBtn.w / 2, backBtn.y + backBtn.h / 2, { size: 17, maxWidth: backBtn.w - 20 });
 
     // [Nuova funzionalita', richiesta dall'autore: "anche nel sottomenu
     // costruzioni mobile una freccia che punta l'edificio giusto"] La
@@ -8779,9 +8779,9 @@ export async function mountMatch(ctx, params = {}) {
         // 1/zoom pixel schermo per unita'): il testo va scalato uguale, non
         // tenuto a 17px fissi — `k` come in drawCostTagAt() (`follow`).
         const kz = 1 / cam.zoom;
-        drawHtmlText("No", s1.x, s1.y, { size: 17 * kz, color: "#ffffff" });
+        drawHtmlText(t("common.no"), s1.x, s1.y, { size: 17 * kz, color: "#ffffff" });
         const s2 = cam.worldToScreen(yesX + (RUSPA_BTN_W * UI_SCALE) / 2, yesY + (RUSPA_BTN_H * UI_SCALE) / 2);
-        drawHtmlText("Yes!", s2.x, s2.y, { size: 17 * kz, color: "#ffffff" });
+        drawHtmlText(t("common.yes"), s2.x, s2.y, { size: 17 * kz, color: "#ffffff" });
         drawCostTagWorld(costParts({ mon: st.ruspaPending.cost }), b.x + 157 * UI_SCALE, b.y - 185 * UI_SCALE, { follow: true });
       }
     }

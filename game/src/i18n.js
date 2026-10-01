@@ -76,27 +76,29 @@ const STRINGS = {
   "pause.language": { en: "Language", it: "Lingua", es: "Idioma", pt: "Idioma", de: "Sprache", fr: "Langue" },
 
   "savingOptions.title": { en: "SAVING OPTIONS", it: "OPZIONI DI SALVATAGGIO", es: "OPCIONES DE GUARDADO", pt: "OPÇÕES DE SALVAMENTO", de: "SPEICHEROPTIONEN", fr: "OPTIONS DE SAUVEGARDE" },
-  "savingOptions.autosave": { en: "Autosave: {state}", it: "Salvataggio automatico: {state}", es: "Guardado automático: {state}", pt: "Salvamento automático: {state}", de: "Automatisches Speichern: {state}", fr: "Sauvegarde automatique : {state}" },
+  "savingOptions.autosave": { en: "Autosave: {state}", it: "Salvataggio automatico: {state}", es: "Guardado automático: {state}", pt: "Salvamento automático: {state}", de: "Automatisches Speichern: {state}", fr: "Sauvegarde automatique : {state}" },
   // Stessa storia di "pause.language" sopra: didascalia sopra il controllo
   // segmentato dell'intervallo (drawSavingOptionsOverlay(), main.js — un
   // segmento per valore in AUTOSAVE_INTERVALS li'), non piu' un'etichetta
   // con `{min}` interpolato.
   "savingOptions.interval": { en: "Interval (min)", it: "Intervallo (min)", es: "Intervalo (min)", pt: "Intervalo (min)", de: "Intervall (Min.)", fr: "Intervalle (min)" },
-  "savingOptions.duringAttacks": { en: "Save during attacks: {state}", it: "Salva durante gli attacchi: {state}", es: "Guardar durante los ataques: {state}", pt: "Salvar durante ataques: {state}", de: "Während Angriffen speichern: {state}", fr: "Sauvegarder pendant les attaques : {state}" },
-  "savingOptions.duringLowOil": { en: "Save with low oil: {state}", it: "Salva con petrolio scarso: {state}", es: "Guardar con petróleo escaso: {state}", pt: "Salvar com petróleo baixo: {state}", de: "Speichern bei wenig Öl: {state}", fr: "Sauvegarder avec peu de pétrole : {state}" },
-  "savingOptions.back": { en: "Back", it: "Indietro", es: "Atrás", pt: "Voltar", de: "Zurück", fr: "Retour" },
+  "savingOptions.duringAttacks": { en: "Save during attacks: {state}", it: "Salva durante gli attacchi: {state}", es: "Guardar durante los ataques: {state}", pt: "Salvar durante ataques: {state}", de: "Während Angriffen speichern: {state}", fr: "Sauvegarder pendant les attaques : {state}" },
+  "savingOptions.duringLowOil": { en: "Save with low oil: {state}", it: "Salva con petrolio scarso: {state}", es: "Guardar con petróleo escaso: {state}", pt: "Salvar com petróleo baixo: {state}", de: "Speichern bei wenig Öl: {state}", fr: "Sauvegarder avec peu de pétrole : {state}" },
+  "common.back": { en: "Back", it: "Indietro", es: "Atrás", pt: "Voltar", de: "Zurück", fr: "Retour" },
+  "common.yes": { en: "Yes!", it: "Sì!", es: "¡Sí!", pt: "Sim!", de: "Ja!", fr: "Oui !" },
+  "common.no": { en: "No", it: "No", es: "No", pt: "Não", de: "Nein", fr: "Non" },
   "common.on": { en: "ON", it: "ON", es: "ON", pt: "ON", de: "ON", fr: "ON" },
   "common.off": { en: "OFF", it: "OFF", es: "OFF", pt: "OFF", de: "OFF", fr: "OFF" },
 
   // ------------------------------------------------------ opzioni grafiche
   "graphicsOptions.title": { en: "GRAPHICS OPTIONS", it: "OPZIONI GRAFICHE", es: "OPCIONES GRÁFICAS", pt: "OPÇÕES GRÁFICAS", de: "GRAFIKOPTIONEN", fr: "OPTIONS GRAPHIQUES" },
-  "graphicsOptions.dynamicRes": { en: "Dynamic resolution: {state}", it: "Risoluzione dinamica: {state}", es: "Resolución dinámica: {state}", pt: "Resolução dinâmica: {state}", de: "Dynamische Auflösung: {state}", fr: "Résolution dynamique : {state}" },
+  "graphicsOptions.dynamicRes": { en: "Dynamic resolution: {state}", it: "Risoluzione dinamica: {state}", es: "Resolución dinámica: {state}", pt: "Resolução dinâmica: {state}", de: "Dynamische Auflösung: {state}", fr: "Résolution dynamique : {state}" },
   "graphicsOptions.fps": { en: "Frame rate limit", it: "Limite di fps", es: "Límite de fps", pt: "Limite de fps", de: "Bildratenlimit", fr: "Limite de fps" },
-  "graphicsOptions.fpsUnlimited": { en: "Unlimited", it: "Nessuno", es: "Sin límite", pt: "Sem limite", de: "Unbegrenzt", fr: "Illimité" },
-  "graphicsOptions.rain": { en: "Rain: {state}", it: "Pioggia: {state}", es: "Lluvia: {state}", pt: "Chuva: {state}", de: "Regen: {state}", fr: "Pluie : {state}" },
-  "graphicsOptions.cars": { en: "Vehicles: {state}", it: "Veicoli: {state}", es: "Vehículos: {state}", pt: "Veículos: {state}", de: "Fahrzeuge: {state}", fr: "Véhicules : {state}" },
-  "graphicsOptions.pedestrians": { en: "Pedestrians: {state}", it: "Pedoni: {state}", es: "Peatones: {state}", pt: "Pedestres: {state}", de: "Fußgänger: {state}", fr: "Piétons : {state}" },
-  "graphicsOptions.minorEffects": { en: "Minor effects: {state}", it: "Effetti minori: {state}", es: "Efectos menores: {state}", pt: "Efeitos menores: {state}", de: "Kleinere Effekte: {state}", fr: "Effets mineurs : {state}" },
+  "graphicsOptions.fpsUnlimited": { en: "Unlimited", it: "Illimitato", es: "Sin límite", pt: "Sem limite", de: "Unbegrenzt", fr: "Illimité" },
+  "graphicsOptions.rain": { en: "Rain: {state}", it: "Pioggia: {state}", es: "Lluvia: {state}", pt: "Chuva: {state}", de: "Regen: {state}", fr: "Pluie : {state}" },
+  "graphicsOptions.cars": { en: "Vehicles: {state}", it: "Veicoli: {state}", es: "Vehículos: {state}", pt: "Veículos: {state}", de: "Fahrzeuge: {state}", fr: "Véhicules : {state}" },
+  "graphicsOptions.pedestrians": { en: "Pedestrians: {state}", it: "Pedoni: {state}", es: "Peatones: {state}", pt: "Pedestres: {state}", de: "Fußgänger: {state}", fr: "Piétons : {state}" },
+  "graphicsOptions.minorEffects": { en: "Minor effects: {state}", it: "Effetti minori: {state}", es: "Efectos menores: {state}", pt: "Efeitos menores: {state}", de: "Kleinere Effekte: {state}", fr: "Effets mineurs : {state}" },
 
   "confirmReset.title": { en: "RESET GAME", it: "RICOMINCIA PARTITA", es: "REINICIAR PARTIDA", pt: "REINICIAR PARTIDA", de: "SPIEL NEU STARTEN", fr: "RECOMMENCER LA PARTIE" },
   "confirmReset.warning": {
@@ -111,8 +113,8 @@ const STRINGS = {
 
   // ---------------------------------------------------------- pannello edificio
   "buildingInfo.underConstruction": { en: "Under construction…", it: "In costruzione…", es: "En construcción…", pt: "Em construção…", de: "Im Bau…", fr: "En construction…" },
-  "buildingInfo.health": { en: "Health: {cur} / {max}", it: "Salute: {cur} / {max}", es: "Salud: {cur} / {max}", pt: "Saúde: {cur} / {max}", de: "Leben: {cur} / {max}", fr: "Santé : {cur} / {max}" },
-  "buildingInfo.residents": { en: "Residents: {n}", it: "Abitanti: {n}", es: "Habitantes: {n}", pt: "Moradores: {n}", de: "Bewohner: {n}", fr: "Habitants : {n}" },
+  "buildingInfo.health": { en: "Health: {cur} / {max}", it: "Salute: {cur} / {max}", es: "Salud: {cur} / {max}", pt: "Saúde: {cur} / {max}", de: "Leben: {cur} / {max}", fr: "Santé : {cur} / {max}" },
+  "buildingInfo.residents": { en: "Residents: {n}", it: "Abitanti: {n}", es: "Habitantes: {n}", pt: "Moradores: {n}", de: "Bewohner: {n}", fr: "Habitants : {n}" },
   // [Nuova funzionalita', richiesta dall'autore: "nelle descrizioni degli
   // edifici sostituiamo mon/oil/ecc. con i simboli delle risorse, come gia'
   // fatto per banca/scambi"] Spezzata in tre pezzi (prefisso/centro/
@@ -122,11 +124,11 @@ const STRINGS = {
   // parola scritta (unica lingua che la ripeteva anche fuori da un placeholder,
   // le altre gia' usavano la parola vera "petrolio"/"Öl"/... ) sparisce anche
   // li'.
-  "buildingInfo.energyPrefix": { en: "Energy: +", it: "Energia: +", es: "Energía: +", pt: "Energia: +", de: "Energie: +", fr: "Énergie : +" },
+  "buildingInfo.energyPrefix": { en: "Energy: +", it: "Energia: +", es: "Energía: +", pt: "Energia: +", de: "Energie: +", fr: "Énergie : +" },
   "buildingInfo.energyMiddle": { en: "/cycle (uses ", it: "/ciclo (consuma ", es: "/ciclo (consume ", pt: "/ciclo (consome ", de: "/Zyklus (verbraucht ", fr: "/cycle (consomme " },
   "buildingInfo.perCycle": { en: "/cycle", it: "/ciclo", es: "/ciclo", pt: "/ciclo", de: "/Zyklus", fr: "/cycle" },
   "buildingInfo.costMiddle": { en: "/cycle (costs ", it: "/ciclo (costa ", es: "/ciclo (cuesta ", pt: "/ciclo (custa ", de: "/Zyklus (kostet ", fr: "/cycle (coûte " },
-  "buildingInfo.solarRain": { en: "Rain: -30% output", it: "Pioggia: -30% di resa", es: "Lluvia: -30% de producción", pt: "Chuva: -30% de produção", de: "Regen: -30 % Leistung", fr: "Pluie : -30 % de production" },
+  "buildingInfo.solarRain": { en: "Rain: -30% output", it: "Pioggia: -30% di resa", es: "Lluvia: -30% de producción", pt: "Chuva: -30% de produção", de: "Regen: -30 % Leistung", fr: "Pluie : -30 % de production" },
   "buildingInfo.energySuffix": { en: ")", it: ")", es: ")", pt: ")", de: ")", fr: ")" },
   "buildingInfo.close": { en: "Close", it: "Chiudi", es: "Cerrar", pt: "Fechar", de: "Schließen", fr: "Fermer" },
 
@@ -137,15 +139,15 @@ const STRINGS = {
   // drawStatsPanel().
   "statsPanel.title": { en: "Platform stats", it: "Statistiche piattaforma", es: "Estadísticas de la plataforma", pt: "Estatísticas da plataforma", de: "Plattformstatistik", fr: "Statistiques de la plateforme" },
   "statsPanel.residentsTitle": { en: "Residents", it: "Abitanti", es: "Habitantes", pt: "Moradores", de: "Bewohner", fr: "Habitants" },
-  "statsPanel.residentsMain": { en: "Main platform: {n}", it: "Piattaforma principale: {n}", es: "Plataforma principal: {n}", pt: "Plataforma principal: {n}", de: "Hauptplattform: {n}", fr: "Plateforme principale : {n}" },
-  "statsPanel.residentsR32": { en: "First expansion: {n}", it: "Prima espansione: {n}", es: "Primera expansión: {n}", pt: "Primeira expansão: {n}", de: "Erste Erweiterung: {n}", fr: "Première extension : {n}" },
-  "statsPanel.residentsR22": { en: "Second expansion: {n}", it: "Seconda espansione: {n}", es: "Segunda expansión: {n}", pt: "Segunda expansão: {n}", de: "Zweite Erweiterung: {n}", fr: "Deuxième extension : {n}" },
+  "statsPanel.residentsMain": { en: "Main platform: {n}", it: "Piattaforma principale: {n}", es: "Plataforma principal: {n}", pt: "Plataforma principal: {n}", de: "Hauptplattform: {n}", fr: "Plateforme principale : {n}" },
+  "statsPanel.residentsR32": { en: "First expansion: {n}", it: "Prima espansione: {n}", es: "Primera expansión: {n}", pt: "Primeira expansão: {n}", de: "Erste Erweiterung: {n}", fr: "Première extension : {n}" },
+  "statsPanel.residentsR22": { en: "Second expansion: {n}", it: "Seconda espansione: {n}", es: "Segunda expansión: {n}", pt: "Segunda expansão: {n}", de: "Zweite Erweiterung: {n}", fr: "Deuxième extension : {n}" },
   "statsPanel.energyTitle": { en: "Energy", it: "Energia", es: "Energía", pt: "Energia", de: "Energie", fr: "Énergie" },
-  "statsPanel.consumptionPrefix": { en: "Consumption: -", it: "Consumo: -", es: "Consumo: -", pt: "Consumo: -", de: "Verbrauch: -", fr: "Consommation : -" },
-  "statsPanel.productionPrefix": { en: "Production: +", it: "Produzione: +", es: "Producción: +", pt: "Produção: +", de: "Produktion: +", fr: "Production : +" },
+  "statsPanel.consumptionPrefix": { en: "Consumption: -", it: "Consumo: -", es: "Consumo: -", pt: "Consumo: -", de: "Verbrauch: -", fr: "Consommation : -" },
+  "statsPanel.productionPrefix": { en: "Production: +", it: "Produzione: +", es: "Producción: +", pt: "Produção: +", de: "Produktion: +", fr: "Production : +" },
   "statsPanel.oilTitle": { en: "Oil consumption", it: "Consumo di petrolio", es: "Consumo de petróleo", pt: "Consumo de petróleo", de: "Ölverbrauch", fr: "Consommation de pétrole" },
-  "statsPanel.oilPlatform": { en: "Platform: -{n}", it: "Piattaforma: -{n}", es: "Plataforma: -{n}", pt: "Plataforma: -{n}", de: "Plattform: -{n}", fr: "Plateforme : -{n}" },
-  "statsPanel.oilPlants": { en: "Power plants: -{n}", it: "Centrali: -{n}", es: "Centrales: -{n}", pt: "Usinas: -{n}", de: "Kraftwerke: -{n}", fr: "Centrales : -{n}" },
+  "statsPanel.oilPlatform": { en: "Platform: -{n}", it: "Piattaforma: -{n}", es: "Plataforma: -{n}", pt: "Plataforma: -{n}", de: "Plattform: -{n}", fr: "Plateforme : -{n}" },
+  "statsPanel.oilPlants": { en: "Power plants: -{n}", it: "Centrali: -{n}", es: "Centrales: -{n}", pt: "Usinas: -{n}", de: "Kraftwerke: -{n}", fr: "Centrales : -{n}" },
 
   "autoDefense.level1.name": { en: "Real threats only", it: "Solo minacce reali", es: "Solo amenazas reales", pt: "Apenas ameaças reais", de: "Nur echte Bedrohungen", fr: "Menaces réelles uniquement" },
   "autoDefense.level1.desc": {
@@ -160,7 +162,7 @@ const STRINGS = {
   "autoDefense.level2.desc": {
     en: "Also shoots down red spy balloons and recon planes on sight.",
     it: "Abbatte a vista anche le mongolfiere spia rosse e gli aerei da ricognizione.",
-    es: "También derriba en cuanto los ve los globos espía rojos y los aviones de reconocimiento.",
+    es: "También derriba al instante los globos espía rojos y los aviones de reconocimiento.",
     pt: "Também abate à vista os balões espiões vermelhos e os aviões de reconhecimento.",
     de: "Schießt zusätzlich rote Spionageballons und Aufklärungsflugzeuge sofort ab.",
     fr: "Abat aussi à vue les ballons espions rouges et les avions de reconnaissance.",
@@ -186,10 +188,10 @@ const STRINGS = {
   // autoDefense.* sopra (nome + descrizione per livello), letto da
   // THROTTLE_LEVELS (main.js) — qui pero' i tre livelli scalano PRODUZIONE E
   // CONSUMO insieme (buildings.js: THROTTLE_MULT), mai un costo separato.
-  "throttle.level1.name": { en: "Power Saving", it: "Risparmio", es: "Ahorro", pt: "Economia", de: "Energiesparen", fr: "Économie" },
+  "throttle.level1.name": { en: "Power saving", it: "Risparmio", es: "Ahorro", pt: "Economia", de: "Energiesparen", fr: "Économie" },
   "throttle.level1.desc": {
     en: "Halves energy output and oil consumption.",
-    it: "Dimezza produzione di energia e consumo di olio.",
+    it: "Dimezza la produzione di energia e il consumo di petrolio.",
     es: "Reduce a la mitad la producción de energía y el consumo de petróleo.",
     pt: "Reduz pela metade a produção de energia e o consumo de petróleo.",
     de: "Halbiert Energieerzeugung und Ölverbrauch.",
@@ -204,19 +206,19 @@ const STRINGS = {
     de: "Standardleistung und -verbrauch.",
     fr: "Production et consommation standard.",
   },
-  "throttle.level3.name": { en: "Maximum Output", it: "Massima resa", es: "Rendimiento máximo", pt: "Rendimento máximo", de: "Maximale Leistung", fr: "Rendement maximal" },
+  "throttle.level3.name": { en: "Maximum output", it: "Massima resa", es: "Rendimiento máximo", pt: "Rendimento máximo", de: "Maximale Leistung", fr: "Rendement maximal" },
   "throttle.level3.desc": {
     en: "Increases energy output and oil consumption by 50%.",
-    it: "Aumenta del 50% produzione di energia e consumo di olio.",
+    it: "Aumenta del 50% la produzione di energia e il consumo di petrolio.",
     es: "Aumenta un 50% la producción de energía y el consumo de petróleo.",
     pt: "Aumenta em 50% a produção de energia e o consumo de petróleo.",
-    de: "Erhöht Energieerzeugung und Ölverbrauch um 50%.",
-    fr: "Augmente de 50% la production d'énergie et la consommation de pétrole.",
+    de: "Erhöht Energieerzeugung und Ölverbrauch um 50 %.",
+    fr: "Augmente de 50 % la production d'énergie et la consommation de pétrole.",
   },
 
   // ---------------------------------------------------------- banca/scambi
   "bank.title": { en: "GET A LOAN", it: "RICHIEDI UN PRESTITO", es: "SOLICITAR UN PRÉSTAMO", pt: "SOLICITAR UM EMPRÉSTIMO", de: "KREDIT AUFNEHMEN", fr: "OBTENIR UN PRÊT" },
-  "bank.subtitle": { en: "20% interest rate", it: "Tasso d'interesse 20%", es: "Tasa de interés del 20%", pt: "Taxa de juros de 20%", de: "20 % Zinssatz", fr: "Taux d'intérêt de 20 %" },
+  "bank.subtitle": { en: "20% interest rate", it: "Tasso d'interesse 20%", es: "Tasa de interés del 20%", pt: "Taxa de juros de 20%", de: "20 % Zinssatz", fr: "Taux d'intérêt de 20 %" },
   "bank.inYears": { en: " in {years} years", it: " in {years} anni", es: " en {years} años", pt: " em {years} anos", de: " in {years} Jahren", fr: " en {years} ans" },
   "trade.title": { en: "TRADE RESOURCES", it: "SCAMBIA RISORSE", es: "INTERCAMBIAR RECURSOS", pt: "TROCAR RECURSOS", de: "RESSOURCEN TAUSCHEN", fr: "ÉCHANGER DES RESSOURCES" },
   "trade.getPrefix": { en: "Get {amount} ", it: "Ottieni {amount} ", es: "Obtén {amount} ", pt: "Receba {amount} ", de: "Erhalte {amount} ", fr: "Obtenez {amount} " },
@@ -225,7 +227,7 @@ const STRINGS = {
   // ---------------------------------------------------------- game over/vittoria
   "gameOver.title": { en: "GAME OVER", it: "GAME OVER", es: "GAME OVER", pt: "GAME OVER", de: "GAME OVER", fr: "GAME OVER" },
   "gameOver.reasonChies": {
-    en: "The City center, the city's historic building, has been destroyed.",
+    en: "The Town Hall, the city's historic building, has been destroyed.",
     it: "Il Municipio, l'edificio storico della città, è stato distrutto.",
     es: "El Ayuntamiento, el edificio histórico de la ciudad, ha sido destruido.",
     pt: "A Prefeitura, o edifício histórico da cidade, foi destruída.",
@@ -238,29 +240,29 @@ const STRINGS = {
     es: "El petróleo se ha agotado: los rotores se han detenido y la plataforma se ha estrellado.",
     pt: "O petróleo acabou: os rotores pararam e a plataforma caiu.",
     de: "Das Öl ist ausgegangen: Die Rotoren sind stehengeblieben und die Plattform ist abgestürzt.",
-    fr: "Le pétrole est épuisé : les rotors se sont arrêtés et la plateforme s'est écrasée.",
+    fr: "Le pétrole est épuisé : les rotors se sont arrêtés et la plateforme s'est écrasée.",
   },
   "gameOver.loadLastSave": { en: "Load last save", it: "Carica ultimo salvataggio", es: "Cargar última partida", pt: "Carregar último salvamento", de: "Letzten Spielstand laden", fr: "Charger la dernière sauvegarde" },
   "gameOver.restartLevel": { en: "Restart level", it: "Ricomincia livello", es: "Reiniciar nivel", pt: "Reiniciar nível", de: "Level neu starten", fr: "Recommencer le niveau" },
-  "congrats.title": { en: "CONGRATULATIONS!", it: "COMPLIMENTI!", es: "¡FELICIDADES!", pt: "PARABÉNS!", de: "GLÜCKWUNSCH!", fr: "FÉLICITATIONS !" },
+  "congrats.title": { en: "CONGRATULATIONS!", it: "COMPLIMENTI!", es: "¡FELICIDADES!", pt: "PARABÉNS!", de: "GLÜCKWUNSCH!", fr: "FÉLICITATIONS !" },
   "congrats.subtitle": {
-    en: "The Skyscraper stands complete, the tallest building this city has ever raised. " +
-      "From now on, enemies will no longer attack the city. Keep building, there's no limit from here.",
-    it: "Il Grattacielo è completo, l'edificio più alto che questa città abbia mai costruito. " +
-      "Da ora in poi i nemici non attaccheranno più la città. Continua a costruire, da qui non c'è limite.",
+    en: "The Skyscraper is complete — the tallest building this city has ever raised. " +
+      "From now on, enemies will no longer attack the city. Keep building: from here, the sky's the limit.",
+    it: "Il Grattacielo è completo: l'edificio più alto che questa città abbia mai costruito. " +
+      "Da ora in poi i nemici non attaccheranno più la città. Continua a costruire: da qui in poi il cielo è il limite.",
     es: "El Rascacielos está completo, el edificio más alto que esta ciudad haya construido jamás. " +
-      "A partir de ahora, los enemigos ya no atacarán la ciudad. Sigue construyendo, desde aquí no hay límite.",
+      "A partir de ahora, los enemigos ya no atacarán la ciudad. Sigue construyendo: a partir de aquí, el cielo es el límite.",
     pt: "O Arranha-céu está completo, o edifício mais alto que esta cidade já construiu. " +
-      "A partir de agora, os inimigos não atacarão mais a cidade. Continue construindo, daqui não há limite.",
+      "A partir de agora, os inimigos não atacarão mais a cidade. Continue construindo: a partir daqui, o céu é o limite.",
     de: "Der Wolkenkratzer steht vollendet da, das höchste Gebäude, das diese Stadt je errichtet hat. " +
-      "Von nun an greifen die Feinde die Stadt nicht mehr an. Bau weiter, von hier an gibt es keine Grenze mehr.",
+      "Von nun an greifen die Feinde die Stadt nicht mehr an. Bau weiter: Von hier an ist der Himmel die Grenze.",
     fr: "Le Gratte-ciel est achevé, le plus haut bâtiment que cette ville ait jamais élevé. " +
-      "Désormais, les ennemis n'attaqueront plus la ville. Continue à construire, il n'y a plus de limite désormais.",
+      "Désormais, les ennemis n'attaqueront plus la ville. Continue à construire : à partir de maintenant, le ciel est la limite.",
   },
   "congrats.keepPlaying": { en: "Keep playing", it: "Continua a giocare", es: "Seguir jugando", pt: "Continuar jogando", de: "Weiterspielen", fr: "Continuer à jouer" },
 
   // ---------------------------------------------------------------- edifici
-  "building.chies": { en: "City center", it: "Municipio", es: "Ayuntamiento", pt: "Prefeitura", de: "Rathaus", fr: "Hôtel de ville" },
+  "building.chies": { en: "Town Hall", it: "Municipio", es: "Ayuntamiento", pt: "Prefeitura", de: "Rathaus", fr: "Hôtel de ville" },
   // [Nuova funzionalita', richiesta dall'autore: "gli edifici con i livelli
   // hanno dei nomi molto semplici, possiamo fare delle proposte migliori?"]
   // Nomi per-livello (buildingLabel(type, level), sotto): solo dove il nome
@@ -271,16 +273,16 @@ const STRINGS = {
   // piazza in serie come casa/industria/palazzo) ma cresce comunque di
   // livello (STUDIO.md, oilCap()/state.js) — cresce di nome con lui, da
   // "sede comunale" a "sede di governo".
-  "building.chies.2": { en: "Town Hall", it: "Palazzo comunale", es: "Palacio Municipal", pt: "Palácio Municipal", de: "Verwaltungspalast", fr: "Palais municipal" },
+  "building.chies.2": { en: "City Hall", it: "Palazzo comunale", es: "Palacio Municipal", pt: "Palácio Municipal", de: "Verwaltungspalast", fr: "Palais municipal" },
   "building.chies.3": { en: "Government Palace", it: "Palazzo del Governo", es: "Palacio de Gobierno", pt: "Palácio do Governo", de: "Regierungspalast", fr: "Palais du gouvernement" },
   // [Bug corretto, segnalato dall'autore: "'industria' non ha senso come
   // nome, produce energia elettrica (buildings.js: production ele), e' una
   // centrale"] "Industry"/"Industria" in tutte le lingue -> "Power
   // Plant"/"Centrale elettrica"/ecc, coerente con come il tutorial (gia'
   // corretto in inglese, tutorial.js) la descrive da sempre.
-  "building.industria": { en: "Power Plant", it: "Centrale elettrica", es: "Central eléctrica", pt: "Usina Elétrica", de: "Kraftwerk", fr: "Centrale électrique" },
-  "building.industria.1": { en: "Small Power Plant", it: "Centrale elettrica piccola", es: "Central eléctrica pequeña", pt: "Usina Elétrica Pequena", de: "Kleines Kraftwerk", fr: "Petite centrale électrique" },
-  "building.industria.2": { en: "Medium Power Plant", it: "Centrale elettrica media", es: "Central eléctrica mediana", pt: "Usina Elétrica Média", de: "Mittleres Kraftwerk", fr: "Centrale électrique moyenne" },
+  "building.industria": { en: "Power Plant", it: "Centrale elettrica", es: "Central eléctrica", pt: "Usina elétrica", de: "Kraftwerk", fr: "Centrale électrique" },
+  "building.industria.1": { en: "Small Power Plant", it: "Centrale elettrica piccola", es: "Central eléctrica pequeña", pt: "Usina elétrica pequena", de: "Kleines Kraftwerk", fr: "Petite centrale électrique" },
+  "building.industria.2": { en: "Medium Power Plant", it: "Centrale elettrica media", es: "Central eléctrica mediana", pt: "Usina elétrica média", de: "Mittleres Kraftwerk", fr: "Centrale électrique moyenne" },
   // [Bug corretto, segnalato dall'autore: "il livello 3 dovrebbe chiamarsi
   // 'centrale elettrica grande', come gli altri due livelli"] Mancava una
   // voce ".3" dedicata: buildingLabel() (sotto) ricadeva sulla base
@@ -289,36 +291,36 @@ const STRINGS = {
   // scelta apposta (a differenza di chies/palazzo, che davvero restano
   // sulla base al livello 1 per design). Stesso schema piccola/media/grande
   // di ".1"/".2" sopra.
-  "building.industria.3": { en: "Large Power Plant", it: "Centrale elettrica grande", es: "Central eléctrica grande", pt: "Usina Elétrica Grande", de: "Großes Kraftwerk", fr: "Grande centrale électrique" },
+  "building.industria.3": { en: "Large Power Plant", it: "Centrale elettrica grande", es: "Central eléctrica grande", pt: "Usina elétrica grande", de: "Großes Kraftwerk", fr: "Grande centrale électrique" },
   "building.casa": { en: "House", it: "Casa", es: "Casa", pt: "Casa", de: "Haus", fr: "Maison" },
   // Tutti e tre distinti dalla base ("Casa"): a differenza di chies/
   // industria/palazzo, nessun livello di casa condivide il nome col tipo
   // generico usato nel menu di piazzamento (sempre livello 1 alla nascita,
   // ma la voce di menu resta "Casa" — coerente, e' quello che si sta per
   // piazzare, non ancora un caseggiato).
-  "building.casa.1": { en: "Tenement House", it: "Caseggiato", es: "Bloque de viviendas", pt: "Prédio de Habitação", de: "Mietshaus", fr: "Immeuble d'habitation" },
-  "building.casa.2": { en: "Apartment Building", it: "Palazzina", es: "Edificio de apartamentos", pt: "Edifício de Apartamentos", de: "Wohngebäude", fr: "Immeuble résidentiel" },
+  "building.casa.1": { en: "Tenement House", it: "Caseggiato", es: "Bloque de viviendas", pt: "Prédio de habitação", de: "Mietshaus", fr: "Immeuble d'habitation" },
+  "building.casa.2": { en: "Apartment Building", it: "Palazzina", es: "Edificio de apartamentos", pt: "Edifício de apartamentos", de: "Wohngebäude", fr: "Immeuble résidentiel" },
   "building.casa.3": { en: "Condominium", it: "Condominio", es: "Condominio", pt: "Condomínio", de: "Wohnanlage", fr: "Copropriété" },
-  "building.missile": { en: "Missile Launcher", it: "Lanciamissili", es: "Lanzamisiles", pt: "Lançador de Mísseis", de: "Raketenwerfer", fr: "Lance-missiles" },
+  "building.missile": { en: "Missile Launcher", it: "Lanciamissili", es: "Lanzamisiles", pt: "Lançador de mísseis", de: "Raketenwerfer", fr: "Lance-missiles" },
   // [Nuova funzionalita', richiesta dall'autore: "in italiano cambiamo
   // 'pannelli solari' in 'impianto fotovoltaico'"] Solo l'italiano — le
   // altre lingue non sono state toccate, nessuna richiesta equivalente per
   // loro.
-  "building.solare": { en: "Solar Panels", it: "Impianto fotovoltaico", es: "Paneles solares", pt: "Painéis Solares", de: "Solarpanele", fr: "Panneaux solaires" },
+  "building.solare": { en: "Solar Panels", it: "Impianto fotovoltaico", es: "Paneles solares", pt: "Painéis solares", de: "Solarpanele", fr: "Panneaux solaires" },
   "building.parco": { en: "Park", it: "Parco", es: "Parque", pt: "Parque", de: "Park", fr: "Parc" },
   "building.club": { en: "Club", it: "Club", es: "Club", pt: "Clube", de: "Club", fr: "Club" },
   "building.villa": { en: "Villa", it: "Villa", es: "Villa", pt: "Villa", de: "Villa", fr: "Villa" },
   "building.gatling": { en: "Gatling Gun", it: "Mitragliatrice Gatling", es: "Ametralladora Gatling", pt: "Metralhadora Gatling", de: "Gatling-Kanone", fr: "Mitrailleuse Gatling" },
   "building.laser": { en: "Laser", it: "Laser", es: "Láser", pt: "Laser", de: "Laser", fr: "Laser" },
-  "building.eolico": { en: "Wind Turbine", it: "Turbina eolica", es: "Turbina eólica", pt: "Turbina Eólica", de: "Windturbine", fr: "Éolienne" },
+  "building.eolico": { en: "Wind Turbine", it: "Turbina eolica", es: "Turbina eólica", pt: "Turbina eólica", de: "Windturbine", fr: "Éolienne" },
   "building.palazzo": { en: "Building", it: "Palazzo", es: "Edificio", pt: "Prédio", de: "Gebäude", fr: "Immeuble" },
   "building.palazzoRd": { en: "Building", it: "Palazzo", es: "Edificio", pt: "Prédio", de: "Gebäude", fr: "Immeuble" },
   // Livello 1 (identico alla base, "Palazzo"/"Building") ricade sulla voce
   // sopra — solo il livello 2 ha un nome proprio, stesso per entrambe le
   // varianti speculari (`palazzo`/`palazzoRd`, STUDIO.md: stesso edificio,
   // solo l'orientamento diagonale di piazzamento cambia).
-  "building.palazzo.2": { en: "Residential Tower", it: "Torre residenziale", es: "Torre residencial", pt: "Torre Residencial", de: "Wohnturm", fr: "Tour résidentielle" },
-  "building.palazzoRd.2": { en: "Residential Tower", it: "Torre residenziale", es: "Torre residencial", pt: "Torre Residencial", de: "Wohnturm", fr: "Tour résidentielle" },
+  "building.palazzo.2": { en: "Residential Tower", it: "Torre residenziale", es: "Torre residencial", pt: "Torre residencial", de: "Wohnturm", fr: "Tour résidentielle" },
+  "building.palazzoRd.2": { en: "Residential Tower", it: "Torre residenziale", es: "Torre residencial", pt: "Torre residencial", de: "Wohnturm", fr: "Tour résidentielle" },
   "building.museo": { en: "Museum", it: "Museo", es: "Museo", pt: "Museu", de: "Museum", fr: "Musée" },
   "building.museoRd": { en: "Museum", it: "Museo", es: "Museo", pt: "Museu", de: "Museum", fr: "Musée" },
   "building.monum": { en: "Monument", it: "Monumento", es: "Monumento", pt: "Monumento", de: "Denkmal", fr: "Monument" },
@@ -327,105 +329,105 @@ const STRINGS = {
   "building.ruspa": { en: "Bulldozer", it: "Ruspa", es: "Buldócer", pt: "Buldôzer", de: "Planierraupe", fr: "Bulldozer" },
 
   // ------------------------------------------------------- messaggi di gioco
-  "msg.placementCancelled": { en: "placement cancelled", it: "piazzamento annullato", es: "colocación cancelada", pt: "colocação cancelada", de: "Platzierung abgebrochen", fr: "placement annulé" },
-  "msg.built": { en: "Built: {label} (-{cost} mon)", it: "Costruito: {label} (-{cost} mon)", es: "Construido: {label} (-{cost} mon)", pt: "Construído: {label} (-{cost} mon)", de: "Gebaut: {label} (-{cost} mon)", fr: "Construit : {label} (-{cost} mon)" },
-  "msg.cantSaveNow": { en: "You can't save right now: {reason}", it: "Non puoi salvare adesso: {reason}", es: "No puedes guardar ahora: {reason}", pt: "Você não pode salvar agora: {reason}", de: "Du kannst jetzt nicht speichern: {reason}", fr: "Tu ne peux pas sauvegarder maintenant : {reason}" },
-  "msg.gameSaved": { en: "game saved", it: "partita salvata", es: "partida guardada", pt: "partida salva", de: "Spiel gespeichert", fr: "partie sauvegardée" },
-  "msg.gameSavedToFile": { en: "game saved to file", it: "partita salvata su file", es: "partida guardada en archivo", pt: "partida salva em arquivo", de: "Spiel in Datei gespeichert", fr: "partie sauvegardée dans un fichier" },
-  "msg.saveFileNamePrompt": { en: "Name this save (optional):", it: "Dai un nome a questo salvataggio (opzionale):", es: "Ponle un nombre a esta partida (opcional):", pt: "Dê um nome a este salvamento (opcional):", de: "Gib diesem Spielstand einen Namen (optional):", fr: "Donne un nom à cette sauvegarde (facultatif) :" },
-  "msg.saveToFileFailed": { en: "save to file failed", it: "salvataggio su file non riuscito", es: "no se pudo guardar en archivo", pt: "falha ao salvar em arquivo", de: "Speichern in Datei fehlgeschlagen", fr: "échec de la sauvegarde dans le fichier" },
-  "msg.loadFromFileFailed": { en: "load from file failed", it: "caricamento da file non riuscito", es: "no se pudo cargar desde archivo", pt: "falha ao carregar do arquivo", de: "Laden aus Datei fehlgeschlagen", fr: "échec du chargement depuis le fichier" },
-  "msg.invalidFile": { en: "invalid or modified file", it: "file non valido o modificato", es: "archivo no válido o modificado", pt: "arquivo inválido ou modificado", de: "ungültige oder veränderte Datei", fr: "fichier invalide ou modifié" },
-  "msg.gameLoadedFromFile": { en: "game loaded from file", it: "partita caricata da file", es: "partida cargada desde archivo", pt: "partida carregada do arquivo", de: "Spiel aus Datei geladen", fr: "partie chargée depuis le fichier" },
-  "msg.loanObtained": { en: "loan of {amount} mon obtained", it: "prestito di {amount} mon ottenuto", es: "préstamo de {amount} mon obtenido", pt: "empréstimo de {amount} mon obtido", de: "Kredit über {amount} mon aufgenommen", fr: "prêt de {amount} mon obtenu" },
-  "msg.traded": { en: "traded {giveAmount} {give} for {takeAmount} {take}", it: "scambiati {giveAmount} {give} per {takeAmount} {take}", es: "intercambiados {giveAmount} {give} por {takeAmount} {take}", pt: "trocado {giveAmount} {give} por {takeAmount} {take}", de: "{giveAmount} {give} gegen {takeAmount} {take} getauscht", fr: "échangé {giveAmount} {give} contre {takeAmount} {take}" },
-  "msg.needResourceHave": { en: "need {amount} {resource} (have {have})", it: "servono {amount} {resource} (hai {have})", es: "necesitas {amount} {resource} (tienes {have})", pt: "precisa de {amount} {resource} (tem {have})", de: "brauchst {amount} {resource} (hast {have})", fr: "il faut {amount} {resource} (tu as {have})" },
-  "msg.levelToUnlock": { en: "{label}: level {level} to unlock", it: "{label}: livello {level} per sbloccare", es: "{label}: nivel {level} para desbloquear", pt: "{label}: nível {level} para desbloquear", de: "{label}: Stufe {level} zum Freischalten", fr: "{label} : niveau {level} pour débloquer" },
+  "msg.placementCancelled": { en: "Placement cancelled", it: "Piazzamento annullato", es: "Colocación cancelada", pt: "Colocação cancelada", de: "Platzierung abgebrochen", fr: "Placement annulé" },
+  "msg.built": { en: "Built: {label} (-{cost} mon)", it: "Costruito: {label} (-{cost} mon)", es: "Construido: {label} (-{cost} mon)", pt: "Construído: {label} (-{cost} mon)", de: "Gebaut: {label} (-{cost} mon)", fr: "Construit : {label} (-{cost} mon)" },
+  "msg.cantSaveNow": { en: "You can't save right now: {reason}", it: "Non puoi salvare adesso: {reason}", es: "No puedes guardar ahora: {reason}", pt: "Você não pode salvar agora: {reason}", de: "Du kannst jetzt nicht speichern: {reason}", fr: "Tu ne peux pas sauvegarder maintenant : {reason}" },
+  "msg.gameSaved": { en: "Game saved", it: "Partita salvata", es: "Partida guardada", pt: "Partida salva", de: "Spiel gespeichert", fr: "Partie sauvegardée" },
+  "msg.gameSavedToFile": { en: "Game saved to file", it: "Partita salvata su file", es: "Partida guardada en archivo", pt: "Partida salva em arquivo", de: "Spiel in Datei gespeichert", fr: "Partie sauvegardée dans un fichier" },
+  "msg.saveFileNamePrompt": { en: "Name this save (optional):", it: "Dai un nome a questo salvataggio (opzionale):", es: "Ponle un nombre a esta partida (opcional):", pt: "Dê um nome a este salvamento (opcional):", de: "Gib diesem Spielstand einen Namen (optional):", fr: "Donne un nom à cette sauvegarde (facultatif) :" },
+  "msg.saveToFileFailed": { en: "Save to file failed", it: "Salvataggio su file non riuscito", es: "No se pudo guardar en archivo", pt: "Falha ao salvar em arquivo", de: "Speichern in Datei fehlgeschlagen", fr: "Échec de la sauvegarde dans le fichier" },
+  "msg.loadFromFileFailed": { en: "Load from file failed", it: "Caricamento da file non riuscito", es: "No se pudo cargar desde archivo", pt: "Falha ao carregar do arquivo", de: "Laden aus Datei fehlgeschlagen", fr: "Échec du chargement depuis le fichier" },
+  "msg.invalidFile": { en: "Invalid or modified file", it: "File non valido o modificato", es: "Archivo no válido o modificado", pt: "Arquivo inválido ou modificado", de: "Ungültige oder veränderte Datei", fr: "Fichier invalide ou modifié" },
+  "msg.gameLoadedFromFile": { en: "Game loaded from file", it: "Partita caricata da file", es: "Partida cargada desde archivo", pt: "Partida carregada do arquivo", de: "Spiel aus Datei geladen", fr: "Partie chargée depuis le fichier" },
+  "msg.loanObtained": { en: "Loan of {amount} mon obtained", it: "Prestito di {amount} mon ottenuto", es: "Préstamo de {amount} mon obtenido", pt: "Empréstimo de {amount} mon obtido", de: "Kredit über {amount} mon aufgenommen", fr: "Prêt de {amount} mon obtenu" },
+  "msg.traded": { en: "Traded {giveAmount} {give} for {takeAmount} {take}", it: "Scambiati {giveAmount} {give} per {takeAmount} {take}", es: "Intercambiados {giveAmount} {give} por {takeAmount} {take}", pt: "Trocado {giveAmount} {give} por {takeAmount} {take}", de: "{giveAmount} {give} gegen {takeAmount} {take} getauscht", fr: "Échangé {giveAmount} {give} contre {takeAmount} {take}" },
+  "msg.needResourceHave": { en: "Need {amount} {resource} (have {have})", it: "Servono {amount} {resource} (hai {have})", es: "Necesitas {amount} {resource} (tienes {have})", pt: "Precisa de {amount} {resource} (tem {have})", de: "Brauchst {amount} {resource} (hast {have})", fr: "Il faut {amount} {resource} (tu as {have})" },
+  "msg.levelToUnlock": { en: "{label}: unlocks at level {level}", it: "{label}: si sblocca al livello {level}", es: "{label}: se desbloquea en el nivel {level}", pt: "{label}: desbloqueia no nível {level}", de: "{label}: ab Stufe {level} freigeschaltet", fr: "{label} : se débloque au niveau {level}" },
   "msg.noBuildingSelected": {
-    en: "no building selected — open the menu with the crane",
-    it: "nessun edificio selezionato — apri il menu con la gru",
-    es: "ningún edificio seleccionado — abre el menú con la grúa",
-    pt: "nenhum edifício selecionado — abra o menu com o guindaste",
-    de: "kein Gebäude ausgewählt — öffne das Menü mit dem Kran",
-    fr: "aucun bâtiment sélectionné — ouvre le menu avec la grue",
+    en: "No building selected — open the menu with the crane",
+    it: "Nessun edificio selezionato — apri il menu con la gru",
+    es: "Ningún edificio seleccionado — abre el menú con la grúa",
+    pt: "Nenhum edifício selecionado — abra o menu com o guindaste",
+    de: "Kein Gebäude ausgewählt — öffne das Menü mit dem Kran",
+    fr: "Aucun bâtiment sélectionné — ouvre le menu avec la grue",
   },
-  "msg.notRebuiltYet": { en: "{label}: not rebuilt yet", it: "{label}: non ancora ricostruito", es: "{label}: aún no reconstruido", pt: "{label}: ainda não reconstruído", de: "{label}: noch nicht wiederaufgebaut", fr: "{label} : pas encore reconstruit" },
-  "msg.constructionInProgress": { en: "construction already in progress", it: "cantiere già in corso", es: "obra ya en curso", pt: "obra já em andamento", de: "Bau bereits im Gange", fr: "chantier déjà en cours" },
+  "msg.notRebuiltYet": { en: "{label}: not rebuilt yet", it: "{label}: non ancora ricostruito", es: "{label}: aún no reconstruido", pt: "{label}: ainda não reconstruído", de: "{label}: noch nicht wiederaufgebaut", fr: "{label} : pas encore reconstruit" },
+  "msg.constructionInProgress": { en: "Construction already in progress", it: "Cantiere già in corso", es: "Obra ya en curso", pt: "Obra já em andamento", de: "Bau bereits im Gange", fr: "Chantier déjà en cours" },
   "msg.notDemolishable": {
-    en: "{label}: not demolishable/repairable with the bulldozer",
-    it: "{label}: non demolibile/riparabile con la ruspa",
-    es: "{label}: no demolible/reparable con el buldócer",
-    pt: "{label}: não demolível/reparável com o buldôzer",
-    de: "{label}: mit der Planierraupe nicht abreißbar/reparierbar",
-    fr: "{label} : non démolissable/réparable avec le bulldozer",
+    en: "{label}: can't be demolished or repaired with the bulldozer",
+    it: "{label}: non si può demolire né riparare con la ruspa",
+    es: "{label}: no se puede demoler ni reparar con el buldócer",
+    pt: "{label}: não é possível demolir nem reparar com o buldôzer",
+    de: "{label}: lässt sich mit der Planierraupe nicht abreißen oder reparieren",
+    fr: "{label} : impossible à démolir ou à réparer avec le bulldozer",
   },
-  "msg.needMonHave": { en: "need {cost} mon (have {have})", it: "servono {cost} mon (hai {have})", es: "necesitas {cost} mon (tienes {have})", pt: "precisa de {cost} mon (tem {have})", de: "brauchst {cost} mon (hast {have})", fr: "il faut {cost} mon (tu as {have})" },
+  "msg.needMonHave": { en: "Need {cost} mon (have {have})", it: "Servono {cost} mon (hai {have})", es: "Necesitas {cost} mon (tienes {have})", pt: "Precisa de {cost} mon (tem {have})", de: "Brauchst {cost} mon (hast {have})", fr: "Il faut {cost} mon (tu as {have})" },
   "msg.confirmDemolish": {
-    en: "demolish/repair: tap \"yes\" to confirm (-{cost} mon)",
-    it: "demolisci/ripara: tocca \"sì\" per confermare (-{cost} mon)",
-    es: "demoler/reparar: toca \"sí\" para confirmar (-{cost} mon)",
-    pt: "demolir/reparar: toque em \"sim\" para confirmar (-{cost} mon)",
-    de: "abreißen/reparieren: tippe zur Bestätigung auf \"ja\" (-{cost} mon)",
-    fr: "démolir/réparer : appuie sur \"oui\" pour confirmer (-{cost} mon)",
+    en: "Demolish or repair? Tap Yes to confirm (-{cost} mon)",
+    it: "Demolire o riparare? Tocca Sì per confermare (-{cost} mon)",
+    es: "¿Demoler o reparar? Toca Sí para confirmar (-{cost} mon)",
+    pt: "Demolir ou reparar? Toque em Sim para confirmar (-{cost} mon)",
+    de: "Abreißen oder reparieren? Tippe zur Bestätigung auf Ja (-{cost} mon)",
+    fr: "Démolir ou réparer ? Appuie sur Oui pour confirmer (-{cost} mon)",
   },
-  "msg.demolishedLotsFree": { en: "demolished — lots free", it: "demolito — lotti liberati", es: "demolido — parcelas liberadas", pt: "demolido — lotes liberados", de: "abgerissen — Grundstücke frei", fr: "démoli — parcelles libérées" },
-  "msg.loanAlreadyActive": { en: "loan already active", it: "prestito già attivo", es: "préstamo ya activo", pt: "empréstimo já ativo", de: "Kredit bereits aktiv", fr: "prêt déjà actif" },
-  "msg.fire": { en: "fire!", it: "fuoco!", es: "¡fuego!", pt: "fogo!", de: "Feuer!", fr: "feu !" },
-  "msg.noTargetInRange": { en: "no target in range", it: "nessun bersaglio a portata", es: "ningún objetivo a tiro", pt: "nenhum alvo ao alcance", de: "kein Ziel in Reichweite", fr: "aucune cible à portée" },
-  "msg.insufficientEnergy": { en: "insufficient energy", it: "energia insufficiente", es: "energía insuficiente", pt: "energia insuficiente", de: "nicht genug Energie", fr: "énergie insuffisante" },
-  "msg.cannonReloading": { en: "cannon reloading", it: "cannone in ricarica", es: "cañón recargando", pt: "canhão recarregando", de: "Kanone lädt nach", fr: "canon en rechargement" },
-  "msg.constructionStarted": { en: "construction started", it: "cantiere avviato", es: "obra iniciada", pt: "obra iniciada", de: "Bau begonnen", fr: "chantier commencé" },
-  "msg.demolitionStarted": { en: "demolition started (bulldozer)", it: "demolizione avviata (ruspa)", es: "demolición iniciada (buldócer)", pt: "demolição iniciada (buldôzer)", de: "Abriss begonnen (Planierraupe)", fr: "démolition commencée (bulldozer)" },
-  "msg.constructionStartedBulldozer": { en: "construction started (bulldozer)", it: "cantiere avviato (ruspa)", es: "obra iniciada (buldócer)", pt: "obra iniciada (buldôzer)", de: "Bau begonnen (Planierraupe)", fr: "chantier commencé (bulldozer)" },
-  "msg.constructionPaused": { en: "construction paused (no cost while paused)", it: "cantiere in pausa (nessun costo finché è fermo)", es: "obra en pausa (sin coste mientras está parada)", pt: "obra em pausa (sem custo enquanto parada)", de: "Bau pausiert (keine Kosten solange pausiert)", fr: "chantier en pause (aucun coût tant qu'il est arrêté)" },
-  "msg.constructionResumed": { en: "construction resumed", it: "cantiere ripreso", es: "obra reanudada", pt: "obra retomada", de: "Bau fortgesetzt", fr: "chantier repris" },
-  "msg.solarPlaced": { en: "solar panels placed on the park (-1000 mon)", it: "pannelli solari installati sul parco (-1000 mon)", es: "paneles solares instalados en el parque (-1000 mon)", pt: "painéis solares instalados no parque (-1000 mon)", de: "Solarpanele im Park installiert (-1000 mon)", fr: "panneaux solaires installés sur le parc (-1000 mon)" },
-  "msg.alreadySolarOnPark": { en: "there's already a solar panel on this park", it: "c'è già un pannello solare su questo parco", es: "ya hay un panel solar en este parque", pt: "já há um painel solar neste parque", de: "in diesem Park gibt es bereits ein Solarpanel", fr: "il y a déjà un panneau solaire sur ce parc" },
+  "msg.demolishedLotsFree": { en: "Demolished — lots are free again", it: "Demolito — lotti liberati", es: "Demolido — parcelas liberadas", pt: "Demolido — lotes liberados", de: "Abgerissen — Grundstücke frei", fr: "Démoli — parcelles libérées" },
+  "msg.loanAlreadyActive": { en: "Loan already active", it: "Prestito già attivo", es: "Préstamo ya activo", pt: "Empréstimo já ativo", de: "Kredit bereits aktiv", fr: "Prêt déjà actif" },
+  "msg.fire": { en: "Fire!", it: "Fuoco!", es: "¡Fuego!", pt: "Fogo!", de: "Feuer!", fr: "Feu !" },
+  "msg.noTargetInRange": { en: "No target in range", it: "Nessun bersaglio a portata", es: "Ningún objetivo a tiro", pt: "Nenhum alvo ao alcance", de: "Kein Ziel in Reichweite", fr: "Aucune cible à portée" },
+  "msg.insufficientEnergy": { en: "Insufficient energy", it: "Energia insufficiente", es: "Energía insuficiente", pt: "Energia insuficiente", de: "Nicht genug Energie", fr: "Énergie insuffisante" },
+  "msg.cannonReloading": { en: "Cannon reloading", it: "Cannone in ricarica", es: "Cañón recargando", pt: "Canhão recarregando", de: "Kanone lädt nach", fr: "Canon en rechargement" },
+  "msg.constructionStarted": { en: "Construction started", it: "Cantiere avviato", es: "Obra iniciada", pt: "Obra iniciada", de: "Bau begonnen", fr: "Chantier commencé" },
+  "msg.demolitionStarted": { en: "Demolition started (bulldozer)", it: "Demolizione avviata (ruspa)", es: "Demolición iniciada (buldócer)", pt: "Demolição iniciada (buldôzer)", de: "Abriss begonnen (Planierraupe)", fr: "Démolition commencée (bulldozer)" },
+  "msg.constructionStartedBulldozer": { en: "Construction started (bulldozer)", it: "Cantiere avviato (ruspa)", es: "Obra iniciada (buldócer)", pt: "Obra iniciada (buldôzer)", de: "Bau begonnen (Planierraupe)", fr: "Chantier commencé (bulldozer)" },
+  "msg.constructionPaused": { en: "Construction paused (no cost while paused)", it: "Cantiere in pausa (nessun costo finché è fermo)", es: "Obra en pausa (sin coste mientras está parada)", pt: "Obra em pausa (sem custo enquanto parada)", de: "Bau pausiert (keine Kosten solange pausiert)", fr: "Chantier en pause (aucun coût tant qu'il est arrêté)" },
+  "msg.constructionResumed": { en: "Construction resumed", it: "Cantiere ripreso", es: "Obra reanudada", pt: "Obra retomada", de: "Bau fortgesetzt", fr: "Chantier repris" },
+  "msg.solarPlaced": { en: "Solar panels placed on the park (-1000 mon)", it: "Impianto fotovoltaico installato sul parco (-1000 mon)", es: "Paneles solares instalados en el parque (-1000 mon)", pt: "Painéis solares instalados no parque (-1000 mon)", de: "Solarpanele im Park installiert (-1000 mon)", fr: "Panneaux solaires installés sur le parc (-1000 mon)" },
+  "msg.alreadySolarOnPark": { en: "There's already a solar panel on this park", it: "C'è già un impianto fotovoltaico su questo parco", es: "Ya hay un panel solar en este parque", pt: "Já há um painel solar neste parque", de: "In diesem Park gibt es bereits ein Solarpanel", fr: "Il y a déjà un panneau solaire sur ce parc" },
   "msg.needFreeArea": {
-    en: "need a free area of {count} adjacent lots (a rectangle)",
-    it: "serve un'area libera di {count} lotti adiacenti (un rettangolo)",
-    es: "necesitas un área libre de {count} parcelas adyacentes (un rectángulo)",
-    pt: "precisa de uma área livre de {count} lotes adjacentes (um retângulo)",
-    de: "brauchst eine freie Fläche von {count} angrenzenden Grundstücken (ein Rechteck)",
-    fr: "il faut une zone libre de {count} parcelles adjacentes (un rectangle)",
+    en: "Need {count} free adjacent lots forming a rectangle",
+    it: "Servono {count} lotti liberi adiacenti che formino un rettangolo",
+    es: "Necesitas {count} parcelas libres adyacentes que formen un rectángulo",
+    pt: "Precisa de {count} lotes livres adjacentes que formem um retângulo",
+    de: "Brauchst {count} freie, aneinandergrenzende Grundstücke in Rechteckform",
+    fr: "Il faut {count} parcelles libres adjacentes formant un rectangle",
   },
-  "msg.notPartOfPlatform": { en: "this area isn't part of the platform yet", it: "quest'area non fa ancora parte della piattaforma", es: "esta área todavía no forma parte de la plataforma", pt: "esta área ainda não faz parte da plataforma", de: "dieser Bereich gehört noch nicht zur Plattform", fr: "cette zone ne fait pas encore partie de la plateforme" },
-  "msg.tooCloseToTurret": { en: "too close to another defense turret", it: "troppo vicino a un'altra torretta difensiva", es: "demasiado cerca de otra torreta defensiva", pt: "muito perto de outra torre de defesa", de: "zu nah an einem anderen Verteidigungsturm", fr: "trop proche d'une autre tourelle de défense" },
-  "msg.needFreeDiagonalLot": { en: "need a free lot diagonally adjacent", it: "serve un lotto libero in diagonale", es: "necesitas una parcela libre en diagonal", pt: "precisa de um lote livre na diagonal", de: "brauchst ein freies Grundstück diagonal angrenzend", fr: "il faut une parcelle libre en diagonale" },
-  "msg.dragToFreeLot": { en: "drag to a free adjacent lot", it: "trascina su un lotto libero adiacente", es: "arrastra a una parcela libre adyacente", pt: "arraste para um lote livre adjacente", de: "zu einem freien angrenzenden Grundstück ziehen", fr: "fais glisser vers une parcelle libre adjacente" },
-  "msg.itsFree": { en: "It's free!", it: "È gratis!", es: "¡Es gratis!", pt: "É grátis!", de: "Es ist kostenlos!", fr: "C'est gratuit !" },
+  "msg.notPartOfPlatform": { en: "This area isn't part of the platform yet", it: "Quest'area non fa ancora parte della piattaforma", es: "Esta área todavía no forma parte de la plataforma", pt: "Esta área ainda não faz parte da plataforma", de: "Dieser Bereich gehört noch nicht zur Plattform", fr: "Cette zone ne fait pas encore partie de la plateforme" },
+  "msg.tooCloseToTurret": { en: "Too close to another defense turret", it: "Troppo vicino a un'altra torretta difensiva", es: "Demasiado cerca de otra torreta defensiva", pt: "Muito perto de outra torre de defesa", de: "Zu nah an einem anderen Verteidigungsturm", fr: "Trop proche d'une autre tourelle de défense" },
+  "msg.needFreeDiagonalLot": { en: "Need a free lot diagonally next to this one", it: "Serve un lotto libero in diagonale", es: "Necesitas una parcela libre en diagonal", pt: "Precisa de um lote livre na diagonal", de: "Brauchst ein freies Grundstück direkt diagonal daneben", fr: "Il faut une parcelle libre en diagonale" },
+  "msg.dragToFreeLot": { en: "Drag to a free adjacent lot", it: "Trascina su un lotto libero adiacente", es: "Arrastra a una parcela libre adyacente", pt: "Arraste para um lote livre adjacente", de: "Ziehe auf ein freies angrenzendes Grundstück", fr: "Fais glisser vers une parcelle libre adjacente" },
+  "msg.itsFree": { en: "It's free!", it: "È gratis!", es: "¡Es gratis!", pt: "É grátis!", de: "Es ist kostenlos!", fr: "C'est gratuit !" },
   "msg.oilAlmostDepleted": { en: "oil is almost depleted", it: "il petrolio sta per esaurirsi", es: "el petróleo está a punto de agotarse", pt: "o petróleo está quase acabando", de: "das Öl geht fast zur Neige", fr: "le pétrole est presque épuisé" },
   "msg.stormHitting": { en: "a storm is hitting the city", it: "una tempesta sta colpendo la città", es: "una tormenta está azotando la ciudad", pt: "uma tempestade está atingindo a cidade", de: "ein Sturm trifft die Stadt", fr: "une tempête frappe la ville" },
   "msg.attackIncoming": { en: "an attack is incoming", it: "un attacco è in arrivo", es: "un ataque está en camino", pt: "um ataque está a caminho", de: "ein Angriff steht bevor", fr: "une attaque approche" },
   "msg.threatNear": { en: "a threat is near the city", it: "una minaccia è vicina alla città", es: "una amenaza está cerca de la ciudad", pt: "uma ameaça está perto da cidade", de: "eine Bedrohung ist in der Nähe der Stadt", fr: "une menace approche de la ville" },
   "msg.sandboxOn": {
-    en: "sandbox mode ON: infinite resources, everything unlocked",
-    it: "modalità sandbox ATTIVA: risorse infinite, tutto sbloccato",
-    es: "modo sandbox ACTIVADO: recursos infinitos, todo desbloqueado",
-    pt: "modo sandbox ATIVADO: recursos infinitos, tudo desbloqueado",
+    en: "Sandbox mode ON: infinite resources, everything unlocked",
+    it: "Modalità sandbox ATTIVA: risorse infinite, tutto sbloccato",
+    es: "Modo sandbox ACTIVADO: recursos infinitos, todo desbloqueado",
+    pt: "Modo sandbox ATIVADO: recursos infinitos, tudo desbloqueado",
     de: "Sandbox-Modus AN: unendliche Ressourcen, alles freigeschaltet",
-    fr: "mode bac à sable ACTIVÉ : ressources infinies, tout débloqué",
+    fr: "Mode bac à sable ACTIVÉ : ressources infinies, tout débloqué",
   },
-  "msg.sandboxOff": { en: "sandbox mode OFF", it: "modalità sandbox DISATTIVATA", es: "modo sandbox DESACTIVADO", pt: "modo sandbox DESATIVADO", de: "Sandbox-Modus AUS", fr: "mode bac à sable DÉSACTIVÉ" },
-  "msg.gameLoaded": { en: "game loaded", it: "partita caricata", es: "partida cargada", pt: "partida carregada", de: "Spiel geladen", fr: "partie chargée" },
-  "msg.noSaveFound": { en: "no save found", it: "nessun salvataggio trovato", es: "no se encontró ninguna partida guardada", pt: "nenhum salvamento encontrado", de: "kein Spielstand gefunden", fr: "aucune sauvegarde trouvée" },
+  "msg.sandboxOff": { en: "Sandbox mode OFF", it: "Modalità sandbox DISATTIVATA", es: "Modo sandbox DESACTIVADO", pt: "Modo sandbox DESATIVADO", de: "Sandbox-Modus AUS", fr: "Mode bac à sable DÉSACTIVÉ" },
+  "msg.gameLoaded": { en: "Game loaded", it: "Partita caricata", es: "Partida cargada", pt: "Partida carregada", de: "Spiel geladen", fr: "Partie chargée" },
+  "msg.noSaveFound": { en: "No save found", it: "Nessun salvataggio trovato", es: "No se encontró ninguna partida guardada", pt: "Nenhum salvamento encontrado", de: "Kein Spielstand gefunden", fr: "Aucune sauvegarde trouvée" },
 
   // ---------------------------------------------------------------- upgrade
-  "upgrade.maxLevel": { en: "max level", it: "livello massimo", es: "nivel máximo", pt: "nível máximo", de: "Höchststufe", fr: "niveau maximum" },
+  "upgrade.maxLevel": { en: "Max level", it: "Livello massimo", es: "Nivel máximo", pt: "Nível máximo", de: "Höchststufe", fr: "Niveau maximum" },
   "upgrade.needProductionCycles": {
-    en: "need {needed} production cycles (now {done})",
-    it: "servono {needed} cicli di produzione (ora a {done})",
-    es: "necesitas {needed} ciclos de producción (ahora {done})",
-    pt: "precisa de {needed} ciclos de produção (agora {done})",
-    de: "brauchst {needed} Produktionszyklen (jetzt {done})",
-    fr: "il faut {needed} cycles de production (actuellement {done})",
+    en: "Need {needed} production cycles (now {done})",
+    it: "Servono {needed} cicli di produzione (ora a {done})",
+    es: "Necesitas {needed} ciclos de producción (ahora {done})",
+    pt: "Precisa de {needed} ciclos de produção (agora {done})",
+    de: "Brauchst {needed} Produktionszyklen (jetzt {done})",
+    fr: "Il faut {needed} cycles de production (actuellement {done})",
   },
-  "upgrade.needFullGrowth": { en: "need full growth ({done}/{needed})", it: "serve crescita piena ({done}/{needed})", es: "necesitas crecimiento completo ({done}/{needed})", pt: "precisa de crescimento completo ({done}/{needed})", de: "braucht volles Wachstum ({done}/{needed})", fr: "il faut une croissance complète ({done}/{needed})" },
-  "upgrade.needPopulation": { en: "need population {needed} (now {done})", it: "serve popolazione {needed} (ora a {done})", es: "necesitas población {needed} (ahora {done})", pt: "precisa de população {needed} (agora {done})", de: "brauchst Bevölkerung {needed} (jetzt {done})", fr: "il faut une population de {needed} (actuellement {done})" },
-  "upgrade.requiresChiesLevel": { en: "requires the city center at level {level}", it: "richiede il municipio al livello {level}", es: "requiere el ayuntamiento en nivel {level}", pt: "requer a prefeitura no nível {level}", de: "erfordert das Rathaus auf Stufe {level}", fr: "nécessite l'hôtel de ville au niveau {level}" },
-  "upgrade.needResources": { en: "need {list}", it: "servono {list}", es: "necesitas {list}", pt: "precisa de {list}", de: "brauchst {list}", fr: "il faut {list}" },
-  "upgrade.notRebuildable": { en: "not rebuildable with the bulldozer", it: "non ricostruibile con la ruspa", es: "no reconstruible con el buldócer", pt: "não reconstruível com o buldôzer", de: "mit der Planierraupe nicht wiederaufbaubar", fr: "non reconstructible avec le bulldozer" },
-  "unlock.atLevel": { en: "Unlock at level {level}", it: "Sblocca al livello {level}", es: "Se desbloquea en el nivel {level}", pt: "Desbloqueia no nível {level}", de: "Freischaltung auf Stufe {level}", fr: "Débloqué au niveau {level}" },
+  "upgrade.needFullGrowth": { en: "Need full growth ({done}/{needed})", it: "Serve crescita piena ({done}/{needed})", es: "Necesitas crecimiento completo ({done}/{needed})", pt: "Precisa de crescimento completo ({done}/{needed})", de: "Braucht volles Wachstum ({done}/{needed})", fr: "Il faut une croissance complète ({done}/{needed})" },
+  "upgrade.needPopulation": { en: "Need population {needed} (now {done})", it: "Serve popolazione {needed} (ora a {done})", es: "Necesitas población {needed} (ahora {done})", pt: "Precisa de população {needed} (agora {done})", de: "Brauchst Bevölkerung {needed} (jetzt {done})", fr: "Il faut une population de {needed} (actuellement {done})" },
+  "upgrade.requiresChiesLevel": { en: "Requires the Town Hall at level {level}", it: "Richiede il municipio al livello {level}", es: "Requiere el ayuntamiento en nivel {level}", pt: "Requer a prefeitura no nível {level}", de: "Erfordert das Rathaus auf Stufe {level}", fr: "Nécessite l'hôtel de ville au niveau {level}" },
+  "upgrade.needResources": { en: "Need {list}", it: "Servono {list}", es: "Necesitas {list}", pt: "Precisa de {list}", de: "Brauchst {list}", fr: "Il faut {list}" },
+  "upgrade.notRebuildable": { en: "Can't be rebuilt with the bulldozer", it: "Non si può ricostruire con la ruspa", es: "No se puede reconstruir con el buldócer", pt: "Não é possível reconstruir com o buldôzer", de: "Lässt sich mit der Planierraupe nicht wiederaufbauen", fr: "Impossible à reconstruire avec le bulldozer" },
+  "unlock.atLevel": { en: "Unlocks at level {level}", it: "Si sblocca al livello {level}", es: "Se desbloquea en el nivel {level}", pt: "Desbloqueia no nível {level}", de: "Freischaltung ab Stufe {level}", fr: "Se débloque au niveau {level}" },
   // Versione compatta della chiave sopra: stessa informazione, per
   // un'etichetta piccola sempre visibile sotto ogni bottone della griglia
   // costruzioni mobile (troppo stretta per la frase intera) invece del
@@ -433,7 +435,7 @@ const STRINGS = {
   "unlock.levelShort": { en: "Lv {level}", it: "Lv {level}", es: "Nv {level}", pt: "Nv {level}", de: "St {level}", fr: "Niv {level}" },
 
   // ---------------------------------------------------------------- loading
-  "loading.default": { en: "loading", it: "caricamento", es: "cargando", pt: "carregando", de: "lädt", fr: "chargement" },
+  "loading.default": { en: "loading", it: "caricamento", es: "cargando", pt: "carregando", de: "wird geladen", fr: "chargement" },
   "loading.interface": { en: "loading interface", it: "caricamento interfaccia", es: "cargando interfaz", pt: "carregando interface", de: "Oberfläche wird geladen", fr: "chargement de l'interface" },
   "loading.city": { en: "loading city", it: "caricamento città", es: "cargando ciudad", pt: "carregando cidade", de: "Stadt wird geladen", fr: "chargement de la ville" },
   // [Nuova funzionalita', richiesta dall'autore: "quando carico una partita
@@ -445,7 +447,7 @@ const STRINGS = {
   // una partita nuova non la vede mai.
   "loading.advancedTextures": { en: "loading advanced textures", it: "caricamento texture avanzate", es: "cargando texturas avanzadas", pt: "carregando texturas avançadas", de: "Erweiterte Texturen werden geladen", fr: "chargement des textures avancées" },
   "hwWarning.text": {
-    en: "Hardware acceleration unavailable on this device/browser — performance may be very limited. Try updating your browser or switching to Chrome.",
+    en: "Hardware acceleration is unavailable on this device or browser, so performance may be very limited. Try updating your browser or switching to Chrome.",
     it: "Accelerazione hardware non disponibile su questo dispositivo/browser — le prestazioni potrebbero essere molto limitate. Prova ad aggiornare il browser o a passare a Chrome.",
     es: "Aceleración por hardware no disponible en este dispositivo/navegador — el rendimiento podría ser muy limitado. Prueba a actualizar el navegador o a cambiar a Chrome.",
     pt: "Aceleração de hardware indisponível neste dispositivo/navegador — o desempenho pode ficar muito limitado. Tente atualizar o navegador ou mudar para o Chrome.",
