@@ -476,7 +476,10 @@ function fireFrom(b, weapon, projectiles, explosions, r12, threats, trails, beam
  * contro le mongolfiere" appena sopra, quando nessuna minaccia vera e' in
  * portata:
  *   2 — SOLO le spie (`b.aimIsSpyBalloon`, buildings.js: il fallback di
- *       stepTurretAim() si restringe gia' alle sole spie a questo livello).
+ *       stepTurretAim() da' gia' la priorita' alle spie a questo livello;
+ *       se non ce n'e' nessuna in portata si aggancia comunque una
+ *       mongolfiera di risorse, ma qui `aimIsSpyBalloon` e' falso: resta un
+ *       bersaglio solo per il tap manuale).
  *   3 — QUALUNQUE mongolfiera agganciata (`b.aimIsBalloon`, spia o
  *       risorsa — a questo livello il fallback torna ad aprirsi a tutte).
  * In entrambi i casi basta ricontrollare che il bersaglio sia dentro
