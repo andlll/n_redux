@@ -849,7 +849,12 @@ const R22_MOTORS = [
 // della finestra (`s.y` sceso sotto 1100) passava correttamente dietro.
 // SHIP_BRIDGE_GAP_DEPTH, sotto al minimo (~-1286) con un margine, la tiene
 // sempre dietro per l'INTERA finestra di sovrapposizione, non solo la coda.
+// [Aggiornamento] La nave ora ha depth fissa 2 (SHIP_DEPTH, sotto: come
+// l'originale), quindi e' sempre DIETRO a queste meta' (-1400 < 2) a
+// prescindere dalla y: il valore resta com'e', ma non e' piu' lui a
+// garantirlo per la sola coda della finestra.
 const SHIP_BRIDGE_GAP_DEPTH = -1400;
+const SHIP_DEPTH = 2;   // [C] cargo1|2|3|4/_object.json: depth fisso, mai riassegnato
 
 function r22Decor(state, t) {
   const bd2 = state.bridgeDes2;
@@ -871,10 +876,19 @@ function r22Decor(state, t) {
   }
   // La nave cargo (game/src/bridges.js) — cliccabile solo se non gia'
   // presa e non "cargo3" (mai raccoglibile, [C] preso=2 dalla nascita).
+  // [Bug corretto, segnalato dall'autore: "la nave cargo ha una depth
+  // sbagliata, la vedo passare sopra la piattaforma di partenza"] Qui prima
+  // la depth era `-s.y` (dinamica, come un edificio), ma [C] `cargo1|2|3|4/
+  // _object.json` hanno `depth: 2` FISSO e nessuno dei loro eventi la tocca
+  // mai (verificato anche in raw/asm: nessuna scrittura su `depth`). Con 2 la
+  // nave sta DIETRO la base di partenza (`r12`/`r120`, depth 1) e davanti
+  // alle espansioni del tier2 (`r22`/`r220`, depth 4), come nell'originale;
+  // con `-s.y` (sempre molto minore di 1) finiva invece davanti a tutto, base
+  // inclusa.
   for (const s of state.ships) {
     const clickable = !s.taken;
     out.push({
-      obj: clickable ? "cargoShip" : "decor", ref: s, x: s.x, y: s.y, depth: -s.y,
+      obj: clickable ? "cargoShip" : "decor", ref: s, x: s.x, y: s.y, depth: SHIP_DEPTH,
       spr: s.taken ? s.sprV : s.sprP,
     });
   }
