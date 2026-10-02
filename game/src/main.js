@@ -1,6 +1,6 @@
 import { makeCircleTexture, makeRoundedRectTexture, makeRoundedRectStrokeTexture, solidFrame, loadTexture } from "./gl.js";
 import { Camera, screenProjection } from "./camera.js";
-import { loadRoomAtlas, loadDeferredGroup, atlasKeyFor } from "./assets.js";
+import { loadRoomAtlas, loadDeferredGroup, deferredGroupPending, atlasKeyFor } from "./assets.js";
 import { createR12, clampR12, stepWeather, stepCalendar, LOANS, LOAN_MONTHS, loanActive, takeLoan, TRADES, canTrade, applyTrade, TINCOM_DURATION, oilCap, wewOilDrain, WEWE_OIL_DRAIN_PERIOD } from "./state.js";
 import { BUILDING_TYPES, placeBuilding, placeFinishedBuilding, canAfford, currentDecor, currentDeathPop, currentDeathHap, currentMaxLife, currentResidents, ruinSpriteFor, ruinRebuildCost, tryStartUpgrade, nextUpgrade, stepConstructions, stepProduction, stepSolarProduction, stepWindProduction, isRaining, solarEleRate, WIND_ANIM_FPS, INDUSTRIA3_ANIM_FPS, stepGrowth, stepConsumption, stepStormDamage, upgradeUnlocked, tooCloseToTurret, stepTurretAim, ruspaCostFor, tryRuspaDemolish, TURRET_SPRITE_NAMES, sandbox, pickSpr, frontSprFor, stepAutoDefenseUpkeep, AUTO_DEFENSE_COST_PER_MIN, THROTTLE_MULT, syncTopperLife, syncNextId, currentEnergyStats, constructionStalled } from "./buildings.js";
 import { spawnCar, stepCars, CARMAKER_SCHEDULE } from "./cars.js";
@@ -48,7 +48,7 @@ import { t, setLang, getLang, LANGUAGES, buildingLabel } from "./i18n.js";
 // window.__nimbus), cosi' tornare al menu e rientrare in partita piu' volte
 // nella stessa sessione non accumula loop/listener fantasma.
 export async function mountMatch(ctx, params = {}) {
-  const { gl, r, canvas, input, pauseBlur, white, navigate, reportProgress, renderScale } = ctx;
+  const { gl, r, canvas, input, pauseBlur, white, navigate, reportProgress, setLevelLoading, renderScale } = ctx;
   // Stato mutabile della partita: prima erano 84 `let` di closure, ora proprieta' di un unico
   // oggetto (P1a) cosi' da poterlo passare/ispezionare come un tutto.
   const st = {};
@@ -2923,6 +2923,46 @@ export async function mountMatch(ctx, params = {}) {
   function needsAdvancedTier() {
     return st.buildings.some((b) => b.level >= 2 || upgradeUnlocked(b, st.r12, st.buildings));
   }
+  // [Bug corretto, segnalato dall'autore: "se inizio una partita e POI da
+  // dentro carico un salvataggio con texture avanzate, non si caricano subito
+  // ma piano piano — la visualizzazione e' rotta, alcune cose si vedono,
+  // altre compaiono un po' alla volta"] Il preload sincrono sopra (barra
+  // "caricamento texture avanzate" prima del primo frame) copre solo
+  // l'INGRESSO nella room; un salvataggio caricato a partita gia' avviata
+  // (doLoadFromFile() qui sopra, "Load last save" della schermata di game
+  // over) sostituiva lo stato in un colpo solo ma lasciava lo scaglione
+  // "advanced" al trigger a runtime (sotto, dentro `if (skyAlive)`), che lo
+  // scarica in sottofondo una pagina alla volta: nel frattempo gli edifici
+  // il cui sprite sta in una pagina non ancora arrivata sono invisibili
+  // (frameFor() -> null) e compaiono alla spicciolata. Qui, dopo aver
+  // applicato lo stato, si ripete la stessa attesa dell'ingresso: SOLO se
+  // serve davvero (`needsAdvancedTier()`) e lo scaglione non e' gia' tutto
+  // in GPU (deferredGroupPending(), assets.js) — una seconda partita
+  // caricata a texture gia' presenti, o un salvataggio senza edifici oltre il
+  // livello 1, non vedono nessuna schermata. Stessa overlay di navigate()
+  // (ctx.setLevelLoading, app.js) con la stessa barra/etichetta del preload.
+  // Mentre aspetta, `texturesLoading` ferma simulazione, disegno e tap (loop
+  // e handler qui sotto): non deve passare tempo di gioco, ne' arrivare
+  // input, dietro una schermata che li copre. `onProgress` e non `onPage`:
+  // se il trigger a runtime ha gia' avviato lo scaglione, ci si aggancia.
+  let texturesLoading = false;
+  async function ensureAdvancedTextures() {
+    const key = atlasKeyFor(roomName);
+    if (texturesLoading || !needsAdvancedTier() || !deferredGroupPending(key, "advanced")) return;
+    texturesLoading = true;
+    setLevelLoading(true);
+    try {
+      await loadDeferredGroup(gl, key, "advanced", {
+        onProgress: (loaded, total) => reportProgress(roomName, loaded, total, t("loading.advancedTextures")),
+      });
+    } finally {
+      setLevelLoading(false);
+      texturesLoading = false;
+      // `dt` del primo frame dopo l'attesa: senza questo l'intero tempo
+      // passato sotto la schermata di caricamento sarebbe un unico salto.
+      st.last = performance.now();
+    }
+  }
   // "Reset game" (menu di pausa, drawConfirmResetOverlay() piu' sotto):
   // ripristina il livello da zero come una partita mai iniziata — cancella
   // il quicksave localStorage di questa scena (altrimenti "Load game"/il
@@ -3003,6 +3043,10 @@ export async function mountMatch(ctx, params = {}) {
     applyLoadedData(result.data);
     st.picked = null;
     st.message = t("msg.gameLoadedFromFile"); st.messageT = 3;
+    // Prima di restituire `true`: il chiamante (menu di pausa / game over)
+    // chiude il proprio pannello solo a risoluzione avvenuta, cosi' sotto la
+    // schermata di caricamento non si intravede nulla di mezzo.
+    await ensureAdvancedTextures();
     // Valore di ritorno (`true`/`undefined`): il chiamante dal menu di pausa
     // lo ignora (fuoco e dimentica, come sempre), ma la schermata di game
     // over (input.onTap, sotto) ne ha bisogno per sapere QUANDO chiudersi —
@@ -3075,7 +3119,7 @@ export async function mountMatch(ctx, params = {}) {
     // `outcome` (sopra) e' a schermo: in sconfitta non c'e' niente da
     // riprendere, in vittoria "P" toglierebbe di mezzo il pannello senza
     // passare dal tap che lo chiude per davvero (onTap sotto).
-    if ((e.key === "p" || e.key === "P") && !st.outcome) { st.paused = !st.paused; st.pauseSubmenu = null; }
+    if ((e.key === "p" || e.key === "P") && !st.outcome && !texturesLoading) { st.paused = !st.paused; st.pauseSubmenu = null; }
   }
   window.addEventListener("keydown", onKeydown);
 
@@ -5734,6 +5778,7 @@ export async function mountMatch(ctx, params = {}) {
   // tocco che comincia sopra la UI (bottoni del selettore) non deve armare
   // niente sotto di essa — stesso spirito di `uiHitTest` per il pan.
   input.onPointerDown = (sx, sy) => {
+    if (texturesLoading) return;
     if (st.paused || st.armedPlacement) return;
     for (const btn of st.uiButtons) {
       if (sx >= btn.x && sx <= btn.x + btn.w && sy >= btn.y && sy <= btn.y + btn.h) return;
@@ -6306,6 +6351,7 @@ export async function mountMatch(ctx, params = {}) {
   }
 
   input.onTap = (sx, sy) => {
+    if (texturesLoading) return;
     // `outcome` (sopra) intercetta PRIMA di tutto, bottone di pausa incluso —
     // in sconfitta la pausa non ha senso (la partita e' gia' finita), in
     // vittoria non deve restare un modo per aprire il menu di pausa SOPRA al
@@ -6340,6 +6386,10 @@ export async function mountMatch(ctx, params = {}) {
         if (ok) { st.picked = null; st.outcome = null; st.crashVSpeed = 0; st.crashFallY = 0; }
         st.message = ok ? t("msg.gameLoaded") : t("msg.noSaveFound");
         st.messageT = 3;
+        // Non aspettata (onTap e' sincrono): ensureAdvancedTextures() alza
+        // `texturesLoading` prima del primo await, quindi dal frame dopo
+        // simulazione e tap sono gia' fermi.
+        if (ok) ensureAdvancedTextures();
       // "loadFile" e' gestito da `input.onClick` sotto, non da qui — vedi
       // il commento li' per il perche' (iOS Safari/input.js).
       } else if (hit?.action === "resetGame") {
@@ -7122,6 +7172,7 @@ export async function mountMatch(ctx, params = {}) {
   // sintetico. Le due azioni "loadFile" in `input.onTap` sopra sono state
   // rimosse di conseguenza (restava solo il commento a spiegare perche').
   input.onClick = (sx, sy) => {
+    if (texturesLoading) return;
     if (st.outcome && st.outcome.kind !== "victory") {
       const hit = st.outcomeButtons.find((b) => sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h);
       if (hit?.action === "loadFile") {
@@ -7277,6 +7328,10 @@ export async function mountMatch(ctx, params = {}) {
     // riparte da solo, senza bisogno di un listener 'visibilitychange' a
     // parte.
     if (document.hidden) { st.last = now; requestAnimationFrame(frame); return; }
+    // Schermata di caricamento sopra la partita (ensureAdvancedTextures()):
+    // niente simulazione ne' disegno — il canvas resta sull'ultimo frame
+    // buono, coperto dall'overlay HTML.
+    if (texturesLoading) { st.last = now; requestAnimationFrame(frame); return; }
     // Limite di fps scelto nelle opzioni grafiche (default 60) — vedi frameMinMs().
     if (now - st.last < frameMinMs()) { requestAnimationFrame(frame); return; }
     // Un solo reset per frame, prima di ogni possibile drawHtmlText() (il

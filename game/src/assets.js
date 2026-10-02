@@ -131,6 +131,10 @@ export function loadRoomAtlas(gl, roomName, { onProgress } = {}) {
       // promise a un secondo chiamante che la vuole aspettare per davvero
       // (main.js, solo `tutorial`) invece di farne partire un secondo giro.
       startedGroups: new Map(),
+      // group -> { loaded, total, done, listeners }: avanzamento di uno
+      // scaglione avviato, per chi vi si aggancia dopo (`onProgress` di
+      // loadDeferredGroup()) e per deferredGroupPending().
+      groupState: new Map(),
     };
     entry.promise = (async () => {
       const atlas = await fetch(`./data/${roomName}.atlas.json`).then((x) => x.json());
@@ -226,26 +230,79 @@ export function loadRoomAtlas(gl, roomName, { onProgress } = {}) {
 // valore di ritorno esattamente come prima — resta a tutti gli effetti
 // "non aspettata" per loro, la promise adesso restituita non li obbliga a
 // niente.
-export function loadDeferredGroup(gl, roomName, group, { onPage } = {}) {
+//
+// `onProgress(loaded, total)` (opzionale, [Bug corretto, segnalato
+// dall'autore: "carico un salvataggio con texture avanzate da dentro una
+// partita e la citta' si completa a pezzi"]): a differenza di `onPage`
+// (solo per chi AVVIA lo scaglione) vale anche per chi si aggancia a uno
+// scaglione gia' in corso — es. il trigger a runtime l'ha avviato in
+// sottofondo un attimo prima — ed e' richiamato subito con lo stato
+// attuale, come `onProgress` di loadRoomAtlas(). Serve alla schermata di
+// caricamento mostrata da main.js quando da dentro una partita si carica
+// uno stato che ne ha bisogno (deferredGroupPending() sotto).
+export function loadDeferredGroup(gl, roomName, group, { onPage, onProgress } = {}) {
   const entry = cache.get(roomName);
   if (!entry?.atlas || !entry.pageTex) return Promise.resolve();
-  if (entry.startedGroups.has(group)) return entry.startedGroups.get(group) ?? Promise.resolve();
+  const joined = entry.groupState.get(group);
+  if (entry.startedGroups.has(group)) {
+    if (onProgress && joined) {
+      onProgress(joined.loaded, joined.total);
+      if (!joined.done) joined.listeners.add(onProgress);
+    }
+    return entry.startedGroups.get(group) ?? Promise.resolve();
+  }
   const { atlas, pageTex, cancelled } = entry;
-  const coreCount = atlas.corePages ?? atlas.pages.length;
-  const combatCount = atlas.combatPages ?? 0;
-  const [start, end] = group === "combat" ? [coreCount, coreCount + combatCount]
-    : group === "advanced" ? [coreCount + combatCount, atlas.pages.length]
-    : [0, 0];
-  if (end <= start) { entry.startedGroups.set(group, Promise.resolve()); return Promise.resolve(); }
+  const [start, end] = groupRange(atlas, group);
+  if (end <= start) {
+    entry.groupState.set(group, { loaded: 0, total: 0, done: true, listeners: new Set() });
+    entry.startedGroups.set(group, Promise.resolve());
+    return Promise.resolve();
+  }
   const indices = Array.from({ length: end - start }, (_, i) => start + i);
+  const state = { loaded: 0, total: indices.length, done: false, listeners: new Set() };
+  if (onProgress) { onProgress(0, state.total); state.listeners.add(onProgress); }
+  entry.groupState.set(group, state);
   // Non aspettata dal trigger normale (stesso principio della vecchia
   // `deferredIndices`, rimossa sopra): un fallimento qui non deve toccare
   // le pagine core gia' andate a buon fine, e frameFor() gia' tratta
   // `pageTex[i] === null` come "non ancora pronto". Chi la vuole aspettare
   // per davvero (`onPage` sopra) la riceve comunque per intero.
-  const promise = loadPagesLimited(gl, atlas.pages, pageTex, indices, { rethrow: false, cancelled, onPage });
+  const promise = loadPagesLimited(gl, atlas.pages, pageTex, indices, {
+    rethrow: false, cancelled,
+    onPage: () => {
+      state.loaded++;
+      onPage?.();
+      for (const fn of state.listeners) fn(state.loaded, state.total);
+    },
+  }).then(() => { state.done = true; state.listeners.clear(); });
   entry.startedGroups.set(group, promise);
   return promise;
+}
+
+// [0, 0) per un gruppo sconosciuto: vedi loadDeferredGroup() sopra.
+function groupRange(atlas, group) {
+  const coreCount = atlas.corePages ?? atlas.pages.length;
+  const combatCount = atlas.combatPages ?? 0;
+  return group === "combat" ? [coreCount, coreCount + combatCount]
+    : group === "advanced" ? [coreCount + combatCount, atlas.pages.length]
+    : [0, 0];
+}
+
+/** `true` se lo scaglione `group` di `roomName` ha ancora pagine da
+ * scaricare (mai avviato e non vuoto, oppure avviato ma non finito) —
+ * `false` se e' gia' tutto in GPU, se la room non ha quello scaglione o se
+ * l'atlas non e' ancora (o non e' piu') in cache. Chi la usa (main.js,
+ * ensureAdvancedTextures()) decide se vale la pena una schermata di
+ * caricamento: niente da aspettare, niente schermata. Una pagina fallita
+ * conta comunque come "finita" (loadPagesLimited()), cosi' un errore di rete
+ * non incastra mai il chiamante in un'attesa infinita. */
+export function deferredGroupPending(roomName, group) {
+  const entry = cache.get(roomName);
+  if (!entry?.atlas || !entry.pageTex) return false;
+  const state = entry.groupState.get(group);
+  if (state) return !state.done;
+  const [start, end] = groupRange(entry.atlas, group);
+  return end > start;
 }
 
 // [Bug corretto, segnalato dall'autore: "su iPhone tutorial/match facile
