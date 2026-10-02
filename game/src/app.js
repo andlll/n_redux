@@ -190,7 +190,17 @@ function neededRoomsFor(screen, params) {
   return [atlasKeyFor(roomName)];
 }
 
-const ctx = { gl, r, canvas, input, pauseBlur, white, hideLoading, navigate, reportProgress, renderScale };
+// Mostra/nasconde la stessa schermata di caricamento di navigate() (sotto)
+// SENZA cambiare schermata — per una schermata gia' montata che deve
+// aspettare del lavoro asincrono da dentro (main.js/ensureAdvancedTextures():
+// caricare da dentro una partita uno stato che richiede texture non ancora in
+// GPU). Mostrandola riparte da 0 (`resetProgress()`), come ad ogni navigate().
+function setLevelLoading(on) {
+  if (on) resetProgress();
+  levelLoading.classList.toggle("show", on);
+}
+
+const ctx = { gl, r, canvas, input, pauseBlur, white, hideLoading, navigate, reportProgress, setLevelLoading, renderScale };
 
 let current = null;   // { dispose() } della schermata montata adesso
 let navigating = false;   // guardia contro un doppio navigate() in corsa

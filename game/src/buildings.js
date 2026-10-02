@@ -3693,10 +3693,12 @@ export function stepTurretAim(buildings, threats, balloons) {
     //       mongolfiera/spia piu' vicina di QUALUNQUE tipo), usato pero'
     //       SOLO dal tap manuale (fireTurretManual, projectiles.js) — il
     //       fuoco automatico sotto lo ignora comunque a livello 1.
-    //   2 — il fallback si restringe alle SOLE mongolfiere/aerei spia
-    //       (`isSpy`, balloons.js — monspi/recogn): quelle di risorse
-    //       restano fuori, il giocatore potrebbe volerle ancora raccogliere
-    //       di persona.
+    //   2 — il fallback da' la PRIORITA' alle mongolfiere/aerei spia
+    //       (`isSpy`, balloons.js — monspi/recogn), le uniche che il fuoco
+    //       automatico ingaggia a questo livello; quelle di risorse restano
+    //       agganciabili solo quando nessuna spia e' in portata, cosi' il
+    //       giocatore puo' comunque puntarle e colpirle di persona (tap
+    //       manuale), senza che la torretta le abbatta da sola.
     //   3 — il fallback torna ad aprirsi a QUALUNQUE mongolfiera (come il
     //       livello 1), ma stavolta il fuoco automatico (stepTurretFire,
     //       projectiles.js) le ingaggia TUTTE, spia o risorsa che sia — la
@@ -3706,14 +3708,31 @@ export function stepTurretAim(buildings, threats, balloons) {
     // spia"): stepTurretFire ha bisogno di entrambi per decidere se il
     // livello corrente autorizza il colpo automatico.
     const level = b.autoDefenseLevel ?? 1;
+    // [Bug corretto, segnalato dall'autore: "in modalita' 'spara solo alle
+    // pattuglie nemiche' le strutture di difesa devono comunque poter
+    // puntare verso e sparare manualmente verso le mongolfiere risorse"] A
+    // livello 2 il fallback scartava del tutto le mongolfiere di risorse
+    // (`continue`, qui sotto prima di questo fix): nessun aggancio, quindi
+    // cannone fermo e tap manuale rifiutato ("nessun bersaglio") — il
+    // livello 2 limita solo cosa la torretta abbatte DA SOLA, non cosa il
+    // giocatore puo' colpire di persona. Ora a livello 2 le spie restano
+    // PRIORITARIE (anche se una mongolfiera di risorse e' piu' vicina: il
+    // fuoco automatico di stepTurretFire ingaggia solo `aimIsSpyBalloon`,
+    // un aggancio sulla risorsa sbagliata la lascerebbe senza difesa
+    // automatica con una spia in portata) e solo se NESSUNA spia e' in
+    // portata ci si aggancia alla mongolfiera di risorse piu' vicina:
+    // `aimIsSpyBalloon` resta falso, stepTurretFire (livello 2) non spara
+    // da sola, il tap sul cannone si'.
     if (!nearest && balloons) {
       nearestD2 = range2;
+      let spyD2 = range2, spy = null;
       for (const bal of balloons) {
         const isSpy = !!BALLOON_TYPES[bal.type]?.isSpy;
-        if (level === 2 && !isSpy) continue;
         const d2 = (bal.x - b.x) ** 2 + (bal.y - b.y) ** 2;
+        if (level === 2 && isSpy && d2 < spyD2) { spyD2 = d2; spy = bal; }
         if (d2 < nearestD2) { nearestD2 = d2; nearest = bal; nearestIsBalloon = true; nearestIsSpyBalloon = isSpy; }
       }
+      if (spy) { nearest = spy; nearestIsSpyBalloon = true; }
     }
     if (!nearest) { b.aimAngle = null; b.aimTarget = null; b.aimIsBalloon = false; b.aimIsSpyBalloon = false; continue; }
     b.aimIsBalloon = nearestIsBalloon;
