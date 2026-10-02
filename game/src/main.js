@@ -6329,6 +6329,15 @@ export async function mountMatch(ctx, params = {}) {
     // coins.js) cambia colore — sold1..18/sold19..30 (kind "mon") restano blu.
     if (st.graphics.minorEffects) st.coinPops.push({ x: item.x, y: bubbleY, t: 0, color: item.kind === "biotech" ? BIOTECH_POP_COLOR : COIN_POP_COLOR });
     collectCoin(st.coins, item, st.r12);
+    // [Modifica richiesta dall'autore: "nel tutorial, nella parte in cui per
+    // andare avanti si prendono le monete blu, si va avanti alla prima
+    // moneta presa, non quando le si prendono tutte"] La fase 5 (tutorial.js,
+    // stepTutorialAuto()) avanzava solo quando spariva la moneta di pratica
+    // (`_tutorialPractice`, advanceTutorial() sopra) — ma accanto ci sono le
+    // monete vere delle altre case: raccoglierne una qualunque non bastava,
+    // bisognava trovare proprio quella. Ora la prima moneta raccolta durante
+    // la fase 5, di pratica o no, e' sufficiente.
+    if (st.tutorialState?.phase === 5) st.tutorialState.coinCollected = true;
   }
 
   /** Raccoglie una cassa di risorse lasciata da una mongolfiera (balloons.js)
