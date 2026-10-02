@@ -98,14 +98,14 @@ const TUTORIAL_TEXTS_EN = [
 ];
 
 const TUTORIAL_TEXTS_IT = [
-  "Accidenti! Sembra che abbiano distrutto metà della città! Da nuovo sindaco, devi ricostruirla prima che tornino!",
+  "Accidenti! Sembra che abbiano distrutto metà della città! Come nuovo sindaco, devi ricostruirla prima che tornino!",
   "Per prima cosa dovresti demolire quelle rovine, così potremo costruirci nuove case.",
   "Seleziona il bottone a forma di ruspa, poi clicca sulle rovine per sgomberarle!",
-  "Quando stai per sgomberare una rovina, il costo dell'operazione appare sopra di essa!",
-  "Costruire e demolire costano denaro, ovviamente. Devi anche pagare le impalcature finché i lavori sono in corso!",
+  "Quando stai per sgomberare una rovina, sopra appare il costo dell'operazione!",
+  "Costruire o demolire costa denaro, ovviamente. Devi anche pagare le impalcature finché i lavori sono in corso!",
   "Raccogliamo denaro tassando i cittadini. Puoi riscuotere le tasse passando il mouse sopra quelle iconcine blu, oppure toccandole!",
   "Quando riscuoti le tasse, vedi salire la quantità di denaro. La barra in alto mostra quante risorse possiedi.",
-  "La barra in basso, invece, è la Barra delle azioni. Usa il bottone a forma di mano per selezionare gli strumenti.",
+  "La barra in basso, invece, è la Barra delle azioni. Usa il bottone a forma di mano per selezionare gli edifici.",
   "Il bottone accanto è il bottone Costruisci. Selezionalo, poi scegli il bottone della casa, il primo!",
   "Ora costruisci cinque case su cinque lotti vuoti! Dobbiamo far crescere la popolazione in questi tempi di guerra!",
   "Appena una casa è completata, la popolazione cresce subito, e con lei il consumo di energia! La popolazione delle case continua a crescere nel tempo.",
