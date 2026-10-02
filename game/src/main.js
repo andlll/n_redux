@@ -7481,6 +7481,15 @@ export async function mountMatch(ctx, params = {}) {
       // y += vspeed) invece di una formula continua indipendente che
       // andrebbe ritarata a mano.
       const ticks = dt / TICK;
+      // Primo frame del crollo (`crashVSpeed` ancora 0): via tutto il fumo
+      // delle ciminiere, altrimenti resterebbe sospeso a mezz'aria mentre
+      // cade con la citta', un fotogramma "freezato". Il fumo della nave
+      // (`sky`) resta: la nave prosegue la sua rotta e se lo lascia dietro.
+      if (st.crashVSpeed === 0) {
+        for (let i = st.smoke.active.length - 1; i >= 0; i--) {
+          if (!st.smoke.active[i].sky) st.smoke.release(i);
+        }
+      }
       st.crashVSpeed += CRASH_GRAVITY * ticks;
       st.crashFallY += st.crashVSpeed * ticks;
       // Il fumo gia' in volo (anche quello della nave, `sky`) continua ad
