@@ -2400,6 +2400,9 @@ export async function mountMatch(ctx, params = {}) {
    * "pepazzittecollider" mai ricostruito, stesso limite gia' noto per le
    * torrette).
    */
+  const TWO_SLOT_DEPTH_BIAS = 3;   // [C] media1s/Create.gml: depth = -y + 3
+  const isTwoSlot = (b) => !!BUILDING_TYPES[b.type]?.diagonalPlacement;   // palazzo/museo (+Rd)
+
   function resolvePlacement(sx, sy) {
     if (!st.armedPlacement) return;
     const { type, origin, targets } = st.armedPlacement;
@@ -2439,7 +2442,15 @@ export async function mountMatch(ctx, params = {}) {
     // dell'istanza. L'ancoraggio vero e' quindi il singolo lotto con la y
     // maggiore (buildSite, "la base piu' in basso delle due"), mai una
     // media con l'altro lotto.
-    const b = placeBuilding(concreteType, buildSite.x, buildSite.y, -buildSite.y);
+    // [Bug corretto, segnalato dall'autore: "gli edifici a 2 slot a volte
+    // finiscono sopra a palazzi a 1 slot a fianco dello slot piu' in basso"]
+    // `-y` secco era un PAREGGIO con un vicino a 1 lotto alla stessa y
+    // (stessa fila, 198px di distanza, coperto comunque dalla sagoma larga
+    // del 2 lotti): a parita' di depth vince l'ordine di inserimento nella
+    // lista, cioe' chi e' stato costruito per ultimo — da qui il "a volte".
+    // **[C]** `media1s/Create.gml`: `depth = -y + 3` (`+ 3.1` per il cantiere
+    // `impamediaR|RD`) — piu' in fondo del vicino a `-y`, mai un pareggio.
+    const b = placeBuilding(concreteType, buildSite.x, buildSite.y, -buildSite.y + TWO_SLOT_DEPTH_BIAS);
     st.buildings.push(b);
     if (b.level >= 1) spawnDecor(b, currentDecor(b));
     st.constructionBalloons.push(spawnConstructionBalloon(buildSite.x, buildSite.y));
@@ -2530,7 +2541,9 @@ export async function mountMatch(ctx, params = {}) {
     // campo in piu' nel suo salvataggio (save.js, stessa convenzione gia'
     // scelta per `b.tiles` sugli edifici vivi).
     st.ruins.push({
-      x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr),
+      // Un 2 lotti lascia un rudere con la stessa depth di prima (`-y + 3`):
+      // stesso pareggio da evitare coi vicini a 1 lotto alla stessa y.
+      x: b.x, y: b.y, depth: isTwoSlot(b) ? b.depth : -b.y, spr, _f: frameFor(spr),
       level: b.level, cost: ruinRebuildCost(b.level), tiles: b.tiles,
     });
   }
@@ -2801,6 +2814,11 @@ export async function mountMatch(ctx, params = {}) {
     // quelli presenti nel salvataggio vincono (stesso `isMatch` del mount).
     st.r12 = { ...createR12(roomName === "match"), ...data.r12 };
     st.buildings = data.buildings;
+    // Salvataggi precedenti al fix della depth dei 2 lotti (resolvePlacement()
+    // sopra): `-y` secco, riallineato al `-y + 3` di adesso.
+    for (const b of st.buildings) {
+      if (isTwoSlot(b) && b.depth === -b.y) b.depth += TWO_SLOT_DEPTH_BIAS;
+    }
     syncNextId(st.buildings);   // riallinea il contatore agli id del salvataggio, altrimenti placeBuilding() ne riusa uno
     // `?.tier1`: scarta anche un salvataggio con la forma vecchia (prima
     // dei due livelli fari/piattaforma) invece di rompersi su di lui — lo
