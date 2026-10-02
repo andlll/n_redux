@@ -6584,9 +6584,9 @@ export async function mountMatch(ctx, params = {}) {
     // scrivere, deciso da drawBuildingInfoPanel() insieme al rettangolo
     // stesso — lo stesso tap handler serve entrambi i controlli.
     if (st.buildingInfoPanel) {
-      const t = st.buildingInfoSegRect;
-      if (t && sx >= t.x && sx <= t.x + t.w && sy >= t.y && sy <= t.y + t.h) {
-        st.buildingInfoPanel[t.field] = Math.floor((sx - t.x) / (t.w / 3)) + 1;
+      const seg = st.buildingInfoSegRect;
+      if (seg && sx >= seg.x && sx <= seg.x + seg.w && sy >= seg.y && sy <= seg.y + seg.h) {
+        st.buildingInfoPanel[seg.field] = Math.floor((sx - seg.x) / (seg.w / 3)) + 1;
         return;
       }
       // registerChiesTap() (sopra): il pannello di chies e' gia' aperto —
@@ -8592,7 +8592,13 @@ export async function mountMatch(ctx, params = {}) {
       r.draw(solidFrame(white, scene.width, scene.height), 0, 0, 1, auraTint, aura.a);
     }
     const vw = cam.worldW, vh = cam.worldH;
-    const l = cam.x - vw / 2, t = cam.y - vh / 2, rr = l + vw, bb = t + vh;
+    // [Bug corretto, segnalato dall'autore: "con la ruspa attiva, ovunque
+    // clicco torno al menu"] Questa variabile si chiamava `t`: oscurava la
+    // funzione di traduzione `t()` per il resto del frame, e il popup si'/no
+    // della ruspa (ruspaPending, sotto) chiama `t("common.no")` — "t is not a
+    // function", catturato dal try/catch del ciclo di frame che riporta al
+    // menu. Mai chiamare `t` una variabile locale in questa funzione.
+    const l = cam.x - vw / 2, top = cam.y - vh / 2, rr = l + vw, bb = top + vh;
     if (!worldHidden) for (const it of st.frameList) {
       if (it.obj === "placeholder" && !it._hovered && !it._armed) continue;
       const f = it._f;
@@ -8607,7 +8613,7 @@ export async function mountMatch(ctx, params = {}) {
       // dall'autore: "i rettangolini rossi intorno alla citta'").
       if (!f) continue;
       const x0 = it.x - f.ox, y0 = it.y - f.oy;
-      if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < t) continue;
+      if (x0 > rr || y0 > bb || x0 + f.w < l || y0 + f.h < top) continue;
       const base = (it.obj === "placeholder" && it._armed) ? ARMED_TINT : (it._tint ?? 0xffffff);
       const tint = it._selfLit ? base : mulTint(base, amb.rgb);
       // `_angle` (solo i traccianti del gatling, projectiles.js/main.js
@@ -8676,7 +8682,7 @@ export async function mountMatch(ctx, params = {}) {
     // esattamente tutto lo schermo, lascia stare quel 200 volte e
     // trasformalo in un rettangolo vettoriale come fatto per il filtro
     // notte"] Stessa tecnica dell'overlay giorno/notte `aura` (sopra: un
-    // quad a tinta unita invece di uno sprite), ma dimensionato su `l, t,
+    // quad a tinta unita invece di uno sprite), ma dimensionato su `l, top,
     // vw, vh` (sopra, il rettangolo di mondo VISIBILE calcolato per il
     // culling di frameList) invece che sull'intera room: la vista corrente
     // e' esattamente lo schermo per definizione, qualunque siano camera/
@@ -8687,7 +8693,7 @@ export async function mountMatch(ctx, params = {}) {
     // stessa curva di dissolvenza (255->~10 di alpha in 30 tick, lineare)
     // gia' cotta nei 30 frame dello sprite originale, qui in continuo.
     for (const s of st.lightning) {
-      if (s.t < LIGHTNING_GLOW_LIFE) r.draw(solidFrame(white, vw, vh), l, t, 1, 0x000000, glowAlpha(s));
+      if (s.t < LIGHTNING_GLOW_LIFE) r.draw(solidFrame(white, vw, vh), l, top, 1, 0x000000, glowAlpha(s));
     }
     // [Nuova funzionalita', richiesta dall'autore: "una traccia visiva
     // quando l'autodifesa scala i soldi al giocatore — l'icona blu dei
