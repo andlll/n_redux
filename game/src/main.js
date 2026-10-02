@@ -21,7 +21,7 @@ import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
 import { addCrane, addCraneBig, stepCranes, craneParts } from "./cranes.js";
 import {
   applyMatchPlatform, createFaroState, stepFaroChain, faroDecor, r120MotorDecor,
-  clickFaroButton, clickWaveSignal, clickDockerSignal,
+  clickFaroButton, clickWaveSignal, clickDockerSignal, stepShips,
   clickFaro3Button, clickWaveSignal3, clickDockerSignal3,
   isPlaceholderActive, placeholderDrawDepth, FARO1, FARO2, FARO3, residentsByPlatform,
 } from "./platform.js";
@@ -7483,6 +7483,9 @@ export async function mountMatch(ctx, params = {}) {
       const ticks = dt / TICK;
       st.crashVSpeed += CRASH_GRAVITY * ticks;
       st.crashFallY += st.crashVSpeed * ticks;
+      // Il fumo gia' in volo (anche quello della nave, `sky`) continua ad
+      // invecchiare: il suo passo vive nel blocco `!frozen`, fermo qui.
+      stepSmoke(st.smoke, dt);
     }
     // Nuvole/uccelli (game/src/atmosphere.js) e mongolfiere (game/src/
     // balloons.js) — `skyAlive` sopra: le stesse chiamate di sempre, solo
@@ -7589,6 +7592,9 @@ export async function mountMatch(ctx, params = {}) {
         st.lightning.push(spawnLightning(x, y));
       });
       stepLoot(st.loot, dt);
+      // La nave cargo prosegue la sua rotta anche durante il crollo per olio
+      // esaurito (non cade con la piattaforma, `_sky`).
+      if (st.platformState) stepShips(st.platformState, st.smoke, dt);
     }
     if (!frozen) {
       stepConstructions(st.buildings, dt, st.r12, spawnDecor, addConstructionSpawn, removeTransientDecor, demolishStep);
@@ -8281,7 +8287,7 @@ export async function mountMatch(ctx, params = {}) {
     // dell'ingrandimento uniforme (_scale) — vedi smoke.js.
     for (const p of st.smoke.active) {
       const frameIdx = Math.min(SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
-      dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, SMOKE_LIFE) });
+      dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, SMOKE_LIFE), _sky: p.sky });
     }
     // Il fulmine vero (game/src/lightning.js): `th1`/`th2` -> `th1s`/`th2s`
     // a meta' vita, depth -y-5 come l'originale (sortWorld() qui ordina

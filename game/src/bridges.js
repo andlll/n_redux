@@ -174,6 +174,7 @@ export function stepCargoShips(ships, smoke, dt) {
       const p = smoke.spawn();
       p.x = s.x + SHIP_SMOKE_OFFSET.x; p.y = s.y + SHIP_SMOKE_OFFSET.y;
       p.family = 150; p.spr = puffSprite(); p.scale = 1; p.t = 0;
+      p.sky = true;   // la nave non cade col crollo per olio (main.js, `_sky`): il suo fumo neppure
     }
     if (s.t >= SHIP_LIFE_SECONDS) ships.splice(i, 1);
   }

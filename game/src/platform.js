@@ -574,6 +574,13 @@ function advanceClouds(clusterClouds, dt) {
  * `monviolo` appena nato (vedi il blocco sotto): il resto del suo ciclo di
  * vita (movimento, fulmine, scadenza+drop) lo avanza gia' stepBalloons()
  * altrove in main.js, un frame dopo, non serve rifarlo qui. */
+/** Avanza le navi cargo. Separato da stepFaroChain() perche' la nave NON cade
+ * con la piattaforma al crollo per olio esaurito: main.js lo chiama anche
+ * durante il crollo, quando il resto della simulazione e' fermo. */
+export function stepShips(state, smoke, dt) {
+  stepCargoShips(state.ships, smoke, dt);
+}
+
 export function stepFaroChain(state, r12, balloons, cars, smoke, dt, chiesLevel, night) {
   // --- tier 1: chies.level>=2 -> ... -> r32 ---
   if (state.tier1.stage === "locked" && chiesLevel >= 2) state.tier1.stage = "buttonShown";
@@ -637,7 +644,6 @@ export function stepFaroChain(state, r12, balloons, cars, smoke, dt, chiesLevel,
       if (ship) state.ships.push(ship);
     });
   }
-  stepCargoShips(state.ships, smoke, dt);
 
   // n_cluster1 — le nuvole restano in volo fino a 20s indipendentemente
   // dallo stage (STUDIO.md sopra su stepClusterClouds), quindi avanzano
@@ -888,7 +894,7 @@ function r22Decor(state, t) {
   for (const s of state.ships) {
     const clickable = !s.taken;
     out.push({
-      obj: clickable ? "cargoShip" : "decor", ref: s, x: s.x, y: s.y, depth: SHIP_DEPTH,
+      obj: clickable ? "cargoShip" : "decor", ref: s, x: s.x, y: s.y, depth: SHIP_DEPTH, _sky: true,
       spr: s.taken ? s.sprV : s.sprP,
     });
   }
