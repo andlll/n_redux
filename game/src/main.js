@@ -25,7 +25,7 @@ import {
   clickFaro3Button, clickWaveSignal3, clickDockerSignal3,
   isPlaceholderActive, placeholderDrawDepth, FARO1, FARO2, FARO3, residentsByPlatform,
 } from "./platform.js";
-import { clickShip } from "./bridges.js";
+import { clickShip, SHIP_POP_OFFSETS } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings, fileSystemAccessSupported } from "./save.js";
@@ -1438,6 +1438,7 @@ export async function mountMatch(ctx, params = {}) {
   // collectCoinAt() piu' sotto e disegnate/scartate nel loop principale.
   st.coinPops = [];
   const COIN_POP_LIFE = 0.4;
+  const SHIP_POP_SCALE = 4;   // bolle della nave cargo: stessa forma di quelle delle mongolfiere, molto piu' grandi
   const COIN_POP_COLOR = 0x4fc3f7;   // default: monete/mon — invariato
   // [Nota dell'autore: "per ora sono state fatte blu ovunque, falle invece
   // verdi per i barili di oil e gialle per i container elettrici che
@@ -7157,7 +7158,18 @@ export async function mountMatch(ctx, params = {}) {
       // [C] cargo1|2|4/Mouse_LeftPressed.gml: una tantum, +2000..3000 alla
       // risorsa della nave (game/src/bridges.js). cargo3 non e' cliccabile:
       // non arriva nemmeno qui (obj resta "decor" per lei, faroDecor()).
-      st.message = clickShip(st.picked.ref, st.r12) ?? "";
+      const ship = st.picked.ref;
+      const shipMsg = clickShip(ship, st.r12);
+      // [C] gli stessi `action_effect` del click: le bolle di raccolta delle
+      // mongolfiere (coinPops), ma piu' grandi (SHIP_POP_SCALE) per le
+      // dimensioni della nave, nel colore della risorsa.
+      if (shipMsg && st.graphics.minorEffects) {
+        const color = ship.kind === "mon" ? COIN_POP_COLOR : LOOT_POP_COLOR[ship.kind];
+        for (const [dx, dy] of SHIP_POP_OFFSETS[ship.kind] ?? []) {
+          st.coinPops.push({ x: ship.x + dx, y: ship.y + dy, t: 0, color, scale: SHIP_POP_SCALE });
+        }
+      }
+      st.message = shipMsg ?? "";
       st.messageT = 3;
       st.picked = null;
     }
@@ -8672,7 +8684,7 @@ export async function mountMatch(ctx, params = {}) {
     // l'elettricita' — vedi collectLootAt() sopra.
     for (const p of st.coinPops) {
       const k = p.t / COIN_POP_LIFE;
-      const size = 36 + k * 94;
+      const size = (36 + k * 94) * (p.scale ?? 1);
       // Frame unitario riusato + `scale = size` (draw() moltiplica w/h per
       // scale): stesso quad di solidFrame(bubbleTex, size, size), senza un
       // oggetto nuovo per bolla.
