@@ -363,6 +363,7 @@ export function createTutorialState(scene) {
     // non e' null.
     cutscene: airTut2 ? createCutscene() : null,   // vedi createCutscene()/stepCutscene() sotto
     arrowFrame: 0,
+    baselines: {},   // fase -> { built, placed } — vedi ensureBaseline()
   };
 }
 
@@ -372,17 +373,47 @@ export function createTutorialState(scene) {
 // preesiste nella room — le case gia' in piedi sono tutte casa2/casa3,
 // STUDIO.md — quindi non serve distinguere "storico" da "istantaneo" come
 // invece servirebbe per un edificio che puo' retrocedere di livello).
+// Il tipo che ogni fase "costruisci X" aspetta (main.js/tutorialTargetBuildingType()
+// ripete la stessa mappa per la freccia, piu' la fase 8 che avanza al solo
+// click sul bottone).
+const PHASE_BUILD_TYPE = { 12: "industria", 16: "parco", 19: "missile" };
+
+// [Bug corretto, segnalato dall'autore: "quando costruisco la centrale come
+// dice il tutorial appare un'altra freccia su un altro lotto, quando devo
+// costruirne solo una"] Fasi 12/16/19 confrontavano gli edifici del tipo con
+// `tutind`/`tutpar`/`tutrl`, cioe' quanti ne ha la SCENA all'avvio — ma la
+// battaglia iniziale (createCutscene()/spawnBattle(), sotto) lascia in
+// gioco minacce vere che possono distruggere edifici pre-esistenti prima che
+// il giocatore arrivi alla fase: con una centrale (parco, lanciamissili) in
+// meno, quella appena costruita non basta mai a superare la soglia — la
+// freccia continua a suggerire un altro lotto e la fase non avanza finche'
+// non se ne costruisce un'altra. La soglia e' ora quanti ne esistono DAVVERO
+// nell'istante in cui la fase inizia (`state.baselines[fase]`): `built` per
+// l'avanzamento (livello 1, edificio finito), `placed` per la freccia (anche
+// il solo cantiere, livello 0). `tutind`/`tutpar`/`tutrl` restano nello
+// stato come ripiego per il primo frame, prima che la fase sia stata vista.
+function ensureBaseline(state, buildings) {
+  const type = PHASE_BUILD_TYPE[state.phase];
+  if (!type || state.baselines[state.phase]) return;
+  state.baselines[state.phase] = {
+    built: buildings.filter((b) => b.type === type && b.level === 1).length,
+    placed: buildings.filter((b) => b.type === type && b.level <= 1).length,
+  };
+}
+
 export function stepTutorialAuto(state, ctx) {
   const { r12, buildings } = ctx;
   const builtAtLevel = (type, level) => buildings.filter((b) => b.type === type && b.level === level).length;
+  ensureBaseline(state, buildings);
+  const base = (fallback) => state.baselines[state.phase]?.built ?? fallback;
   if (state.phase === 2 && r12.selec === 11) state.phase = 3;
   else if (state.phase === 5 && state.coinCollected) state.phase = 6;
   else if (state.phase === 7 && r12.selec === 0) state.phase = 8;
   else if (state.phase === 8 && r12.selec === 1) state.phase = 9;
   else if (state.phase === 9 && builtAtLevel("casa", 1) >= 5) state.phase = 10;
-  else if (state.phase === 12 && builtAtLevel("industria", 1) > state.tutind) state.phase = 13;
-  else if (state.phase === 16 && builtAtLevel("parco", 1) > state.tutpar) state.phase = 17;
-  else if (state.phase === 19 && builtAtLevel("missile", 1) > state.tutrl) state.phase = 20;
+  else if (state.phase === 12 && builtAtLevel("industria", 1) > base(state.tutind)) state.phase = 13;
+  else if (state.phase === 16 && builtAtLevel("parco", 1) > base(state.tutpar)) state.phase = 17;
+  else if (state.phase === 19 && builtAtLevel("missile", 1) > base(state.tutrl)) state.phase = 20;
 }
 
 // Fasi in cui il balloon/freccia restano nascosti perche' l'avanzamento e'

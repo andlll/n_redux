@@ -9836,7 +9836,12 @@ export async function mountMatch(ctx, params = {}) {
           // cantiere, livello 0/1 — non gli edifici gia' maturi della room,
           // stesso motivo del filtro `b.level <= 1` in fase 9 sopra) la
           // freccia deve smettere di suggerire un altro lotto.
-          const neededCount = { industria: st.tutorialState.tutind + 1, parco: st.tutorialState.tutpar + 1, missile: st.tutorialState.tutrl + 1 }[type];
+          // Soglia presa all'ingresso della fase (tutorial.js/ensureBaseline()),
+          // non dalla scena: vedi il commento li'. Ripiego sulla scena solo
+          // nel frame prima che stepTutorialAuto() l'abbia calcolata.
+          const neededCount = st.tutorialState.baselines[st.tutorialState.phase]?.placed !== undefined
+            ? st.tutorialState.baselines[st.tutorialState.phase].placed + 1
+            : { industria: st.tutorialState.tutind + 1, parco: st.tutorialState.tutpar + 1, missile: st.tutorialState.tutrl + 1 }[type];
           const alreadyPlaced = neededCount !== undefined
             && st.buildings.filter((b) => b.type === type && b.level <= 1).length >= neededCount;
           target = st.selectedType === type && st.tutorialState.phase !== 8
