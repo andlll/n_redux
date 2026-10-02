@@ -7501,6 +7501,9 @@ export async function mountMatch(ctx, params = {}) {
         for (let i = st.smoke.active.length - 1; i >= 0; i--) {
           if (!st.smoke.active[i].sky) st.smoke.release(i);
         }
+        // Stesso istante: i fari si spengono — via i lampi rosa in corso (il
+        // bagliore `f1lux` e' escluso dalla caduta, frameList() sotto).
+        st.faroFlashes.length = 0;
       }
       st.crashVSpeed += CRASH_GRAVITY * ticks;
       st.crashFallY += st.crashVSpeed * ticks;
@@ -8491,7 +8494,7 @@ export async function mountMatch(ctx, params = {}) {
     // ricalcolerebbe piu'.
     if (oilCrash) {
       frameListNext = frameListNext
-        .filter((it) => !it._selfLit && it.obj !== "car" && it.obj !== "pedestrian")
+        .filter((it) => !it._selfLit && it.obj !== "car" && it.obj !== "pedestrian" && it.spr !== "f1lux")
         .map((it) => {
           if (it._sky) return it;
           const y = it.y + st.crashFallY;
