@@ -98,7 +98,7 @@ export function stepSmokeSpawner(buildings, smoke, dt, r12) {
         const ch = chimneys[i];
         const p = smoke.spawn();
         p.x = b.x + ch.dx; p.y = b.y + ch.dy; p.family = ch.family;
-        p.spr = puffSprite(); p.scale = 1; p.t = 0;
+        p.spr = puffSprite(); p.scale = 1; p.t = 0; p.sky = false;
       }
     }
   }

@@ -21,11 +21,11 @@ import { stepGrattacieloScaffold, scaffoldParts } from "./scaffold.js";
 import { addCrane, addCraneBig, stepCranes, craneParts } from "./cranes.js";
 import {
   applyMatchPlatform, createFaroState, stepFaroChain, faroDecor, r120MotorDecor,
-  clickFaroButton, clickWaveSignal, clickDockerSignal,
+  clickFaroButton, clickWaveSignal, clickDockerSignal, stepShips,
   clickFaro3Button, clickWaveSignal3, clickDockerSignal3,
   isPlaceholderActive, placeholderDrawDepth, FARO1, FARO2, FARO3, residentsByPlatform,
 } from "./platform.js";
-import { clickShip } from "./bridges.js";
+import { clickShip, SHIP_POP_OFFSETS } from "./bridges.js";
 import { stepThreatSpawner, stepThreats, stepBombs, stepExplosions, spawnExplosion, EXPLOSION_FRAME_COUNT, stepAerSmoke, AER_SMOKE_FRAME_COUNT, AER_SMOKE_LIFE, stepDebris } from "./threats.js";
 import { stepTurretFire, stepProjectiles, fireTurretManual, stepSmoko, spawnSmoko, SMOKO_LIFE, stepBeams, BEAM_LIFE } from "./projectiles.js";
 import { save, load, saveSlotFor, serializeSave, saveToFile, loadFromFile, loadAutosaveSettings, saveAutosaveSettings, fileSystemAccessSupported } from "./save.js";
@@ -1438,6 +1438,7 @@ export async function mountMatch(ctx, params = {}) {
   // collectCoinAt() piu' sotto e disegnate/scartate nel loop principale.
   st.coinPops = [];
   const COIN_POP_LIFE = 0.4;
+  const SHIP_POP_SCALE = 4;   // bolle della nave cargo: stessa forma di quelle delle mongolfiere, molto piu' grandi
   const COIN_POP_COLOR = 0x4fc3f7;   // default: monete/mon — invariato
   // [Nota dell'autore: "per ora sono state fatte blu ovunque, falle invece
   // verdi per i barili di oil e gialle per i container elettrici che
@@ -2399,6 +2400,9 @@ export async function mountMatch(ctx, params = {}) {
    * "pepazzittecollider" mai ricostruito, stesso limite gia' noto per le
    * torrette).
    */
+  const TWO_SLOT_DEPTH_BIAS = 3;   // [C] media1s/Create.gml: depth = -y + 3
+  const isTwoSlot = (b) => !!BUILDING_TYPES[b.type]?.diagonalPlacement;   // palazzo/museo (+Rd)
+
   function resolvePlacement(sx, sy) {
     if (!st.armedPlacement) return;
     const { type, origin, targets } = st.armedPlacement;
@@ -2438,7 +2442,15 @@ export async function mountMatch(ctx, params = {}) {
     // dell'istanza. L'ancoraggio vero e' quindi il singolo lotto con la y
     // maggiore (buildSite, "la base piu' in basso delle due"), mai una
     // media con l'altro lotto.
-    const b = placeBuilding(concreteType, buildSite.x, buildSite.y, -buildSite.y);
+    // [Bug corretto, segnalato dall'autore: "gli edifici a 2 slot a volte
+    // finiscono sopra a palazzi a 1 slot a fianco dello slot piu' in basso"]
+    // `-y` secco era un PAREGGIO con un vicino a 1 lotto alla stessa y
+    // (stessa fila, 198px di distanza, coperto comunque dalla sagoma larga
+    // del 2 lotti): a parita' di depth vince l'ordine di inserimento nella
+    // lista, cioe' chi e' stato costruito per ultimo — da qui il "a volte".
+    // **[C]** `media1s/Create.gml`: `depth = -y + 3` (`+ 3.1` per il cantiere
+    // `impamediaR|RD`) — piu' in fondo del vicino a `-y`, mai un pareggio.
+    const b = placeBuilding(concreteType, buildSite.x, buildSite.y, -buildSite.y + TWO_SLOT_DEPTH_BIAS);
     st.buildings.push(b);
     if (b.level >= 1) spawnDecor(b, currentDecor(b));
     st.constructionBalloons.push(spawnConstructionBalloon(buildSite.x, buildSite.y));
@@ -2529,7 +2541,9 @@ export async function mountMatch(ctx, params = {}) {
     // campo in piu' nel suo salvataggio (save.js, stessa convenzione gia'
     // scelta per `b.tiles` sugli edifici vivi).
     st.ruins.push({
-      x: b.x, y: b.y, depth: -b.y, spr, _f: frameFor(spr),
+      // Un 2 lotti lascia un rudere con la stessa depth di prima (`-y + 3`):
+      // stesso pareggio da evitare coi vicini a 1 lotto alla stessa y.
+      x: b.x, y: b.y, depth: isTwoSlot(b) ? b.depth : -b.y, spr, _f: frameFor(spr),
       level: b.level, cost: ruinRebuildCost(b.level), tiles: b.tiles,
     });
   }
@@ -2800,6 +2814,11 @@ export async function mountMatch(ctx, params = {}) {
     // quelli presenti nel salvataggio vincono (stesso `isMatch` del mount).
     st.r12 = { ...createR12(roomName === "match"), ...data.r12 };
     st.buildings = data.buildings;
+    // Salvataggi precedenti al fix della depth dei 2 lotti (resolvePlacement()
+    // sopra): `-y` secco, riallineato al `-y + 3` di adesso.
+    for (const b of st.buildings) {
+      if (isTwoSlot(b) && b.depth === -b.y) b.depth += TWO_SLOT_DEPTH_BIAS;
+    }
     syncNextId(st.buildings);   // riallinea il contatore agli id del salvataggio, altrimenti placeBuilding() ne riusa uno
     // `?.tier1`: scarta anche un salvataggio con la forma vecchia (prima
     // dei due livelli fari/piattaforma) invece di rompersi su di lui — lo
@@ -7157,7 +7176,18 @@ export async function mountMatch(ctx, params = {}) {
       // [C] cargo1|2|4/Mouse_LeftPressed.gml: una tantum, +2000..3000 alla
       // risorsa della nave (game/src/bridges.js). cargo3 non e' cliccabile:
       // non arriva nemmeno qui (obj resta "decor" per lei, faroDecor()).
-      st.message = clickShip(st.picked.ref, st.r12) ?? "";
+      const ship = st.picked.ref;
+      const shipMsg = clickShip(ship, st.r12);
+      // [C] gli stessi `action_effect` del click: le bolle di raccolta delle
+      // mongolfiere (coinPops), ma piu' grandi (SHIP_POP_SCALE) per le
+      // dimensioni della nave, nel colore della risorsa.
+      if (shipMsg && st.graphics.minorEffects) {
+        const color = ship.kind === "mon" ? COIN_POP_COLOR : LOOT_POP_COLOR[ship.kind];
+        for (const [dx, dy] of SHIP_POP_OFFSETS[ship.kind] ?? []) {
+          st.coinPops.push({ x: ship.x + dx, y: ship.y + dy, t: 0, color, scale: SHIP_POP_SCALE });
+        }
+      }
+      st.message = shipMsg ?? "";
       st.messageT = 3;
       st.picked = null;
     }
@@ -7481,8 +7511,23 @@ export async function mountMatch(ctx, params = {}) {
       // y += vspeed) invece di una formula continua indipendente che
       // andrebbe ritarata a mano.
       const ticks = dt / TICK;
+      // Primo frame del crollo (`crashVSpeed` ancora 0): via tutto il fumo
+      // delle ciminiere, altrimenti resterebbe sospeso a mezz'aria mentre
+      // cade con la citta', un fotogramma "freezato". Il fumo della nave
+      // (`sky`) resta: la nave prosegue la sua rotta e se lo lascia dietro.
+      if (st.crashVSpeed === 0) {
+        for (let i = st.smoke.active.length - 1; i >= 0; i--) {
+          if (!st.smoke.active[i].sky) st.smoke.release(i);
+        }
+        // Stesso istante: i fari si spengono — via i lampi rosa in corso (il
+        // bagliore `f1lux` e' escluso dalla caduta, frameList() sotto).
+        st.faroFlashes.length = 0;
+      }
       st.crashVSpeed += CRASH_GRAVITY * ticks;
       st.crashFallY += st.crashVSpeed * ticks;
+      // Il fumo gia' in volo (anche quello della nave, `sky`) continua ad
+      // invecchiare: il suo passo vive nel blocco `!frozen`, fermo qui.
+      stepSmoke(st.smoke, dt);
     }
     // Nuvole/uccelli (game/src/atmosphere.js) e mongolfiere (game/src/
     // balloons.js) — `skyAlive` sopra: le stesse chiamate di sempre, solo
@@ -7589,6 +7634,9 @@ export async function mountMatch(ctx, params = {}) {
         st.lightning.push(spawnLightning(x, y));
       });
       stepLoot(st.loot, dt);
+      // La nave cargo prosegue la sua rotta anche durante il crollo per olio
+      // esaurito (non cade con la piattaforma, `_sky`).
+      if (st.platformState) stepShips(st.platformState, st.smoke, dt);
     }
     if (!frozen) {
       stepConstructions(st.buildings, dt, st.r12, spawnDecor, addConstructionSpawn, removeTransientDecor, demolishStep);
@@ -8281,7 +8329,7 @@ export async function mountMatch(ctx, params = {}) {
     // dell'ingrandimento uniforme (_scale) — vedi smoke.js.
     for (const p of st.smoke.active) {
       const frameIdx = Math.min(SMOKE_FRAME_COUNT - 1, Math.floor(p.t / TICK));
-      dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, SMOKE_LIFE) });
+      dynamic.push({ obj: "decor", x: p.x, y: p.y, depth: -p.y - p.family, _f: frameFor(p.spr, frameIdx), _scale: p.scale, _alpha: fadeAlpha(p.t, SMOKE_LIFE), _sky: p.sky });
     }
     // Il fulmine vero (game/src/lightning.js): `th1`/`th2` -> `th1s`/`th2s`
     // a meta' vita, depth -y-5 come l'originale (sortWorld() qui ordina
@@ -8464,7 +8512,7 @@ export async function mountMatch(ctx, params = {}) {
     // ricalcolerebbe piu'.
     if (oilCrash) {
       frameListNext = frameListNext
-        .filter((it) => !it._selfLit && it.obj !== "car" && it.obj !== "pedestrian")
+        .filter((it) => !it._selfLit && it.obj !== "car" && it.obj !== "pedestrian" && it.spr !== "f1lux")
         .map((it) => {
           if (it._sky) return it;
           const y = it.y + st.crashFallY;
@@ -8657,7 +8705,7 @@ export async function mountMatch(ctx, params = {}) {
     // l'elettricita' — vedi collectLootAt() sopra.
     for (const p of st.coinPops) {
       const k = p.t / COIN_POP_LIFE;
-      const size = 36 + k * 94;
+      const size = (36 + k * 94) * (p.scale ?? 1);
       // Frame unitario riusato + `scale = size` (draw() moltiplica w/h per
       // scale): stesso quad di solidFrame(bubbleTex, size, size), senza un
       // oggetto nuovo per bolla.

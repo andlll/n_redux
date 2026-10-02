@@ -174,10 +174,21 @@ export function stepCargoShips(ships, smoke, dt) {
       const p = smoke.spawn();
       p.x = s.x + SHIP_SMOKE_OFFSET.x; p.y = s.y + SHIP_SMOKE_OFFSET.y;
       p.family = 150; p.spr = puffSprite(); p.scale = 1; p.t = 0;
+      p.sky = true;   // la nave non cade col crollo per olio (main.js, `_sky`): il suo fumo neppure
     }
     if (s.t >= SHIP_LIFE_SECONDS) ships.splice(i, 1);
   }
 }
+
+/** [C] cargo1|2|4/Mouse_LeftPressed.gml: posizioni (relative all'origine
+ * della nave) dei `action_effect(2, dx, dy, ...)` del click — tre per
+ * cargo1/cargo2, due per cargo4. Il colore e' quello della risorsa (stesso
+ * di LOOT_POP_COLOR/COIN_POP_COLOR in main.js). */
+export const SHIP_POP_OFFSETS = {
+  mon: [[213, 150], [392, 250], [759, 450]],
+  ele: [[213, 150], [392, 250], [759, 450]],
+  oil: [[246, 155], [375, 227]],
+};
 
 /** [C] cargo1|2|4/Mouse_LeftPressed.gml: una tantum, +2000..3000 alla
  * risorsa della nave. cargo3 (kind null) non e' mai cliccabile. */
